@@ -303,23 +303,65 @@ Security-related tests should be treated as release-blocking.
 
 Local development setup will use Docker Compose.
 
-Expected future command:
+Copy the example environment file if you want local overrides:
+
+```bash
+cp .env.example .env
+```
+
+Start the Milestone 0 development stack:
 
 ```bash
 docker compose up --build
 ```
 
-The project should eventually start:
+This starts:
 
 * PostgreSQL database
 * FastAPI backend
 * React frontend
 
-Development commands will be added as the project structure is implemented.
+Default local URLs:
+
+* Frontend: `http://127.0.0.1:5173`
+* Backend health endpoint: `http://127.0.0.1:8000/health`
+* PostgreSQL: `localhost:5432`
+
+PostgreSQL is included for the local development environment. Milestone 0 does not create product tables, migrations, seed data, auth, permissions, dashboards, actions, approvals, or audit logs.
+
+Stop the stack:
+
+```bash
+docker compose down
+```
+
+Remove the local PostgreSQL volume only when you intentionally want to reset local database state:
+
+```bash
+docker compose down -v
+```
+
+### Backend
+
+The backend skeleton can be run locally without Docker with:
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate
+pip install -e ".[dev]"
+uvicorn app.main:app --reload
+```
+
+Run backend tests:
+
+```bash
+pytest
+```
 
 ### Frontend
 
-The frontend skeleton can be run locally with:
+The frontend skeleton can be run locally without Docker with:
 
 ```bash
 cd frontend
@@ -345,10 +387,14 @@ Example planned variables:
 
 ```env
 AUTH_MODE=demo
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops
 POSTGRES_DB=queryops
 POSTGRES_USER=queryops
 POSTGRES_PASSWORD=queryops
+POSTGRES_PORT=5432
+BACKEND_PORT=8000
+FRONTEND_PORT=5173
+DATABASE_URL=postgresql://queryops:queryops@postgres:5432/queryops
+VITE_API_BASE_URL=http://127.0.0.1:8000
 ```
 
 Real secrets must never be committed to Git.
