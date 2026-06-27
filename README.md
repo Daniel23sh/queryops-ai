@@ -379,6 +379,36 @@ npm test
 The frontend health check calls the backend at `http://127.0.0.1:8000` by default.
 Override it with `VITE_API_BASE_URL` if needed.
 
+## Verification
+
+### Backend
+
+```bash
+cd backend
+python -m pip install --upgrade pip
+pip install -e ".[dev]"
+pytest
+```
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+npm test
+npm run build
+```
+
+### Docker Compose
+
+With Docker Desktop or another Docker daemon running:
+
+```bash
+cp .env.example .env
+docker compose config
+docker compose up --build
+```
+
 ## Environment Variables
 
 A `.env.example` file should document all required environment variables.
