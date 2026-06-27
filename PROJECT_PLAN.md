@@ -8,6 +8,8 @@ The current active target is:
 
 This phase is foundation only. The goal is to establish a clean local development environment, repository structure, backend skeleton, frontend skeleton, Docker Compose setup, and basic verification hooks. It is not the phase for real product feature implementation.
 
+Milestone 0 foundation work is now ready for review and merge. Do not begin Milestone 1 implementation until Milestone 0 has been verified and accepted.
+
 Do not start implementing QueryOps product behavior yet. Product schema, auth flows, permissions, natural-language querying, dashboards, actions, approvals, audit logs, and evaluation belong to later milestones.
 
 ## 2. Product Summary
@@ -251,7 +253,7 @@ Intended commits:
 7. Add Docker Compose and environment example.
 8. Add initial CI and test placeholders.
 
-Current task: commit 3, `Add project plan`.
+Milestone 0 foundation commit sequence is complete through the initial CI and test placeholders.
 
 ## 13. Milestone 0 Acceptance Criteria
 

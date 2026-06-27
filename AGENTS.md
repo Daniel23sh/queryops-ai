@@ -195,10 +195,10 @@ Recommended Milestone 0 commit sequence:
 8. Add initial CI and test placeholders
 ```
 
-Current commit target:
+Current Milestone 0 status:
 
 ```txt
-Add agent instructions
+Foundation work is ready for review and merge.
 ```
 
 ## 11. Local Planning Files

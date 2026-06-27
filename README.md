@@ -1,14 +1,14 @@
 # QueryOps AI
 
-QueryOps AI is a governed conversational data workspace that lets users query structured business data in natural language, save insights as dashboards, and execute controlled operational actions through approval and audit workflows.
+QueryOps AI is planned as a governed conversational data workspace that will let users query structured business data in natural language, save insights as dashboards, and execute controlled operational actions through approval and audit workflows.
 
-The project demonstrates how AI can be used not only to generate SQL, but also to support safe data exploration, reusable insights, permission-aware workflows, and auditable operational actions.
+The project is being built to demonstrate how AI can be used not only to generate SQL, but also to support safe data exploration, reusable insights, permission-aware workflows, and auditable operational actions.
 
 ## Overview
 
 Modern organizations often have valuable structured data stored in databases, but many business users cannot access it directly without help from analysts, developers, or IT teams.
 
-QueryOps AI solves this by providing a controlled interface where users can:
+QueryOps AI is designed to solve this with a controlled interface where users will be able to:
 
 * ask questions about structured data in natural language
 * receive SQL-backed results
@@ -448,9 +448,18 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-The project is in early development.
+Milestone 0 foundation work is in place and ready for review.
 
-Implemented functionality will be documented here as the repository evolves.
+Implemented Milestone 0 functionality includes:
+
+* FastAPI backend skeleton with `GET /health`
+* React + TypeScript + Vite frontend shell with backend health check
+* Docker Compose setup for PostgreSQL, backend, and frontend
+* `.env.example` with safe local placeholders
+* basic backend and frontend tests
+* initial GitHub Actions CI workflow
+
+Product features such as authentication, permissions, natural-language querying, dashboards, actions, approvals, and audit logs are planned for later milestones.
 
 ## License
 
