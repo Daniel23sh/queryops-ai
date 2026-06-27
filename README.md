@@ -317,6 +317,26 @@ The project should eventually start:
 
 Development commands will be added as the project structure is implemented.
 
+### Frontend
+
+The frontend skeleton can be run locally with:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Build and test commands:
+
+```bash
+npm run build
+npm test
+```
+
+The frontend health check calls the backend at `http://127.0.0.1:8000` by default.
+Override it with `VITE_API_BASE_URL` if needed.
+
 ## Environment Variables
 
 A `.env.example` file should document all required environment variables.
