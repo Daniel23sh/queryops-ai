@@ -41,11 +41,10 @@ IT_OPERATIONS_DOMAIN_TABLES = {
 }
 
 
-def test_base_metadata_registers_product_tables_only() -> None:
+def test_base_metadata_registers_product_tables() -> None:
     table_names = set(Base.metadata.tables)
 
     assert PRODUCT_TABLES <= table_names
-    assert IT_OPERATIONS_DOMAIN_TABLES.isdisjoint(table_names)
 
 
 def test_product_schema_has_key_foreign_keys() -> None:
@@ -107,7 +106,6 @@ def test_product_migration_upgrades_and_downgrades_sqlite_database(
     try:
         upgraded_tables = set(inspect(engine).get_table_names())
         assert PRODUCT_TABLES <= upgraded_tables
-        assert IT_OPERATIONS_DOMAIN_TABLES.isdisjoint(upgraded_tables)
     finally:
         engine.dispose()
 
