@@ -21,8 +21,26 @@ def test_database_url_normalizes_postgresql_scheme() -> None:
     )
 
 
-def test_database_metadata_starts_without_tables() -> None:
-    assert not Base.metadata.tables
+def test_database_metadata_includes_product_schema() -> None:
+    product_tables = {
+        "app_users",
+        "roles",
+        "permissions",
+        "role_permissions",
+        "user_permissions",
+        "role_upgrade_requests",
+        "dashboards",
+        "dashboard_cards",
+        "saved_queries",
+        "query_runs",
+        "approval_requests",
+        "notifications",
+        "evaluation_runs",
+        "evaluation_results",
+        "app_audit_logs",
+    }
+
+    assert product_tables <= set(Base.metadata.tables)
 
 
 def test_session_factory_can_create_session_without_connecting() -> None:
