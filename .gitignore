@@ -14,3 +14,7 @@ __pycache__/
 node_modules/
 dist/
 *.tsbuildinfo
+
+# Local DB export artifacts
+backend/db_export/
+backend/queryops_db_export.zip

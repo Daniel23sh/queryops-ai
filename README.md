@@ -369,6 +369,18 @@ alembic upgrade head
 
 When running inside Docker Compose, the backend uses the `postgres` service hostname from `DATABASE_URL`.
 
+Seed deterministic development data after migrations have been applied:
+
+```bash
+docker compose up -d postgres
+cd backend
+.venv/bin/alembic upgrade head
+.venv/bin/python scripts/seed_it_operations.py --profile small --reset
+.venv/bin/python scripts/seed_it_operations.py --profile medium --reset
+```
+
+The seed script is development-only and deterministic. Supported profiles are `small` for fast local or CI-style checks and `medium` for demo-scale local data. The `--reset` flag deletes seeded rows from the product and IT Operations tables before reseeding; it does not drop tables or modify Alembic migration state.
+
 ### Frontend
 
 The frontend skeleton can be run locally without Docker with:
