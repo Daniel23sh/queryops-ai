@@ -4,17 +4,17 @@
 
 The current active target is:
 
-`Milestone 0 — Project Setup & Development Environment`
+`Milestone 1 — Database Schema & IT Operations Seed`
 
-This phase is foundation only. The goal is to establish a clean local development environment, repository structure, backend skeleton, frontend skeleton, Docker Compose setup, and basic verification hooks. It is not the phase for real product feature implementation.
+Milestone 0 foundation work is complete. The repository now has the backend skeleton, frontend skeleton, Docker Compose setup, `.env.example`, basic tests, and initial CI needed to begin database work.
 
-Milestone 0 foundation work is now ready for review and merge. Do not begin Milestone 1 implementation until Milestone 0 has been verified and accepted.
+Milestone 1 creates the real database foundation for QueryOps AI. It should add database infrastructure, product schema, IT Operations domain schema, deterministic synthetic seed data, and tests that prove the database can be created and seeded reliably.
 
-Do not start implementing QueryOps product behavior yet. Product schema, auth flows, permissions, natural-language querying, dashboards, actions, approvals, audit logs, and evaluation belong to later milestones.
+Do not start later product behavior during Milestone 1. Authentication flows, runtime permission enforcement, RLS policies, natural-language querying, dashboards, actions, approvals, notifications, audit behavior, and evaluation engine behavior belong to later milestones.
 
 ## 2. Product Summary
 
-QueryOps AI is a governed conversational data workspace. It lets users ask natural-language questions over structured data, receive safe SQL-backed results, save useful results as cards and dashboards, and eventually trigger controlled operational actions.
+QueryOps AI is a governed conversational data workspace. It will let users ask natural-language questions over structured data, receive safe SQL-backed results, save useful results as cards and dashboards, and eventually trigger controlled operational actions.
 
 The product direction includes:
 
@@ -58,92 +58,119 @@ Locked decisions from the planning documents:
 - Backend stack: FastAPI and Python.
 - Primary database: PostgreSQL.
 - Use Docker Compose for local development.
+- Database stack: SQLAlchemy 2 and Alembic.
+- Seed data must be deterministic and Faker-based.
 - Supabase Auth with Google OAuth is planned later.
 - Use demo auth first for local development and early milestones.
 - Store internal QueryOps roles, departments, and permissions in local PostgreSQL.
-- PostgreSQL Row-Level Security is required in later milestones.
-- Use an LLM provider abstraction.
+- PostgreSQL Row-Level Security is required in a later milestone, not Milestone 1.
+- Use an LLM provider abstraction in later milestones.
 - Do not call an LLM directly from business logic.
 - Do not allow direct LLM database mutations.
 - Natural-language SQL must be read-only and validated before execution.
-- Actions must use deterministic backend logic.
-- Actions require preview, policy check, approval, execution, and audit.
+- Actions must use deterministic backend logic in later milestones.
+- Actions require preview, policy check, approval, execution, and audit in later milestones.
 - IT Operations is the first domain pack, not a product hard-coding target.
 - The frontend never talks directly to PostgreSQL or an LLM.
 - The backend is the source of truth for permissions and policy enforcement.
 
-## 5. Milestone 0 Scope
+## 5. Milestone 1 Scope
 
-Milestone 0 includes only project foundation work:
+Milestone 1 includes database foundation work only:
 
-- Repository structure.
-- Backend skeleton.
-- Frontend skeleton.
-- Docker Compose setup.
-- PostgreSQL container.
-- `.env.example`.
-- FastAPI health endpoint.
-- Basic frontend shell.
-- Frontend/backend connectivity check if practical.
-- Basic backend test placeholder.
-- Basic frontend test placeholder.
-- Initial lint, typecheck, and test scripts where practical.
-- Basic CI structure if appropriate.
-- README updates with real local run commands.
-- Optional migration-tool placeholder only if useful for setup; no product/domain migrations yet.
+- Database configuration.
+- SQLAlchemy setup.
+- Alembic setup.
+- Database engine and session helper.
+- Product schema.
+- IT Operations domain schema.
+- Alembic migrations.
+- Deterministic seed script.
+- Small seed profile for CI and fast local tests.
+- Medium seed profile for local development and demo-scale data.
+- Faker-based synthetic data generation.
+- Deterministic seed behavior using a fixed random seed.
+- Migration tests.
+- Seed tests.
+- Basic relationship tests.
+- README updates only after real commands exist.
 
-The backend should be able to start. The frontend should be able to start. Local setup should be boring, repeatable, and easy to verify.
+Expected product schema areas:
 
-## 6. Explicitly Out of Scope for Milestone 0
+- Application users.
+- Roles and permissions.
+- Role upgrades.
+- Saved queries and query runs.
+- Dashboards and dashboard cards.
+- Approval request records.
+- Notification records.
+- Evaluation run/result records.
+- Application audit log records.
 
-Do not implement the following in Milestone 0:
+Expected IT Operations domain schema areas:
 
-- Full database schema.
-- Alembic migrations for product/domain tables.
-- Synthetic seed data.
+- Departments.
+- Directory users.
+- Login events.
+- Licenses and license assignments.
+- Devices and software installs.
+- Support tickets.
+- Groups and user group memberships.
+- Security events.
+- IT audit events.
+
+Milestone 1 may define tables for later product capabilities, but it must not implement their runtime behavior yet.
+
+## 6. Explicitly Out of Scope for Milestone 1
+
+Do not implement the following in Milestone 1:
+
 - Supabase Auth.
 - Google OAuth.
-- Real user management.
-- Roles and permissions logic.
-- RLS policies.
-- Natural language to SQL.
-- Real LLM provider calls.
-- Dashboards.
-- Cards.
-- Query history.
-- CSV export.
+- Real login or session flow.
+- Runtime role or permission enforcement.
+- PostgreSQL RLS policies.
+- Natural-language-to-SQL pipeline.
+- Real LLM calls.
+- Query templates API.
+- Dashboards UI.
+- Cards UI.
+- CSV export behavior.
 - Actions.
 - Approvals.
-- Notifications.
-- Audit logs.
-- Evaluation engine.
+- Notifications behavior.
+- Audit behavior beyond table definitions if audit tables are part of the schema.
+- Evaluation engine behavior.
 - Production deployment.
 
 If a future feature needs a placeholder, keep it inert and clearly non-functional.
 
 ## 7. Target Repository Structure
 
-Expected structure after Milestone 0:
+Expected structure after Milestone 1:
 
 ```text
 queryops-ai/
   backend/
     app/
-      __init__.py
-      main.py
       api/
       core/
+      db/
+      models/
+    alembic/
+      versions/
+    scripts/
+      seed_it_operations.py
     tests/
       test_health.py
+      test_migrations.py
+      test_seed.py
+    alembic.ini
     pyproject.toml
 
   frontend/
     src/
-      main.tsx
-      App.tsx
     package.json
-    vite.config.ts
-    tsconfig.json
 
   docs/
     planning/        # local/private, ignored by Git
@@ -156,68 +183,53 @@ queryops-ai/
   .gitignore
 ```
 
-Adjust exact file placement only when the repository has already established a reasonable convention. Keep the Milestone 0 structure simple.
+Adjust exact file placement only when the repository has already established a reasonable convention. Keep the database foundation simple and avoid broad abstractions before they are needed.
 
-## 8. Backend Foundation Requirements
+## 8. Database Foundation Requirements
 
-The minimal backend for Milestone 0 is:
+Milestone 1 should establish:
 
-- FastAPI application.
-- `GET /health`.
-- JSON response:
+- SQLAlchemy 2 metadata/model conventions.
+- A database engine/session helper for backend code and tests.
+- Alembic configured to use the project metadata.
+- Database configuration sourced from safe environment variables.
+- PostgreSQL-compatible migrations.
+- Tests that can create the schema from scratch.
 
-```json
-{ "status": "ok", "service": "queryops-backend" }
-```
+Do not add request-time authorization, RLS context helpers, policy engines, or query engine logic in this milestone.
 
-- Test for the health endpoint.
-- No real business logic.
-- No real authentication.
-- No real permissions.
-- No real database schema.
-- No real LLM integration.
+## 9. Schema Requirements
 
-The backend may include configuration plumbing and a PostgreSQL connection check if practical, but it must not introduce product tables or domain behavior.
+Product tables should support planned QueryOps platform concepts without implementing their behavior yet.
 
-## 9. Frontend Foundation Requirements
+Domain tables should model the IT Operations pack and keep domain-specific concepts separate from generic product tables.
 
-The minimal frontend for Milestone 0 is:
+Relationships should be explicit enough to support later query, permission, dashboard, action, and evaluation milestones. Basic relationship tests should verify important foreign keys and seed consistency.
 
-- React, TypeScript, and Vite.
-- Simple app shell.
-- Project name displayed.
-- Optional backend health check display if practical.
-- Basic test placeholder.
-- No real dashboard UI.
-- No real authentication UI.
-- No role-specific navigation.
-- No action, approval, audit, query, or evaluation screens.
+Audit-related tables may be defined as schema, but audit-writing behavior is not part of Milestone 1.
 
-The frontend should prove the toolchain works without pretending future product workflows are implemented.
+## 10. Seed and Testing Requirements
 
-## 10. Docker and Environment Requirements
+Seed data must be deterministic.
 
-Local development should use Docker Compose.
+Milestone 1 seed requirements:
 
-Expected services:
+- Use Faker for realistic synthetic values.
+- Use a fixed seed value so repeated runs produce stable output.
+- Provide a small profile suitable for CI.
+- Provide a medium profile suitable for local development and demos.
+- Include realistic IT Operations relationships.
+- Include deterministic domain anomalies needed by later evaluation questions.
+- Document or test stable row counts.
 
-- `postgres` service in Milestone 0.
-- `backend` service eventually.
-- `frontend` service eventually.
+Milestone 1 tests should cover:
 
-Milestone 0 should include `.env.example` with safe placeholder values only. Do not commit real secrets.
-
-Expected placeholder variables:
-
-```env
-AUTH_MODE=demo
-POSTGRES_DB=queryops
-POSTGRES_USER=queryops
-POSTGRES_PASSWORD=queryops
-DATABASE_URL=postgresql://queryops:queryops@postgres:5432/queryops
-```
-
-Future environment variables such as Supabase settings or LLM API keys may be listed as empty placeholders only when needed, but real values must never be committed.
+- Migrations run from scratch.
+- Small seed loads successfully.
+- Medium seed loads successfully.
+- Seed output is deterministic.
+- Core relationships are valid.
+- CI remains green.
 
 ## 11. Development Rules for Agents
 
@@ -226,57 +238,74 @@ Agents working in this repository must:
 - Read this file before coding.
 - Use local `docs/planning/` when available.
 - Implement only the requested milestone or task.
-- Keep Milestone 0 limited to foundation work.
+- Follow the active milestone in this file.
+- Stop and report any task that is outside the active milestone instead of implementing it.
 - Do not add unplanned scope.
 - Keep changes small and reviewable.
-- Update README when commands change.
+- Update README only when real commands or behavior change.
 - Do not commit ignored planning docs.
+- Do not modify `docs/planning/` unless explicitly asked.
 - Do not commit secrets.
 - Do not introduce real LLM calls before requested.
 - Do not implement future milestones early.
-- Do not create product/domain tables during Milestone 0.
-- Do not add auth, permissions, RLS, query engine, dashboards, actions, approvals, audit, or evaluation until their milestones.
 - Prefer boring, maintainable structure over clever abstractions.
 
 If a task request conflicts with this file, clarify the intended milestone before implementing broad product behavior.
 
-## 12. Suggested Commit Sequence for Milestone 0
+## 12. Planned Branch and PR Breakdown for Milestone 1
 
-Intended commits:
+Planned Milestone 1 branches:
 
-1. Ignore local planning documents.
-2. Add initial project README.
-3. Add project plan.
-4. Add agent instructions.
-5. Add backend skeleton.
-6. Add frontend skeleton.
-7. Add Docker Compose and environment example.
-8. Add initial CI and test placeholders.
+1. `feature/m1-db-foundation`
+   - Update project plan and agent docs.
+   - Add DB foundation and Alembic setup.
 
-Milestone 0 foundation commit sequence is complete through the initial CI and test placeholders.
+2. `feature/m1-product-schema`
+   - Product SQLAlchemy models.
+   - Product migrations.
+   - Basic product schema tests.
 
-## 13. Milestone 0 Acceptance Criteria
+3. `feature/m1-domain-schema`
+   - IT Operations domain models.
+   - Domain migrations.
+   - Relationship tests.
 
-Milestone 0 is complete when:
+4. `feature/m1-seed-data`
+   - Deterministic seed script.
+   - Small seed profile.
+   - Medium seed profile.
+   - Seed verification tests.
 
-- Backend starts.
-- Frontend starts.
-- `GET /health` works.
-- Docker Compose starts local services or limitations are clearly documented.
-- `.env.example` exists with safe placeholders.
-- README has accurate local run commands.
-- Basic backend tests or placeholders exist.
-- Basic frontend tests or placeholders exist.
-- Initial lint/typecheck/test scripts exist where practical.
+5. `feature/m1-db-tests-docs`
+   - Final migration, seed, and relationship checks.
+   - README updates.
+   - Milestone 1 compliance review.
+
+Current task: first documentation-only commit on `feature/m1-db-foundation`, `Update plan for Milestone 1`.
+
+## 13. Milestone 1 Acceptance Criteria
+
+Milestone 1 is complete when:
+
+- Database can be created from scratch.
+- Alembic migrations run successfully.
+- Product tables exist.
+- IT Operations domain tables exist.
+- Small seed profile loads successfully.
+- Medium seed profile loads successfully.
+- Seed output is deterministic.
+- Stable row counts are documented or tested.
+- Basic relationships are valid.
+- CI remains green.
 - No private planning docs are committed.
 - `git status` is clean after commit.
 
-Milestone 0 should leave the repository ready for Milestone 1 without smuggling in Milestone 1 implementation.
+Milestone 1 should leave the repository ready for auth, permission, and RLS work without implementing those later milestones early.
 
 ## 14. Next Milestone
 
-After Milestone 0, the next target is:
+After Milestone 1, the next target is:
 
-`Milestone 1 — Database Schema & IT Operations Seed`
+`Milestone 2 — Auth, Users, Roles & Permissions`
 
-Milestone 1 must not start until Milestone 0 is complete and verified.
+Milestone 2 must not start until Milestone 1 is complete and verified.

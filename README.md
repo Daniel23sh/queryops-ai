@@ -309,7 +309,7 @@ Copy the example environment file if you want local overrides:
 cp .env.example .env
 ```
 
-Start the Milestone 0 development stack:
+Start the local development stack:
 
 ```bash
 docker compose up --build
@@ -327,7 +327,7 @@ Default local URLs:
 * Backend health endpoint: `http://127.0.0.1:8000/health`
 * PostgreSQL: `localhost:5432`
 
-PostgreSQL is included for the local development environment. Milestone 0 does not create product tables, migrations, seed data, auth, permissions, dashboards, actions, approvals, or audit logs.
+PostgreSQL is included for the local development environment. Milestone 1 is planned to add product tables, domain tables, migrations, and deterministic seed data. Authentication, permissions, dashboards, actions, approvals, and audit behavior remain planned for later milestones.
 
 Stop the stack:
 
@@ -448,7 +448,7 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-Milestone 0 foundation work is in place and ready for review.
+Milestone 0 foundation work is complete.
 
 Implemented Milestone 0 functionality includes:
 
@@ -459,7 +459,13 @@ Implemented Milestone 0 functionality includes:
 * basic backend and frontend tests
 * initial GitHub Actions CI workflow
 
-Product features such as authentication, permissions, natural-language querying, dashboards, actions, approvals, and audit logs are planned for later milestones.
+Current active planning target:
+
+```txt
+Milestone 1 — Database Schema & IT Operations Seed
+```
+
+Milestone 1 will add the database foundation, SQLAlchemy/Alembic setup, product schema, IT Operations domain schema, deterministic seed data, and migration/seed tests. Product features such as authentication, permissions, natural-language querying, dashboards, actions, approvals, and audit logs remain planned for later milestones.
 
 ## License
 
