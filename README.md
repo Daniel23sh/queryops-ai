@@ -359,6 +359,16 @@ Run backend tests:
 pytest
 ```
 
+Run Alembic commands from the host with PostgreSQL running:
+
+```bash
+export DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops
+alembic current
+alembic upgrade head
+```
+
+When running inside Docker Compose, the backend uses the `postgres` service hostname from `DATABASE_URL`.
+
 ### Frontend
 
 The frontend skeleton can be run locally without Docker with:
@@ -423,7 +433,7 @@ POSTGRES_PASSWORD=queryops
 POSTGRES_PORT=5432
 BACKEND_PORT=8000
 FRONTEND_PORT=5173
-DATABASE_URL=postgresql://queryops:queryops@postgres:5432/queryops
+DATABASE_URL=postgresql+psycopg://queryops:queryops@postgres:5432/queryops
 VITE_API_BASE_URL=http://127.0.0.1:8000
 ```
 
