@@ -8,70 +8,75 @@ Before making code changes, always read:
 
 1. `README.md`
 2. `PROJECT_PLAN.md`
-3. Local planning documents under `docs/planning/`, if available
+3. `AGENTS.md`
+4. Local planning documents under `docs/planning/`, if available
 
 The `docs/planning/` directory is intentionally ignored by Git. It may exist only in the local workspace and should be used as private implementation context when available.
 
-Do not commit files from `docs/planning/`.
+Do not commit files from `docs/planning/`. Do not modify files under `docs/planning/` unless explicitly asked.
 
-## 2. Current Active Target
+## 2. Active Milestone Source of Truth
 
-The current active development target is defined in PROJECT_PLAN.md.
+The current active development target is defined in `PROJECT_PLAN.md`.
 
 ```txt
-Agents must always follow the active milestone scope in PROJECT_PLAN.md and must not implement future milestone work unless explicitly requested.
+Agents must follow the active milestone scope in PROJECT_PLAN.md and must not implement future milestone work unless explicitly requested.
 ```
 
-Milestone 0 is foundation work only.
+If a task is outside the active milestone in `PROJECT_PLAN.md`, stop and report the mismatch instead of implementing it.
 
-Do not implement real product features during Milestone 0.
+## 3. Scope Control
 
-## 3. Milestone 0 Scope
+Agents must:
 
-Allowed work during Milestone 0:
+* implement only the requested milestone or task
+* keep changes small and reviewable
+* avoid unplanned scope
+* avoid future-proof abstractions before they are needed
+* update README only when setup commands, behavior, or verification commands actually change
+* preserve existing user changes
+* avoid unrelated refactors
 
-* repository structure
-* backend skeleton
-* frontend skeleton
-* Docker Compose setup
-* PostgreSQL development container
-* `.env.example`
-* FastAPI health endpoint
-* basic frontend shell
-* backend/frontend connectivity check if practical
-* basic backend test placeholder
-* basic frontend test placeholder
-* basic lint/typecheck/test scripts where practical
-* README updates with real local development commands
+If implementation details are unclear:
 
-## 4. Explicitly Out of Scope
+1. Check `PROJECT_PLAN.md`
+2. Check local `docs/planning/`
+3. Choose the smallest implementation that satisfies the active milestone
+4. Ask for clarification only when the ambiguity cannot be resolved from local context
 
-Do not implement these unless specifically requested in a later milestone:
+## 4. Permanent Guardrails
 
-* full database schema
-* Alembic migrations for product/domain tables
-* synthetic seed data
-* Supabase Auth
-* Google OAuth
-* real user management
-* roles and permissions logic
-* PostgreSQL RLS policies
-* natural-language-to-SQL pipeline
-* real LLM provider calls
-* dashboards
-* cards
-* query history
-* CSV export
-* actions
-* approvals
-* notifications
-* audit logs
-* evaluation engine
-* production deployment
+Do not commit secrets.
 
-If a future task appears to require one of these, stop and explain that it belongs to a later milestone.
+Do not commit generated build artifacts.
 
-## 5. Product Direction
+Do not commit local environment files.
+
+Do not commit ignored private planning documents.
+
+Do not introduce real LLM calls before requested.
+
+Do not silently change product scope.
+
+Do not rewrite unrelated files.
+
+Prefer boring, maintainable structure over clever abstractions.
+
+## 5. Current Milestone Notes
+
+The active milestone is defined in `PROJECT_PLAN.md`.
+
+At the time this file was updated, the active target is:
+
+```txt
+Milestone 1 — Database Schema & IT Operations Seed
+```
+
+Milestone 1 may include database foundation, SQLAlchemy setup, Alembic setup, schema definitions, deterministic seed data, and migration/seed/relationship tests.
+
+Milestone 1 must not implement runtime authentication, real login/session flow, runtime permission enforcement, PostgreSQL RLS policies, natural-language query pipeline, real LLM calls, dashboards UI, actions, approvals, notifications behavior, audit behavior, evaluation engine behavior, or production deployment.
+
+## 6. Product Direction
 
 QueryOps AI is a governed conversational data workspace.
 
@@ -91,7 +96,7 @@ The first domain is IT Operations, but the core system must remain generic.
 
 IT Operations is a domain pack, not the whole product.
 
-## 6. Architecture Decisions
+## 7. Architecture Decisions
 
 Follow these locked decisions unless explicitly changed by the user:
 
@@ -99,39 +104,16 @@ Follow these locked decisions unless explicitly changed by the user:
 * React + TypeScript + Vite frontend
 * FastAPI + Python backend
 * PostgreSQL database
+* SQLAlchemy 2 and Alembic for database work
 * Docker Compose for local development
 * demo auth before real Supabase Auth
 * Supabase Auth planned later for identity only
 * QueryOps manages its own roles, departments, and permissions
-* PostgreSQL RLS required in later milestones
+* PostgreSQL RLS required in a later milestone
 * LLM provider abstraction
 * no direct LLM database mutations
 * actions must be executed by deterministic backend logic
 * actions require preview, policy check, approval, execution, and audit
-
-## 7. Coding Rules
-
-Use simple, maintainable structure.
-
-Prefer boring and clear code over clever abstractions.
-
-Keep changes small and focused.
-
-Do not introduce unnecessary dependencies.
-
-Do not create future-proof abstractions before they are needed.
-
-Do not silently change product scope.
-
-Do not rewrite unrelated files.
-
-Do not modify ignored planning documents unless explicitly asked.
-
-Do not commit secrets.
-
-Do not commit generated build artifacts.
-
-Do not commit local environment files.
 
 ## 8. Documentation Rules
 
@@ -143,6 +125,7 @@ Update `README.md` when:
 * frontend run commands change
 * environment variables change
 * repository structure changes
+* verification commands change
 
 Update `PROJECT_PLAN.md` only when the development plan or active milestone changes.
 
@@ -158,11 +141,11 @@ When adding backend code, add or update backend tests when practical.
 
 When adding frontend code, add or update frontend tests when practical.
 
-For Milestone 0, simple health-check tests or placeholders are enough.
-
-Do not add complex E2E tests before the basic app structure exists.
+When adding database schema or seed behavior, add or update migration, seed, and relationship tests when practical.
 
 Security-related behavior in later milestones must have tests.
+
+Do not add complex E2E tests before the supporting app behavior exists.
 
 ## 10. Git Rules
 
@@ -182,25 +165,6 @@ Only stage files related to the current task.
 
 Do not stage ignored planning files.
 
-Recommended Milestone 0 commit sequence:
-
-```txt
-1. Ignore local planning documents
-2. Add initial project README
-3. Add project plan
-4. Add agent instructions
-5. Add backend skeleton
-6. Add frontend skeleton
-7. Add Docker Compose and environment example
-8. Add initial CI and test placeholders
-```
-
-Current Milestone 0 status:
-
-```txt
-Foundation work is ready for review and merge.
-```
-
 ## 11. Local Planning Files
 
 Expected local planning files, if present:
@@ -219,13 +183,3 @@ docs/planning/10-development-milestones.md
 ```
 
 Use these files as context, but do not copy large private sections into committed files.
-
-## 12. If Unsure
-
-If implementation details are unclear:
-
-1. Check `PROJECT_PLAN.md`
-2. Check local `docs/planning/`
-3. Choose the smallest implementation that satisfies the current milestone
-4. Avoid adding future milestone features
-5. Document assumptions in the final response
