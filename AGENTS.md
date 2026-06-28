@@ -69,12 +69,12 @@ The active milestone is defined in `PROJECT_PLAN.md`.
 At the time this file was updated, the active target is:
 
 ```txt
-Milestone 1 — Database Schema & IT Operations Seed
+Milestone 2 — Auth, Users, Roles & Permissions
 ```
 
-Milestone 1 may include database foundation, SQLAlchemy setup, Alembic setup, schema definitions, deterministic seed data, and migration/seed/relationship tests.
+Milestone 2 may include demo authentication, backend session handling, CSRF foundation, app users, roles, permissions, role upgrade workflow, and tests for those behaviors.
 
-Milestone 1 must not implement runtime authentication, real login/session flow, runtime permission enforcement, PostgreSQL RLS policies, natural-language query pipeline, real LLM calls, dashboards UI, actions, approvals, notifications behavior, audit behavior, evaluation engine behavior, or production deployment.
+Milestone 2 PR 1 must stay limited to backend auth/session foundation. It must not implement runtime permission enforcement, PostgreSQL RLS policies, natural-language query pipeline, real LLM calls, dashboards UI, actions, approvals, notifications behavior, audit behavior, evaluation engine behavior, or production deployment.
 
 ## 6. Product Direction
 

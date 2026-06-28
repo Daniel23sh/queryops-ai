@@ -4,13 +4,13 @@
 
 The current active target is:
 
-`Milestone 1 — Database Schema & IT Operations Seed`
+`Milestone 2 — Auth, Users, Roles & Permissions`
 
-Milestone 0 foundation work is complete. The repository now has the backend skeleton, frontend skeleton, Docker Compose setup, `.env.example`, basic tests, and initial CI needed to begin database work.
+Milestone 0 foundation work is complete. Milestone 1 database schema, Alembic migration, and deterministic IT Operations seed work is complete.
 
-Milestone 1 creates the real database foundation for QueryOps AI. It should add database infrastructure, product schema, IT Operations domain schema, deterministic synthetic seed data, and tests that prove the database can be created and seeded reliably.
+Milestone 2 adds authentication, users, roles, and permissions behavior on top of the seeded product schema. The current PR target is Milestone 2 PR 1: backend auth/session foundation with demo login, session cookies, CSRF foundation, `/auth/me`, `/auth/logout`, and an auth provider abstraction.
 
-Do not start later product behavior during Milestone 1. Authentication flows, runtime permission enforcement, RLS policies, natural-language querying, dashboards, actions, approvals, notifications, audit behavior, and evaluation engine behavior belong to later milestones.
+Do not implement later Milestone 2 PRs or later product behavior in this PR. Runtime permission enforcement, role upgrade flow, PostgreSQL RLS policies, natural-language querying, dashboards, actions, approvals, notifications behavior, audit behavior, and evaluation engine behavior belong to later PRs.
 
 ## 2. Product Summary
 

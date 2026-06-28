@@ -327,7 +327,7 @@ Default local URLs:
 * Backend health endpoint: `http://127.0.0.1:8000/health`
 * PostgreSQL: `localhost:5432`
 
-PostgreSQL is included for the local development environment. Milestone 1 is planned to add product tables, domain tables, migrations, and deterministic seed data. Authentication, permissions, dashboards, actions, approvals, and audit behavior remain planned for later milestones.
+PostgreSQL is included for the local development environment. The current backend includes the database foundation, deterministic IT Operations seed data, and local demo auth session endpoints. Query engine behavior, RLS policies, dashboards, actions, approvals, and audit behavior remain planned for later milestones.
 
 Stop the stack:
 
@@ -380,6 +380,8 @@ cd backend
 ```
 
 The seed script is development-only and deterministic. Supported profiles are `small` for fast local or CI-style checks and `medium` for demo-scale local data. The `--reset` flag deletes seeded rows from the product and IT Operations tables before reseeding; it does not drop tables or modify Alembic migration state.
+
+Local demo auth uses seeded users through `POST /api/v1/demo/login`, then hydrates the current user with `GET /api/v1/auth/me`. Login sets an httpOnly `qo_session` cookie and a readable `qo_csrf` cookie; state-changing authenticated requests such as `POST /api/v1/auth/logout` must send `X-CSRF-Token`.
 
 ### Frontend
 
@@ -439,6 +441,8 @@ Example planned variables:
 
 ```env
 AUTH_MODE=demo
+SESSION_SECRET_KEY=queryops-local-session-secret
+SESSION_COOKIE_SECURE=false
 POSTGRES_DB=queryops
 POSTGRES_USER=queryops
 POSTGRES_PASSWORD=queryops
@@ -470,9 +474,9 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-Milestone 0 foundation work is complete.
+Milestone 0 foundation work and Milestone 1 database/seed work are complete.
 
-Implemented Milestone 0 functionality includes:
+Implemented foundation functionality includes:
 
 * FastAPI backend skeleton with `GET /health`
 * React + TypeScript + Vite frontend shell with backend health check
@@ -480,14 +484,17 @@ Implemented Milestone 0 functionality includes:
 * `.env.example` with safe local placeholders
 * basic backend and frontend tests
 * initial GitHub Actions CI workflow
+* SQLAlchemy and Alembic database foundation
+* product and IT Operations domain schema
+* deterministic IT Operations seed profiles and seed tests
 
 Current active planning target:
 
 ```txt
-Milestone 1 — Database Schema & IT Operations Seed
+Milestone 2 — Auth, Users, Roles & Permissions
 ```
 
-Milestone 1 will add the database foundation, SQLAlchemy/Alembic setup, product schema, IT Operations domain schema, deterministic seed data, and migration/seed tests. Product features such as authentication, permissions, natural-language querying, dashboards, actions, approvals, and audit logs remain planned for later milestones.
+This branch adds the Milestone 2 PR 1 backend auth/session foundation: local demo login, backend session cookies, CSRF foundation, `/auth/me`, logout, and provider abstraction. Runtime permission enforcement, role upgrade flow, RLS, natural-language querying, dashboards, actions, approvals, and audit behavior remain planned for later PRs.
 
 ## License
 
