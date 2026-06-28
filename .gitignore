@@ -7,8 +7,11 @@ planning/
 .env.local
 .env.*.local
 __pycache__/
+*.pyc
 *.py[cod]
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
 *.egg-info/
 .venv/
 node_modules/
