@@ -1,7 +1,17 @@
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 
 import { demoLogin, type DemoLoginResult } from "./api/auth";
 import { ApiError } from "./api/client";
+import {
+  approveRoleRequest,
+  createRoleRequest,
+  getAdminRoleRequests,
+  getMyRoleRequests,
+  rejectRoleRequest,
+  type RoleRequest,
+  type RoleRequestStatus,
+  type RoleUpgradeTarget
+} from "./api/roleRequests";
 import { useAuth } from "./auth/AuthProvider";
 import type { AuthUser, PermissionKey } from "./auth/types";
 
@@ -52,8 +62,18 @@ type NavItem = {
   canView: (user: AuthUser) => boolean;
 };
 
+type AdminDecisionAction = "approve" | "reject";
+
 const PLACEHOLDER_SCOPE_NOTICE =
   "No Query Engine, SQL execution, dashboards, actions, approvals, audit UI, or backend feature is implemented here.";
+
+const ROLE_UPGRADE_OPTIONS: Array<{ value: RoleUpgradeTarget; label: string }> = [
+  { value: "manager", label: "Manager" },
+  { value: "analyst", label: "Analyst" },
+  { value: "admin", label: "Admin" }
+];
+
+const ROLE_UPGRADE_ORDER: RoleUpgradeTarget[] = ["manager", "analyst", "admin"];
 
 const WORKSPACE_NAV_ITEMS: NavItem[] = [
   {
@@ -69,6 +89,20 @@ const WORKSPACE_NAV_ITEMS: NavItem[] = [
     title: "My Dashboard placeholder",
     summary: "Future personal dashboard cards will appear here.",
     canView: () => true
+  },
+  {
+    id: "role-upgrade",
+    label: "Role Upgrade",
+    title: "Request Role Upgrade",
+    summary: "Request a role change and track admin approval status.",
+    canView: () => true
+  },
+  {
+    id: "admin-role-requests",
+    label: "Role Requests",
+    title: "Admin Role Requests",
+    summary: "Review role upgrade requests and record role-only decisions.",
+    canView: (user) => hasPermission(user, "can_approve_role_requests")
   },
   {
     id: "ask-data",
@@ -148,7 +182,11 @@ export default function App() {
   if (auth.status === "authenticated" && auth.user) {
     return (
       <AppShell>
-        <AuthenticatedWorkspace user={auth.user} onLogout={auth.logout} />
+        <AuthenticatedWorkspace
+          user={auth.user}
+          csrfToken={auth.csrfToken}
+          onLogout={auth.logout}
+        />
       </AppShell>
     );
   }
@@ -251,9 +289,11 @@ function DemoLoginScreen({
 
 function AuthenticatedWorkspace({
   user,
+  csrfToken,
   onLogout
 }: {
   user: AuthUser;
+  csrfToken: string | null;
   onLogout: () => Promise<void>;
 }) {
   const visibleNavItems = WORKSPACE_NAV_ITEMS.filter((item) => item.canView(user));
@@ -338,15 +378,435 @@ function AuthenticatedWorkspace({
             </p>
           ) : null}
 
-          <article className="placeholder-panel">
-            <p className="placeholder-panel__badge">Placeholder only</p>
-            <h1 id="workspace-title">{activeNavItem.title}</h1>
-            <p className="subtitle">{activeNavItem.summary}</p>
-            <p className="placeholder-panel__scope">{PLACEHOLDER_SCOPE_NOTICE}</p>
-          </article>
+          {activeNavItem.id === "role-upgrade" ? (
+            <RoleUpgradePanel userRole={user.role} csrfToken={csrfToken} />
+          ) : activeNavItem.id === "admin-role-requests" ? (
+            <AdminRoleRequestsPanel csrfToken={csrfToken} />
+          ) : (
+            <article className="placeholder-panel">
+              <p className="placeholder-panel__badge">Placeholder only</p>
+              <h1 id="workspace-title">{activeNavItem.title}</h1>
+              <p className="subtitle">{activeNavItem.summary}</p>
+              <p className="placeholder-panel__scope">{PLACEHOLDER_SCOPE_NOTICE}</p>
+            </article>
+          )}
         </section>
       </div>
     </main>
+  );
+}
+
+function RoleUpgradePanel({
+  userRole,
+  csrfToken
+}: {
+  userRole: AuthUser["role"];
+  csrfToken: string | null;
+}) {
+  const roleUpgradeOptions = getRoleUpgradeOptions(userRole);
+  const hasRoleUpgradeOptions = roleUpgradeOptions.length > 0;
+  const [requestedRole, setRequestedRole] =
+    useState<RoleUpgradeTarget>(roleUpgradeOptions[0]?.value ?? "manager");
+  const [reason, setReason] = useState("");
+  const [roleRequests, setRoleRequests] = useState<RoleRequest[]>([]);
+  const [isLoadingRequests, setIsLoadingRequests] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isCurrent = true;
+    setIsLoadingRequests(true);
+    setLoadError(null);
+
+    getMyRoleRequests()
+      .then((requests) => {
+        if (!isCurrent) {
+          return;
+        }
+        setRoleRequests(requests);
+        setIsLoadingRequests(false);
+      })
+      .catch((error) => {
+        if (!isCurrent) {
+          return;
+        }
+        setLoadError(formatRoleRequestError(error, "Role requests could not be loaded."));
+        setIsLoadingRequests(false);
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSubmitError(null);
+    setSuccessMessage(null);
+
+    const trimmedReason = reason.trim();
+    if (!trimmedReason) {
+      setSubmitError("Enter a reason for the role upgrade request.");
+      return;
+    }
+
+    if (!csrfToken) {
+      setSubmitError("Refresh your session before submitting a role upgrade request.");
+      return;
+    }
+
+    if (!hasRoleUpgradeOptions) {
+      setSubmitError("No role upgrade target is available for your current role.");
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const createdRequest = await createRoleRequest(
+        requestedRole,
+        trimmedReason,
+        csrfToken
+      );
+      setRoleRequests((requests) => [
+        createdRequest,
+        ...requests.filter((request) => request.id !== createdRequest.id)
+      ]);
+      setReason("");
+      setSuccessMessage("Role upgrade request submitted.");
+    } catch (error) {
+      setSubmitError(formatRoleRequestError(error, "Role upgrade request failed."));
+    } finally {
+      setIsSubmitting(false);
+    }
+  }
+
+  return (
+    <article className="role-upgrade-panel">
+      <div className="role-upgrade-panel__header">
+        <p className="eyebrow">Role upgrade</p>
+        <h1 id="workspace-title">Request Role Upgrade</h1>
+        <p className="subtitle">
+          Choose the role you need and explain the access change. Admin approval is
+          required.
+        </p>
+      </div>
+
+      {hasRoleUpgradeOptions ? (
+        <form className="role-request-form" onSubmit={(event) => void handleSubmit(event)}>
+          <div className="form-field">
+            <label htmlFor="requested-role">Requested role</label>
+            <select
+              id="requested-role"
+              value={requestedRole}
+              onChange={(event) =>
+                setRequestedRole(event.target.value as RoleUpgradeTarget)
+              }
+            >
+              {roleUpgradeOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-field">
+            <label htmlFor="role-request-reason">Reason</label>
+            <textarea
+              id="role-request-reason"
+              rows={4}
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+            />
+          </div>
+
+          <p className="role-request-note">Admin approval is required.</p>
+
+          {submitError ? (
+            <p className="form-message form-message--error" role="alert">
+              {submitError}
+            </p>
+          ) : null}
+
+          {successMessage ? (
+            <p className="form-message form-message--success" role="status">
+              {successMessage}
+            </p>
+          ) : null}
+
+          <button
+            type="submit"
+            className="primary-action-button"
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? "Submitting..." : "Submit request"}
+          </button>
+        </form>
+      ) : (
+        <p className="role-request-note">Admin already has the highest role.</p>
+      )}
+
+      <section className="role-request-status" aria-labelledby="role-request-status-title">
+        <div className="role-request-status__header">
+          <h2 id="role-request-status-title">My role requests</h2>
+        </div>
+
+        {isLoadingRequests ? (
+          <p className="status-copy">Loading role requests...</p>
+        ) : null}
+
+        {loadError ? (
+          <p className="form-message form-message--error" role="alert">
+            {loadError}
+          </p>
+        ) : null}
+
+        {!isLoadingRequests && !loadError && roleRequests.length === 0 ? (
+          <p className="status-copy">No role upgrade requests yet.</p>
+        ) : null}
+
+        {!isLoadingRequests && !loadError && roleRequests.length > 0 ? (
+          <ul className="role-request-list">
+            {roleRequests.map((request) => (
+              <li key={request.id} className="role-request-list__item">
+                <div>
+                  <h3>{formatRole(request.requestedRole)}</h3>
+                  <p>{request.reason ?? "No reason provided."}</p>
+                </div>
+                <span
+                  className="role-request-status-badge"
+                  data-status={request.status}
+                >
+                  {formatRequestStatus(request.status)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+      </section>
+    </article>
+  );
+}
+
+function AdminRoleRequestsPanel({ csrfToken }: { csrfToken: string | null }) {
+  const [roleRequests, setRoleRequests] = useState<RoleRequest[]>([]);
+  const [decisionReasons, setDecisionReasons] = useState<Record<string, string>>({});
+  const [isLoadingRequests, setIsLoadingRequests] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [decisionError, setDecisionError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [processingDecision, setProcessingDecision] = useState<{
+    requestId: string;
+    action: AdminDecisionAction;
+  } | null>(null);
+
+  useEffect(() => {
+    let isCurrent = true;
+    setIsLoadingRequests(true);
+    setLoadError(null);
+
+    getAdminRoleRequests()
+      .then((requests) => {
+        if (!isCurrent) {
+          return;
+        }
+        setRoleRequests(requests);
+        setIsLoadingRequests(false);
+      })
+      .catch((error) => {
+        if (!isCurrent) {
+          return;
+        }
+        setLoadError(formatRoleRequestError(error, "Admin role requests could not be loaded."));
+        setIsLoadingRequests(false);
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+
+  async function handleDecision(request: RoleRequest, action: AdminDecisionAction) {
+    const decisionReason = (decisionReasons[request.id] ?? "").trim();
+    setDecisionError(null);
+    setSuccessMessage(null);
+
+    if (!decisionReason) {
+      setDecisionError("Enter a decision reason before approving or rejecting.");
+      return;
+    }
+
+    if (!csrfToken) {
+      setDecisionError("Refresh your session before reviewing role requests.");
+      return;
+    }
+
+    setProcessingDecision({ requestId: request.id, action });
+
+    try {
+      const updatedRequest =
+        action === "approve"
+          ? await approveRoleRequest(request.id, decisionReason, csrfToken)
+          : await rejectRoleRequest(request.id, decisionReason, csrfToken);
+
+      setRoleRequests((requests) =>
+        requests.map((existingRequest) =>
+          existingRequest.id === updatedRequest.id ? updatedRequest : existingRequest
+        )
+      );
+      setDecisionReasons((currentReasons) => ({
+        ...currentReasons,
+        [request.id]: ""
+      }));
+      setSuccessMessage(
+        action === "approve" ? "Role request approved." : "Role request rejected."
+      );
+    } catch (error) {
+      setDecisionError(
+        formatRoleRequestError(error, `Role request ${action} failed.`)
+      );
+    } finally {
+      setProcessingDecision(null);
+    }
+  }
+
+  return (
+    <article className="role-upgrade-panel admin-role-requests-panel">
+      <div className="role-upgrade-panel__header">
+        <p className="eyebrow">Role upgrade review</p>
+        <h1 id="workspace-title">Admin Role Requests</h1>
+        <p className="subtitle">
+          Review role upgrade requests only. Approving a request changes the
+          requester's role after their next auth refresh.
+        </p>
+      </div>
+
+      {isLoadingRequests ? (
+        <p className="status-copy">Loading admin role requests...</p>
+      ) : null}
+
+      {loadError ? (
+        <p className="form-message form-message--error" role="alert">
+          {loadError}
+        </p>
+      ) : null}
+
+      {decisionError ? (
+        <p className="form-message form-message--error" role="alert">
+          {decisionError}
+        </p>
+      ) : null}
+
+      {successMessage ? (
+        <p className="form-message form-message--success" role="status">
+          {successMessage}
+        </p>
+      ) : null}
+
+      {!isLoadingRequests && !loadError && roleRequests.length === 0 ? (
+        <p className="status-copy">No role upgrade requests to review.</p>
+      ) : null}
+
+      {!isLoadingRequests && !loadError && roleRequests.length > 0 ? (
+        <ul className="role-request-list admin-role-request-list">
+          {roleRequests.map((request) => {
+            const requesterName = request.requester?.fullName ?? "Unknown requester";
+            const requesterEmail = request.requester?.email ?? "No requester email";
+            const decisionReasonId = `decision-reason-${request.id}`;
+            const isPending = request.status === "pending";
+            const isApproving =
+              processingDecision?.requestId === request.id &&
+              processingDecision.action === "approve";
+            const isRejecting =
+              processingDecision?.requestId === request.id &&
+              processingDecision.action === "reject";
+            const isProcessing = processingDecision !== null;
+
+            return (
+              <li key={request.id} className="admin-role-request-list__item">
+                <div className="admin-role-request-card__summary">
+                  <div>
+                    <h2>{requesterName}</h2>
+                    <p>{requesterEmail}</p>
+                  </div>
+                  <span
+                    className="role-request-status-badge"
+                    data-status={request.status}
+                  >
+                    {formatRequestStatus(request.status)}
+                  </span>
+                </div>
+
+                <dl className="admin-role-request-details">
+                  <div>
+                    <dt>Requested role</dt>
+                    <dd>{formatRole(request.requestedRole)}</dd>
+                  </div>
+                  <div>
+                    <dt>Reason</dt>
+                    <dd>{request.reason ?? "No reason provided."}</dd>
+                  </div>
+                  {request.decisionReason ? (
+                    <div>
+                      <dt>Decision reason</dt>
+                      <dd>{request.decisionReason}</dd>
+                    </div>
+                  ) : null}
+                </dl>
+
+                {isPending ? (
+                  <div className="admin-role-request-decision">
+                    <div className="form-field">
+                      <label htmlFor={decisionReasonId}>
+                        Decision reason for {requesterName}
+                      </label>
+                      <textarea
+                        id={decisionReasonId}
+                        rows={3}
+                        value={decisionReasons[request.id] ?? ""}
+                        onChange={(event) =>
+                          setDecisionReasons((currentReasons) => ({
+                            ...currentReasons,
+                            [request.id]: event.target.value
+                          }))
+                        }
+                      />
+                    </div>
+
+                    <div className="admin-role-request-actions">
+                      <button
+                        type="button"
+                        className="primary-action-button"
+                        aria-label={`Approve role request from ${requesterName}`}
+                        disabled={isProcessing}
+                        onClick={() => void handleDecision(request, "approve")}
+                      >
+                        {isApproving ? "Approving..." : "Approve request"}
+                      </button>
+                      <button
+                        type="button"
+                        className="secondary-danger-button"
+                        aria-label={`Reject role request from ${requesterName}`}
+                        disabled={isProcessing}
+                        onClick={() => void handleDecision(request, "reject")}
+                      >
+                        {isRejecting ? "Rejecting..." : "Reject request"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="status-copy">
+                    This role request has already been {request.status}.
+                  </p>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      ) : null}
+    </article>
   );
 }
 
@@ -356,6 +816,23 @@ function hasPermission(user: AuthUser, permission: PermissionKey): boolean {
 
 function hasAnyPermission(user: AuthUser, permissions: PermissionKey[]): boolean {
   return permissions.some((permission) => hasPermission(user, permission));
+}
+
+function getRoleUpgradeOptions(
+  currentRole: AuthUser["role"]
+): Array<{ value: RoleUpgradeTarget; label: string }> {
+  if (currentRole === null || currentRole === "user") {
+    return ROLE_UPGRADE_OPTIONS;
+  }
+
+  const currentRoleIndex = ROLE_UPGRADE_ORDER.indexOf(currentRole);
+  if (currentRoleIndex === -1) {
+    return ROLE_UPGRADE_OPTIONS;
+  }
+
+  return ROLE_UPGRADE_OPTIONS.filter(
+    (option) => ROLE_UPGRADE_ORDER.indexOf(option.value) > currentRoleIndex
+  );
 }
 
 function formatLoginError(error: unknown): string {
@@ -374,10 +851,22 @@ function formatLogoutError(error: unknown): string {
   return "Logout failed. Try again.";
 }
 
+function formatRoleRequestError(error: unknown, fallbackMessage: string): string {
+  if (error instanceof ApiError) {
+    return error.message;
+  }
+
+  return fallbackMessage;
+}
+
 function formatRole(role: AuthUser["role"]): string {
   if (!role) {
     return "Unassigned";
   }
 
   return role.charAt(0).toUpperCase() + role.slice(1);
+}
+
+function formatRequestStatus(status: RoleRequestStatus): string {
+  return status.charAt(0).toUpperCase() + status.slice(1);
 }
