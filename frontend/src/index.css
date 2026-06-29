@@ -229,6 +229,55 @@ h1 {
   gap: 32px;
 }
 
+.workspace-placeholder__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.workspace-actions {
+  display: flex;
+  justify-content: flex-end;
+  min-width: 136px;
+}
+
+.logout-button {
+  min-height: 44px;
+  border: 1px solid #cbd6e2;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #152033;
+  padding: 0 18px;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  transition:
+    border-color 160ms ease,
+    background-color 160ms ease,
+    color 160ms ease;
+}
+
+.logout-button:hover:not(:disabled) {
+  border-color: #9f1d30;
+  background: #fff4f5;
+  color: #9f1d30;
+}
+
+.logout-button:disabled {
+  opacity: 0.64;
+}
+
+.logout-error {
+  width: min(100%, 620px);
+  margin: -10px 0 0;
+  border: 1px solid #efb5bf;
+  border-radius: 8px;
+  background: #fff4f5;
+  color: #9f1d30;
+  padding: 14px 16px;
+  line-height: 1.5;
+}
+
 .identity-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -272,6 +321,15 @@ h1 {
 
   .identity-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .workspace-placeholder__header {
+    flex-direction: column;
+  }
+
+  .workspace-actions {
+    justify-content: flex-start;
+    width: 100%;
   }
 }
 

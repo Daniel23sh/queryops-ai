@@ -66,7 +66,7 @@ export default function App() {
   if (auth.status === "authenticated" && auth.user) {
     return (
       <AppShell>
-        <AuthenticatedPlaceholder user={auth.user} />
+        <AuthenticatedPlaceholder user={auth.user} onLogout={auth.logout} />
       </AppShell>
     );
   }
@@ -167,18 +167,58 @@ function DemoLoginScreen({
   );
 }
 
-function AuthenticatedPlaceholder({ user }: { user: AuthUser }) {
+function AuthenticatedPlaceholder({
+  user,
+  onLogout
+}: {
+  user: AuthUser;
+  onLogout: () => Promise<void>;
+}) {
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [logoutError, setLogoutError] = useState<string | null>(null);
+
+  async function handleLogout() {
+    setIsLoggingOut(true);
+    setLogoutError(null);
+
+    try {
+      await onLogout();
+    } catch (error) {
+      setLogoutError(formatLogoutError(error));
+      setIsLoggingOut(false);
+    }
+  }
+
   return (
     <main className="app-main">
       <section className="workspace-placeholder" aria-labelledby="workspace-title">
-        <div className="workspace-placeholder__copy">
-          <p className="eyebrow">Signed in</p>
-          <h1 id="workspace-title">Authenticated workspace placeholder</h1>
-          <p className="subtitle">
-            This is the minimal authenticated app area for the demo auth checkpoint.
-            Role-based navigation is intentionally left for the next checkpoint.
-          </p>
+        <div className="workspace-placeholder__header">
+          <div className="workspace-placeholder__copy">
+            <p className="eyebrow">Signed in</p>
+            <h1 id="workspace-title">Authenticated workspace placeholder</h1>
+            <p className="subtitle">
+              This is the minimal authenticated app area for the demo auth checkpoint.
+              Role-based navigation is intentionally left for the next checkpoint.
+            </p>
+          </div>
+
+          <div className="workspace-actions" aria-label="Session actions">
+            <button
+              type="button"
+              className="logout-button"
+              disabled={isLoggingOut}
+              onClick={() => void handleLogout()}
+            >
+              {isLoggingOut ? "Logging out..." : "Log out"}
+            </button>
+          </div>
         </div>
+
+        {logoutError ? (
+          <p className="logout-error" role="alert">
+            {logoutError}
+          </p>
+        ) : null}
 
         <dl className="identity-grid" aria-label="Current user">
           <div>
@@ -209,6 +249,14 @@ function formatLoginError(error: unknown): string {
   }
 
   return "Demo login is unavailable right now.";
+}
+
+function formatLogoutError(error: unknown): string {
+  if (error instanceof ApiError) {
+    return error.message;
+  }
+
+  return "Logout failed. Try again.";
 }
 
 function formatRole(role: AuthUser["role"]): string {

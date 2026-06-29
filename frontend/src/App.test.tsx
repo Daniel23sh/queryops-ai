@@ -20,6 +20,7 @@ const demoManager = {
 };
 
 afterEach(() => {
+  clearCsrfCookie();
   vi.unstubAllGlobals();
 });
 
@@ -103,6 +104,67 @@ describe("App", () => {
       expect(screen.queryByRole("heading", { name: "Choose a demo profile" })).not.toBeInTheDocument();
     });
   });
+
+  it("logs out with the stored CSRF token and returns to the demo login screen", async () => {
+    const fetchMock = stubFetchSequence(
+      errorResponse("UNAUTHORIZED", 401),
+      successResponse({
+        user: demoManager,
+        requires_onboarding: false,
+        csrf_token: "csrf-from-login"
+      }),
+      successResponse({ ok: true })
+    );
+
+    renderApp();
+
+    fireEvent.click(await screen.findByRole("button", { name: /demo manager/i }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Authenticated workspace placeholder" })
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Log out" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Choose a demo profile" })
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:8000/api/v1/auth/logout",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        headers: expect.objectContaining({
+          "X-CSRF-Token": "csrf-from-login"
+        })
+      })
+    );
+  });
+
+  it("shows a logout error and keeps the authenticated app visible when logout fails", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    stubFetchSequence(
+      successResponse(demoManager),
+      errorResponse("CSRF_TOKEN_INVALID", 403, "Logout failed. Try again.")
+    );
+
+    renderApp();
+
+    expect(
+      await screen.findByRole("heading", { name: "Authenticated workspace placeholder" })
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Log out" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Logout failed. Try again."
+    );
+    expect(screen.getByText("demo.manager@queryops.local")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Choose a demo profile" })
+    ).not.toBeInTheDocument();
+  });
 });
 
 function renderApp() {
@@ -165,4 +227,8 @@ function jsonResponse({
     status,
     json: vi.fn().mockResolvedValue(payload)
   };
+}
+
+function clearCsrfCookie() {
+  document.cookie = "qo_csrf=; max-age=0; path=/";
 }

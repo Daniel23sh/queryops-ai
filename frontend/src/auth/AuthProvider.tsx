@@ -9,7 +9,11 @@ import {
 } from "react";
 
 import { ApiError } from "../api/client";
-import { getCurrentUser, type DemoLoginResult } from "../api/auth";
+import {
+  getCurrentUser,
+  logout as logoutRequest,
+  type DemoLoginResult
+} from "../api/auth";
 import type { AuthUser } from "./types";
 
 type AuthStatus = "loading" | "authenticated" | "unauthenticated";
@@ -20,6 +24,7 @@ type AuthContextValue = {
   csrfToken: string | null;
   refreshMe: () => Promise<AuthUser | null>;
   applyLoginResult: (result: DemoLoginResult) => void;
+  logout: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -57,6 +62,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setStatus("authenticated");
   }, []);
 
+  const logout = useCallback(async () => {
+    const token = csrfToken ?? readCsrfCookie() ?? "";
+    await logoutRequest(token);
+    clearCsrfCookie();
+    setUser(null);
+    setCsrfToken(null);
+    setStatus("unauthenticated");
+  }, [csrfToken]);
+
   useEffect(() => {
     void refreshMe();
   }, [refreshMe]);
@@ -67,9 +81,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       csrfToken,
       refreshMe,
-      applyLoginResult
+      applyLoginResult,
+      logout
     }),
-    [applyLoginResult, csrfToken, refreshMe, status, user]
+    [applyLoginResult, csrfToken, logout, refreshMe, status, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -98,3 +113,10 @@ function readCsrfCookie(): string | null {
   return decodeURIComponent(cookie.slice("qo_csrf=".length));
 }
 
+function clearCsrfCookie() {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  document.cookie = "qo_csrf=; max-age=0; path=/";
+}

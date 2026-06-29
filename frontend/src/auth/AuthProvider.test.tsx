@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AuthProvider, useAuth } from "./AuthProvider";
@@ -128,16 +129,89 @@ describe("AuthProvider", () => {
     expect(screen.getByTestId("auth-email")).toHaveTextContent(authUser.email);
     expect(screen.getByTestId("csrf-token")).toHaveTextContent("csrf-from-login");
   });
+
+  it("logs out with the stored CSRF token and clears auth state", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(backendUser),
+      successResponse({ ok: true }),
+      errorResponse("UNAUTHORIZED", 401)
+    );
+
+    render(
+      <AuthProvider>
+        <AuthProbe />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("auth-status")).toHaveTextContent("authenticated");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Logout auth" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("auth-status")).toHaveTextContent("unauthenticated");
+    });
+    expect(screen.getByTestId("auth-email")).toHaveTextContent("none");
+    expect(screen.getByTestId("csrf-token")).toHaveTextContent("none");
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/api/v1/auth/logout",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        headers: expect.objectContaining({
+          "X-CSRF-Token": "csrf-from-cookie"
+        })
+      })
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Refresh auth" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("auth-status")).toHaveTextContent("unauthenticated");
+    });
+    expect(screen.getByTestId("auth-email")).toHaveTextContent("none");
+  });
+
+  it("keeps auth state when logout fails", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    stubFetchSequence(
+      successResponse(backendUser),
+      errorResponse("CSRF_TOKEN_INVALID", 403, "Logout failed.")
+    );
+
+    render(
+      <AuthProvider>
+        <AuthProbe />
+      </AuthProvider>
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId("auth-status")).toHaveTextContent("authenticated");
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Logout auth" }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("logout-error")).toHaveTextContent("Logout failed.");
+    });
+    expect(screen.getByTestId("auth-status")).toHaveTextContent("authenticated");
+    expect(screen.getByTestId("auth-email")).toHaveTextContent(authUser.email);
+  });
 });
 
 function AuthProbe({ loginResult }: { loginResult?: DemoLoginResult }) {
   const auth = useAuth();
+  const [logoutError, setLogoutError] = useState<string | null>(null);
 
   return (
     <div>
       <span data-testid="auth-status">{auth.status}</span>
       <span data-testid="auth-email">{auth.user?.email ?? "none"}</span>
       <span data-testid="csrf-token">{auth.csrfToken ?? "none"}</span>
+      <span data-testid="logout-error">{logoutError ?? "none"}</span>
       <button type="button" onClick={() => void auth.refreshMe()}>
         Refresh auth
       </button>
@@ -146,6 +220,16 @@ function AuthProbe({ loginResult }: { loginResult?: DemoLoginResult }) {
         onClick={() => loginResult && auth.applyLoginResult(loginResult)}
       >
         Apply login
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          void auth.logout().catch((error: Error) => {
+            setLogoutError(error.message);
+          })
+        }
+      >
+        Logout auth
       </button>
     </div>
   );
@@ -174,14 +258,18 @@ function successResponse(data: unknown) {
   });
 }
 
-function errorResponse(code: string, status: number) {
+function errorResponse(
+  code: string,
+  status: number,
+  message = "Authentication is required."
+) {
   return jsonResponse({
     ok: false,
     status,
     payload: {
       error: {
         code,
-        message: "Authentication is required.",
+        message,
         details: {},
         request_id: "request-id"
       }
