@@ -1,23 +1,110 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
 import { AuthProvider } from "./auth/AuthProvider";
 
-const demoManager = {
+const demoUser = backendUser({
+  id: "user-id",
+  email: "demo.user@queryops.local",
+  fullName: "Demo User",
+  role: "user",
+  departmentId: "sales-id",
+  departmentName: "Sales",
+  permissions: [
+    "can_use_query_templates",
+    "can_star_dashboard",
+    "can_view_own_data"
+  ]
+});
+
+const demoManager = backendUser({
   id: "manager-id",
   email: "demo.manager@queryops.local",
-  full_name: "Demo Manager",
+  fullName: "Demo Manager",
   role: "manager",
-  department_id: "finance-id",
-  department: {
-    id: "finance-id",
-    name: "Finance"
-  },
-  status: "active",
-  permissions: ["can_run_free_query", "can_request_action"],
-  auth_mode: "demo"
-};
+  departmentId: "finance-id",
+  departmentName: "Finance",
+  permissions: [
+    "can_use_query_templates",
+    "can_star_dashboard",
+    "can_view_own_data",
+    "can_run_free_query",
+    "can_query_department_data",
+    "can_view_department_data",
+    "can_create_personal_dashboard",
+    "can_request_action",
+    "can_view_department_evaluation"
+  ]
+});
+
+const demoAnalyst = backendUser({
+  id: "analyst-id",
+  email: "demo.analyst@queryops.local",
+  fullName: "Demo Analyst",
+  role: "analyst",
+  departmentId: "it-id",
+  departmentName: "IT",
+  permissions: [
+    "can_use_query_templates",
+    "can_star_dashboard",
+    "can_view_own_data",
+    "can_run_free_query",
+    "can_query_department_data",
+    "can_view_department_data",
+    "can_create_personal_dashboard",
+    "can_request_action",
+    "can_view_department_evaluation",
+    "can_view_sql",
+    "can_create_card",
+    "can_create_department_dashboard",
+    "can_manage_department_dashboard",
+    "can_view_query_history_department",
+    "can_view_department_audit",
+    "can_approve_department_action"
+  ]
+});
+
+const demoAdmin = backendUser({
+  id: "admin-id",
+  email: "demo.admin@queryops.local",
+  fullName: "Demo Admin",
+  role: "admin",
+  departmentId: "it-id",
+  departmentName: "IT",
+  permissions: [
+    "can_use_query_templates",
+    "can_run_free_query",
+    "can_query_department_data",
+    "can_query_global_data",
+    "can_query_product_tables",
+    "can_view_own_data",
+    "can_view_department_data",
+    "can_view_global_data",
+    "can_view_sql",
+    "can_view_query_history_department",
+    "can_star_dashboard",
+    "can_create_personal_dashboard",
+    "can_create_department_dashboard",
+    "can_create_global_dashboard",
+    "can_manage_department_dashboard",
+    "can_manage_global_dashboard",
+    "can_create_card",
+    "can_request_action",
+    "can_approve_department_action",
+    "can_approve_global_action",
+    "can_approve_policy_override",
+    "can_self_approve_admin_action",
+    "can_manage_users",
+    "can_disable_app_user",
+    "can_downgrade_user_role",
+    "can_approve_role_requests",
+    "can_view_department_audit",
+    "can_view_global_audit",
+    "can_view_department_evaluation",
+    "can_view_global_evaluation"
+  ]
+});
 
 afterEach(() => {
   clearCsrfCookie();
@@ -62,7 +149,7 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: /demo manager/i }));
 
     expect(
-      await screen.findByRole("heading", { name: "Authenticated workspace placeholder" })
+      await screen.findByRole("heading", { name: "Templates placeholder" })
     ).toBeInTheDocument();
     expect(screen.getByText("demo.manager@queryops.local")).toBeInTheDocument();
     expect(screen.getByText("Manager")).toBeInTheDocument();
@@ -98,11 +185,91 @@ describe("App", () => {
     renderApp();
 
     expect(
-      await screen.findByRole("heading", { name: "Authenticated workspace placeholder" })
+      await screen.findByRole("heading", { name: "Templates placeholder" })
     ).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.queryByRole("heading", { name: "Choose a demo profile" })).not.toBeInTheDocument();
     });
+  });
+
+  it("shows only common navigation for demo user", async () => {
+    stubFetchSequence(successResponse(demoUser));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    expect(within(nav).getByRole("button", { name: "Templates" })).toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: "My Dashboard" })).toBeInTheDocument();
+    expect(within(nav).queryByRole("button", { name: "Ask Data" })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("button", { name: "SQL / Technical" })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("button", { name: "Admin Console" })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("button", { name: "Users" })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("button", { name: "Audit" })).not.toBeInTheDocument();
+  });
+
+  it("shows Ask Data for demo manager but hides analyst and admin navigation", async () => {
+    stubFetchSequence(successResponse(demoManager));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    expect(within(nav).getByRole("button", { name: "Ask Data" })).toBeInTheDocument();
+    expect(within(nav).queryByRole("button", { name: "Query History" })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("button", { name: "SQL / Technical" })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("button", { name: "Admin Console" })).not.toBeInTheDocument();
+  });
+
+  it("shows analyst technical navigation without admin navigation", async () => {
+    stubFetchSequence(successResponse(demoAnalyst));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    expect(within(nav).getByRole("button", { name: "Ask Data" })).toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: "Query History" })).toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: "SQL / Technical" })).toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: "Department Dashboards" })).toBeInTheDocument();
+    expect(within(nav).queryByRole("button", { name: "Admin Console" })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("button", { name: "Users" })).not.toBeInTheDocument();
+    expect(within(nav).queryByRole("button", { name: "Audit" })).not.toBeInTheDocument();
+  });
+
+  it("shows admin navigation for demo admin", async () => {
+    stubFetchSequence(successResponse(demoAdmin));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    expect(within(nav).getByRole("button", { name: "Admin Console" })).toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: "Users" })).toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: "Audit" })).toBeInTheDocument();
+  });
+
+  it("opens placeholder sections from the sidebar without real feature behavior", async () => {
+    stubFetchSequence(successResponse(demoAnalyst));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "SQL / Technical" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "SQL / Technical placeholder" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Placeholder only")).toBeInTheDocument();
+    expect(
+      screen.getByText(/No Query Engine, SQL execution, dashboards, actions, approvals, audit UI, or backend feature is implemented here/i)
+    ).toBeInTheDocument();
   });
 
   it("logs out with the stored CSRF token and returns to the demo login screen", async () => {
@@ -121,7 +288,7 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: /demo manager/i }));
 
     expect(
-      await screen.findByRole("heading", { name: "Authenticated workspace placeholder" })
+      await screen.findByRole("heading", { name: "Templates placeholder" })
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Log out" }));
@@ -152,7 +319,7 @@ describe("App", () => {
     renderApp();
 
     expect(
-      await screen.findByRole("heading", { name: "Authenticated workspace placeholder" })
+      await screen.findByRole("heading", { name: "Templates placeholder" })
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Log out" }));
@@ -173,6 +340,39 @@ function renderApp() {
       <App />
     </AuthProvider>
   );
+}
+
+function backendUser({
+  id,
+  email,
+  fullName,
+  role,
+  departmentId,
+  departmentName,
+  permissions
+}: {
+  id: string;
+  email: string;
+  fullName: string;
+  role: string;
+  departmentId: string;
+  departmentName: string;
+  permissions: string[];
+}) {
+  return {
+    id,
+    email,
+    full_name: fullName,
+    role,
+    department_id: departmentId,
+    department: {
+      id: departmentId,
+      name: departmentName
+    },
+    status: "active",
+    permissions,
+    auth_mode: "demo"
+  };
 }
 
 function stubFetchSequence(...responses: Array<ReturnType<typeof jsonResponse>>) {

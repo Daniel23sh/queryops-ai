@@ -3,7 +3,7 @@ import { useState, type ReactNode } from "react";
 import { demoLogin, type DemoLoginResult } from "./api/auth";
 import { ApiError } from "./api/client";
 import { useAuth } from "./auth/AuthProvider";
-import type { AuthUser } from "./auth/types";
+import type { AuthUser, PermissionKey } from "./auth/types";
 
 type DemoProfile = {
   label: string;
@@ -44,6 +44,88 @@ const DEMO_PROFILES: DemoProfile[] = [
   }
 ];
 
+type NavItem = {
+  id: string;
+  label: string;
+  title: string;
+  summary: string;
+  canView: (user: AuthUser) => boolean;
+};
+
+const PLACEHOLDER_SCOPE_NOTICE =
+  "No Query Engine, SQL execution, dashboards, actions, approvals, audit UI, or backend feature is implemented here.";
+
+const WORKSPACE_NAV_ITEMS: NavItem[] = [
+  {
+    id: "templates",
+    label: "Templates",
+    title: "Templates placeholder",
+    summary: "Future approved query templates will appear here.",
+    canView: () => true
+  },
+  {
+    id: "my-dashboard",
+    label: "My Dashboard",
+    title: "My Dashboard placeholder",
+    summary: "Future personal dashboard cards will appear here.",
+    canView: () => true
+  },
+  {
+    id: "ask-data",
+    label: "Ask Data",
+    title: "Ask Data placeholder",
+    summary: "Future governed data questions will start here.",
+    canView: (user) => hasPermission(user, "can_run_free_query")
+  },
+  {
+    id: "query-history",
+    label: "Query History",
+    title: "Query History placeholder",
+    summary: "Future department query history will appear here.",
+    canView: (user) => hasPermission(user, "can_view_query_history_department")
+  },
+  {
+    id: "sql-technical",
+    label: "SQL / Technical",
+    title: "SQL / Technical placeholder",
+    summary: "Future SQL-visible technical tools will appear here.",
+    canView: (user) => hasPermission(user, "can_view_sql")
+  },
+  {
+    id: "department-dashboards",
+    label: "Department Dashboards",
+    title: "Department Dashboards placeholder",
+    summary: "Future department dashboard management will appear here.",
+    canView: (user) =>
+      hasAnyPermission(user, [
+        "can_create_department_dashboard",
+        "can_manage_department_dashboard"
+      ])
+  },
+  {
+    id: "admin-console",
+    label: "Admin Console",
+    title: "Admin Console placeholder",
+    summary: "Future admin controls will appear here.",
+    canView: (user) =>
+      hasAnyPermission(user, ["can_manage_users", "can_approve_role_requests"])
+  },
+  {
+    id: "users",
+    label: "Users",
+    title: "Users placeholder",
+    summary: "Future user management will appear here.",
+    canView: (user) => hasPermission(user, "can_manage_users")
+  },
+  {
+    id: "audit",
+    label: "Audit",
+    title: "Audit placeholder",
+    summary: "Future global audit review will appear here.",
+    canView: (user) => hasPermission(user, "can_view_global_audit")
+  }
+];
+
 export default function App() {
   const auth = useAuth();
 
@@ -66,7 +148,7 @@ export default function App() {
   if (auth.status === "authenticated" && auth.user) {
     return (
       <AppShell>
-        <AuthenticatedPlaceholder user={auth.user} onLogout={auth.logout} />
+        <AuthenticatedWorkspace user={auth.user} onLogout={auth.logout} />
       </AppShell>
     );
   }
@@ -167,15 +249,19 @@ function DemoLoginScreen({
   );
 }
 
-function AuthenticatedPlaceholder({
+function AuthenticatedWorkspace({
   user,
   onLogout
 }: {
   user: AuthUser;
   onLogout: () => Promise<void>;
 }) {
+  const visibleNavItems = WORKSPACE_NAV_ITEMS.filter((item) => item.canView(user));
+  const [activeNavId, setActiveNavId] = useState(visibleNavItems[0]?.id ?? "templates");
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState<string | null>(null);
+  const activeNavItem =
+    visibleNavItems.find((item) => item.id === activeNavId) ?? visibleNavItems[0];
 
   async function handleLogout() {
     setIsLoggingOut(true);
@@ -190,57 +276,86 @@ function AuthenticatedPlaceholder({
   }
 
   return (
-    <main className="app-main">
-      <section className="workspace-placeholder" aria-labelledby="workspace-title">
-        <div className="workspace-placeholder__header">
-          <div className="workspace-placeholder__copy">
-            <p className="eyebrow">Signed in</p>
-            <h1 id="workspace-title">Authenticated workspace placeholder</h1>
-            <p className="subtitle">
-              This is the minimal authenticated app area for the demo auth checkpoint.
-              Role-based navigation is intentionally left for the next checkpoint.
+    <main className="app-main app-main--workspace">
+      <div className="workspace-layout">
+        <aside className="workspace-sidebar" aria-label="Workspace">
+          <nav className="workspace-nav" aria-label="Workspace navigation">
+            {visibleNavItems.map((item) => {
+              const isActive = item.id === activeNavItem.id;
+
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  className="workspace-nav__item"
+                  aria-current={isActive ? "page" : undefined}
+                  data-active={isActive ? "true" : "false"}
+                  onClick={() => setActiveNavId(item.id)}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+          </nav>
+        </aside>
+
+        <section className="workspace-content" aria-labelledby="workspace-title">
+          <div className="workspace-topbar">
+            <dl className="identity-grid" aria-label="Current user">
+              <div>
+                <dt>Email</dt>
+                <dd>{user.email}</dd>
+              </div>
+              <div>
+                <dt>Role</dt>
+                <dd>{formatRole(user.role)}</dd>
+              </div>
+              <div>
+                <dt>Department</dt>
+                <dd>{user.department?.name ?? "No department assigned"}</dd>
+              </div>
+              <div>
+                <dt>Auth mode</dt>
+                <dd>{user.authMode}</dd>
+              </div>
+            </dl>
+
+            <div className="workspace-actions" aria-label="Session actions">
+              <button
+                type="button"
+                className="logout-button"
+                disabled={isLoggingOut}
+                onClick={() => void handleLogout()}
+              >
+                {isLoggingOut ? "Logging out..." : "Log out"}
+              </button>
+            </div>
+          </div>
+
+          {logoutError ? (
+            <p className="logout-error" role="alert">
+              {logoutError}
             </p>
-          </div>
+          ) : null}
 
-          <div className="workspace-actions" aria-label="Session actions">
-            <button
-              type="button"
-              className="logout-button"
-              disabled={isLoggingOut}
-              onClick={() => void handleLogout()}
-            >
-              {isLoggingOut ? "Logging out..." : "Log out"}
-            </button>
-          </div>
-        </div>
-
-        {logoutError ? (
-          <p className="logout-error" role="alert">
-            {logoutError}
-          </p>
-        ) : null}
-
-        <dl className="identity-grid" aria-label="Current user">
-          <div>
-            <dt>Email</dt>
-            <dd>{user.email}</dd>
-          </div>
-          <div>
-            <dt>Role</dt>
-            <dd>{formatRole(user.role)}</dd>
-          </div>
-          <div>
-            <dt>Department</dt>
-            <dd>{user.department?.name ?? "No department assigned"}</dd>
-          </div>
-          <div>
-            <dt>Auth mode</dt>
-            <dd>{user.authMode}</dd>
-          </div>
-        </dl>
-      </section>
+          <article className="placeholder-panel">
+            <p className="placeholder-panel__badge">Placeholder only</p>
+            <h1 id="workspace-title">{activeNavItem.title}</h1>
+            <p className="subtitle">{activeNavItem.summary}</p>
+            <p className="placeholder-panel__scope">{PLACEHOLDER_SCOPE_NOTICE}</p>
+          </article>
+        </section>
+      </div>
     </main>
   );
+}
+
+function hasPermission(user: AuthUser, permission: PermissionKey): boolean {
+  return user.permissions.includes(permission);
+}
+
+function hasAnyPermission(user: AuthUser, permissions: PermissionKey[]): boolean {
+  return permissions.some((permission) => hasPermission(user, permission));
 }
 
 function formatLoginError(error: unknown): string {
