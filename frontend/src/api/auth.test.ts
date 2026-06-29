@@ -39,7 +39,7 @@ describe("auth API client", () => {
     const result = await demoLogin("demo.manager@queryops.local");
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:8000/api/v1/demo/login",
+      "http://localhost:8000/api/v1/demo/login",
       {
         method: "POST",
         credentials: "include",
@@ -67,7 +67,7 @@ describe("auth API client", () => {
     const result = await getCurrentUser();
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:8000/api/v1/auth/me",
+      "http://localhost:8000/api/v1/auth/me",
       {
         method: "GET",
         credentials: "include",
@@ -92,7 +92,7 @@ describe("auth API client", () => {
     const result = await logout("csrf-token");
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://127.0.0.1:8000/api/v1/auth/logout",
+      "http://localhost:8000/api/v1/auth/logout",
       {
         method: "POST",
         credentials: "include",
