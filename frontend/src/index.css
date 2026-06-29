@@ -538,6 +538,108 @@ h1 {
   line-height: 1.55;
 }
 
+.admin-role-requests-panel {
+  gap: 18px;
+}
+
+.admin-role-request-list {
+  gap: 16px;
+}
+
+.admin-role-request-list__item {
+  display: grid;
+  gap: 18px;
+  border: 1px solid #d7e0eb;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 18px;
+}
+
+.admin-role-request-card__summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+}
+
+.admin-role-request-card__summary h2 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 1.125rem;
+  letter-spacing: 0;
+}
+
+.admin-role-request-card__summary p {
+  margin: 6px 0 0;
+  overflow-wrap: anywhere;
+  color: #526176;
+  line-height: 1.5;
+}
+
+.admin-role-request-details {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.admin-role-request-details > div {
+  border: 1px solid #d7e0eb;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.admin-role-request-details dt {
+  margin: 0 0 6px;
+  color: #5c6b82;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.admin-role-request-details dd {
+  margin: 0;
+  color: #152033;
+  line-height: 1.5;
+}
+
+.admin-role-request-decision {
+  display: grid;
+  gap: 14px;
+}
+
+.admin-role-request-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.secondary-danger-button {
+  min-height: 44px;
+  width: fit-content;
+  border: 1px solid #efb5bf;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #9f1d30;
+  padding: 0 18px;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    opacity 160ms ease;
+}
+
+.secondary-danger-button:hover:not(:disabled) {
+  border-color: #9f1d30;
+  background: #fff4f5;
+}
+
+.secondary-danger-button:disabled {
+  opacity: 0.64;
+}
+
 .role-request-status-badge {
   min-height: 32px;
   display: inline-flex;
@@ -648,6 +750,11 @@ h1 {
   }
 
   .role-request-list__item {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-role-request-card__summary,
+  .admin-role-request-details {
     grid-template-columns: 1fr;
   }
 }
