@@ -323,8 +323,8 @@ This starts:
 
 Default local URLs:
 
-* Frontend: `http://127.0.0.1:5173`
-* Backend health endpoint: `http://127.0.0.1:8000/health`
+* Frontend: `http://localhost:5173`
+* Backend health endpoint: `http://localhost:8000/health`
 * PostgreSQL: `localhost:5432`
 
 PostgreSQL is included for the local development environment. The current backend includes the database foundation, deterministic IT Operations seed data, and local demo auth session endpoints. Query engine behavior, RLS policies, dashboards, actions, approvals, and audit behavior remain planned for later milestones.
@@ -400,7 +400,7 @@ npm run build
 npm test
 ```
 
-The frontend health check calls the backend at `http://127.0.0.1:8000` by default.
+The frontend auth client calls the backend at `http://localhost:8000` by default.
 Override it with `VITE_API_BASE_URL` if needed.
 
 ## Verification
@@ -450,7 +450,7 @@ POSTGRES_PORT=5432
 BACKEND_PORT=8000
 FRONTEND_PORT=5173
 DATABASE_URL=postgresql+psycopg://queryops:queryops@postgres:5432/queryops
-VITE_API_BASE_URL=http://127.0.0.1:8000
+VITE_API_BASE_URL=http://localhost:8000
 ```
 
 Real secrets must never be committed to Git.

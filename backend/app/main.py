@@ -11,8 +11,9 @@ app.add_exception_handler(ApiError, api_error_handler)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=FRONTEND_DEV_ORIGINS,
-    allow_methods=["GET", "POST"],
-    allow_headers=["*"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "X-CSRF-Token"],
 )
 app.include_router(auth_router)
 app.include_router(health_router)
