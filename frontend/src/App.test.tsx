@@ -202,6 +202,7 @@ describe("App", () => {
     });
     expect(within(nav).getByRole("button", { name: "Templates" })).toBeInTheDocument();
     expect(within(nav).getByRole("button", { name: "My Dashboard" })).toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: "Role Upgrade" })).toBeInTheDocument();
     expect(within(nav).queryByRole("button", { name: "Ask Data" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("button", { name: "SQL / Technical" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("button", { name: "Admin Console" })).not.toBeInTheDocument();
@@ -332,6 +333,171 @@ describe("App", () => {
       screen.queryByRole("heading", { name: "Choose a demo profile" })
     ).not.toBeInTheDocument();
   });
+
+  it("renders the role upgrade request form and current request statuses", async () => {
+    const existingRequest = backendRoleRequest({
+      id: "request-id",
+      requestedRole: "analyst",
+      status: "pending",
+      reason: "I need SQL-visible access for Sales reviews."
+    });
+    const fetchMock = stubFetchSequence(
+      successResponse(demoUser),
+      successResponse([existingRequest])
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Role Upgrade" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Request Role Upgrade" })
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Requested role")).toBeInTheDocument();
+    expect(screen.getByLabelText("Reason")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Submit request" })).toBeInTheDocument();
+    expect(screen.getByText("Admin approval is required.")).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("list")).getByRole("heading", { name: "Analyst" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Pending")).toBeInTheDocument();
+    expect(
+      screen.getByText("I need SQL-visible access for Sales reviews.")
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/api/v1/role-requests/my",
+      expect.objectContaining({
+        method: "GET",
+        credentials: "include"
+      })
+    );
+  });
+
+  it("submits a role upgrade request with the stored CSRF token", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const createdRequest = backendRoleRequest({
+      id: "created-request-id",
+      requestedRole: "analyst",
+      status: "pending",
+      reason: "I need SQL-visible access for Sales reviews."
+    });
+    const fetchMock = stubFetchSequence(
+      successResponse(demoUser),
+      successResponse([]),
+      successResponse(createdRequest)
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Role Upgrade" }));
+    await screen.findByRole("heading", { name: "Request Role Upgrade" });
+
+    fireEvent.change(screen.getByLabelText("Requested role"), {
+      target: { value: "analyst" }
+    });
+    fireEvent.change(screen.getByLabelText("Reason"), {
+      target: { value: "I need SQL-visible access for Sales reviews." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit request" }));
+
+    expect(
+      await screen.findByText("Role upgrade request submitted.")
+    ).toBeInTheDocument();
+    expect(screen.getByText("Pending")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:8000/api/v1/role-requests",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        headers: expect.objectContaining({
+          "Content-Type": "application/json",
+          "X-CSRF-Token": "csrf-from-cookie"
+        }),
+        body: JSON.stringify({
+          requested_role: "analyst",
+          reason: "I need SQL-visible access for Sales reviews."
+        })
+      })
+    );
+  });
+
+  it("shows role request validation and backend errors", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    stubFetchSequence(
+      successResponse(demoUser),
+      successResponse([]),
+      errorResponse(
+        "PENDING_ROLE_REQUEST_EXISTS",
+        409,
+        "You already have a pending role upgrade request."
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Role Upgrade" }));
+    await screen.findByRole("heading", { name: "Request Role Upgrade" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Submit request" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Enter a reason for the role upgrade request."
+    );
+
+    fireEvent.change(screen.getByLabelText("Reason"), {
+      target: { value: "I need broader workspace access." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit request" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "You already have a pending role upgrade request."
+    );
+  });
+
+  it("shows a loading state while own role requests are loading", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(successResponse(demoUser))
+      .mockReturnValueOnce(new Promise(() => undefined));
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Role Upgrade" }));
+
+    expect(await screen.findByText("Loading role requests...")).toBeInTheDocument();
+  });
+
+  it("shows an error when own role requests cannot be loaded", async () => {
+    stubFetchSequence(
+      successResponse(demoUser),
+      errorResponse("UNAUTHORIZED", 401, "Authentication is required.")
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Role Upgrade" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Authentication is required."
+    );
+  });
 });
 
 function renderApp() {
@@ -372,6 +538,35 @@ function backendUser({
     status: "active",
     permissions,
     auth_mode: "demo"
+  };
+}
+
+function backendRoleRequest({
+  id,
+  requestedRole,
+  status,
+  reason
+}: {
+  id: string;
+  requestedRole: string;
+  status: string;
+  reason: string;
+}) {
+  return {
+    id,
+    requester: {
+      id: "user-id",
+      email: "demo.user@queryops.local",
+      full_name: "Demo User"
+    },
+    requested_role: requestedRole,
+    status,
+    reason,
+    decision_reason: null,
+    decided_by: null,
+    decided_at: null,
+    created_at: "2026-06-29T12:00:00Z",
+    updated_at: "2026-06-29T12:00:00Z"
   };
 }
 

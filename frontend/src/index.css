@@ -388,6 +388,186 @@ h1 {
   line-height: 1.6;
 }
 
+.role-upgrade-panel {
+  display: grid;
+  gap: 28px;
+  min-height: 420px;
+  border: 1px solid #d7e0eb;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 32px;
+}
+
+.role-upgrade-panel__header {
+  max-width: 760px;
+}
+
+.role-request-form {
+  display: grid;
+  gap: 18px;
+  max-width: 720px;
+}
+
+.form-field {
+  display: grid;
+  gap: 8px;
+}
+
+.form-field label {
+  color: #334155;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.form-field select,
+.form-field textarea {
+  width: 100%;
+  border: 1px solid #cbd6e2;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #152033;
+  padding: 12px 14px;
+  line-height: 1.5;
+}
+
+.form-field select {
+  min-height: 44px;
+}
+
+.form-field textarea {
+  min-height: 124px;
+  resize: vertical;
+}
+
+.form-field select:focus,
+.form-field textarea:focus {
+  border-color: #2c7be5;
+  outline: 3px solid rgb(44 123 229 / 0.2);
+}
+
+.role-request-note,
+.status-copy {
+  margin: 0;
+  color: #526176;
+  line-height: 1.6;
+}
+
+.form-message {
+  margin: 0;
+  border-radius: 8px;
+  padding: 14px 16px;
+  line-height: 1.5;
+}
+
+.form-message--error {
+  border: 1px solid #efb5bf;
+  background: #fff4f5;
+  color: #9f1d30;
+}
+
+.form-message--success {
+  border: 1px solid #9ed8b4;
+  background: #effaf3;
+  color: #17643a;
+}
+
+.primary-action-button {
+  min-height: 44px;
+  width: fit-content;
+  border: 0;
+  border-radius: 8px;
+  background: #172033;
+  color: #ffffff;
+  padding: 0 18px;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  transition:
+    background-color 160ms ease,
+    opacity 160ms ease;
+}
+
+.primary-action-button:hover:not(:disabled) {
+  background: #25324a;
+}
+
+.primary-action-button:disabled {
+  opacity: 0.64;
+}
+
+.role-request-status {
+  display: grid;
+  gap: 14px;
+}
+
+.role-request-status__header h2 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 1.25rem;
+  letter-spacing: 0;
+}
+
+.role-request-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.role-request-list__item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 16px;
+  align-items: start;
+  border: 1px solid #d7e0eb;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 16px;
+}
+
+.role-request-list__item h3 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 1rem;
+  letter-spacing: 0;
+}
+
+.role-request-list__item p {
+  margin: 8px 0 0;
+  color: #526176;
+  line-height: 1.55;
+}
+
+.role-request-status-badge {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 8px;
+  padding: 0 10px;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.role-request-status-badge[data-status="pending"] {
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.role-request-status-badge[data-status="approved"] {
+  background: #effaf3;
+  color: #17643a;
+}
+
+.role-request-status-badge[data-status="rejected"] {
+  background: #fff4f5;
+  color: #9f1d30;
+}
+
+.role-request-status-badge[data-status="cancelled"] {
+  background: #eef3f7;
+  color: #40516a;
+}
+
 @media (max-width: 860px) {
   .login-layout {
     grid-template-columns: 1fr;
@@ -460,5 +640,14 @@ h1 {
   .placeholder-panel {
     min-height: 320px;
     padding: 24px;
+  }
+
+  .role-upgrade-panel {
+    min-height: 320px;
+    padding: 24px;
+  }
+
+  .role-request-list__item {
+    grid-template-columns: 1fr;
   }
 }
