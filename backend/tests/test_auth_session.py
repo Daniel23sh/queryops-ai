@@ -25,6 +25,13 @@ DEMO_USERS = {
     "demo.user@queryops.local": "user",
 }
 
+DEMO_USER_DEPARTMENTS = {
+    "demo.admin@queryops.local": "IT",
+    "demo.analyst@queryops.local": "IT",
+    "demo.manager@queryops.local": "Finance",
+    "demo.user@queryops.local": "Sales",
+}
+
 
 @pytest.fixture
 def db_session() -> Generator[Session, None, None]:
@@ -149,6 +156,24 @@ def test_auth_me_returns_logged_in_user_role_department_and_permissions(
     assert "can_query_department_data" in data["permissions"]
     assert "can_view_sql" not in data["permissions"]
     assert "can_manage_users" not in data["permissions"]
+
+
+@pytest.mark.parametrize(("email", "department_name"), DEMO_USER_DEPARTMENTS.items())
+def test_auth_me_returns_non_null_department_for_seeded_demo_users(
+    client: TestClient,
+    email: str,
+    department_name: str,
+) -> None:
+    login_response = client.post("/api/v1/demo/login", json={"email": email})
+    assert login_response.status_code == 200
+
+    response = client.get("/api/v1/auth/me")
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["department"] is not None
+    assert data["department"]["id"]
+    assert data["department"]["name"] == department_name
 
 
 def test_logout_requires_csrf_for_authenticated_session(client: TestClient) -> None:

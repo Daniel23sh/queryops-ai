@@ -73,25 +73,42 @@ LICENSE_PRODUCTS = [
 PERMISSIONS = [
     ("can_use_query_templates", "query", "Use approved query templates"),
     ("can_run_free_query", "query", "Ask free-form data questions"),
+    ("can_query_department_data", "query", "Query department-scoped data"),
+    ("can_query_global_data", "query", "Query global data"),
+    ("can_query_product_tables", "query", "Query product tables in admin mode"),
     ("can_view_sql", "query", "View generated SQL"),
-    ("can_view_own_data", "data", "View own scoped data"),
-    ("can_query_department_data", "data", "Query department-scoped data"),
-    ("can_view_global_data", "data", "View global data"),
+    ("can_view_query_history_department", "query", "View department query history"),
+    ("can_star_dashboard", "dashboard", "Star dashboards and cards"),
     ("can_create_personal_dashboard", "dashboard", "Create personal dashboards"),
     ("can_create_department_dashboard", "dashboard", "Create department dashboards"),
     ("can_create_global_dashboard", "dashboard", "Create global dashboards"),
-    ("can_star_dashboard", "dashboard", "Star dashboards and cards"),
+    (
+        "can_manage_department_dashboard",
+        "dashboard",
+        "Manage department dashboards",
+    ),
+    ("can_manage_global_dashboard", "dashboard", "Manage global dashboards"),
     ("can_create_card", "dashboard", "Create dashboard cards"),
     ("can_request_action", "action", "Request controlled actions"),
     ("can_approve_department_action", "action", "Approve department actions"),
     ("can_approve_global_action", "action", "Approve global actions"),
+    ("can_approve_policy_override", "action", "Approve policy override actions"),
+    (
+        "can_self_approve_admin_action",
+        "action",
+        "Self-approve admin actions with audit marking",
+    ),
     ("can_manage_users", "admin", "Manage application users"),
+    ("can_disable_app_user", "admin", "Disable application users"),
+    ("can_downgrade_user_role", "admin", "Downgrade application user roles"),
     ("can_approve_role_requests", "admin", "Approve role upgrade requests"),
-    ("can_view_query_history_department", "query", "View department query history"),
     ("can_view_department_audit", "audit", "View department audit data"),
     ("can_view_global_audit", "audit", "View global audit data"),
     ("can_view_department_evaluation", "evaluation", "View department evaluation data"),
     ("can_view_global_evaluation", "evaluation", "View global evaluation data"),
+    ("can_view_own_data", "data", "View own scoped data"),
+    ("can_view_department_data", "data", "View department-scoped data"),
+    ("can_view_global_data", "data", "View global data"),
 ]
 
 ROLE_PERMISSION_KEYS = {
@@ -106,6 +123,7 @@ ROLE_PERMISSION_KEYS = {
         "can_star_dashboard",
         "can_run_free_query",
         "can_query_department_data",
+        "can_view_department_data",
         "can_create_personal_dashboard",
         "can_request_action",
         "can_view_department_evaluation",
@@ -116,23 +134,26 @@ ROLE_PERMISSION_KEYS = {
         "can_star_dashboard",
         "can_run_free_query",
         "can_query_department_data",
+        "can_view_department_data",
         "can_create_personal_dashboard",
         "can_request_action",
         "can_view_department_evaluation",
         "can_view_sql",
         "can_create_department_dashboard",
+        "can_manage_department_dashboard",
         "can_create_card",
         "can_approve_department_action",
         "can_view_query_history_department",
+        "can_view_department_audit",
     ],
     "admin": [key for key, _category, _description in PERMISSIONS],
 }
 
 DEMO_USERS = [
     ("demo.admin@queryops.local", "Demo Admin", "admin", "IT"),
-    ("demo.analyst@queryops.local", "Demo Analyst", "analyst", "Engineering"),
+    ("demo.analyst@queryops.local", "Demo Analyst", "analyst", "IT"),
     ("demo.manager@queryops.local", "Demo Manager", "manager", "Finance"),
-    ("demo.user@queryops.local", "Demo User", "user", "Support"),
+    ("demo.user@queryops.local", "Demo User", "user", "Sales"),
 ]
 
 GROUP_SPECS = [
@@ -349,9 +370,9 @@ def seed_database(
         latest_success_login_by_user={},
     )
 
-    _seed_product_core(session, state)
-    session.flush()
     _seed_departments(session, state)
+    session.flush()
+    _seed_product_core(session, state)
     session.flush()
     _seed_directory_users(session, state)
     session.flush()
@@ -545,7 +566,16 @@ def _seed_product_core(session: Session, state: SeedState) -> None:
                 )
             )
 
+    department_ids_by_name = {
+        department.name: department.id for department in state.departments
+    }
     for email, full_name, role_name, department_name in DEMO_USERS:
+        department_id = department_ids_by_name.get(department_name)
+        if department_id is None:
+            raise RuntimeError(
+                f"Demo app user {email} references missing department {department_name!r} "
+                f"in {state.profile.name!r} seed profile."
+            )
         app_user = AppUser(
             id=_id(state.profile, "app-user", email),
             auth_provider="demo",
@@ -553,7 +583,7 @@ def _seed_product_core(session: Session, state: SeedState) -> None:
             email=email,
             full_name=full_name,
             role_id=state.roles[role_name].id,
-            department_id=_id(state.profile, "department", department_name),
+            department_id=department_id,
             status="active",
             created_at=REFERENCE_NOW,
             updated_at=REFERENCE_NOW,

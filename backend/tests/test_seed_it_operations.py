@@ -30,6 +30,91 @@ from app.domains.it_operations.seed_profiles import get_seed_profile
 from app.models.product import AppUser, Permission, Role, RolePermission
 
 
+DEMO_USER_DEPARTMENTS = {
+    "demo.admin@queryops.local": "IT",
+    "demo.analyst@queryops.local": "IT",
+    "demo.manager@queryops.local": "Finance",
+    "demo.user@queryops.local": "Sales",
+}
+
+DEMO_USER_ROLES = {
+    "demo.admin@queryops.local": "admin",
+    "demo.analyst@queryops.local": "analyst",
+    "demo.manager@queryops.local": "manager",
+    "demo.user@queryops.local": "user",
+}
+
+REQUIRED_PERMISSION_KEYS = {
+    "can_use_query_templates",
+    "can_run_free_query",
+    "can_query_department_data",
+    "can_query_global_data",
+    "can_query_product_tables",
+    "can_view_sql",
+    "can_view_query_history_department",
+    "can_star_dashboard",
+    "can_create_personal_dashboard",
+    "can_create_department_dashboard",
+    "can_create_global_dashboard",
+    "can_manage_department_dashboard",
+    "can_manage_global_dashboard",
+    "can_create_card",
+    "can_request_action",
+    "can_approve_department_action",
+    "can_approve_global_action",
+    "can_approve_policy_override",
+    "can_self_approve_admin_action",
+    "can_manage_users",
+    "can_disable_app_user",
+    "can_downgrade_user_role",
+    "can_approve_role_requests",
+    "can_view_department_audit",
+    "can_view_global_audit",
+    "can_view_department_evaluation",
+    "can_view_global_evaluation",
+    "can_view_own_data",
+    "can_view_department_data",
+    "can_view_global_data",
+}
+
+EXPECTED_ROLE_PERMISSIONS = {
+    "user": {
+        "can_use_query_templates",
+        "can_star_dashboard",
+        "can_view_own_data",
+    },
+    "manager": {
+        "can_use_query_templates",
+        "can_star_dashboard",
+        "can_view_own_data",
+        "can_run_free_query",
+        "can_query_department_data",
+        "can_view_department_data",
+        "can_create_personal_dashboard",
+        "can_request_action",
+        "can_view_department_evaluation",
+    },
+    "analyst": {
+        "can_use_query_templates",
+        "can_star_dashboard",
+        "can_view_own_data",
+        "can_run_free_query",
+        "can_query_department_data",
+        "can_view_department_data",
+        "can_create_personal_dashboard",
+        "can_request_action",
+        "can_view_department_evaluation",
+        "can_view_sql",
+        "can_create_card",
+        "can_create_department_dashboard",
+        "can_manage_department_dashboard",
+        "can_view_query_history_department",
+        "can_view_department_audit",
+        "can_approve_department_action",
+    },
+    "admin": REQUIRED_PERMISSION_KEYS,
+}
+
 COUNT_MODELS = {
     "app_users": AppUser,
     "roles": Role,
@@ -156,6 +241,69 @@ def test_seed_rows_have_valid_relationships() -> None:
             assert audit_event.actor_user_id is None or audit_event.actor_user_id in directory_user_ids
             assert audit_event.target_user_id is None or audit_event.target_user_id in directory_user_ids
             assert audit_event.department_id is None or audit_event.department_id in department_ids
+
+
+def test_demo_app_users_reference_valid_departments_in_small_and_medium_seed() -> None:
+    for profile_name in ("small", "medium"):
+        with session_scope() as session:
+            seed_database(session, profile_name=profile_name, reset=True)
+
+            departments_by_id = {
+                department.id: department.name
+                for department in session.scalars(select(Department))
+            }
+            demo_users = session.scalars(
+                select(AppUser).where(AppUser.email.in_(DEMO_USER_DEPARTMENTS))
+            ).all()
+
+            assert {user.email for user in demo_users} == set(DEMO_USER_DEPARTMENTS)
+            for user in demo_users:
+                assert user.department_id in departments_by_id
+                assert departments_by_id[user.department_id] == DEMO_USER_DEPARTMENTS[user.email]
+
+
+def test_seed_creates_required_roles_permissions_and_role_permissions() -> None:
+    with session_scope() as session:
+        seed_database(session, profile_name="small", reset=True)
+
+        roles = {role.name: role for role in session.scalars(select(Role))}
+        assert set(roles) == set(EXPECTED_ROLE_PERMISSIONS)
+        assert all(role.is_system_role for role in roles.values())
+        assert all(role.description for role in roles.values())
+
+        permissions = {
+            permission.key: permission
+            for permission in session.scalars(select(Permission))
+        }
+        assert set(permissions) == REQUIRED_PERMISSION_KEYS
+        assert all(permission.category for permission in permissions.values())
+        assert all(permission.description for permission in permissions.values())
+
+        rows = session.execute(
+            select(Role.name, Permission.key)
+            .join(RolePermission, RolePermission.role_id == Role.id)
+            .join(Permission, Permission.id == RolePermission.permission_id)
+        ).all()
+        actual_mapping: dict[str, set[str]] = {
+            role_name: set() for role_name in EXPECTED_ROLE_PERMISSIONS
+        }
+        for role_name, permission_key in rows:
+            actual_mapping[role_name].add(permission_key)
+
+        assert actual_mapping == EXPECTED_ROLE_PERMISSIONS
+
+
+def test_demo_app_users_are_assigned_expected_roles() -> None:
+    with session_scope() as session:
+        seed_database(session, profile_name="small", reset=True)
+
+        rows = session.execute(
+            select(AppUser.email, Role.name)
+            .join(Role, Role.id == AppUser.role_id)
+            .where(AppUser.email.in_(DEMO_USER_ROLES))
+        ).all()
+
+        assert dict(rows) == DEMO_USER_ROLES
 
 
 def test_directory_user_last_login_matches_latest_successful_login() -> None:
@@ -360,8 +508,8 @@ def expected_counts(profile_name: str) -> dict[str, int]:
     return {
         "app_users": profile.app_users,
         "roles": 4,
-        "permissions": 21,
-        "role_permissions": 45,
+        "permissions": 30,
+        "role_permissions": 58,
         "departments": profile.departments,
         "directory_users": profile.total_directory_users,
         "login_events": profile.login_events,

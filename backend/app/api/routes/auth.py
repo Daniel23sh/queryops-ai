@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from fastapi import APIRouter, Depends, Request
@@ -13,6 +12,10 @@ from app.auth.providers import (
     InactiveUserError,
     InvalidCredentialsError,
 )
+from app.auth.permissions import (
+    get_current_app_user_for_session,
+    resolve_effective_permission_keys,
+)
 from app.auth.session import (
     clear_auth_cookies,
     create_csrf_token,
@@ -22,15 +25,7 @@ from app.auth.session import (
 )
 from app.db.session import get_db
 from app.domains.it_operations.models import Department
-from app.models.product import (
-    AppUser,
-    Permission,
-    PermissionEffect,
-    Role,
-    RolePermission,
-    UserPermission,
-    UserStatus,
-)
+from app.models.product import AppUser, Role, UserStatus
 
 
 router = APIRouter(prefix="/api/v1")
@@ -84,8 +79,8 @@ def auth_me(request: Request, db: Session = Depends(get_db)):
     if session_data is None:
         return _unauthorized()
 
-    user = db.get(AppUser, session_data.user_id)
-    if user is None or user.status != UserStatus.ACTIVE.value:
+    user = get_current_app_user_for_session(session_data, db)
+    if user is None:
         return _unauthorized()
 
     return success_response(serialize_user(user, db, session_data.auth_provider))
@@ -124,34 +119,9 @@ def serialize_user(user: AppUser, db: Session, auth_mode: str) -> dict:
             else None
         ),
         "status": user.status,
-        "permissions": effective_permission_keys(user, db),
+        "permissions": resolve_effective_permission_keys(user, db),
         "auth_mode": auth_mode,
     }
-
-
-def effective_permission_keys(user: AppUser, db: Session) -> list[str]:
-    permission_keys: set[str] = set()
-    if user.role_id:
-        permission_keys.update(
-            db.scalars(
-                select(Permission.key)
-                .join(RolePermission, RolePermission.permission_id == Permission.id)
-                .where(RolePermission.role_id == user.role_id)
-            )
-        )
-
-    user_permission_rows = db.execute(
-        select(Permission.key, UserPermission.effect)
-        .join(UserPermission, UserPermission.permission_id == Permission.id)
-        .where(UserPermission.user_id == user.id)
-    ).all()
-    for permission_key, effect in user_permission_rows:
-        if effect == PermissionEffect.DENY.value:
-            permission_keys.discard(permission_key)
-        elif effect == PermissionEffect.ALLOW.value:
-            permission_keys.add(permission_key)
-
-    return sorted(permission_keys)
 
 
 def _unauthorized():
