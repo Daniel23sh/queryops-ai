@@ -4,7 +4,23 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
+from fastapi import Request
 from fastapi.responses import JSONResponse
+
+
+class ApiError(Exception):
+    def __init__(
+        self,
+        *,
+        code: str,
+        message: str,
+        status_code: int,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        self.code = code
+        self.message = message
+        self.status_code = status_code
+        self.details = details
 
 
 def success_response(data: Any, status_code: int = 200) -> JSONResponse:
@@ -17,6 +33,15 @@ def success_response(data: Any, status_code: int = 200) -> JSONResponse:
                 "timestamp": _timestamp(),
             },
         },
+    )
+
+
+def api_error_handler(_request: Request, exc: ApiError) -> JSONResponse:
+    return error_response(
+        code=exc.code,
+        message=exc.message,
+        status_code=exc.status_code,
+        details=exc.details,
     )
 
 
