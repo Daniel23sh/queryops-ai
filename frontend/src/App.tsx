@@ -73,6 +73,8 @@ const ROLE_UPGRADE_OPTIONS: Array<{ value: RoleUpgradeTarget; label: string }> =
   { value: "admin", label: "Admin" }
 ];
 
+const ROLE_UPGRADE_ORDER: RoleUpgradeTarget[] = ["manager", "analyst", "admin"];
+
 const WORKSPACE_NAV_ITEMS: NavItem[] = [
   {
     id: "templates",
@@ -377,7 +379,7 @@ function AuthenticatedWorkspace({
           ) : null}
 
           {activeNavItem.id === "role-upgrade" ? (
-            <RoleUpgradePanel csrfToken={csrfToken} />
+            <RoleUpgradePanel userRole={user.role} csrfToken={csrfToken} />
           ) : activeNavItem.id === "admin-role-requests" ? (
             <AdminRoleRequestsPanel csrfToken={csrfToken} />
           ) : (
@@ -394,9 +396,17 @@ function AuthenticatedWorkspace({
   );
 }
 
-function RoleUpgradePanel({ csrfToken }: { csrfToken: string | null }) {
+function RoleUpgradePanel({
+  userRole,
+  csrfToken
+}: {
+  userRole: AuthUser["role"];
+  csrfToken: string | null;
+}) {
+  const roleUpgradeOptions = getRoleUpgradeOptions(userRole);
+  const hasRoleUpgradeOptions = roleUpgradeOptions.length > 0;
   const [requestedRole, setRequestedRole] =
-    useState<RoleUpgradeTarget>("manager");
+    useState<RoleUpgradeTarget>(roleUpgradeOptions[0]?.value ?? "manager");
   const [reason, setReason] = useState("");
   const [roleRequests, setRoleRequests] = useState<RoleRequest[]>([]);
   const [isLoadingRequests, setIsLoadingRequests] = useState(true);
@@ -447,6 +457,11 @@ function RoleUpgradePanel({ csrfToken }: { csrfToken: string | null }) {
       return;
     }
 
+    if (!hasRoleUpgradeOptions) {
+      setSubmitError("No role upgrade target is available for your current role.");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const createdRequest = await createRoleRequest(
@@ -478,56 +493,60 @@ function RoleUpgradePanel({ csrfToken }: { csrfToken: string | null }) {
         </p>
       </div>
 
-      <form className="role-request-form" onSubmit={(event) => void handleSubmit(event)}>
-        <div className="form-field">
-          <label htmlFor="requested-role">Requested role</label>
-          <select
-            id="requested-role"
-            value={requestedRole}
-            onChange={(event) =>
-              setRequestedRole(event.target.value as RoleUpgradeTarget)
-            }
+      {hasRoleUpgradeOptions ? (
+        <form className="role-request-form" onSubmit={(event) => void handleSubmit(event)}>
+          <div className="form-field">
+            <label htmlFor="requested-role">Requested role</label>
+            <select
+              id="requested-role"
+              value={requestedRole}
+              onChange={(event) =>
+                setRequestedRole(event.target.value as RoleUpgradeTarget)
+              }
+            >
+              {roleUpgradeOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="form-field">
+            <label htmlFor="role-request-reason">Reason</label>
+            <textarea
+              id="role-request-reason"
+              rows={4}
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+            />
+          </div>
+
+          <p className="role-request-note">Admin approval is required.</p>
+
+          {submitError ? (
+            <p className="form-message form-message--error" role="alert">
+              {submitError}
+            </p>
+          ) : null}
+
+          {successMessage ? (
+            <p className="form-message form-message--success" role="status">
+              {successMessage}
+            </p>
+          ) : null}
+
+          <button
+            type="submit"
+            className="primary-action-button"
+            disabled={isSubmitting}
           >
-            {ROLE_UPGRADE_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="form-field">
-          <label htmlFor="role-request-reason">Reason</label>
-          <textarea
-            id="role-request-reason"
-            rows={4}
-            value={reason}
-            onChange={(event) => setReason(event.target.value)}
-          />
-        </div>
-
-        <p className="role-request-note">Admin approval is required.</p>
-
-        {submitError ? (
-          <p className="form-message form-message--error" role="alert">
-            {submitError}
-          </p>
-        ) : null}
-
-        {successMessage ? (
-          <p className="form-message form-message--success" role="status">
-            {successMessage}
-          </p>
-        ) : null}
-
-        <button
-          type="submit"
-          className="primary-action-button"
-          disabled={isSubmitting}
-        >
-          {isSubmitting ? "Submitting..." : "Submit request"}
-        </button>
-      </form>
+            {isSubmitting ? "Submitting..." : "Submit request"}
+          </button>
+        </form>
+      ) : (
+        <p className="role-request-note">Admin already has the highest role.</p>
+      )}
 
       <section className="role-request-status" aria-labelledby="role-request-status-title">
         <div className="role-request-status__header">
@@ -797,6 +816,23 @@ function hasPermission(user: AuthUser, permission: PermissionKey): boolean {
 
 function hasAnyPermission(user: AuthUser, permissions: PermissionKey[]): boolean {
   return permissions.some((permission) => hasPermission(user, permission));
+}
+
+function getRoleUpgradeOptions(
+  currentRole: AuthUser["role"]
+): Array<{ value: RoleUpgradeTarget; label: string }> {
+  if (currentRole === null || currentRole === "user") {
+    return ROLE_UPGRADE_OPTIONS;
+  }
+
+  const currentRoleIndex = ROLE_UPGRADE_ORDER.indexOf(currentRole);
+  if (currentRoleIndex === -1) {
+    return ROLE_UPGRADE_OPTIONS;
+  }
+
+  return ROLE_UPGRADE_OPTIONS.filter(
+    (option) => ROLE_UPGRADE_ORDER.indexOf(option.value) > currentRoleIndex
+  );
 }
 
 function formatLoginError(error: unknown): string {

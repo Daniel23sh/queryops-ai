@@ -360,7 +360,11 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: "Request Role Upgrade" })
     ).toBeInTheDocument();
-    expect(screen.getByLabelText("Requested role")).toBeInTheDocument();
+    const requestedRoleSelect = screen.getByLabelText("Requested role");
+    expect(requestedRoleSelect).toBeInTheDocument();
+    expect(within(requestedRoleSelect).getByRole("option", { name: "Manager" })).toBeInTheDocument();
+    expect(within(requestedRoleSelect).getByRole("option", { name: "Analyst" })).toBeInTheDocument();
+    expect(within(requestedRoleSelect).getByRole("option", { name: "Admin" })).toBeInTheDocument();
     expect(screen.getByLabelText("Reason")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Submit request" })).toBeInTheDocument();
     expect(screen.getByText("Admin approval is required.")).toBeInTheDocument();
@@ -501,6 +505,70 @@ describe("App", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Authentication is required."
     );
+  });
+
+  it("hides the current manager role from the upgrade options", async () => {
+    stubFetchSequence(successResponse(demoManager), successResponse([]));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Role Upgrade" }));
+
+    const requestedRoleSelect = await screen.findByLabelText("Requested role");
+    expect(
+      within(requestedRoleSelect).queryByRole("option", { name: "Manager" })
+    ).not.toBeInTheDocument();
+    expect(
+      within(requestedRoleSelect).getByRole("option", { name: "Analyst" })
+    ).toBeInTheDocument();
+    expect(
+      within(requestedRoleSelect).getByRole("option", { name: "Admin" })
+    ).toBeInTheDocument();
+  });
+
+  it("only offers admin as an upgrade option for analysts", async () => {
+    stubFetchSequence(successResponse(demoAnalyst), successResponse([]));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Role Upgrade" }));
+
+    const requestedRoleSelect = await screen.findByLabelText("Requested role");
+    expect(
+      within(requestedRoleSelect).queryByRole("option", { name: "Manager" })
+    ).not.toBeInTheDocument();
+    expect(
+      within(requestedRoleSelect).queryByRole("option", { name: "Analyst" })
+    ).not.toBeInTheDocument();
+    expect(
+      within(requestedRoleSelect).getByRole("option", { name: "Admin" })
+    ).toBeInTheDocument();
+  });
+
+  it("does not render a submit-able role upgrade form for admins", async () => {
+    stubFetchSequence(successResponse(demoAdmin), successResponse([]));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Role Upgrade" }));
+
+    expect(
+      await screen.findByText("Admin already has the highest role.")
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Requested role")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Reason")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Submit request" })
+    ).not.toBeInTheDocument();
   });
 
   it("loads and renders admin role upgrade requests for admins", async () => {
