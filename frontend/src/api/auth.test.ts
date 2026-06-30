@@ -13,8 +13,19 @@ const authUser = {
     id: "department-id",
     name: "Finance"
   },
+  scopes: [
+    {
+      id: "scope-id",
+      type: "department",
+      key: "finance",
+      display_name: "Finance",
+      access_level: "read",
+      is_default: true,
+      department_id: "department-id"
+    }
+  ],
   status: "active",
-  permissions: ["can_run_free_query", "can_request_action"],
+  permissions: ["can_run_free_query", "can_query_scoped_data", "can_request_action"],
   auth_mode: "demo"
 };
 
@@ -51,6 +62,17 @@ describe("auth API client", () => {
       }
     );
     expect(result.user.email).toBe("demo.manager@queryops.local");
+    expect(result.user.scopes).toEqual([
+      {
+        id: "scope-id",
+        type: "department",
+        key: "finance",
+        displayName: "Finance",
+        accessLevel: "read",
+        isDefault: true,
+        departmentId: "department-id"
+      }
+    ]);
     expect(result.csrfToken).toBe("csrf-token");
     expect(result.requiresOnboarding).toBe(false);
   });
@@ -78,6 +100,8 @@ describe("auth API client", () => {
     );
     expect(result.email).toBe("demo.manager@queryops.local");
     expect(result.permissions).toContain("can_run_free_query");
+    expect(result.permissions).toContain("can_query_scoped_data");
+    expect(result.scopes[0].key).toBe("finance");
   });
 
   it("logs out with cookies and the CSRF header included", async () => {

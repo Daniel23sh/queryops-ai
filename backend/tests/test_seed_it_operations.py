@@ -27,7 +27,15 @@ from app.domains.it_operations.seed import (
     seed_fingerprint,
 )
 from app.domains.it_operations.seed_profiles import get_seed_profile
-from app.models.product import AppUser, Permission, Role, RolePermission
+from app.models.product import (
+    AccessScope,
+    AppUser,
+    DataResource,
+    Permission,
+    Role,
+    RolePermission,
+    UserAccessScope,
+)
 
 
 DEMO_USER_DEPARTMENTS = {
@@ -48,19 +56,24 @@ REQUIRED_PERMISSION_KEYS = {
     "can_use_query_templates",
     "can_run_free_query",
     "can_query_department_data",
+    "can_query_scoped_data",
     "can_query_global_data",
     "can_query_product_tables",
     "can_view_sql",
     "can_view_query_history_department",
+    "can_view_query_history_scope",
     "can_star_dashboard",
     "can_create_personal_dashboard",
     "can_create_department_dashboard",
+    "can_create_scope_dashboard",
     "can_create_global_dashboard",
     "can_manage_department_dashboard",
+    "can_manage_scope_dashboard",
     "can_manage_global_dashboard",
     "can_create_card",
     "can_request_action",
     "can_approve_department_action",
+    "can_approve_scoped_action",
     "can_approve_global_action",
     "can_approve_policy_override",
     "can_self_approve_admin_action",
@@ -69,11 +82,14 @@ REQUIRED_PERMISSION_KEYS = {
     "can_downgrade_user_role",
     "can_approve_role_requests",
     "can_view_department_audit",
+    "can_view_scope_audit",
     "can_view_global_audit",
     "can_view_department_evaluation",
+    "can_view_scope_evaluation",
     "can_view_global_evaluation",
     "can_view_own_data",
     "can_view_department_data",
+    "can_view_scoped_data",
     "can_view_global_data",
 }
 
@@ -89,10 +105,13 @@ EXPECTED_ROLE_PERMISSIONS = {
         "can_view_own_data",
         "can_run_free_query",
         "can_query_department_data",
+        "can_query_scoped_data",
         "can_view_department_data",
+        "can_view_scoped_data",
         "can_create_personal_dashboard",
         "can_request_action",
         "can_view_department_evaluation",
+        "can_view_scope_evaluation",
     },
     "analyst": {
         "can_use_query_templates",
@@ -100,26 +119,37 @@ EXPECTED_ROLE_PERMISSIONS = {
         "can_view_own_data",
         "can_run_free_query",
         "can_query_department_data",
+        "can_query_scoped_data",
         "can_view_department_data",
+        "can_view_scoped_data",
         "can_create_personal_dashboard",
         "can_request_action",
         "can_view_department_evaluation",
+        "can_view_scope_evaluation",
         "can_view_sql",
         "can_create_card",
         "can_create_department_dashboard",
+        "can_create_scope_dashboard",
         "can_manage_department_dashboard",
+        "can_manage_scope_dashboard",
         "can_view_query_history_department",
+        "can_view_query_history_scope",
         "can_view_department_audit",
+        "can_view_scope_audit",
         "can_approve_department_action",
+        "can_approve_scoped_action",
     },
     "admin": REQUIRED_PERMISSION_KEYS,
 }
 
 COUNT_MODELS = {
     "app_users": AppUser,
+    "access_scopes": AccessScope,
+    "data_resources": DataResource,
     "roles": Role,
     "permissions": Permission,
     "role_permissions": RolePermission,
+    "user_access_scopes": UserAccessScope,
     "departments": Department,
     "directory_users": DirectoryUser,
     "login_events": LoginEvent,
@@ -132,6 +162,28 @@ COUNT_MODELS = {
     "user_group_memberships": UserGroupMembership,
     "security_events": SecurityEvent,
     "it_audit_events": ItAuditEvent,
+}
+
+EXPECTED_DEMO_SCOPES = {
+    "demo.admin@queryops.local": ("global", "global", "manage", "Global"),
+    "demo.analyst@queryops.local": ("department", "it", "manage", "IT"),
+    "demo.manager@queryops.local": ("department", "finance", "read", "Finance"),
+    "demo.user@queryops.local": ("department", "sales", "read", "Sales"),
+}
+
+CORE_DATA_RESOURCE_TABLES = {
+    "departments",
+    "directory_users",
+    "login_events",
+    "licenses",
+    "license_assignments",
+    "devices",
+    "software_installs",
+    "support_tickets",
+    "groups",
+    "user_group_memberships",
+    "security_events",
+    "it_audit_events",
 }
 
 
@@ -291,6 +343,119 @@ def test_seed_creates_required_roles_permissions_and_role_permissions() -> None:
             actual_mapping[role_name].add(permission_key)
 
         assert actual_mapping == EXPECTED_ROLE_PERMISSIONS
+
+
+def test_seed_creates_global_and_department_access_scopes() -> None:
+    with session_scope() as session:
+        seed_database(session, profile_name="small", reset=True)
+
+        scopes = {
+            (scope.scope_type, scope.scope_key): scope
+            for scope in session.scalars(select(AccessScope))
+        }
+        departments = list(session.scalars(select(Department)))
+
+        assert ("global", "global") in scopes
+        assert scopes[("global", "global")].display_name == "Global"
+        assert scopes[("global", "global")].is_system_scope is True
+        for department in departments:
+            scope = scopes[("department", department.name.lower())]
+            assert scope.display_name == department.name
+            assert scope.department_id == department.id
+            assert scope.domain == "it_operations"
+            assert scope.is_system_scope is True
+
+
+def test_demo_users_have_expected_default_access_scopes() -> None:
+    with session_scope() as session:
+        seed_database(session, profile_name="small", reset=True)
+
+        rows = session.execute(
+            select(
+                AppUser.email,
+                AccessScope.scope_type,
+                AccessScope.scope_key,
+                AccessScope.display_name,
+                UserAccessScope.access_level,
+                UserAccessScope.is_default,
+                AccessScope.department_id,
+            )
+            .join(UserAccessScope, UserAccessScope.user_id == AppUser.id)
+            .join(AccessScope, AccessScope.id == UserAccessScope.scope_id)
+            .where(AppUser.email.in_(EXPECTED_DEMO_SCOPES))
+        ).all()
+
+        assert len(rows) == len(EXPECTED_DEMO_SCOPES)
+        for (
+            email,
+            scope_type,
+            scope_key,
+            display_name,
+            access_level,
+            is_default,
+            department_id,
+        ) in rows:
+            expected_type, expected_key, expected_level, expected_name = (
+                EXPECTED_DEMO_SCOPES[email]
+            )
+            assert (scope_type, scope_key, access_level, display_name) == (
+                expected_type,
+                expected_key,
+                expected_level,
+                expected_name,
+            )
+            assert is_default is True
+            if scope_type == "global":
+                assert department_id is None
+            else:
+                assert department_id is not None
+
+
+def test_each_demo_user_has_exactly_one_default_access_scope() -> None:
+    with session_scope() as session:
+        seed_database(session, profile_name="small", reset=True)
+
+        rows = session.execute(
+            select(AppUser.email, func.count(UserAccessScope.scope_id))
+            .join(UserAccessScope, UserAccessScope.user_id == AppUser.id)
+            .where(
+                AppUser.email.in_(EXPECTED_DEMO_SCOPES),
+                UserAccessScope.is_default.is_(True),
+            )
+            .group_by(AppUser.email)
+        ).all()
+
+        assert dict(rows) == {email: 1 for email in EXPECTED_DEMO_SCOPES}
+
+
+def test_seed_creates_core_it_operations_data_resources() -> None:
+    with session_scope() as session:
+        seed_database(session, profile_name="small", reset=True)
+
+        resources = {
+            resource.table_name: resource
+            for resource in session.scalars(select(DataResource))
+        }
+
+        assert set(resources) == CORE_DATA_RESOURCE_TABLES
+        for table_name, resource in resources.items():
+            assert resource.domain == "it_operations"
+            assert resource.resource_type == "table"
+            assert resource.display_name
+            assert resource.sensitivity_level
+            assert resource.llm_exposure_level
+            assert resource.is_queryable is True
+            if table_name in {"departments", "licenses"}:
+                assert resource.scope_column is None
+            else:
+                assert resource.scope_type == "department"
+                assert resource.scope_column == "department_id"
+
+        assert resources["security_events"].sensitivity_level == "highly_sensitive"
+        assert resources["it_audit_events"].llm_exposure_level in {
+            "none",
+            "aggregate_safe",
+        }
 
 
 def test_demo_app_users_are_assigned_expected_roles() -> None:
@@ -507,9 +672,12 @@ def expected_counts(profile_name: str) -> dict[str, int]:
     profile = get_seed_profile(profile_name)
     return {
         "app_users": profile.app_users,
+        "access_scopes": profile.departments + 1,
+        "data_resources": len(CORE_DATA_RESOURCE_TABLES),
         "roles": 4,
-        "permissions": 30,
-        "role_permissions": 58,
+        "permissions": 38,
+        "role_permissions": 77,
+        "user_access_scopes": 4,
         "departments": profile.departments,
         "directory_users": profile.total_directory_users,
         "login_events": profile.login_events,

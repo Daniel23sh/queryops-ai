@@ -9,10 +9,13 @@ from app.db.base import Base
 
 PRODUCT_TABLES = {
     "app_users",
+    "access_scopes",
+    "data_resources",
     "roles",
     "permissions",
     "role_permissions",
     "user_permissions",
+    "user_access_scopes",
     "role_upgrade_requests",
     "dashboards",
     "dashboard_cards",
@@ -51,6 +54,11 @@ def test_product_schema_has_key_foreign_keys() -> None:
     metadata = Base.metadata
 
     assert _foreign_key_targets(metadata.tables["app_users"]) == {"roles"}
+    assert _foreign_key_targets(metadata.tables["access_scopes"]) == {"departments"}
+    assert _foreign_key_targets(metadata.tables["user_access_scopes"]) == {
+        "access_scopes",
+        "app_users",
+    }
     assert _foreign_key_targets(metadata.tables["role_permissions"]) == {
         "roles",
         "permissions",
@@ -60,6 +68,7 @@ def test_product_schema_has_key_foreign_keys() -> None:
         "permissions",
     }
     assert _foreign_key_targets(metadata.tables["role_upgrade_requests"]) == {
+        "access_scopes",
         "app_users",
         "roles",
     }
@@ -87,6 +96,14 @@ def test_role_permissions_uses_composite_primary_key() -> None:
     }
 
     assert primary_key_columns == {"role_id", "permission_id"}
+
+
+def test_user_access_scopes_uses_composite_primary_key() -> None:
+    primary_key_columns = {
+        column.name for column in Base.metadata.tables["user_access_scopes"].primary_key
+    }
+
+    assert primary_key_columns == {"user_id", "scope_id"}
 
 
 def test_product_migration_upgrades_and_downgrades_sqlite_database(

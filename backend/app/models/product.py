@@ -129,6 +129,45 @@ class Permission(Base):
     )
 
 
+class AccessScope(Base):
+    __tablename__ = "access_scopes"
+    __table_args__ = (
+        UniqueConstraint("scope_type", "scope_key", name="uq_access_scopes_type_key"),
+        Index("ix_access_scopes_scope_type", "scope_type"),
+        Index("ix_access_scopes_department_id", "department_id"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    scope_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    scope_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    domain: Mapped[str | None] = mapped_column(String(128))
+    department_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("departments.id", ondelete="SET NULL"),
+    )
+    is_system_scope: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+    user_access_scopes: Mapped[list[UserAccessScope]] = relationship(
+        back_populates="scope",
+        cascade="all, delete-orphan",
+    )
+    department: Mapped[Any | None] = relationship(
+        "Department",
+        back_populates="access_scopes",
+    )
+    role_upgrade_requests: Mapped[list[RoleUpgradeRequest]] = relationship(
+        back_populates="requested_scope",
+    )
+
+
 class AppUser(Base):
     __tablename__ = "app_users"
     __table_args__ = (
@@ -175,6 +214,10 @@ class AppUser(Base):
         back_populates="user",
         cascade="all, delete-orphan",
         foreign_keys="UserPermission.user_id",
+    )
+    user_access_scopes: Mapped[list[UserAccessScope]] = relationship(
+        back_populates="user",
+        cascade="all, delete-orphan",
     )
     granted_user_permissions: Mapped[list[UserPermission]] = relationship(
         back_populates="granted_by_user",
@@ -279,6 +322,77 @@ class UserPermission(Base):
     )
 
 
+class UserAccessScope(Base):
+    __tablename__ = "user_access_scopes"
+    __table_args__ = (
+        Index("ix_user_access_scopes_user_id", "user_id"),
+        Index("ix_user_access_scopes_scope_id", "scope_id"),
+    )
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app_users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    scope_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("access_scopes.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    access_level: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default="read",
+        server_default="read",
+    )
+    is_default: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+    created_at: Mapped[datetime] = created_at_column()
+
+    user: Mapped[AppUser] = relationship(back_populates="user_access_scopes")
+    scope: Mapped[AccessScope] = relationship(back_populates="user_access_scopes")
+
+
+class DataResource(Base):
+    __tablename__ = "data_resources"
+    __table_args__ = (
+        Index("ix_data_resources_domain", "domain"),
+        Index("ix_data_resources_table_name", "table_name"),
+        Index("ix_data_resources_scope_type", "scope_type"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    resource_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    domain: Mapped[str] = mapped_column(String(128), nullable=False)
+    schema_name: Mapped[str | None] = mapped_column(String(128))
+    table_name: Mapped[str] = mapped_column(String(128), nullable=False)
+    column_name: Mapped[str | None] = mapped_column(String(128))
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    sensitivity_level: Mapped[str] = mapped_column(String(64), nullable=False)
+    scope_type: Mapped[str | None] = mapped_column(String(64))
+    scope_column: Mapped[str | None] = mapped_column(String(128))
+    is_queryable: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
+    )
+    is_exportable: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+    llm_exposure_level: Mapped[str] = mapped_column(String(64), nullable=False)
+    resource_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+
+
 class RoleUpgradeRequest(Base):
     __tablename__ = "role_upgrade_requests"
     __table_args__ = (
@@ -288,6 +402,7 @@ class RoleUpgradeRequest(Base):
         ),
         Index("ix_role_upgrade_requests_requester_user_id", "requester_user_id"),
         Index("ix_role_upgrade_requests_requested_role_id", "requested_role_id"),
+        Index("ix_role_upgrade_requests_requested_scope_id", "requested_scope_id"),
         Index("ix_role_upgrade_requests_status", "status"),
     )
 
@@ -302,6 +417,12 @@ class RoleUpgradeRequest(Base):
         ForeignKey("roles.id", ondelete="RESTRICT"),
         nullable=False,
     )
+    requested_scope_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("access_scopes.id", ondelete="SET NULL"),
+    )
+    requested_scope_type: Mapped[str | None] = mapped_column(String(64))
+    requested_scope_key: Mapped[str | None] = mapped_column(String(128))
     department_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
     status: Mapped[str] = mapped_column(
         String(32),
@@ -324,6 +445,9 @@ class RoleUpgradeRequest(Base):
         foreign_keys=[requester_user_id],
     )
     requested_role: Mapped[Role] = relationship(back_populates="role_upgrade_requests")
+    requested_scope: Mapped[AccessScope | None] = relationship(
+        back_populates="role_upgrade_requests",
+    )
     decided_by_user: Mapped[AppUser | None] = relationship(
         back_populates="decided_role_upgrade_requests",
         foreign_keys=[decided_by_user_id],

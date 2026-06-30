@@ -143,6 +143,10 @@ class Department(Base):
     )
     devices: Mapped[list[Device]] = relationship(back_populates="department")
     groups: Mapped[list[Group]] = relationship(back_populates="department")
+    access_scopes: Mapped[list[Any]] = relationship(
+        "AccessScope",
+        back_populates="department",
+    )
 
 
 class License(Base):

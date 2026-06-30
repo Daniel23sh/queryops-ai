@@ -1,5 +1,5 @@
 import { apiRequest } from "./client";
-import type { Role } from "../auth/types";
+import type { AuthScope, Role } from "../auth/types";
 
 export type RoleUpgradeTarget = Exclude<Role, "user">;
 
@@ -15,6 +15,7 @@ export type RoleRequest = {
   id: string;
   requester: RoleRequestUser | null;
   requestedRole: RoleUpgradeTarget;
+  requestedScope: AuthScope | null;
   status: RoleRequestStatus;
   reason: string | null;
   decisionReason: string | null;
@@ -34,6 +35,7 @@ type BackendRoleRequest = {
   id: string;
   requester?: BackendRoleRequestUser | null;
   requested_role: RoleUpgradeTarget;
+  requested_scope?: BackendAuthScope | null;
   status: RoleRequestStatus;
   reason: string | null;
   decision_reason: string | null;
@@ -43,10 +45,21 @@ type BackendRoleRequest = {
   updated_at: string;
 };
 
+type BackendAuthScope = {
+  id: string;
+  type: string;
+  key: string;
+  display_name: string;
+  access_level: string | null;
+  is_default: boolean;
+  department_id: string | null;
+};
+
 export function createRoleRequest(
   requestedRole: RoleUpgradeTarget,
   reason: string,
-  csrfToken: string
+  csrfToken: string,
+  requestedScopeId?: string
 ): Promise<RoleRequest> {
   return apiRequest<BackendRoleRequest>("/api/v1/role-requests", {
     method: "POST",
@@ -56,7 +69,8 @@ export function createRoleRequest(
     },
     body: JSON.stringify({
       requested_role: requestedRole,
-      reason
+      reason,
+      ...(requestedScopeId ? { requested_scope_id: requestedScopeId } : {})
     })
   }).then(mapRoleRequest);
 }
@@ -119,6 +133,7 @@ function mapRoleRequest(roleRequest: BackendRoleRequest): RoleRequest {
     id: roleRequest.id,
     requester: mapRoleRequestUser(roleRequest.requester ?? null),
     requestedRole: roleRequest.requested_role,
+    requestedScope: mapScope(roleRequest.requested_scope ?? null),
     status: roleRequest.status,
     reason: roleRequest.reason,
     decisionReason: roleRequest.decision_reason,
@@ -126,6 +141,22 @@ function mapRoleRequest(roleRequest: BackendRoleRequest): RoleRequest {
     decidedAt: roleRequest.decided_at,
     createdAt: roleRequest.created_at,
     updatedAt: roleRequest.updated_at
+  };
+}
+
+function mapScope(scope: BackendAuthScope | null): AuthScope | null {
+  if (scope === null) {
+    return null;
+  }
+
+  return {
+    id: scope.id,
+    type: scope.type,
+    key: scope.key,
+    displayName: scope.display_name,
+    accessLevel: scope.access_level,
+    isDefault: scope.is_default,
+    departmentId: scope.department_id
   };
 }
 

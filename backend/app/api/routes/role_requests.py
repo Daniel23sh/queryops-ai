@@ -9,10 +9,19 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.responses import error_response, success_response
+from app.auth.access_context import build_user_access_context
 from app.auth.permissions import require_authenticated_user, require_permission
 from app.auth.session import csrf_is_valid, session_from_request
 from app.db.session import get_db
-from app.models.product import AppAuditLog, AppUser, RequestStatus, Role, RoleUpgradeRequest
+from app.models.product import (
+    AccessScope,
+    AppAuditLog,
+    AppUser,
+    RequestStatus,
+    Role,
+    RoleUpgradeRequest,
+    UserAccessScope,
+)
 
 
 router = APIRouter(prefix="/api/v1")
@@ -22,6 +31,7 @@ ROLE_UPGRADE_TARGETS = frozenset({"manager", "analyst", "admin"})
 
 class RoleRequestCreate(BaseModel):
     requested_role: str = ""
+    requested_scope_id: UUID | None = None
     reason: str = ""
 
 
@@ -90,10 +100,23 @@ def create_role_request(
             status_code=409,
         )
 
+    requested_scope = _requested_scope_for_create(
+        db,
+        current_user,
+        payload.requested_scope_id,
+    )
+    if requested_scope is not None and not isinstance(requested_scope, AccessScope):
+        return requested_scope
+
     role_request = RoleUpgradeRequest(
         requester_user_id=current_user.id,
         requested_role_id=requested_role.id,
-        department_id=current_user.department_id,
+        requested_scope_id=requested_scope.id if requested_scope else None,
+        requested_scope_type=requested_scope.scope_type if requested_scope else None,
+        requested_scope_key=requested_scope.scope_key if requested_scope else None,
+        department_id=(
+            requested_scope.department_id if requested_scope else current_user.department_id
+        ),
         status=RequestStatus.PENDING.value,
         reason=reason,
     )
@@ -162,6 +185,29 @@ def approve_role_request(
     old_role = requester.role.name if requester.role else None
     new_role = role_request.requested_role.name
     decided_at = datetime.now(UTC)
+    requested_scope = role_request.requested_scope or _default_scope_for_user(
+        requester,
+        db,
+    )
+    assigned_scope = _scope_for_approval(
+        role_request=role_request,
+        requester=requester,
+        requested_role_name=new_role,
+        db=db,
+    )
+    assigned_access_level = _access_level_for_role(new_role)
+    if assigned_scope is not None:
+        _assign_user_scope(
+            db,
+            user=requester,
+            scope=assigned_scope,
+            access_level=assigned_access_level,
+            make_default=True,
+        )
+    if requested_scope is not None and role_request.requested_scope_id is None:
+        role_request.requested_scope_id = requested_scope.id
+        role_request.requested_scope_type = requested_scope.scope_type
+        role_request.requested_scope_key = requested_scope.scope_key
 
     requester.role_id = role_request.requested_role_id
     role_request.status = RequestStatus.APPROVED.value
@@ -184,6 +230,11 @@ def approve_role_request(
                 "old_role": old_role,
                 "new_role": new_role,
                 "requested_role": new_role,
+                "requested_scope": _scope_audit_metadata(requested_scope),
+                "assigned_scope": _assigned_scope_audit_metadata(
+                    assigned_scope,
+                    assigned_access_level,
+                ),
                 "decision_reason": decision_reason,
             },
         )
@@ -255,6 +306,7 @@ def _serialize_role_request(role_request: RoleUpgradeRequest) -> dict:
             "full_name": role_request.requester.full_name,
         },
         "requested_role": role_request.requested_role.name,
+        "requested_scope": _serialize_requested_scope(role_request),
         "status": role_request.status,
         "reason": role_request.reason,
         "decision_reason": role_request.decision_reason,
@@ -337,6 +389,140 @@ def _build_audit_log(
         summary=summary,
         audit_metadata=metadata,
     )
+
+
+def _requested_scope_for_create(
+    db: Session,
+    user: AppUser,
+    requested_scope_id: UUID | None,
+):
+    if requested_scope_id is not None:
+        requested_scope = db.get(AccessScope, requested_scope_id)
+        if requested_scope is None:
+            return error_response(
+                code="REQUESTED_SCOPE_NOT_FOUND",
+                message="Requested access scope was not found.",
+                status_code=400,
+            )
+        return requested_scope
+
+    return _default_scope_for_user(user, db)
+
+
+def _default_scope_for_user(user: AppUser, db: Session) -> AccessScope | None:
+    access_context = build_user_access_context(user, db)
+    if access_context.default_scope is not None:
+        return db.get(AccessScope, access_context.default_scope.id)
+
+    if user.department_id is None:
+        return None
+    return db.scalar(
+        select(AccessScope).where(
+            AccessScope.scope_type == "department",
+            AccessScope.department_id == user.department_id,
+        )
+    )
+
+
+def _scope_for_approval(
+    *,
+    role_request: RoleUpgradeRequest,
+    requester: AppUser,
+    requested_role_name: str,
+    db: Session,
+) -> AccessScope | None:
+    if requested_role_name == "admin":
+        return db.scalar(
+            select(AccessScope).where(
+                AccessScope.scope_type == "global",
+                AccessScope.scope_key == "global",
+            )
+        )
+
+    return role_request.requested_scope or _default_scope_for_user(requester, db)
+
+
+def _assign_user_scope(
+    db: Session,
+    *,
+    user: AppUser,
+    scope: AccessScope,
+    access_level: str,
+    make_default: bool,
+) -> None:
+    existing_scope = db.get(
+        UserAccessScope,
+        {"user_id": user.id, "scope_id": scope.id},
+    )
+    if make_default:
+        for user_scope in list(user.user_access_scopes):
+            user_scope.is_default = user_scope.scope_id == scope.id
+
+    if existing_scope is None:
+        existing_scope = UserAccessScope(
+            user_id=user.id,
+            scope_id=scope.id,
+            access_level=access_level,
+            is_default=make_default,
+        )
+        db.add(existing_scope)
+    else:
+        existing_scope.access_level = access_level
+        if make_default:
+            existing_scope.is_default = True
+
+
+def _access_level_for_role(role_name: str) -> str:
+    if role_name in {"admin", "analyst"}:
+        return "manage"
+    return "read"
+
+
+def _serialize_requested_scope(role_request: RoleUpgradeRequest) -> dict | None:
+    scope = role_request.requested_scope
+    if scope is None:
+        return None
+    user_scope = next(
+        (
+            assignment
+            for assignment in role_request.requester.user_access_scopes
+            if assignment.scope_id == scope.id
+        ),
+        None,
+    )
+    return {
+        "id": str(scope.id),
+        "type": scope.scope_type,
+        "key": scope.scope_key,
+        "display_name": scope.display_name,
+        "access_level": user_scope.access_level if user_scope else None,
+        "is_default": user_scope.is_default if user_scope else False,
+        "department_id": str(scope.department_id) if scope.department_id else None,
+    }
+
+
+def _scope_audit_metadata(scope: AccessScope | None) -> dict | None:
+    if scope is None:
+        return None
+    return {
+        "id": str(scope.id),
+        "type": scope.scope_type,
+        "key": scope.scope_key,
+    }
+
+
+def _assigned_scope_audit_metadata(
+    scope: AccessScope | None,
+    access_level: str,
+) -> dict | None:
+    if scope is None:
+        return None
+    return {
+        "id": str(scope.id),
+        "type": scope.scope_type,
+        "key": scope.scope_key,
+        "access_level": access_level,
+    }
 
 
 def _serialize_datetime(value: datetime | None) -> str | None:

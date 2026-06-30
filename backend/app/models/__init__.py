@@ -1,9 +1,11 @@
 from app.models.product import (
+    AccessScope,
     AppAuditLog,
     AppUser,
     ApprovalRequest,
     Dashboard,
     DashboardCard,
+    DataResource,
     EvaluationResult,
     EvaluationRun,
     Notification,
@@ -13,15 +15,18 @@ from app.models.product import (
     RolePermission,
     RoleUpgradeRequest,
     SavedQuery,
+    UserAccessScope,
     UserPermission,
 )
 
 __all__ = [
+    "AccessScope",
     "AppAuditLog",
     "AppUser",
     "ApprovalRequest",
     "Dashboard",
     "DashboardCard",
+    "DataResource",
     "EvaluationResult",
     "EvaluationRun",
     "Notification",
@@ -31,5 +36,6 @@ __all__ = [
     "RolePermission",
     "RoleUpgradeRequest",
     "SavedQuery",
+    "UserAccessScope",
     "UserPermission",
 ]

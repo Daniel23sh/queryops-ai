@@ -19,6 +19,15 @@ const backendRoleRequest = {
   requested_role: "analyst",
   status: "pending",
   reason: "I need SQL-visible access for Sales reviews.",
+  requested_scope: {
+    id: "scope-id",
+    type: "department",
+    key: "sales",
+    display_name: "Sales",
+    access_level: "read",
+    is_default: true,
+    department_id: "sales-id"
+  },
   decision_reason: null,
   decided_by: null,
   decided_at: null,
@@ -65,6 +74,15 @@ describe("role request API client", () => {
     expect(result).toMatchObject({
       id: "role-request-id",
       requestedRole: "analyst",
+      requestedScope: {
+        id: "scope-id",
+        type: "department",
+        key: "sales",
+        displayName: "Sales",
+        accessLevel: "read",
+        isDefault: true,
+        departmentId: "sales-id"
+      },
       status: "pending",
       reason: "I need SQL-visible access for Sales reviews.",
       decisionReason: null,
@@ -73,6 +91,34 @@ describe("role request API client", () => {
         fullName: "Demo User"
       }
     });
+  });
+
+  it("can create role requests with a requested scope id", async () => {
+    const fetchMock = stubFetch({
+      data: backendRoleRequest,
+      meta: {
+        request_id: "request-id",
+        timestamp: "2026-06-29T12:00:00Z"
+      }
+    });
+
+    await createRoleRequest(
+      "analyst",
+      "I need SQL-visible access for Sales reviews.",
+      "csrf-token",
+      "scope-id"
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/role-requests",
+      expect.objectContaining({
+        body: JSON.stringify({
+          requested_role: "analyst",
+          reason: "I need SQL-visible access for Sales reviews.",
+          requested_scope_id: "scope-id"
+        })
+      })
+    );
   });
 
   it("gets the current user's role requests with cookies included", async () => {

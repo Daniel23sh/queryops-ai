@@ -31,10 +31,13 @@ const demoManager = backendUser({
     "can_view_own_data",
     "can_run_free_query",
     "can_query_department_data",
+    "can_query_scoped_data",
     "can_view_department_data",
+    "can_view_scoped_data",
     "can_create_personal_dashboard",
     "can_request_action",
-    "can_view_department_evaluation"
+    "can_view_department_evaluation",
+    "can_view_scope_evaluation"
   ]
 });
 
@@ -51,17 +54,25 @@ const demoAnalyst = backendUser({
     "can_view_own_data",
     "can_run_free_query",
     "can_query_department_data",
+    "can_query_scoped_data",
     "can_view_department_data",
+    "can_view_scoped_data",
     "can_create_personal_dashboard",
     "can_request_action",
     "can_view_department_evaluation",
+    "can_view_scope_evaluation",
     "can_view_sql",
     "can_create_card",
     "can_create_department_dashboard",
+    "can_create_scope_dashboard",
     "can_manage_department_dashboard",
+    "can_manage_scope_dashboard",
     "can_view_query_history_department",
+    "can_view_query_history_scope",
     "can_view_department_audit",
-    "can_approve_department_action"
+    "can_view_scope_audit",
+    "can_approve_department_action",
+    "can_approve_scoped_action"
   ]
 });
 
@@ -76,22 +87,28 @@ const demoAdmin = backendUser({
     "can_use_query_templates",
     "can_run_free_query",
     "can_query_department_data",
+    "can_query_scoped_data",
     "can_query_global_data",
     "can_query_product_tables",
     "can_view_own_data",
     "can_view_department_data",
+    "can_view_scoped_data",
     "can_view_global_data",
     "can_view_sql",
     "can_view_query_history_department",
+    "can_view_query_history_scope",
     "can_star_dashboard",
     "can_create_personal_dashboard",
     "can_create_department_dashboard",
+    "can_create_scope_dashboard",
     "can_create_global_dashboard",
     "can_manage_department_dashboard",
+    "can_manage_scope_dashboard",
     "can_manage_global_dashboard",
     "can_create_card",
     "can_request_action",
     "can_approve_department_action",
+    "can_approve_scoped_action",
     "can_approve_global_action",
     "can_approve_policy_override",
     "can_self_approve_admin_action",
@@ -100,8 +117,10 @@ const demoAdmin = backendUser({
     "can_downgrade_user_role",
     "can_approve_role_requests",
     "can_view_department_audit",
+    "can_view_scope_audit",
     "can_view_global_audit",
     "can_view_department_evaluation",
+    "can_view_scope_evaluation",
     "can_view_global_evaluation"
   ]
 });
@@ -879,6 +898,11 @@ function backendUser({
   departmentName: string;
   permissions: string[];
 }) {
+  const isAdmin = role === "admin";
+  const scopeType = isAdmin ? "global" : "department";
+  const scopeKey = isAdmin ? "global" : departmentName.toLowerCase();
+  const scopeName = isAdmin ? "Global" : departmentName;
+
   return {
     id,
     email,
@@ -889,6 +913,17 @@ function backendUser({
       id: departmentId,
       name: departmentName
     },
+    scopes: [
+      {
+        id: `${scopeKey}-scope-id`,
+        type: scopeType,
+        key: scopeKey,
+        display_name: scopeName,
+        access_level: isAdmin || role === "analyst" ? "manage" : "read",
+        is_default: true,
+        department_id: isAdmin ? null : departmentId
+      }
+    ],
     status: "active",
     permissions,
     auth_mode: "demo"
@@ -926,6 +961,15 @@ function backendRoleRequest({
       full_name: requester.fullName
     },
     requested_role: requestedRole,
+    requested_scope: {
+      id: "sales-scope-id",
+      type: "department",
+      key: "sales",
+      display_name: "Sales",
+      access_level: "read",
+      is_default: true,
+      department_id: "sales-id"
+    },
     status,
     reason,
     decision_reason: decisionReason,
