@@ -32,6 +32,13 @@ DEMO_USER_DEPARTMENTS = {
     "demo.user@queryops.local": "Sales",
 }
 
+DEMO_USER_SCOPES = {
+    "demo.admin@queryops.local": ("global", "global", "manage", "Global"),
+    "demo.analyst@queryops.local": ("department", "it", "manage", "IT"),
+    "demo.manager@queryops.local": ("department", "finance", "read", "Finance"),
+    "demo.user@queryops.local": ("department", "sales", "read", "Sales"),
+}
+
 
 @pytest.fixture
 def db_session() -> Generator[Session, None, None]:
@@ -82,6 +89,7 @@ def test_demo_login_succeeds_for_seeded_demo_users(
     assert body["data"]["user"]["email"] == email
     assert body["data"]["user"]["role"] == role
     assert body["data"]["user"]["status"] == UserStatus.ACTIVE.value
+    assert len(body["data"]["user"]["scopes"]) == 1
     assert body["data"]["requires_onboarding"] is False
     assert body["data"]["csrf_token"]
     assert body["meta"]["request_id"]
@@ -151,8 +159,21 @@ def test_auth_me_returns_logged_in_user_role_department_and_permissions(
     assert data["role"] == "manager"
     assert data["status"] == UserStatus.ACTIVE.value
     assert data["department"]["name"] == "Finance"
+    assert data["department_id"] == data["department"]["id"]
+    assert data["scopes"] == [
+        {
+            "id": data["scopes"][0]["id"],
+            "type": "department",
+            "key": "finance",
+            "display_name": "Finance",
+            "access_level": "read",
+            "is_default": True,
+            "department_id": data["department"]["id"],
+        }
+    ]
     assert data["auth_mode"] == "demo"
     assert "can_run_free_query" in data["permissions"]
+    assert "can_query_scoped_data" in data["permissions"]
     assert "can_query_department_data" in data["permissions"]
     assert "can_view_sql" not in data["permissions"]
     assert "can_manage_users" not in data["permissions"]
@@ -174,6 +195,32 @@ def test_auth_me_returns_non_null_department_for_seeded_demo_users(
     assert data["department"] is not None
     assert data["department"]["id"]
     assert data["department"]["name"] == department_name
+
+
+@pytest.mark.parametrize(("email", "expected_scope"), DEMO_USER_SCOPES.items())
+def test_auth_me_returns_expected_default_scope_for_seeded_demo_users(
+    client: TestClient,
+    email: str,
+    expected_scope: tuple[str, str, str, str],
+) -> None:
+    login_response = client.post("/api/v1/demo/login", json={"email": email})
+    assert login_response.status_code == 200
+
+    response = client.get("/api/v1/auth/me")
+
+    assert response.status_code == 200
+    scopes = response.json()["data"]["scopes"]
+    assert len([scope for scope in scopes if scope["is_default"]]) == 1
+    default_scope = next(scope for scope in scopes if scope["is_default"])
+    expected_type, expected_key, expected_level, expected_name = expected_scope
+    assert default_scope["type"] == expected_type
+    assert default_scope["key"] == expected_key
+    assert default_scope["access_level"] == expected_level
+    assert default_scope["display_name"] == expected_name
+    if expected_type == "global":
+        assert default_scope["department_id"] is None
+    else:
+        assert default_scope["department_id"] == response.json()["data"]["department_id"]
 
 
 def test_logout_requires_csrf_for_authenticated_session(client: TestClient) -> None:

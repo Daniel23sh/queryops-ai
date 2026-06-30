@@ -69,12 +69,16 @@ The active milestone is defined in `PROJECT_PLAN.md`.
 At the time this file was updated, the active target is:
 
 ```txt
-Milestone 2 — Auth, Users, Roles & Permissions
+Milestone 2.5 — Access Context Foundation
 ```
 
-Milestone 2 may include demo authentication, backend session handling, CSRF foundation, app users, roles, permissions, role upgrade workflow, and tests for those behaviors.
+Milestone 0, Milestone 1, and Milestone 2 are complete under the previous scope.
 
-Milestone 2 PR 1 must stay limited to backend auth/session foundation. It must not implement runtime permission enforcement, PostgreSQL RLS policies, natural-language query pipeline, real LLM calls, dashboards UI, actions, approvals, notifications behavior, audit behavior, evaluation engine behavior, or production deployment.
+Milestone 2.5 adds Access Context Foundation. It introduces `access_scopes`, `user_access_scopes`, `data_resources`, `UserAccessContext`, `AccessDecision`, and `evaluate_access(subject, action, resource, context)`.
+
+V1 access decisions must remain simple and testable: permission plus assigned access scope plus minimal resource metadata. This milestone does not implement Full ABAC.
+
+Milestone 2.5 must not implement PostgreSQL RLS policies, Query Engine, dashboards, Actions/Approvals behavior, CSV export behavior, real LLM calls, `policy_rules`, `policy_conditions`, dynamic policy language, policy builder UI, ReBAC, column masking, tenant/project/region UI, or external authorization services.
 
 ## 6. Product Direction
 

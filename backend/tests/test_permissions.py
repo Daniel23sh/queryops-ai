@@ -29,19 +29,27 @@ EXPECTED_USER_PERMISSIONS = {
 EXPECTED_MANAGER_PERMISSIONS = EXPECTED_USER_PERMISSIONS | {
     "can_create_personal_dashboard",
     "can_query_department_data",
+    "can_query_scoped_data",
     "can_request_action",
     "can_run_free_query",
     "can_view_department_data",
     "can_view_department_evaluation",
+    "can_view_scoped_data",
+    "can_view_scope_evaluation",
 }
 
 EXPECTED_ANALYST_PERMISSIONS = EXPECTED_MANAGER_PERMISSIONS | {
     "can_approve_department_action",
+    "can_approve_scoped_action",
     "can_create_card",
     "can_create_department_dashboard",
+    "can_create_scope_dashboard",
     "can_manage_department_dashboard",
+    "can_manage_scope_dashboard",
     "can_view_department_audit",
     "can_view_query_history_department",
+    "can_view_query_history_scope",
+    "can_view_scope_audit",
     "can_view_sql",
 }
 
@@ -50,18 +58,22 @@ EXPECTED_ADMIN_PERMISSIONS = {
     "can_approve_global_action",
     "can_approve_policy_override",
     "can_approve_role_requests",
+    "can_approve_scoped_action",
     "can_create_card",
     "can_create_department_dashboard",
     "can_create_global_dashboard",
     "can_create_personal_dashboard",
+    "can_create_scope_dashboard",
     "can_disable_app_user",
     "can_downgrade_user_role",
     "can_manage_department_dashboard",
     "can_manage_global_dashboard",
     "can_manage_users",
+    "can_manage_scope_dashboard",
     "can_query_department_data",
     "can_query_global_data",
     "can_query_product_tables",
+    "can_query_scoped_data",
     "can_request_action",
     "can_run_free_query",
     "can_self_approve_admin_action",
@@ -75,6 +87,10 @@ EXPECTED_ADMIN_PERMISSIONS = {
     "can_view_global_evaluation",
     "can_view_own_data",
     "can_view_query_history_department",
+    "can_view_query_history_scope",
+    "can_view_scoped_data",
+    "can_view_scope_audit",
+    "can_view_scope_evaluation",
     "can_view_sql",
 }
 
@@ -132,7 +148,9 @@ def test_manager_permissions_exclude_sql_global_and_admin_permissions(
 
     assert "can_run_free_query" in permissions
     assert "can_query_department_data" in permissions
+    assert "can_query_scoped_data" in permissions
     assert "can_view_department_data" in permissions
+    assert "can_view_scoped_data" in permissions
     assert "can_view_sql" not in permissions
     assert "can_query_global_data" not in permissions
     assert "can_manage_users" not in permissions
@@ -147,7 +165,9 @@ def test_analyst_permissions_exclude_global_and_admin_permissions(
 
     assert "can_view_sql" in permissions
     assert "can_create_department_dashboard" in permissions
+    assert "can_create_scope_dashboard" in permissions
     assert "can_approve_department_action" in permissions
+    assert "can_approve_scoped_action" in permissions
     assert "can_query_global_data" not in permissions
     assert "can_approve_global_action" not in permissions
     assert "can_manage_users" not in permissions

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, Request
 
 from app.api.responses import error_response, success_response
+from app.auth.access_context import AccessScopeContext, build_user_access_context
 from app.auth.providers import (
     AuthCredentials,
     DemoAuthProvider,
@@ -14,7 +15,6 @@ from app.auth.providers import (
 )
 from app.auth.permissions import (
     get_current_app_user_for_session,
-    resolve_effective_permission_keys,
 )
 from app.auth.session import (
     clear_auth_cookies,
@@ -104,6 +104,7 @@ def auth_logout(request: Request):
 def serialize_user(user: AppUser, db: Session, auth_mode: str) -> dict:
     role = db.get(Role, user.role_id) if user.role_id else None
     department = db.get(Department, user.department_id) if user.department_id else None
+    access_context = build_user_access_context(user, db)
     return {
         "id": str(user.id),
         "email": user.email,
@@ -119,8 +120,21 @@ def serialize_user(user: AppUser, db: Session, auth_mode: str) -> dict:
             else None
         ),
         "status": user.status,
-        "permissions": resolve_effective_permission_keys(user, db),
+        "permissions": sorted(access_context.permissions),
+        "scopes": [_serialize_scope(scope) for scope in access_context.scopes],
         "auth_mode": auth_mode,
+    }
+
+
+def _serialize_scope(scope: AccessScopeContext) -> dict:
+    return {
+        "id": str(scope.id),
+        "type": scope.type,
+        "key": scope.key,
+        "display_name": scope.display_name,
+        "access_level": scope.access_level,
+        "is_default": scope.is_default,
+        "department_id": str(scope.department_id) if scope.department_id else None,
     }
 
 

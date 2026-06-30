@@ -12,11 +12,13 @@ from app.db.session import get_db
 from app.domains.it_operations.seed import seed_database
 from app.main import app
 from app.models.product import (
+    AccessScope,
     AppAuditLog,
     AppUser,
     RequestStatus,
     Role,
     RoleUpgradeRequest,
+    UserAccessScope,
 )
 
 
@@ -118,6 +120,15 @@ def test_authenticated_user_can_create_role_request(
     assert data["requested_role"] == "manager"
     assert data["status"] == RequestStatus.PENDING.value
     assert data["reason"] == "I need access for department operations."
+    assert data["requested_scope"] == {
+        "id": data["requested_scope"]["id"],
+        "type": "department",
+        "key": "sales",
+        "display_name": "Sales",
+        "access_level": "read",
+        "is_default": True,
+        "department_id": data["requested_scope"]["department_id"],
+    }
     assert data["decision_reason"] is None
     assert data["decided_at"] is None
     assert data["created_at"]
@@ -126,6 +137,40 @@ def test_authenticated_user_can_create_role_request(
     assert created_request is not None
     assert created_request.status == RequestStatus.PENDING.value
     assert created_request.reason == "I need access for department operations."
+    assert created_request.requested_scope_id == UUID(data["requested_scope"]["id"])
+    assert created_request.requested_scope_type == "department"
+    assert created_request.requested_scope_key == "sales"
+
+
+def test_create_role_request_can_include_requested_scope_id(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    csrf_token = _login(client, "demo.user@queryops.local")
+    sales_scope = _scope_by_type_key(db_session, "department", "sales")
+
+    response = client.post(
+        "/api/v1/role-requests",
+        headers={"X-CSRF-Token": csrf_token},
+        json={
+            "requested_role": "analyst",
+            "requested_scope_id": str(sales_scope.id),
+            "reason": "I need SQL-visible access for Sales operations.",
+        },
+    )
+
+    assert response.status_code == 201
+    data = response.json()["data"]
+    assert data["requested_scope"]["id"] == str(sales_scope.id)
+    assert data["requested_scope"]["type"] == "department"
+    assert data["requested_scope"]["key"] == "sales"
+    assert data["requested_scope"]["display_name"] == "Sales"
+
+    created_request = db_session.get(RoleUpgradeRequest, UUID(data["id"]))
+    assert created_request is not None
+    assert created_request.requested_scope_id == sales_scope.id
+    assert created_request.requested_scope_type == "department"
+    assert created_request.requested_scope_key == "sales"
 
 
 @pytest.mark.parametrize("requested_role", ["user", "owner", ""])
@@ -314,6 +359,14 @@ def test_admin_can_approve_pending_role_request(
     db_session.expire_all()
     requester = _user_by_email(db_session, "demo.user@queryops.local")
     assert requester.role.name == "manager"
+    sales_scope = _scope_by_type_key(db_session, "department", "sales")
+    requester_scope = db_session.get(
+        UserAccessScope,
+        {"user_id": requester.id, "scope_id": sales_scope.id},
+    )
+    assert requester_scope is not None
+    assert requester_scope.access_level == "read"
+    assert requester_scope.is_default is True
 
     audit_log = _single_audit_log(db_session)
     assert audit_log.actor.email == "demo.admin@queryops.local"
@@ -325,10 +378,93 @@ def test_admin_can_approve_pending_role_request(
     assert audit_log.audit_metadata["requester_user_id"] == str(requester.id)
     assert audit_log.audit_metadata["old_role"] == "user"
     assert audit_log.audit_metadata["new_role"] == "manager"
+    assert audit_log.audit_metadata["requested_scope"] == {
+        "id": str(sales_scope.id),
+        "type": "department",
+        "key": "sales",
+    }
+    assert audit_log.audit_metadata["assigned_scope"] == {
+        "id": str(sales_scope.id),
+        "type": "department",
+        "key": "sales",
+        "access_level": "read",
+    }
     assert (
         audit_log.audit_metadata["decision_reason"]
         == "Approved for Sales operational ownership."
     )
+
+
+def test_approve_role_request_assigns_requested_scope_for_analyst(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    sales_scope = _scope_by_type_key(db_session, "department", "sales")
+    role_request = _create_role_request(
+        db_session,
+        requester_email="demo.user@queryops.local",
+        requested_role="analyst",
+        reason="I need analyst access for Sales reporting.",
+        requested_scope=sales_scope,
+    )
+    csrf_token = _login(client, "demo.admin@queryops.local")
+
+    response = client.post(
+        f"/api/v1/admin/role-requests/{role_request.id}/approve",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"decision_reason": "Approved for Sales analyst work."},
+    )
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    requester = _user_by_email(db_session, "demo.user@queryops.local")
+    user_scope = db_session.get(
+        UserAccessScope,
+        {"user_id": requester.id, "scope_id": sales_scope.id},
+    )
+    assert requester.role.name == "analyst"
+    assert user_scope is not None
+    assert user_scope.access_level == "manage"
+    assert user_scope.is_default is True
+
+
+def test_approve_admin_role_request_without_requested_scope_assigns_global_scope(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    role_request = _create_role_request(
+        db_session,
+        requester_email="demo.manager@queryops.local",
+        requested_role="admin",
+        reason="I need temporary global administration access.",
+    )
+    csrf_token = _login(client, "demo.admin@queryops.local")
+
+    response = client.post(
+        f"/api/v1/admin/role-requests/{role_request.id}/approve",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"decision_reason": "Approved temporary global administration."},
+    )
+
+    assert response.status_code == 200
+    db_session.expire_all()
+    requester = _user_by_email(db_session, "demo.manager@queryops.local")
+    global_scope = _scope_by_type_key(db_session, "global", "global")
+    requester_scope = db_session.get(
+        UserAccessScope,
+        {"user_id": requester.id, "scope_id": global_scope.id},
+    )
+    assert requester.role.name == "admin"
+    assert requester_scope is not None
+    assert requester_scope.access_level == "manage"
+
+    audit_log = _single_audit_log(db_session)
+    assert audit_log.audit_metadata["assigned_scope"] == {
+        "id": str(global_scope.id),
+        "type": "global",
+        "key": "global",
+        "access_level": "manage",
+    }
 
 
 def test_admin_can_reject_pending_role_request(
@@ -360,6 +496,13 @@ def test_admin_can_reject_pending_role_request(
     db_session.expire_all()
     requester = _user_by_email(db_session, "demo.user@queryops.local")
     assert requester.role.name == "user"
+    sales_scope = _scope_by_type_key(db_session, "department", "sales")
+    requester_scope = db_session.get(
+        UserAccessScope,
+        {"user_id": requester.id, "scope_id": sales_scope.id},
+    )
+    assert requester_scope is not None
+    assert requester_scope.access_level == "read"
 
     audit_log = _single_audit_log(db_session)
     assert audit_log.event_type == "role_request.rejected"
@@ -537,6 +680,7 @@ def _create_role_request(
     requester_email: str,
     requested_role: str,
     reason: str,
+    requested_scope: AccessScope | None = None,
 ) -> RoleUpgradeRequest:
     requester = db_session.scalar(select(AppUser).where(AppUser.email == requester_email))
     role = db_session.scalar(select(Role).where(Role.name == requested_role))
@@ -547,6 +691,9 @@ def _create_role_request(
         requester_user_id=requester.id,
         requested_role_id=role.id,
         department_id=requester.department_id,
+        requested_scope_id=requested_scope.id if requested_scope else None,
+        requested_scope_type=requested_scope.scope_type if requested_scope else None,
+        requested_scope_key=requested_scope.scope_key if requested_scope else None,
         status=RequestStatus.PENDING.value,
         reason=reason,
     )
@@ -565,6 +712,21 @@ def _role_by_name(db_session: Session, role_name: str) -> Role:
     role = db_session.scalar(select(Role).where(Role.name == role_name))
     assert role is not None
     return role
+
+
+def _scope_by_type_key(
+    db_session: Session,
+    scope_type: str,
+    scope_key: str,
+) -> AccessScope:
+    scope = db_session.scalar(
+        select(AccessScope).where(
+            AccessScope.scope_type == scope_type,
+            AccessScope.scope_key == scope_key,
+        )
+    )
+    assert scope is not None
+    return scope
 
 
 def _single_audit_log(db_session: Session) -> AppAuditLog:

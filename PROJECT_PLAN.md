@@ -4,13 +4,25 @@
 
 The current active target is:
 
-`Milestone 2 — Auth, Users, Roles & Permissions`
+`Milestone 2.5 — Access Context Foundation`
 
-Milestone 0 foundation work is complete. Milestone 1 database schema, Alembic migration, and deterministic IT Operations seed work is complete.
+Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, and Milestone 2 auth/users/roles/permissions work are complete under the previous scope.
 
-Milestone 2 adds authentication, users, roles, and permissions behavior on top of the seeded product schema. The current PR target is Milestone 2 PR 1: backend auth/session foundation with demo login, session cookies, CSRF foundation, `/auth/me`, `/auth/logout`, and an auth provider abstraction.
+Milestone 2.5 adds the Access Context Foundation. V1 access remains simple and testable: decisions are based on permission, assigned access scope, and minimal resource metadata. This milestone introduces the future ABAC-ready seams without implementing Full ABAC.
 
-Do not implement later Milestone 2 PRs or later product behavior in this PR. Runtime permission enforcement, role upgrade flow, PostgreSQL RLS policies, natural-language querying, dashboards, actions, approvals, notifications behavior, audit behavior, and evaluation engine behavior belong to later PRs.
+Milestone 2.5 includes:
+
+- `access_scopes`
+- `user_access_scopes`
+- `data_resources`
+- `UserAccessContext`
+- `AccessDecision`
+- `evaluate_access(subject, action, resource, context)`
+- scope-friendly permission aliases while retaining existing department permission keys
+- `/auth/me` and demo login scope serialization
+- role upgrade request compatibility with optional requested scope metadata
+
+Milestone 2.5 does not implement Full ABAC, `policy_rules`, `policy_conditions`, a dynamic policy language, a policy builder UI, ReBAC, column masking, tenant/project/region UI, external authorization services, PostgreSQL RLS policies, Query Engine, real Actions/Approvals behavior, real dashboards, CSV export behavior, or real LLM calls.
 
 ## 2. Product Summary
 

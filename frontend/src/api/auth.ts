@@ -1,5 +1,15 @@
 import { apiRequest } from "./client";
-import type { AuthUser, Department, PermissionKey, Role } from "../auth/types";
+import type { AuthScope, AuthUser, Department, PermissionKey, Role } from "../auth/types";
+
+type BackendAuthScope = {
+  id: string;
+  type: string;
+  key: string;
+  display_name: string;
+  access_level: string | null;
+  is_default: boolean;
+  department_id: string | null;
+};
 
 type BackendAuthUser = {
   id: string;
@@ -8,6 +18,7 @@ type BackendAuthUser = {
   role: Role | null;
   department_id: string | null;
   department: Department | null;
+  scopes: BackendAuthScope[];
   status: string;
   permissions: PermissionKey[];
   auth_mode: string;
@@ -70,8 +81,21 @@ function mapAuthUser(user: BackendAuthUser): AuthUser {
     role: user.role,
     departmentId: user.department_id,
     department: user.department,
+    scopes: user.scopes.map(mapAuthScope),
     status: user.status,
     permissions: user.permissions,
     authMode: user.auth_mode
+  };
+}
+
+function mapAuthScope(scope: BackendAuthScope): AuthScope {
+  return {
+    id: scope.id,
+    type: scope.type,
+    key: scope.key,
+    displayName: scope.display_name,
+    accessLevel: scope.access_level,
+    isDefault: scope.is_default,
+    departmentId: scope.department_id
   };
 }

@@ -15,8 +15,23 @@ const authUser = {
     id: "department-id",
     name: "Finance"
   },
+  scopes: [
+    {
+      id: "scope-id",
+      type: "department" as const,
+      key: "finance",
+      displayName: "Finance",
+      accessLevel: "read",
+      isDefault: true,
+      departmentId: "department-id"
+    }
+  ],
   status: "active",
-  permissions: ["can_run_free_query" as const, "can_request_action" as const],
+  permissions: [
+    "can_run_free_query" as const,
+    "can_query_scoped_data" as const,
+    "can_request_action" as const
+  ],
   authMode: "demo"
 };
 
@@ -27,6 +42,17 @@ const backendUser = {
   role: authUser.role,
   department_id: authUser.departmentId,
   department: authUser.department,
+  scopes: [
+    {
+      id: "scope-id",
+      type: "department",
+      key: "finance",
+      display_name: "Finance",
+      access_level: "read",
+      is_default: true,
+      department_id: "department-id"
+    }
+  ],
   status: authUser.status,
   permissions: authUser.permissions,
   auth_mode: authUser.authMode

@@ -27,11 +27,13 @@ from app.domains.it_operations.models import (
 )
 from app.domains.it_operations.seed_profiles import SeedProfile, get_seed_profile
 from app.models.product import (
+    AccessScope,
     AppAuditLog,
     AppUser,
     ApprovalRequest,
     Dashboard,
     DashboardCard,
+    DataResource,
     EvaluationResult,
     EvaluationRun,
     Notification,
@@ -41,6 +43,7 @@ from app.models.product import (
     RolePermission,
     RoleUpgradeRequest,
     SavedQuery,
+    UserAccessScope,
     UserPermission,
 )
 
@@ -74,23 +77,28 @@ PERMISSIONS = [
     ("can_use_query_templates", "query", "Use approved query templates"),
     ("can_run_free_query", "query", "Ask free-form data questions"),
     ("can_query_department_data", "query", "Query department-scoped data"),
+    ("can_query_scoped_data", "query", "Query assigned-scope data"),
     ("can_query_global_data", "query", "Query global data"),
     ("can_query_product_tables", "query", "Query product tables in admin mode"),
     ("can_view_sql", "query", "View generated SQL"),
     ("can_view_query_history_department", "query", "View department query history"),
+    ("can_view_query_history_scope", "query", "View assigned-scope query history"),
     ("can_star_dashboard", "dashboard", "Star dashboards and cards"),
     ("can_create_personal_dashboard", "dashboard", "Create personal dashboards"),
     ("can_create_department_dashboard", "dashboard", "Create department dashboards"),
+    ("can_create_scope_dashboard", "dashboard", "Create assigned-scope dashboards"),
     ("can_create_global_dashboard", "dashboard", "Create global dashboards"),
     (
         "can_manage_department_dashboard",
         "dashboard",
         "Manage department dashboards",
     ),
+    ("can_manage_scope_dashboard", "dashboard", "Manage assigned-scope dashboards"),
     ("can_manage_global_dashboard", "dashboard", "Manage global dashboards"),
     ("can_create_card", "dashboard", "Create dashboard cards"),
     ("can_request_action", "action", "Request controlled actions"),
     ("can_approve_department_action", "action", "Approve department actions"),
+    ("can_approve_scoped_action", "action", "Approve assigned-scope actions"),
     ("can_approve_global_action", "action", "Approve global actions"),
     ("can_approve_policy_override", "action", "Approve policy override actions"),
     (
@@ -103,11 +111,14 @@ PERMISSIONS = [
     ("can_downgrade_user_role", "admin", "Downgrade application user roles"),
     ("can_approve_role_requests", "admin", "Approve role upgrade requests"),
     ("can_view_department_audit", "audit", "View department audit data"),
+    ("can_view_scope_audit", "audit", "View assigned-scope audit data"),
     ("can_view_global_audit", "audit", "View global audit data"),
     ("can_view_department_evaluation", "evaluation", "View department evaluation data"),
+    ("can_view_scope_evaluation", "evaluation", "View assigned-scope evaluation data"),
     ("can_view_global_evaluation", "evaluation", "View global evaluation data"),
     ("can_view_own_data", "data", "View own scoped data"),
     ("can_view_department_data", "data", "View department-scoped data"),
+    ("can_view_scoped_data", "data", "View assigned-scope data"),
     ("can_view_global_data", "data", "View global data"),
 ]
 
@@ -123,10 +134,13 @@ ROLE_PERMISSION_KEYS = {
         "can_star_dashboard",
         "can_run_free_query",
         "can_query_department_data",
+        "can_query_scoped_data",
         "can_view_department_data",
+        "can_view_scoped_data",
         "can_create_personal_dashboard",
         "can_request_action",
         "can_view_department_evaluation",
+        "can_view_scope_evaluation",
     ],
     "analyst": [
         "can_use_query_templates",
@@ -134,17 +148,25 @@ ROLE_PERMISSION_KEYS = {
         "can_star_dashboard",
         "can_run_free_query",
         "can_query_department_data",
+        "can_query_scoped_data",
         "can_view_department_data",
+        "can_view_scoped_data",
         "can_create_personal_dashboard",
         "can_request_action",
         "can_view_department_evaluation",
+        "can_view_scope_evaluation",
         "can_view_sql",
         "can_create_department_dashboard",
+        "can_create_scope_dashboard",
         "can_manage_department_dashboard",
+        "can_manage_scope_dashboard",
         "can_create_card",
         "can_approve_department_action",
+        "can_approve_scoped_action",
         "can_view_query_history_department",
+        "can_view_query_history_scope",
         "can_view_department_audit",
+        "can_view_scope_audit",
     ],
     "admin": [key for key, _category, _description in PERMISSIONS],
 }
@@ -154,6 +176,117 @@ DEMO_USERS = [
     ("demo.analyst@queryops.local", "Demo Analyst", "analyst", "IT"),
     ("demo.manager@queryops.local", "Demo Manager", "manager", "Finance"),
     ("demo.user@queryops.local", "Demo User", "user", "Sales"),
+]
+
+DATA_RESOURCE_SPECS = [
+    (
+        "departments",
+        "Departments",
+        "internal",
+        None,
+        None,
+        False,
+        "schema_only",
+    ),
+    (
+        "directory_users",
+        "Directory Users",
+        "scoped_restricted",
+        "department",
+        "department_id",
+        False,
+        "aggregate_safe",
+    ),
+    (
+        "login_events",
+        "Login Events",
+        "sensitive",
+        "department",
+        "department_id",
+        False,
+        "aggregate_safe",
+    ),
+    (
+        "licenses",
+        "Licenses",
+        "internal",
+        None,
+        None,
+        False,
+        "result_safe",
+    ),
+    (
+        "license_assignments",
+        "License Assignments",
+        "scoped_restricted",
+        "department",
+        "department_id",
+        False,
+        "aggregate_safe",
+    ),
+    (
+        "devices",
+        "Devices",
+        "scoped_restricted",
+        "department",
+        "department_id",
+        False,
+        "aggregate_safe",
+    ),
+    (
+        "software_installs",
+        "Software Installs",
+        "sensitive",
+        "department",
+        "department_id",
+        False,
+        "aggregate_safe",
+    ),
+    (
+        "support_tickets",
+        "Support Tickets",
+        "scoped_restricted",
+        "department",
+        "department_id",
+        False,
+        "aggregate_safe",
+    ),
+    (
+        "groups",
+        "Groups",
+        "sensitive",
+        "department",
+        "department_id",
+        False,
+        "aggregate_safe",
+    ),
+    (
+        "user_group_memberships",
+        "User Group Memberships",
+        "sensitive",
+        "department",
+        "department_id",
+        False,
+        "aggregate_safe",
+    ),
+    (
+        "security_events",
+        "Security Events",
+        "highly_sensitive",
+        "department",
+        "department_id",
+        False,
+        "aggregate_safe",
+    ),
+    (
+        "it_audit_events",
+        "IT Audit Events",
+        "sensitive",
+        "department",
+        "department_id",
+        False,
+        "none",
+    ),
 ]
 
 GROUP_SPECS = [
@@ -253,6 +386,9 @@ SEEDED_MODELS = [
     Device,
     DirectoryUser,
     License,
+    UserAccessScope,
+    AccessScope,
+    DataResource,
     Department,
     AppAuditLog,
     EvaluationResult,
@@ -273,9 +409,12 @@ SEEDED_MODELS = [
 
 COUNT_MODELS = {
     "app_users": AppUser,
+    "access_scopes": AccessScope,
+    "data_resources": DataResource,
     "roles": Role,
     "permissions": Permission,
     "role_permissions": RolePermission,
+    "user_access_scopes": UserAccessScope,
     "departments": Department,
     "directory_users": DirectoryUser,
     "login_events": LoginEvent,
@@ -319,6 +458,7 @@ class SeedState:
     roles: dict[str, Role]
     permissions: dict[str, Permission]
     app_users: dict[str, AppUser]
+    access_scopes: dict[tuple[str, str], AccessScope]
     directory_users: list[DirectoryUser]
     human_users: list[DirectoryUser]
     service_accounts: list[DirectoryUser]
@@ -358,6 +498,7 @@ def seed_database(
         roles={},
         permissions={},
         app_users={},
+        access_scopes={},
         directory_users=[],
         human_users=[],
         service_accounts=[],
@@ -591,6 +732,92 @@ def _seed_product_core(session: Session, state: SeedState) -> None:
         )
         state.app_users[email] = app_user
         session.add(app_user)
+
+    _seed_access_scopes(session, state)
+    _seed_data_resources(session, state)
+
+
+def _seed_access_scopes(session: Session, state: SeedState) -> None:
+    global_scope = AccessScope(
+        id=_id(state.profile, "access-scope", "global", "global"),
+        scope_type="global",
+        scope_key="global",
+        display_name="Global",
+        domain=None,
+        department_id=None,
+        is_system_scope=True,
+        created_at=REFERENCE_NOW,
+        updated_at=REFERENCE_NOW,
+    )
+    state.access_scopes[("global", "global")] = global_scope
+    session.add(global_scope)
+
+    for department in state.departments:
+        scope_key = _scope_key(department.name)
+        department_scope = AccessScope(
+            id=_id(state.profile, "access-scope", "department", scope_key),
+            scope_type="department",
+            scope_key=scope_key,
+            display_name=department.name,
+            domain="it_operations",
+            department_id=department.id,
+            is_system_scope=True,
+            created_at=REFERENCE_NOW,
+            updated_at=REFERENCE_NOW,
+        )
+        state.access_scopes[("department", scope_key)] = department_scope
+        session.add(department_scope)
+
+    demo_assignments = {
+        "demo.admin@queryops.local": ("global", "global", "manage"),
+        "demo.analyst@queryops.local": ("department", "it", "manage"),
+        "demo.manager@queryops.local": ("department", "finance", "read"),
+        "demo.user@queryops.local": ("department", "sales", "read"),
+    }
+    for email, (scope_type, scope_key, access_level) in demo_assignments.items():
+        user = state.app_users[email]
+        scope = state.access_scopes[(scope_type, scope_key)]
+        session.add(
+            UserAccessScope(
+                user_id=user.id,
+                scope_id=scope.id,
+                access_level=access_level,
+                is_default=True,
+                created_at=REFERENCE_NOW,
+            )
+        )
+
+
+def _seed_data_resources(session: Session, state: SeedState) -> None:
+    for (
+        table_name,
+        display_name,
+        sensitivity_level,
+        scope_type,
+        scope_column,
+        is_exportable,
+        llm_exposure_level,
+    ) in DATA_RESOURCE_SPECS:
+        session.add(
+            DataResource(
+                id=_id(state.profile, "data-resource", table_name),
+                resource_type="table",
+                domain="it_operations",
+                schema_name="public",
+                table_name=table_name,
+                column_name=None,
+                display_name=display_name,
+                sensitivity_level=sensitivity_level,
+                scope_type=scope_type,
+                scope_column=scope_column,
+                is_queryable=True,
+                is_exportable=is_exportable,
+                llm_exposure_level=llm_exposure_level,
+                resource_metadata=None,
+                created_at=REFERENCE_NOW,
+                updated_at=REFERENCE_NOW,
+            )
+        )
 
 
 def _seed_departments(session: Session, state: SeedState) -> None:
@@ -1145,6 +1372,10 @@ def _count(session: Session, statement) -> int:
 
 def _id(profile: SeedProfile, *parts: str) -> uuid.UUID:
     return uuid.uuid5(NAMESPACE, ":".join((profile.name, *parts)))
+
+
+def _scope_key(value: str) -> str:
+    return value.strip().lower().replace(" ", "-")
 
 
 def _job_title(index: int) -> str:
