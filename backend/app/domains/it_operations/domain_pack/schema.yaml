@@ -1,0 +1,613 @@
+{
+  "domain": {
+    "id": "it_operations",
+    "name": "IT Operations",
+    "version": "1"
+  },
+  "allowed_resource_table_names": [
+    "departments",
+    "devices",
+    "directory_users",
+    "groups",
+    "license_assignments",
+    "licenses",
+    "login_events",
+    "security_events",
+    "software_installs",
+    "support_tickets",
+    "user_group_memberships"
+  ],
+  "tables": [
+    {
+      "name": "departments",
+      "display_name": "Departments",
+      "description": "Reference table for business departments used by IT Operations access scopes.",
+      "scope_type": null,
+      "scope_column": null,
+      "queryable": true,
+      "columns": [
+        {
+          "name": "created_at",
+          "data_type": "timestamp",
+          "description": "Record creation timestamp."
+        },
+        {
+          "name": "description",
+          "data_type": "text",
+          "description": "Department description.",
+          "nullable": true
+        },
+        {
+          "name": "id",
+          "data_type": "uuid",
+          "description": "Department identifier."
+        },
+        {
+          "name": "name",
+          "data_type": "string",
+          "description": "Department name."
+        },
+        {
+          "name": "updated_at",
+          "data_type": "timestamp",
+          "description": "Record update timestamp."
+        }
+      ]
+    },
+    {
+      "name": "devices",
+      "display_name": "Devices",
+      "description": "Managed devices assigned to users or departments.",
+      "scope_type": "department",
+      "scope_column": "department_id",
+      "queryable": true,
+      "columns": [
+        {
+          "name": "antivirus_status",
+          "data_type": "string",
+          "description": "Endpoint antivirus state."
+        },
+        {
+          "name": "assigned_user_id",
+          "data_type": "uuid",
+          "description": "Assigned directory user identifier.",
+          "nullable": true
+        },
+        {
+          "name": "compliance_status",
+          "data_type": "string",
+          "description": "Device compliance state."
+        },
+        {
+          "name": "department_id",
+          "data_type": "uuid",
+          "description": "Department scope identifier."
+        },
+        {
+          "name": "device_type",
+          "data_type": "string",
+          "description": "Device form factor."
+        },
+        {
+          "name": "encryption_enabled",
+          "data_type": "boolean",
+          "description": "Whether disk encryption is enabled."
+        },
+        {
+          "name": "hostname",
+          "data_type": "string",
+          "description": "Device hostname."
+        },
+        {
+          "name": "id",
+          "data_type": "uuid",
+          "description": "Device identifier."
+        },
+        {
+          "name": "last_seen_at",
+          "data_type": "timestamp",
+          "description": "Most recent device check-in timestamp.",
+          "nullable": true
+        },
+        {
+          "name": "os",
+          "data_type": "string",
+          "description": "Operating system family."
+        },
+        {
+          "name": "os_version",
+          "data_type": "string",
+          "description": "Operating system version."
+        }
+      ]
+    },
+    {
+      "name": "directory_users",
+      "display_name": "Directory Users",
+      "description": "Directory identity records for employees and service accounts.",
+      "scope_type": "department",
+      "scope_column": "department_id",
+      "queryable": true,
+      "columns": [
+        {
+          "name": "account_status",
+          "data_type": "string",
+          "description": "Directory account status."
+        },
+        {
+          "name": "account_type",
+          "data_type": "string",
+          "description": "Human or service account classification."
+        },
+        {
+          "name": "department_id",
+          "data_type": "uuid",
+          "description": "Department scope identifier."
+        },
+        {
+          "name": "email",
+          "data_type": "string",
+          "description": "Directory email address."
+        },
+        {
+          "name": "employee_status",
+          "data_type": "string",
+          "description": "Employment status."
+        },
+        {
+          "name": "full_name",
+          "data_type": "string",
+          "description": "Display name."
+        },
+        {
+          "name": "id",
+          "data_type": "uuid",
+          "description": "Directory user identifier."
+        },
+        {
+          "name": "job_title",
+          "data_type": "string",
+          "description": "Job title.",
+          "nullable": true
+        },
+        {
+          "name": "last_login_at",
+          "data_type": "timestamp",
+          "description": "Most recent successful login timestamp.",
+          "nullable": true
+        },
+        {
+          "name": "manager_id",
+          "data_type": "uuid",
+          "description": "Manager directory user identifier.",
+          "nullable": true
+        }
+      ]
+    },
+    {
+      "name": "groups",
+      "display_name": "Groups",
+      "description": "Directory groups and access groups.",
+      "scope_type": "department",
+      "scope_column": "department_id",
+      "queryable": true,
+      "columns": [
+        {
+          "name": "department_id",
+          "data_type": "uuid",
+          "description": "Department scope identifier.",
+          "nullable": true
+        },
+        {
+          "name": "group_type",
+          "data_type": "string",
+          "description": "Group category."
+        },
+        {
+          "name": "id",
+          "data_type": "uuid",
+          "description": "Group identifier."
+        },
+        {
+          "name": "is_privileged",
+          "data_type": "boolean",
+          "description": "Whether the group grants privileged access."
+        },
+        {
+          "name": "name",
+          "data_type": "string",
+          "description": "Group name."
+        },
+        {
+          "name": "risk_level",
+          "data_type": "string",
+          "description": "Access risk classification."
+        }
+      ]
+    },
+    {
+      "name": "it_audit_events",
+      "display_name": "IT Audit Events",
+      "description": "Internal IT audit event records. These are not queryable in V1.",
+      "scope_type": "department",
+      "scope_column": "department_id",
+      "queryable": false,
+      "columns": [
+        {
+          "name": "actor_user_id",
+          "data_type": "uuid",
+          "description": "Actor directory user identifier.",
+          "nullable": true
+        },
+        {
+          "name": "department_id",
+          "data_type": "uuid",
+          "description": "Department scope identifier.",
+          "nullable": true
+        },
+        {
+          "name": "event_type",
+          "data_type": "string",
+          "description": "Audit event type."
+        },
+        {
+          "name": "id",
+          "data_type": "uuid",
+          "description": "Audit event identifier."
+        },
+        {
+          "name": "occurred_at",
+          "data_type": "timestamp",
+          "description": "Audit event timestamp."
+        },
+        {
+          "name": "target_user_id",
+          "data_type": "uuid",
+          "description": "Target directory user identifier.",
+          "nullable": true
+        }
+      ]
+    },
+    {
+      "name": "license_assignments",
+      "display_name": "License Assignments",
+      "description": "License assignment records for directory users.",
+      "scope_type": "department",
+      "scope_column": "department_id",
+      "queryable": true,
+      "columns": [
+        {
+          "name": "assigned_at",
+          "data_type": "timestamp",
+          "description": "Assignment timestamp."
+        },
+        {
+          "name": "department_id",
+          "data_type": "uuid",
+          "description": "Department scope identifier."
+        },
+        {
+          "name": "id",
+          "data_type": "uuid",
+          "description": "License assignment identifier."
+        },
+        {
+          "name": "is_exception",
+          "data_type": "boolean",
+          "description": "Whether the assignment is an exception."
+        },
+        {
+          "name": "is_mandatory",
+          "data_type": "boolean",
+          "description": "Whether the license is mandatory for the user."
+        },
+        {
+          "name": "last_used_at",
+          "data_type": "timestamp",
+          "description": "Most recent license usage timestamp.",
+          "nullable": true
+        },
+        {
+          "name": "license_id",
+          "data_type": "uuid",
+          "description": "License identifier."
+        },
+        {
+          "name": "status",
+          "data_type": "string",
+          "description": "Assignment status."
+        },
+        {
+          "name": "user_id",
+          "data_type": "uuid",
+          "description": "Directory user identifier."
+        }
+      ]
+    },
+    {
+      "name": "licenses",
+      "display_name": "Licenses",
+      "description": "Reference table for software license products.",
+      "scope_type": null,
+      "scope_column": null,
+      "queryable": true,
+      "columns": [
+        {
+          "name": "id",
+          "data_type": "uuid",
+          "description": "License identifier."
+        },
+        {
+          "name": "is_mandatory_default",
+          "data_type": "boolean",
+          "description": "Whether the license is mandatory by default."
+        },
+        {
+          "name": "monthly_cost_usd",
+          "data_type": "numeric",
+          "description": "Monthly cost in USD."
+        },
+        {
+          "name": "product_name",
+          "data_type": "string",
+          "description": "Product name."
+        },
+        {
+          "name": "vendor",
+          "data_type": "string",
+          "description": "License vendor."
+        }
+      ]
+    },
+    {
+      "name": "login_events",
+      "display_name": "Login Events",
+      "description": "Directory login activity records.",
+      "scope_type": "department",
+      "scope_column": "department_id",
+      "queryable": true,
+      "columns": [
+        {
+          "name": "department_id",
+          "data_type": "uuid",
+          "description": "Department scope identifier."
+        },
+        {
+          "name": "device_id",
+          "data_type": "uuid",
+          "description": "Device identifier.",
+          "nullable": true
+        },
+        {
+          "name": "event_type",
+          "data_type": "string",
+          "description": "Login event result."
+        },
+        {
+          "name": "failure_reason",
+          "data_type": "text",
+          "description": "Failure reason for failed logins.",
+          "nullable": true
+        },
+        {
+          "name": "id",
+          "data_type": "uuid",
+          "description": "Login event identifier."
+        },
+        {
+          "name": "occurred_at",
+          "data_type": "timestamp",
+          "description": "Login event timestamp."
+        },
+        {
+          "name": "user_id",
+          "data_type": "uuid",
+          "description": "Directory user identifier."
+        }
+      ]
+    },
+    {
+      "name": "security_events",
+      "display_name": "Security Events",
+      "description": "Security detections associated with users, devices, or departments.",
+      "scope_type": "department",
+      "scope_column": "department_id",
+      "queryable": true,
+      "columns": [
+        {
+          "name": "department_id",
+          "data_type": "uuid",
+          "description": "Department scope identifier.",
+          "nullable": true
+        },
+        {
+          "name": "device_id",
+          "data_type": "uuid",
+          "description": "Device identifier.",
+          "nullable": true
+        },
+        {
+          "name": "event_type",
+          "data_type": "string",
+          "description": "Security event type."
+        },
+        {
+          "name": "id",
+          "data_type": "uuid",
+          "description": "Security event identifier."
+        },
+        {
+          "name": "occurred_at",
+          "data_type": "timestamp",
+          "description": "Security event timestamp."
+        },
+        {
+          "name": "severity",
+          "data_type": "string",
+          "description": "Security event severity."
+        },
+        {
+          "name": "status",
+          "data_type": "string",
+          "description": "Security event workflow status."
+        },
+        {
+          "name": "user_id",
+          "data_type": "uuid",
+          "description": "Directory user identifier.",
+          "nullable": true
+        }
+      ]
+    },
+    {
+      "name": "software_installs",
+      "display_name": "Software Installs",
+      "description": "Installed software records for managed devices.",
+      "scope_type": "department",
+      "scope_column": "department_id",
+      "queryable": true,
+      "columns": [
+        {
+          "name": "department_id",
+          "data_type": "uuid",
+          "description": "Department scope identifier."
+        },
+        {
+          "name": "device_id",
+          "data_type": "uuid",
+          "description": "Device identifier."
+        },
+        {
+          "name": "id",
+          "data_type": "uuid",
+          "description": "Software install identifier."
+        },
+        {
+          "name": "installed_at",
+          "data_type": "timestamp",
+          "description": "Software install timestamp."
+        },
+        {
+          "name": "is_outdated",
+          "data_type": "boolean",
+          "description": "Whether the installed software is outdated."
+        },
+        {
+          "name": "is_unsupported",
+          "data_type": "boolean",
+          "description": "Whether the installed software is unsupported."
+        },
+        {
+          "name": "risk_level",
+          "data_type": "string",
+          "description": "Software risk level."
+        },
+        {
+          "name": "software_name",
+          "data_type": "string",
+          "description": "Software product name."
+        },
+        {
+          "name": "vendor",
+          "data_type": "string",
+          "description": "Software vendor.",
+          "nullable": true
+        },
+        {
+          "name": "version",
+          "data_type": "string",
+          "description": "Software version.",
+          "nullable": true
+        }
+      ]
+    },
+    {
+      "name": "support_tickets",
+      "display_name": "Support Tickets",
+      "description": "IT support tickets opened by department users.",
+      "scope_type": "department",
+      "scope_column": "department_id",
+      "queryable": true,
+      "columns": [
+        {
+          "name": "assignee_user_id",
+          "data_type": "uuid",
+          "description": "Assigned support user identifier.",
+          "nullable": true
+        },
+        {
+          "name": "category",
+          "data_type": "string",
+          "description": "Ticket category."
+        },
+        {
+          "name": "department_id",
+          "data_type": "uuid",
+          "description": "Department scope identifier."
+        },
+        {
+          "name": "id",
+          "data_type": "uuid",
+          "description": "Support ticket identifier."
+        },
+        {
+          "name": "opened_at",
+          "data_type": "timestamp",
+          "description": "Ticket open timestamp."
+        },
+        {
+          "name": "priority",
+          "data_type": "string",
+          "description": "Ticket priority."
+        },
+        {
+          "name": "requester_user_id",
+          "data_type": "uuid",
+          "description": "Requester directory user identifier.",
+          "nullable": true
+        },
+        {
+          "name": "status",
+          "data_type": "string",
+          "description": "Ticket workflow status."
+        }
+      ]
+    },
+    {
+      "name": "user_group_memberships",
+      "display_name": "User Group Memberships",
+      "description": "Membership links between directory users and groups.",
+      "scope_type": "department",
+      "scope_column": "department_id",
+      "queryable": true,
+      "columns": [
+        {
+          "name": "added_at",
+          "data_type": "timestamp",
+          "description": "Membership creation timestamp."
+        },
+        {
+          "name": "added_by_user_id",
+          "data_type": "uuid",
+          "description": "Directory user that added the membership.",
+          "nullable": true
+        },
+        {
+          "name": "department_id",
+          "data_type": "uuid",
+          "description": "Department scope identifier."
+        },
+        {
+          "name": "group_id",
+          "data_type": "uuid",
+          "description": "Group identifier."
+        },
+        {
+          "name": "user_id",
+          "data_type": "uuid",
+          "description": "Directory user identifier."
+        }
+      ]
+    }
+  ]
+}

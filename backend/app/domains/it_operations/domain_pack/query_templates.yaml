@@ -1,0 +1,120 @@
+{
+  "templates": [
+    {
+      "id": "high_severity_security_events_by_department",
+      "title": "High severity security events",
+      "description": "Count open high and critical security events inside the current department scope.",
+      "category": "Security",
+      "natural_language_question": "Show high severity security events in my department.",
+      "required_action": "query:scoped_data",
+      "required_permission": "can_query_scoped_data",
+      "scope_type": "department",
+      "referenced_tables": [
+        "security_events"
+      ],
+      "parameters": [
+        {
+          "name": "minimum_severity",
+          "data_type": "string",
+          "description": "Minimum severity to include.",
+          "required": false,
+          "default": "high"
+        }
+      ],
+      "sql": "SELECT severity, status, COUNT(*) AS event_count FROM security_events WHERE severity IN ('high', 'critical') AND status IN ('open', 'investigating') GROUP BY severity, status ORDER BY severity, status"
+    },
+    {
+      "id": "inactive_users_by_department",
+      "title": "Inactive users",
+      "description": "List directory users in the current department scope who have not logged in recently.",
+      "category": "Identity",
+      "natural_language_question": "Show inactive users in my department.",
+      "required_action": "query:scoped_data",
+      "required_permission": "can_query_scoped_data",
+      "scope_type": "department",
+      "referenced_tables": [
+        "directory_users"
+      ],
+      "parameters": [
+        {
+          "name": "inactive_days",
+          "data_type": "integer",
+          "description": "Number of days without a successful login.",
+          "required": false,
+          "default": 90
+        }
+      ],
+      "sql": "SELECT id, email, full_name, account_status, employee_status, last_login_at FROM directory_users WHERE last_login_at IS NULL OR last_login_at < CURRENT_TIMESTAMP - (:inactive_days * INTERVAL '1 day') ORDER BY last_login_at NULLS FIRST, email"
+    },
+    {
+      "id": "non_compliant_devices_by_department",
+      "title": "Non-compliant devices",
+      "description": "Find devices with non-compliant posture in the current department scope.",
+      "category": "Devices",
+      "natural_language_question": "Show non-compliant devices in my department.",
+      "required_action": "query:scoped_data",
+      "required_permission": "can_query_scoped_data",
+      "scope_type": "department",
+      "referenced_tables": [
+        "devices"
+      ],
+      "parameters": [],
+      "sql": "SELECT id, hostname, os, os_version, compliance_status, antivirus_status, encryption_enabled, last_seen_at FROM devices WHERE compliance_status = 'non_compliant' OR antivirus_status IN ('outdated', 'missing') OR encryption_enabled = false ORDER BY hostname"
+    },
+    {
+      "id": "open_support_tickets_by_department",
+      "title": "Open support tickets",
+      "description": "Summarize open and in-progress support tickets in the current department scope.",
+      "category": "Support",
+      "natural_language_question": "How many open support tickets exist in my department by priority?",
+      "required_action": "query:scoped_data",
+      "required_permission": "can_query_scoped_data",
+      "scope_type": "department",
+      "referenced_tables": [
+        "support_tickets"
+      ],
+      "parameters": [],
+      "sql": "SELECT priority, status, COUNT(*) AS ticket_count FROM support_tickets WHERE status IN ('open', 'in_progress') GROUP BY priority, status ORDER BY priority, status"
+    },
+    {
+      "id": "privileged_group_memberships_by_department",
+      "title": "Privileged group memberships",
+      "description": "Count privileged group memberships in the current department scope.",
+      "category": "Access",
+      "natural_language_question": "Show privileged group memberships in my department.",
+      "required_action": "query:scoped_data",
+      "required_permission": "can_query_scoped_data",
+      "scope_type": "department",
+      "referenced_tables": [
+        "groups",
+        "user_group_memberships"
+      ],
+      "parameters": [],
+      "sql": "SELECT g.name, g.risk_level, COUNT(*) AS member_count FROM groups g JOIN user_group_memberships ugm ON ugm.group_id = g.id WHERE g.is_privileged = true GROUP BY g.name, g.risk_level ORDER BY g.risk_level, g.name"
+    },
+    {
+      "id": "unused_licenses_by_department",
+      "title": "Unused licenses",
+      "description": "Find active non-mandatory license assignments that have not been used recently.",
+      "category": "Licenses",
+      "natural_language_question": "Show unused paid licenses in my department.",
+      "required_action": "query:scoped_data",
+      "required_permission": "can_query_scoped_data",
+      "scope_type": "department",
+      "referenced_tables": [
+        "license_assignments",
+        "licenses"
+      ],
+      "parameters": [
+        {
+          "name": "unused_days",
+          "data_type": "integer",
+          "description": "Number of days without license usage.",
+          "required": false,
+          "default": 60
+        }
+      ],
+      "sql": "SELECT la.id, la.user_id, l.product_name, l.vendor, l.monthly_cost_usd, la.last_used_at FROM license_assignments la JOIN licenses l ON l.id = la.license_id WHERE la.status = 'active' AND la.is_mandatory = false AND (la.last_used_at IS NULL OR la.last_used_at < CURRENT_TIMESTAMP - (:unused_days * INTERVAL '1 day')) ORDER BY l.product_name, la.last_used_at NULLS FIRST"
+    }
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "terms": [
+    {
+      "name": "inactive user",
+      "description": "A directory user whose last successful login is older than the requested inactivity window or missing.",
+      "related_tables": [
+        "directory_users",
+        "login_events"
+      ]
+    },
+    {
+      "name": "non-compliant device",
+      "description": "A managed device with non-compliant posture, outdated antivirus, missing antivirus, or disabled encryption.",
+      "related_tables": [
+        "devices",
+        "software_installs"
+      ]
+    },
+    {
+      "name": "open support ticket",
+      "description": "A support ticket that is still open or in progress.",
+      "related_tables": [
+        "support_tickets"
+      ]
+    },
+    {
+      "name": "privileged group",
+      "description": "A directory group that grants privileged or high-risk access.",
+      "related_tables": [
+        "groups",
+        "user_group_memberships"
+      ]
+    },
+    {
+      "name": "security event",
+      "description": "A security detection associated with a user, device, or department.",
+      "related_tables": [
+        "security_events"
+      ]
+    },
+    {
+      "name": "unused license",
+      "description": "A paid license assignment that has not been used recently and is not mandatory.",
+      "related_tables": [
+        "license_assignments",
+        "licenses"
+      ]
+    }
+  ]
+}
