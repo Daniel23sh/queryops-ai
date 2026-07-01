@@ -69,22 +69,22 @@ The active milestone is defined in `PROJECT_PLAN.md`.
 At the time this file was updated, the active target is:
 
 ```txt
-Milestone 3 — RLS & Security Foundation
+Milestone 3 — RLS & Security Foundation is complete.
 ```
 
-Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, and Post-Milestone 2.5 hardening are complete under the previous scope.
+Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, and Milestone 3 are complete under the previous scope.
 
 Milestone 2.5 introduced `access_scopes`, `user_access_scopes`, `data_resources`, `UserAccessContext`, `AccessDecision`, and `evaluate_access(subject, action, resource, context)`.
 
-The current work is Milestone 3. It adds the security foundation for scope-aware PostgreSQL RLS before Query Engine work begins.
+Milestone 3 added the security foundation for scope-aware PostgreSQL RLS before Query Engine work begins.
 
-Milestone 3 scope includes scope-aware PostgreSQL RLS, a `SET LOCAL` RLS context helper, DB session/helper integration for future Query Engine use, initial security/RLS tests, and policy helper refinements where needed.
+Milestone 3 delivered scope-aware PostgreSQL RLS, a `SET LOCAL` RLS context helper, DB session/helper integration for future Query Engine use, initial security/RLS tests, and policy helper refinements.
 
 V1 access decisions must remain simple and testable: permission plus assigned access scope plus minimal resource metadata.
 
-Milestone 3 must not implement Query Engine, LLM calls, SQL generation, dashboards, actions behavior, approval/action execution behavior, CSV export behavior, Full ABAC, dynamic policy engine, `policy_rules`, policy builder UI, ReBAC, masking, tenant/project/region management, or external authorization services.
+Milestone 3 did not implement Query Engine, LLM calls, SQL generation, dashboards, actions behavior, approval/action execution behavior, CSV export behavior, Full ABAC, dynamic policy engine, `policy_rules`, policy builder UI, ReBAC, masking, tenant/project/region management, or external authorization services.
 
-Milestone 4 is Query Engine Backend. It remains planned and must not start during this task unless explicitly requested.
+Milestone 4 is Query Engine Backend. It remains planned and must not start unless explicitly requested.
 
 ## 6. Product Direction
 

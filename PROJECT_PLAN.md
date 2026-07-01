@@ -4,11 +4,11 @@
 
 The current active target is:
 
-`Milestone 3 — RLS & Security Foundation`
+`Milestone 3 — RLS & Security Foundation` is complete.
 
-Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, and Post-Milestone 2.5 hardening are complete under the previous scope.
+Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, and Milestone 3 RLS & Security Foundation are complete.
 
-The current work is Milestone 3, which implements the PostgreSQL RLS and security foundation before Query Engine work begins. It must build on the existing Access Context Foundation and keep V1 access decisions simple and testable: decisions are based on permission, assigned access scope, and minimal resource metadata.
+Milestone 3 implemented the PostgreSQL RLS and security foundation before Query Engine work begins. It builds on the existing Access Context Foundation and keeps V1 access decisions simple and testable: decisions are based on permission, assigned access scope, and minimal resource metadata.
 
 Milestone 2.5 delivered:
 
@@ -22,7 +22,7 @@ Milestone 2.5 delivered:
 - `/auth/me` and demo login scope serialization
 - role upgrade request compatibility with optional requested scope metadata
 
-Milestone 3 scope:
+Milestone 3 delivered:
 
 - scope-aware PostgreSQL RLS for IT Operations domain tables
 - `SET LOCAL` RLS context helper
@@ -30,9 +30,9 @@ Milestone 3 scope:
 - initial security and RLS tests
 - policy helper refinements where needed
 
-Milestone 3 does not implement Query Engine, LLM calls, SQL generation, dashboards, actions behavior, approval/action execution behavior, CSV export behavior, Full ABAC, a dynamic policy engine, `policy_rules`, a policy builder UI, ReBAC, masking, tenant/project/region management, or external authorization services.
+Milestone 3 did not implement Query Engine, LLM calls, SQL generation, dashboards, actions behavior, approval/action execution behavior, CSV export behavior, Full ABAC, a dynamic policy engine, `policy_rules`, a policy builder UI, ReBAC, masking, tenant/project/region management, or external authorization services.
 
-Milestone 4 is Query Engine Backend. It remains planned and must not start during Milestone 3 unless explicitly requested.
+Milestone 4 is Query Engine Backend. It remains planned and is not active unless explicitly requested.
 
 ## 2. Product Summary
 
@@ -326,8 +326,8 @@ Milestone 1 should leave the repository ready for auth, permission, and RLS work
 
 ## 14. Next Milestone
 
-The next planned product milestone after the active Milestone 3 work is:
+The next planned product milestone is:
 
 `Milestone 4 — Query Engine Backend`
 
-Milestone 4 is not active. It must not start until Milestone 3 is complete and the user explicitly requests the milestone change.
+Milestone 4 is not active. It must not start until the user explicitly requests the milestone change.

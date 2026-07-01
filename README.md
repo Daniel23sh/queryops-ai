@@ -327,7 +327,7 @@ Default local URLs:
 * Backend health endpoint: `http://localhost:8000/health`
 * PostgreSQL: `localhost:5432`
 
-PostgreSQL is included for the local development environment. The current backend includes the database foundation, deterministic IT Operations seed data, local demo auth session endpoints, and the Access Context Foundation. RLS policies are planned for the active Milestone 3 work. Query Engine behavior, dashboards, actions, approvals, and audit behavior remain planned for later milestones.
+PostgreSQL is included for the local development environment. The current backend includes the database foundation, deterministic IT Operations seed data, local demo auth session endpoints, the Access Context Foundation, and scope-aware PostgreSQL RLS policies for IT Operations domain tables. Query Engine behavior, dashboards, actions, approvals, and audit behavior remain planned for later milestones.
 
 Stop the stack:
 
@@ -365,9 +365,34 @@ Run Alembic commands from the host with PostgreSQL running:
 export DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops
 alembic current
 alembic upgrade head
+alembic check
 ```
 
 When running inside Docker Compose, the backend uses the `postgres` service hostname from `DATABASE_URL`.
+
+Run PostgreSQL-backed RLS tests with local Postgres:
+
+```bash
+docker compose up -d postgres
+cd backend
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic upgrade head
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic check
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/pytest tests/test_rls_postgres.py -q
+```
+
+PostgreSQL is required for true RLS verification. SQLite-based tests can validate helper behavior and migration compatibility, but they do not enforce PostgreSQL Row-Level Security policies.
+
+RLS runtime context is set transaction-locally before scoped reads using:
+
+```txt
+app.current_user_id
+app.current_role
+app.current_scope_type
+app.current_scope_keys
+app.has_global_scope
+```
+
+For V1 IT Operations RLS, `app.current_scope_keys` contains comma-separated department UUID strings from assigned department access scopes. Human-readable `access_scopes.scope_key` values such as `finance` remain product metadata; domain table RLS compares against `department_id` UUIDs. Missing RLS context fails closed at the policy layer unless `app.has_global_scope` is true.
 
 Seed deterministic development data after migrations have been applied:
 
@@ -412,6 +437,16 @@ cd backend
 python -m pip install --upgrade pip
 pip install -e ".[dev]"
 pytest
+```
+
+Run the PostgreSQL RLS subset:
+
+```bash
+docker compose up -d postgres
+cd backend
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic upgrade head
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic check
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/pytest tests/test_rls_postgres.py -q
 ```
 
 ### Frontend
@@ -491,14 +526,16 @@ Implemented foundation functionality includes:
 * local demo auth session endpoints with CSRF protection and session expiration
 * role and permission mapping with role upgrade request flow
 * Access Context Foundation with access scopes, data resources, and simple access decisions
+* scope-aware PostgreSQL RLS policies for department-scoped IT Operations domain tables
+* RLS context helper and initial security/RLS test suite
 
-Current active planning target:
+Current milestone status:
 
 ```txt
-Milestone 3 — RLS & Security Foundation
+Milestone 3 — RLS & Security Foundation is complete.
 ```
 
-This branch activates Milestone 3 for scope-aware PostgreSQL RLS, a `SET LOCAL` RLS context helper, DB session/helper integration for future Query Engine use, initial security/RLS tests, and policy helper refinements where needed. Milestone 4 is Query Engine Backend and is not active.
+Milestone 3 delivered scope-aware PostgreSQL RLS, a transaction-local RLS context helper, safe access policy helpers, and security/RLS tests. Query Engine behavior, SQL generation, LLM calls, dashboards, actions, approvals, and CSV export are not implemented. Milestone 4 is Query Engine Backend and is not active.
 
 ## License
 
