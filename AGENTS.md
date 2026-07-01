@@ -69,16 +69,22 @@ The active milestone is defined in `PROJECT_PLAN.md`.
 At the time this file was updated, the active target is:
 
 ```txt
-Post-Milestone 2.5 Hardening — Access Context Foundation
+Milestone 3 — RLS & Security Foundation
 ```
 
-Milestone 0, Milestone 1, Milestone 2, and Milestone 2.5 are complete under the previous scope.
+Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, and Post-Milestone 2.5 hardening are complete under the previous scope.
 
-The current work is a hardening pass for the merged Access Context Foundation. Milestone 2.5 introduced `access_scopes`, `user_access_scopes`, `data_resources`, `UserAccessContext`, `AccessDecision`, and `evaluate_access(subject, action, resource, context)`.
+Milestone 2.5 introduced `access_scopes`, `user_access_scopes`, `data_resources`, `UserAccessContext`, `AccessDecision`, and `evaluate_access(subject, action, resource, context)`.
 
-V1 access decisions must remain simple and testable: permission plus assigned access scope plus minimal resource metadata. The next milestone must not start until this hardening pass is complete, and Milestone 3 must not be set as active unless explicitly requested.
+The current work is Milestone 3. It adds the security foundation for scope-aware PostgreSQL RLS before Query Engine work begins.
 
-This hardening pass must not implement PostgreSQL RLS policies, Query Engine, dashboards, Actions/Approvals behavior, CSV export behavior, real LLM calls, `policy_rules`, `policy_conditions`, dynamic policy language, policy builder UI, ReBAC, column masking, tenant/project/region UI, or external authorization services.
+Milestone 3 scope includes scope-aware PostgreSQL RLS, a `SET LOCAL` RLS context helper, DB session/helper integration for future Query Engine use, initial security/RLS tests, and policy helper refinements where needed.
+
+V1 access decisions must remain simple and testable: permission plus assigned access scope plus minimal resource metadata.
+
+Milestone 3 must not implement Query Engine, LLM calls, SQL generation, dashboards, actions behavior, approval/action execution behavior, CSV export behavior, Full ABAC, dynamic policy engine, `policy_rules`, policy builder UI, ReBAC, masking, tenant/project/region management, or external authorization services.
+
+Milestone 4 is Query Engine Backend. It remains planned and must not start during this task unless explicitly requested.
 
 ## 6. Product Direction
 

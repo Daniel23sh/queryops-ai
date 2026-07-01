@@ -327,7 +327,7 @@ Default local URLs:
 * Backend health endpoint: `http://localhost:8000/health`
 * PostgreSQL: `localhost:5432`
 
-PostgreSQL is included for the local development environment. The current backend includes the database foundation, deterministic IT Operations seed data, and local demo auth session endpoints. Query engine behavior, RLS policies, dashboards, actions, approvals, and audit behavior remain planned for later milestones.
+PostgreSQL is included for the local development environment. The current backend includes the database foundation, deterministic IT Operations seed data, local demo auth session endpoints, and the Access Context Foundation. RLS policies are planned for the active Milestone 3 work. Query Engine behavior, dashboards, actions, approvals, and audit behavior remain planned for later milestones.
 
 Stop the stack:
 
@@ -475,7 +475,7 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-Milestone 0 foundation work, Milestone 1 database/seed work, Milestone 2 auth/users/roles/permissions work, and Milestone 2.5 Access Context Foundation are complete.
+Milestone 0 foundation work, Milestone 1 database/seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, and Post-Milestone 2.5 hardening are complete.
 
 Implemented foundation functionality includes:
 
@@ -495,10 +495,10 @@ Implemented foundation functionality includes:
 Current active planning target:
 
 ```txt
-Post-Milestone 2.5 Hardening — Access Context Foundation
+Milestone 3 — RLS & Security Foundation
 ```
 
-This branch hardens the merged Milestone 2.5 access-context foundation. RLS policies, Query Engine, dashboards, actions, approvals, CSV export behavior, and real LLM calls remain planned for later milestones.
+This branch activates Milestone 3 for scope-aware PostgreSQL RLS, a `SET LOCAL` RLS context helper, DB session/helper integration for future Query Engine use, initial security/RLS tests, and policy helper refinements where needed. Milestone 4 is Query Engine Backend and is not active.
 
 ## License
 
