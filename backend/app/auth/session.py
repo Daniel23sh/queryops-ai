@@ -4,6 +4,7 @@ import base64
 import hmac
 import json
 import secrets
+import time
 from dataclasses import dataclass
 from hashlib import sha256
 from typing import Any
@@ -12,7 +13,11 @@ from uuid import UUID
 from fastapi import Request
 from fastapi.responses import Response
 
-from app.core.config import get_session_cookie_secure, get_session_secret_key
+from app.core.config import (
+    get_session_cookie_secure,
+    get_session_max_age_seconds,
+    get_session_secret_key,
+)
 
 
 SESSION_COOKIE_NAME = "qo_session"
@@ -25,6 +30,8 @@ class SessionData:
     user_id: UUID
     auth_provider: str
     csrf_token: str
+    iat: int
+    exp: int
 
 
 def create_csrf_token() -> str:
@@ -37,10 +44,14 @@ def create_session_token(
     auth_provider: str,
     csrf_token: str,
 ) -> str:
+    issued_at = int(time.time())
+    expires_at = issued_at + get_session_max_age_seconds()
     payload = {
         "user_id": str(user_id),
         "auth_provider": auth_provider,
         "csrf_token": csrf_token,
+        "iat": issued_at,
+        "exp": expires_at,
     }
     encoded_payload = _base64_encode_json(payload)
     signature = _sign(encoded_payload)
@@ -57,10 +68,16 @@ def decode_session_token(token: str | None) -> SessionData | None:
 
     try:
         payload = _base64_decode_json(encoded_payload)
+        issued_at = int(payload["iat"])
+        expires_at = int(payload["exp"])
+        if expires_at <= int(time.time()):
+            return None
         return SessionData(
             user_id=UUID(str(payload["user_id"])),
             auth_provider=str(payload["auth_provider"]),
             csrf_token=str(payload["csrf_token"]),
+            iat=issued_at,
+            exp=expires_at,
         )
     except (KeyError, TypeError, ValueError, json.JSONDecodeError):
         return None
@@ -90,6 +107,7 @@ def set_auth_cookies(
     csrf_token: str,
 ) -> None:
     secure = get_session_cookie_secure()
+    max_age = get_session_max_age_seconds()
     response.set_cookie(
         SESSION_COOKIE_NAME,
         create_session_token(
@@ -101,6 +119,7 @@ def set_auth_cookies(
         secure=secure,
         samesite="lax",
         path="/",
+        max_age=max_age,
     )
     response.set_cookie(
         CSRF_COOKIE_NAME,
@@ -109,6 +128,7 @@ def set_auth_cookies(
         secure=secure,
         samesite="lax",
         path="/",
+        max_age=max_age,
     )
 
 

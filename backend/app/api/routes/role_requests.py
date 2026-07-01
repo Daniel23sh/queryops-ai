@@ -27,6 +27,12 @@ from app.models.product import (
 router = APIRouter(prefix="/api/v1")
 
 ROLE_UPGRADE_TARGETS = frozenset({"manager", "analyst", "admin"})
+ROLE_HIERARCHY = {
+    "user": 0,
+    "manager": 1,
+    "analyst": 2,
+    "admin": 3,
+}
 
 
 class RoleRequestCreate(BaseModel):
@@ -86,6 +92,15 @@ def create_role_request(
             message="You already have the requested role.",
             status_code=400,
         )
+    if current_role is not None and not _is_upward_role_request(
+        current_role.name,
+        requested_role.name,
+    ):
+        return error_response(
+            code="ROLE_REQUEST_NOT_UPWARD",
+            message="Role upgrade requests must target a higher role.",
+            status_code=400,
+        )
 
     pending_request = db.scalar(
         select(RoleUpgradeRequest).where(
@@ -104,6 +119,7 @@ def create_role_request(
         db,
         current_user,
         payload.requested_scope_id,
+        requested_role.name,
     )
     if requested_scope is not None and not isinstance(requested_scope, AccessScope):
         return requested_scope
@@ -181,6 +197,9 @@ def approve_role_request(
         return processing_error
 
     decision_reason = payload.decision_reason.strip()
+    if not decision_reason:
+        return _decision_reason_required_response()
+
     requester = role_request.requester
     old_role = requester.role.name if requester.role else None
     new_role = role_request.requested_role.name
@@ -266,6 +285,9 @@ def reject_role_request(
         return processing_error
 
     decision_reason = payload.decision_reason.strip()
+    if not decision_reason:
+        return _decision_reason_required_response()
+
     requester = role_request.requester
     old_role = requester.role.name if requester.role else None
     requested_role = role_request.requested_role.name
@@ -370,6 +392,14 @@ def _role_request_processing_error(
     return None
 
 
+def _decision_reason_required_response():
+    return error_response(
+        code="ROLE_REQUEST_DECISION_REASON_REQUIRED",
+        message="A decision reason is required.",
+        status_code=400,
+    )
+
+
 def _build_audit_log(
     *,
     role_request: RoleUpgradeRequest,
@@ -395,6 +425,7 @@ def _requested_scope_for_create(
     db: Session,
     user: AppUser,
     requested_scope_id: UUID | None,
+    requested_role_name: str,
 ):
     if requested_scope_id is not None:
         requested_scope = db.get(AccessScope, requested_scope_id)
@@ -404,9 +435,50 @@ def _requested_scope_for_create(
                 message="Requested access scope was not found.",
                 status_code=400,
             )
+        scope_error = _requested_scope_validation_error(
+            requested_scope,
+            requested_role_name,
+        )
+        if scope_error is not None:
+            return scope_error
         return requested_scope
 
-    return _default_scope_for_user(user, db)
+    if requested_role_name == "admin":
+        return None
+
+    requested_scope = _default_scope_for_user(user, db)
+    scope_error = _requested_scope_validation_error(
+        requested_scope,
+        requested_role_name,
+    )
+    if scope_error is not None:
+        return scope_error
+    return requested_scope
+
+
+def _requested_scope_validation_error(
+    scope: AccessScope | None,
+    requested_role_name: str,
+):
+    if requested_role_name == "admin":
+        if scope is None:
+            return None
+        if scope.scope_type == "global" and scope.scope_key == "global":
+            return None
+        return error_response(
+            code="INVALID_REQUESTED_SCOPE",
+            message="Admin role requests must use global scope.",
+            status_code=400,
+        )
+
+    if scope is not None and scope.scope_type == "department":
+        return None
+
+    return error_response(
+        code="INVALID_REQUESTED_SCOPE",
+        message="Non-admin role requests must use a department scope.",
+        status_code=400,
+    )
 
 
 def _default_scope_for_user(user: AppUser, db: Session) -> AccessScope | None:
@@ -476,6 +548,14 @@ def _access_level_for_role(role_name: str) -> str:
     if role_name in {"admin", "analyst"}:
         return "manage"
     return "read"
+
+
+def _is_upward_role_request(current_role_name: str, requested_role_name: str) -> bool:
+    current_rank = ROLE_HIERARCHY.get(current_role_name)
+    requested_rank = ROLE_HIERARCHY.get(requested_role_name)
+    if current_rank is None or requested_rank is None:
+        return False
+    return requested_rank > current_rank
 
 
 def _serialize_requested_scope(role_request: RoleUpgradeRequest) -> dict | None:

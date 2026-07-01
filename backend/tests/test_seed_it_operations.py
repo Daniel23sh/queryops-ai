@@ -21,6 +21,7 @@ from app.domains.it_operations.models import (
     UserGroupMembership,
 )
 from app.domains.it_operations.seed import (
+    DATA_RESOURCE_SPECS,
     REFERENCE_NOW,
     reset_seeded_data,
     seed_database,
@@ -184,6 +185,21 @@ CORE_DATA_RESOURCE_TABLES = {
     "user_group_memberships",
     "security_events",
     "it_audit_events",
+}
+
+EXPECTED_DATA_RESOURCE_QUERYABILITY = {
+    "departments": True,
+    "licenses": True,
+    "directory_users": True,
+    "login_events": True,
+    "license_assignments": True,
+    "devices": True,
+    "software_installs": True,
+    "support_tickets": True,
+    "groups": True,
+    "user_group_memberships": True,
+    "security_events": True,
+    "it_audit_events": False,
 }
 
 
@@ -444,7 +460,7 @@ def test_seed_creates_core_it_operations_data_resources() -> None:
             assert resource.display_name
             assert resource.sensitivity_level
             assert resource.llm_exposure_level
-            assert resource.is_queryable is True
+            assert resource.is_queryable is EXPECTED_DATA_RESOURCE_QUERYABILITY[table_name]
             if table_name in {"departments", "licenses"}:
                 assert resource.scope_column is None
             else:
@@ -452,10 +468,21 @@ def test_seed_creates_core_it_operations_data_resources() -> None:
                 assert resource.scope_column == "department_id"
 
         assert resources["security_events"].sensitivity_level == "highly_sensitive"
-        assert resources["it_audit_events"].llm_exposure_level in {
-            "none",
-            "aggregate_safe",
-        }
+        assert resources["security_events"].llm_exposure_level == "aggregate_safe"
+        assert resources["it_audit_events"].is_queryable is False
+        assert resources["it_audit_events"].llm_exposure_level == "none"
+
+
+def test_data_resource_specs_define_queryability_explicitly() -> None:
+    queryability_by_table = {}
+    for spec in DATA_RESOURCE_SPECS:
+        assert len(spec) == 8
+        table_name = spec[0]
+        is_queryable = spec[5]
+        assert isinstance(is_queryable, bool)
+        queryability_by_table[table_name] = is_queryable
+
+    assert queryability_by_table == EXPECTED_DATA_RESOURCE_QUERYABILITY
 
 
 def test_demo_app_users_are_assigned_expected_roles() -> None:

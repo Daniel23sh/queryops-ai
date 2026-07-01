@@ -69,16 +69,16 @@ The active milestone is defined in `PROJECT_PLAN.md`.
 At the time this file was updated, the active target is:
 
 ```txt
-Milestone 2.5 — Access Context Foundation
+Post-Milestone 2.5 Hardening — Access Context Foundation
 ```
 
-Milestone 0, Milestone 1, and Milestone 2 are complete under the previous scope.
+Milestone 0, Milestone 1, Milestone 2, and Milestone 2.5 are complete under the previous scope.
 
-Milestone 2.5 adds Access Context Foundation. It introduces `access_scopes`, `user_access_scopes`, `data_resources`, `UserAccessContext`, `AccessDecision`, and `evaluate_access(subject, action, resource, context)`.
+The current work is a hardening pass for the merged Access Context Foundation. Milestone 2.5 introduced `access_scopes`, `user_access_scopes`, `data_resources`, `UserAccessContext`, `AccessDecision`, and `evaluate_access(subject, action, resource, context)`.
 
-V1 access decisions must remain simple and testable: permission plus assigned access scope plus minimal resource metadata. This milestone does not implement Full ABAC.
+V1 access decisions must remain simple and testable: permission plus assigned access scope plus minimal resource metadata. The next milestone must not start until this hardening pass is complete, and Milestone 3 must not be set as active unless explicitly requested.
 
-Milestone 2.5 must not implement PostgreSQL RLS policies, Query Engine, dashboards, Actions/Approvals behavior, CSV export behavior, real LLM calls, `policy_rules`, `policy_conditions`, dynamic policy language, policy builder UI, ReBAC, column masking, tenant/project/region UI, or external authorization services.
+This hardening pass must not implement PostgreSQL RLS policies, Query Engine, dashboards, Actions/Approvals behavior, CSV export behavior, real LLM calls, `policy_rules`, `policy_conditions`, dynamic policy language, policy builder UI, ReBAC, column masking, tenant/project/region UI, or external authorization services.
 
 ## 6. Product Direction
 
