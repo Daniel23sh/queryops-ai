@@ -42,6 +42,9 @@ class RLSRows(NamedTuple):
     finance_security_event_id: uuid.UUID
     sales_security_event_id: uuid.UUID
     global_security_event_id: uuid.UUID
+    finance_group_id: uuid.UUID
+    sales_group_id: uuid.UUID
+    global_group_id: uuid.UUID
 
 
 def test_scope_aware_rls_migration_exists() -> None:
@@ -188,6 +191,94 @@ def test_no_context_sees_no_scoped_rows(
             assert {str(row) for row in rows} == set()
 
 
+def test_empty_department_scope_keys_see_no_rows(
+    postgres_engine: Engine,
+    rls_reader_role: str,
+    rls_rows: RLSRows,
+) -> None:
+    visible_ids = visible_security_event_ids(
+        postgres_engine,
+        RLSContext(
+            user_id=uuid.uuid4(),
+            role="manager",
+            scope_type="department",
+            scope_keys=tuple(),
+            has_global_scope=False,
+        ),
+        rls_rows.prefix,
+        rls_reader_role,
+    )
+
+    assert visible_ids == set()
+
+
+def test_malformed_department_scope_keys_see_no_rows(
+    postgres_engine: Engine,
+    rls_reader_role: str,
+    rls_rows: RLSRows,
+) -> None:
+    visible_ids = visible_security_event_ids(
+        postgres_engine,
+        RLSContext(
+            user_id=uuid.uuid4(),
+            role="manager",
+            scope_type="department",
+            scope_keys=("not-a-department-uuid",),
+            has_global_scope=False,
+        ),
+        rls_rows.prefix,
+        rls_reader_role,
+    )
+
+    assert visible_ids == set()
+
+
+def test_global_context_sees_nullable_group_rows_across_departments(
+    postgres_engine: Engine,
+    rls_reader_role: str,
+    rls_rows: RLSRows,
+) -> None:
+    visible_ids = visible_group_ids(
+        postgres_engine,
+        RLSContext(
+            user_id=uuid.uuid4(),
+            role="admin",
+            scope_type="global",
+            scope_keys=tuple(),
+            has_global_scope=True,
+        ),
+        rls_rows.prefix,
+        rls_reader_role,
+    )
+
+    assert visible_ids == {
+        str(rls_rows.finance_group_id),
+        str(rls_rows.sales_group_id),
+        str(rls_rows.global_group_id),
+    }
+
+
+def test_department_context_hides_nullable_group_rows_outside_scope(
+    postgres_engine: Engine,
+    rls_reader_role: str,
+    rls_rows: RLSRows,
+) -> None:
+    visible_ids = visible_group_ids(
+        postgres_engine,
+        RLSContext(
+            user_id=uuid.uuid4(),
+            role="manager",
+            scope_type="department",
+            scope_keys=(str(rls_rows.finance_department_id),),
+            has_global_scope=False,
+        ),
+        rls_rows.prefix,
+        rls_reader_role,
+    )
+
+    assert visible_ids == {str(rls_rows.finance_group_id)}
+
+
 def visible_security_event_ids(
     engine: Engine,
     rls_context: RLSContext,
@@ -208,6 +299,30 @@ def visible_security_event_ids(
                     """
                 ),
                 {"event_type": event_type},
+            ).scalars()
+            return {str(row) for row in rows}
+
+
+def visible_group_ids(
+    engine: Engine,
+    rls_context: RLSContext,
+    name_prefix: str,
+    rls_reader_role: str,
+) -> set[str]:
+    with Session(engine) as session:
+        with session.begin():
+            set_rls_context(session, rls_context)
+            session.execute(text(f"SET LOCAL ROLE {rls_reader_role}"))
+            rows = session.execute(
+                text(
+                    """
+                    SELECT id
+                    FROM groups
+                    WHERE name LIKE :name_pattern
+                    ORDER BY id
+                    """
+                ),
+                {"name_pattern": f"{name_prefix}%"},
             ).scalars()
             return {str(row) for row in rows}
 
@@ -279,6 +394,9 @@ def rls_rows(postgres_engine: Engine) -> Generator[RLSRows, None, None]:
         finance_security_event_id=uuid.uuid4(),
         sales_security_event_id=uuid.uuid4(),
         global_security_event_id=uuid.uuid4(),
+        finance_group_id=uuid.uuid4(),
+        sales_group_id=uuid.uuid4(),
+        global_group_id=uuid.uuid4(),
     )
 
     with postgres_engine.begin() as connection:
@@ -350,6 +468,59 @@ def rls_rows(postgres_engine: Engine) -> Generator[RLSRows, None, None]:
                 "occurred_at": datetime.now(UTC),
             },
         )
+        connection.execute(
+            text(
+                """
+                INSERT INTO groups (
+                    id,
+                    name,
+                    description,
+                    group_type,
+                    department_id,
+                    is_privileged,
+                    risk_level
+                )
+                VALUES
+                    (
+                        :finance_group_id,
+                        :finance_group_name,
+                        'Finance scoped RLS test group',
+                        'security',
+                        :finance_department_id,
+                        false,
+                        'medium'
+                    ),
+                    (
+                        :sales_group_id,
+                        :sales_group_name,
+                        'Sales scoped RLS test group',
+                        'security',
+                        :sales_department_id,
+                        false,
+                        'medium'
+                    ),
+                    (
+                        :global_group_id,
+                        :global_group_name,
+                        'Null department RLS test group',
+                        'security',
+                        NULL,
+                        false,
+                        'medium'
+                    )
+                """
+            ),
+            {
+                "finance_group_id": rows.finance_group_id,
+                "sales_group_id": rows.sales_group_id,
+                "global_group_id": rows.global_group_id,
+                "finance_group_name": f"{prefix} Finance Group",
+                "sales_group_name": f"{prefix} Sales Group",
+                "global_group_name": f"{prefix} Global Group",
+                "finance_department_id": rows.finance_department_id,
+                "sales_department_id": rows.sales_department_id,
+            },
+        )
 
     try:
         yield rows
@@ -359,6 +530,10 @@ def rls_rows(postgres_engine: Engine) -> Generator[RLSRows, None, None]:
 
 def cleanup_rls_rows(engine: Engine, rows: RLSRows) -> None:
     with engine.begin() as connection:
+        connection.execute(
+            text("DELETE FROM groups WHERE name LIKE :name_pattern"),
+            {"name_pattern": f"{rows.prefix}%"},
+        )
         connection.execute(
             text("DELETE FROM security_events WHERE event_type = :event_type"),
             {"event_type": rows.prefix},

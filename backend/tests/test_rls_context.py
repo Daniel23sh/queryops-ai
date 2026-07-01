@@ -9,7 +9,11 @@ from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-from app.auth.access_context import UserAccessContext, build_user_access_context
+from app.auth.access_context import (
+    AccessScopeContext,
+    UserAccessContext,
+    build_user_access_context,
+)
 from app.core.rls import build_rls_context, set_rls_context
 from app.db.base import Base
 from app.domains.it_operations.models import Department
@@ -91,6 +95,34 @@ def test_build_rls_context_without_scopes_fails_closed() -> None:
         role="manager",
         permissions=frozenset({"can_query_scoped_data"}),
         scopes=tuple(),
+        default_scope=None,
+        has_global_scope=False,
+        subject_attributes={},
+    )
+
+    rls_context = build_rls_context(access_context)
+
+    assert rls_context.scope_type == "none"
+    assert rls_context.scope_keys == tuple()
+    assert rls_context.has_global_scope is False
+
+
+def test_build_rls_context_ignores_department_scope_without_department_uuid() -> None:
+    access_context = UserAccessContext(
+        user_id=uuid.uuid4(),
+        role="manager",
+        permissions=frozenset({"can_query_scoped_data"}),
+        scopes=(
+            AccessScopeContext(
+                id=uuid.uuid4(),
+                type="department",
+                key="finance",
+                display_name="Finance",
+                access_level="read",
+                is_default=True,
+                department_id=None,
+            ),
+        ),
         default_scope=None,
         has_global_scope=False,
         subject_attributes={},

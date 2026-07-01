@@ -226,6 +226,54 @@ def test_authorize_resource_access_returns_access_decision() -> None:
         assert decision.matched_scopes == ["department:finance"]
 
 
+def test_authorize_resource_access_does_not_use_frontend_visibility_to_grant_access() -> None:
+    with session_scope() as session:
+        seed_database(session, profile_name="small", reset=True)
+        subject = build_user_access_context(
+            user_by_email(session, "demo.manager@queryops.local"),
+            session,
+        )
+        resource = data_resource_by_table(session, "directory_users")
+
+        decision = authorize_resource_access(
+            subject,
+            "query:scoped_data",
+            resource,
+            {
+                "scope_type": "department",
+                "scope_key": "sales",
+                "frontend_visible": True,
+            },
+        )
+
+        assert decision.allowed is False
+        assert decision.reason == "missing_scope"
+
+
+def test_authorize_resource_access_does_not_use_frontend_visibility_to_deny_access() -> None:
+    with session_scope() as session:
+        seed_database(session, profile_name="small", reset=True)
+        subject = build_user_access_context(
+            user_by_email(session, "demo.manager@queryops.local"),
+            session,
+        )
+        resource = data_resource_by_table(session, "directory_users")
+
+        decision = authorize_resource_access(
+            subject,
+            "query:scoped_data",
+            resource,
+            {
+                "scope_type": "department",
+                "scope_key": "finance",
+                "frontend_visible": False,
+            },
+        )
+
+        assert decision.allowed is True
+        assert decision.reason == "allow_matching_scope"
+
+
 def test_require_access_decision_does_not_raise_for_allowed_decision() -> None:
     with session_scope() as session:
         seed_database(session, profile_name="small", reset=True)
