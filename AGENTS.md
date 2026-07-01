@@ -69,7 +69,7 @@ The active milestone is defined in `PROJECT_PLAN.md`.
 At the time this file was updated, the active target is:
 
 ```txt
-Milestone 3 — RLS & Security Foundation is complete.
+Milestone 4 — Query Engine Backend
 ```
 
 Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, and Milestone 3 are complete under the previous scope.
@@ -80,11 +80,57 @@ Milestone 3 added the security foundation for scope-aware PostgreSQL RLS before 
 
 Milestone 3 delivered scope-aware PostgreSQL RLS, a `SET LOCAL` RLS context helper, DB session/helper integration for future Query Engine use, initial security/RLS tests, and policy helper refinements.
 
-V1 access decisions must remain simple and testable: permission plus assigned access scope plus minimal resource metadata.
+Milestone 4 is now active. It implements the backend Query Engine foundation on top of the existing Access Context Foundation and PostgreSQL RLS behavior.
 
-Milestone 3 did not implement Query Engine, LLM calls, SQL generation, dashboards, actions behavior, approval/action execution behavior, CSV export behavior, Full ABAC, dynamic policy engine, `policy_rules`, policy builder UI, ReBAC, masking, tenant/project/region management, or external authorization services.
+Milestone 4 scope:
 
-Milestone 4 is Query Engine Backend. It remains planned and must not start unless explicitly requested.
+* Domain Pack Loader
+* Query Templates API
+* `LLMProvider` interface
+* `MockLLMProvider`
+* SQL generator wrapper
+* Schema Context Builder
+* SQL validator
+* read-only scoped Query Executor
+* Query Run API
+* `QueryRun` persistence
+* PostgreSQL/RLS query tests
+
+Milestone 4 must continue to use:
+
+* `UserAccessContext`
+* `DataResource`
+* `AccessDecision`
+* `evaluate_access(...)`
+* `authorize_resource_access(...)`
+* `require_access_decision(...)`
+* `prepare_scoped_data_access(...)`
+* `RLSContext`
+* `build_rls_context(...)`
+* `set_rls_context(...)`
+* PostgreSQL RLS policies from `0005_scope_aware_rls.py`
+* `DataResource.is_queryable`
+* the existing `QueryRun` product model
+
+Milestone 4 out of scope:
+
+* dashboards UI
+* dashboard cards behavior
+* CSV export
+* actions behavior
+* approvals behavior
+* notifications behavior
+* real external LLM calls
+* Supabase Auth
+* frontend Ask Data UI
+* Full ABAC
+* ReBAC
+* policy builder UI
+* dynamic policy engine
+* masking
+* tenant/project/region governance
+
+Milestone 5 or later will handle dashboards, UI, actions, and approvals unless explicitly requested. Do not add frontend Ask Data UI, dashboard behavior, action execution, approval behavior, or CSV export during Milestone 4.
 
 ## 6. Product Direction
 

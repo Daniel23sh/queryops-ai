@@ -4,11 +4,11 @@
 
 The current active target is:
 
-`Milestone 3 — RLS & Security Foundation` is complete.
+`Milestone 4 — Query Engine Backend`
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, and Milestone 3 RLS & Security Foundation are complete.
 
-Milestone 3 implemented the PostgreSQL RLS and security foundation before Query Engine work begins. It builds on the existing Access Context Foundation and keeps V1 access decisions simple and testable: decisions are based on permission, assigned access scope, and minimal resource metadata.
+Milestone 4 implements the backend Query Engine foundation on top of the Milestone 3 RLS and Security Foundation. It must preserve the existing Access Context Foundation and RLS behavior while adding only backend query-engine capabilities.
 
 Milestone 2.5 delivered:
 
@@ -30,9 +30,39 @@ Milestone 3 delivered:
 - initial security and RLS tests
 - policy helper refinements where needed
 
-Milestone 3 did not implement Query Engine, LLM calls, SQL generation, dashboards, actions behavior, approval/action execution behavior, CSV export behavior, Full ABAC, a dynamic policy engine, `policy_rules`, a policy builder UI, ReBAC, masking, tenant/project/region management, or external authorization services.
+Milestone 4 scope:
 
-Milestone 4 is Query Engine Backend. It remains planned and is not active unless explicitly requested.
+- Domain Pack Loader
+- Query Templates API
+- `LLMProvider` interface
+- `MockLLMProvider`
+- SQL generator wrapper
+- Schema Context Builder
+- SQL validator
+- read-only scoped Query Executor
+- Query Run API
+- `QueryRun` persistence
+- PostgreSQL/RLS query tests
+
+Milestone 4 out of scope:
+
+- dashboards UI
+- dashboard cards behavior
+- CSV export
+- actions behavior
+- approvals behavior
+- notifications behavior
+- real external LLM calls
+- Supabase Auth
+- frontend Ask Data UI
+- Full ABAC
+- ReBAC
+- policy builder UI
+- dynamic policy engine
+- masking
+- tenant/project/region governance
+
+Milestone 5 or later will handle dashboards, UI, actions, and approvals unless explicitly requested. Milestone 4 must not add frontend Ask Data UI, dashboard behavior, action execution, approval behavior, or CSV export.
 
 ## 2. Product Summary
 
@@ -324,10 +354,12 @@ Milestone 1 is complete when:
 
 Milestone 1 should leave the repository ready for auth, permission, and RLS work without implementing those later milestones early.
 
-## 14. Next Milestone
+## 14. Active Milestone
 
-The next planned product milestone is:
+The active product milestone is:
 
 `Milestone 4 — Query Engine Backend`
 
-Milestone 4 is not active. It must not start until the user explicitly requests the milestone change.
+Milestone 4 is active. It focuses on backend Query Engine foundations only: domain pack loading, query templates, mock LLM generation, schema context, SQL validation, scoped read-only execution with PostgreSQL RLS, query run APIs, and `QueryRun` persistence.
+
+Milestone 5 or later remains responsible for Ask Data UI, dashboards, dashboard cards, CSV export, actions, approvals, and notification behavior unless explicitly requested.

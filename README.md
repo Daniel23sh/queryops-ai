@@ -327,7 +327,7 @@ Default local URLs:
 * Backend health endpoint: `http://localhost:8000/health`
 * PostgreSQL: `localhost:5432`
 
-PostgreSQL is included for the local development environment. The current backend includes the database foundation, deterministic IT Operations seed data, local demo auth session endpoints, the Access Context Foundation, and scope-aware PostgreSQL RLS policies for IT Operations domain tables. Query Engine behavior, dashboards, actions, approvals, and audit behavior remain planned for later milestones.
+PostgreSQL is included for the local development environment. The current backend includes the database foundation, deterministic IT Operations seed data, local demo auth session endpoints, the Access Context Foundation, and scope-aware PostgreSQL RLS policies for IT Operations domain tables. Milestone 4 is active for backend Query Engine foundation work. Dashboards, actions, approvals, CSV export, frontend Ask Data UI, and audit behavior remain planned for later milestones.
 
 Stop the stack:
 
@@ -532,10 +532,14 @@ Implemented foundation functionality includes:
 Current milestone status:
 
 ```txt
-Milestone 3 — RLS & Security Foundation is complete.
+Milestone 4 — Query Engine Backend is active.
 ```
 
-Milestone 3 delivered scope-aware PostgreSQL RLS, a transaction-local RLS context helper, safe access policy helpers, and security/RLS tests. Query Engine behavior, SQL generation, LLM calls, dashboards, actions, approvals, and CSV export are not implemented. Milestone 4 is Query Engine Backend and is not active.
+Milestone 3 delivered scope-aware PostgreSQL RLS, a transaction-local RLS context helper, safe access policy helpers, and security/RLS tests.
+
+Milestone 4 scope is backend-only Query Engine foundation work: Domain Pack Loader, Query Templates API, `LLMProvider` interface, `MockLLMProvider`, SQL generator wrapper, Schema Context Builder, SQL validator, read-only scoped Query Executor, Query Run API, `QueryRun` persistence, and PostgreSQL/RLS query tests.
+
+Milestone 4 does not include dashboards UI, dashboard cards behavior, CSV export, actions behavior, approvals behavior, notifications behavior, real external LLM calls, Supabase Auth, frontend Ask Data UI, Full ABAC, ReBAC, policy builder UI, dynamic policy engine, masking, or tenant/project/region governance. Milestone 5 or later will handle dashboards, UI, actions, and approvals unless explicitly requested.
 
 ## License
 
