@@ -26,6 +26,13 @@ ACTION_REQUIRED_PERMISSIONS = {
 }
 
 SCOPED_DATA_ACTIONS = frozenset({"query:scoped_data", "view:scoped_data"})
+QUERY_ACTIONS = frozenset(
+    {
+        "query:scoped_data",
+        "query:global_data",
+        "query:product_tables",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -67,6 +74,16 @@ def evaluate_access(
             resource_dict,
             required_permission,
             "missing_permission",
+            [],
+        )
+
+    if action in QUERY_ACTIONS and _resource_is_explicitly_not_queryable(resource_dict):
+        return _deny(
+            subject,
+            action,
+            resource_dict,
+            required_permission,
+            "resource_not_queryable",
             [],
         )
 
@@ -236,6 +253,10 @@ def _resource_to_dict(resource: DataResource | dict[str, Any]) -> dict[str, Any]
         "is_exportable": resource.is_exportable,
         "llm_exposure_level": resource.llm_exposure_level,
     }
+
+
+def _resource_is_explicitly_not_queryable(resource: dict[str, Any]) -> bool:
+    return resource.get("is_queryable") is False
 
 
 def _snapshot(subject: UserAccessContext) -> dict[str, Any]:

@@ -189,6 +189,88 @@ def test_evaluate_access_allows_global_scope_for_scoped_resource() -> None:
         assert decision.matched_scopes == ["global:global"]
 
 
+def test_evaluate_access_denies_query_when_resource_not_queryable() -> None:
+    with session_scope() as session:
+        seed_database(session, profile_name="small", reset=True)
+        subject = build_user_access_context(
+            user_by_email(session, "demo.analyst@queryops.local"),
+            session,
+        )
+        resource = data_resource_by_table(session, "it_audit_events")
+        assert resource.is_queryable is False
+
+        decision = evaluate_access(
+            subject,
+            "query:scoped_data",
+            resource,
+            {"scope_type": "department", "scope_key": "it"},
+        )
+
+        assert decision.allowed is False
+        assert decision.effect == "deny"
+        assert decision.reason == "resource_not_queryable"
+        assert decision.required_permission == "can_query_scoped_data"
+        assert decision.matched_scopes == []
+        assert decision.resource["table_name"] == "it_audit_events"
+        assert decision.resource["is_queryable"] is False
+
+
+@pytest.mark.parametrize(
+    ("action", "expected_permission"),
+    [
+        ("query:scoped_data", "can_query_scoped_data"),
+        ("query:global_data", "can_query_global_data"),
+        ("query:product_tables", "can_query_product_tables"),
+    ],
+)
+def test_evaluate_access_denies_query_actions_when_resource_not_queryable(
+    action: str,
+    expected_permission: str,
+) -> None:
+    with session_scope() as session:
+        seed_database(session, profile_name="small", reset=True)
+        subject = build_user_access_context(
+            user_by_email(session, "demo.admin@queryops.local"),
+            session,
+        )
+        resource = data_resource_by_table(session, "it_audit_events")
+
+        decision = evaluate_access(
+            subject,
+            action,
+            resource,
+            {"scope_type": "department", "scope_key": "it"},
+        )
+
+        assert decision.allowed is False
+        assert decision.effect == "deny"
+        assert decision.reason == "resource_not_queryable"
+        assert decision.required_permission == expected_permission
+        assert decision.matched_scopes == []
+
+
+def test_evaluate_access_keeps_view_actions_scope_based_for_non_queryable_resource() -> None:
+    with session_scope() as session:
+        seed_database(session, profile_name="small", reset=True)
+        subject = build_user_access_context(
+            user_by_email(session, "demo.analyst@queryops.local"),
+            session,
+        )
+        resource = data_resource_by_table(session, "it_audit_events")
+
+        decision = evaluate_access(
+            subject,
+            "view:scoped_data",
+            resource,
+            {"scope_type": "department", "scope_key": "it"},
+        )
+
+        assert decision.allowed is True
+        assert decision.effect == "allow"
+        assert decision.reason == "allow_matching_scope"
+        assert decision.matched_scopes == ["department:it"]
+
+
 def test_evaluate_access_allows_reference_resource_with_query_permission() -> None:
     with session_scope() as session:
         seed_database(session, profile_name="small", reset=True)
@@ -203,6 +285,27 @@ def test_evaluate_access_allows_reference_resource_with_query_permission() -> No
         assert decision.allowed is True
         assert decision.effect == "allow"
         assert decision.resource["table_name"] == "licenses"
+
+
+def test_evaluate_access_allows_reference_dict_without_queryability_metadata() -> None:
+    with session_scope() as session:
+        seed_database(session, profile_name="small", reset=True)
+        subject = build_user_access_context(
+            user_by_email(session, "demo.manager@queryops.local"),
+            session,
+        )
+        resource = {
+            "resource_type": "table",
+            "domain": "legacy",
+            "table_name": "legacy_reference_table",
+        }
+
+        decision = evaluate_access(subject, "query:scoped_data", resource, {})
+
+        assert decision.allowed is True
+        assert decision.effect == "allow"
+        assert decision.reason == "allow_reference_resource"
+        assert decision.resource["table_name"] == "legacy_reference_table"
 
 
 def test_authorize_resource_access_returns_access_decision() -> None:
@@ -365,6 +468,36 @@ def test_require_access_decision_does_not_leak_internal_policy_details() -> None
         assert "can_query_scoped_data" not in public_message
 
 
+def test_require_access_decision_hides_not_queryable_policy_details() -> None:
+    with session_scope() as session:
+        seed_database(session, profile_name="small", reset=True)
+        subject = build_user_access_context(
+            user_by_email(session, "demo.analyst@queryops.local"),
+            session,
+        )
+        resource = data_resource_by_table(session, "it_audit_events")
+        decision = evaluate_access(
+            subject,
+            "query:scoped_data",
+            resource,
+            {"scope_type": "department", "scope_key": "it"},
+        )
+
+        with pytest.raises(ApiError) as exc_info:
+            require_access_decision(decision)
+
+        public_message = exc_info.value.message
+        assert decision.reason == "resource_not_queryable"
+        assert exc_info.value.status_code == 403
+        assert exc_info.value.code == "FORBIDDEN"
+        assert public_message == PUBLIC_AUTHORIZATION_ERROR
+        assert exc_info.value.details is None
+        assert "resource_not_queryable" not in public_message
+        assert "it_audit_events" not in public_message
+        assert "can_query_scoped_data" not in public_message
+        assert "it" not in public_message
+
+
 def test_prepare_scoped_data_access_applies_rls_context_when_allowed() -> None:
     with session_scope() as session:
         seed_database(session, profile_name="small", reset=True)
@@ -410,6 +543,31 @@ def test_prepare_scoped_data_access_does_not_apply_rls_context_when_denied() -> 
                 {"scope_type": "department", "scope_key": "sales"},
             )
 
+        assert fake_session.setting_values == {}
+
+
+def test_prepare_scoped_data_access_does_not_apply_rls_context_when_not_queryable() -> None:
+    with session_scope() as session:
+        seed_database(session, profile_name="small", reset=True)
+        subject = build_user_access_context(
+            user_by_email(session, "demo.analyst@queryops.local"),
+            session,
+        )
+        resource = data_resource_by_table(session, "it_audit_events")
+        fake_session = FakeSession()
+
+        with pytest.raises(ApiError) as exc_info:
+            prepare_scoped_data_access(
+                fake_session,
+                subject,
+                "query:scoped_data",
+                resource,
+                {"scope_type": "department", "scope_key": "it"},
+            )
+
+        assert exc_info.value.status_code == 403
+        assert exc_info.value.code == "FORBIDDEN"
+        assert exc_info.value.message == PUBLIC_AUTHORIZATION_ERROR
         assert fake_session.setting_values == {}
 
 
