@@ -21,6 +21,8 @@ ACTION_REQUIRED_PERMISSIONS = {
     "query_history:view_scope": "can_view_query_history_scope",
 }
 
+SCOPED_DATA_ACTIONS = frozenset({"query:scoped_data", "view:scoped_data"})
+
 
 @dataclass(frozen=True)
 class AccessDecision:
@@ -73,6 +75,16 @@ def evaluate_access(
             resource_dict,
             required_permission,
             "allow_reference_resource",
+            [],
+        )
+
+    if action in SCOPED_DATA_ACTIONS and not scope_key:
+        return _deny(
+            subject,
+            action,
+            resource_dict,
+            required_permission,
+            "missing_scope_key",
             [],
         )
 

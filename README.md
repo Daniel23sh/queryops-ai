@@ -381,7 +381,7 @@ cd backend
 
 The seed script is development-only and deterministic. Supported profiles are `small` for fast local or CI-style checks and `medium` for demo-scale local data. The `--reset` flag deletes seeded rows from the product and IT Operations tables before reseeding; it does not drop tables or modify Alembic migration state.
 
-Local demo auth uses seeded users through `POST /api/v1/demo/login`, then hydrates the current user with `GET /api/v1/auth/me`. Login sets an httpOnly `qo_session` cookie and a readable `qo_csrf` cookie; state-changing authenticated requests such as `POST /api/v1/auth/logout` must send `X-CSRF-Token`.
+Local demo auth uses seeded users through `POST /api/v1/demo/login`, then hydrates the current user with `GET /api/v1/auth/me`. Login sets a signed, expiring httpOnly `qo_session` cookie and a readable `qo_csrf` cookie; state-changing authenticated requests such as `POST /api/v1/auth/logout` must send `X-CSRF-Token`.
 
 ### Frontend
 
@@ -443,6 +443,7 @@ Example planned variables:
 AUTH_MODE=demo
 SESSION_SECRET_KEY=queryops-local-session-secret
 SESSION_COOKIE_SECURE=false
+SESSION_MAX_AGE_SECONDS=28800
 POSTGRES_DB=queryops
 POSTGRES_USER=queryops
 POSTGRES_PASSWORD=queryops
@@ -474,7 +475,7 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-Milestone 0 foundation work and Milestone 1 database/seed work are complete.
+Milestone 0 foundation work, Milestone 1 database/seed work, Milestone 2 auth/users/roles/permissions work, and Milestone 2.5 Access Context Foundation are complete.
 
 Implemented foundation functionality includes:
 
@@ -487,14 +488,17 @@ Implemented foundation functionality includes:
 * SQLAlchemy and Alembic database foundation
 * product and IT Operations domain schema
 * deterministic IT Operations seed profiles and seed tests
+* local demo auth session endpoints with CSRF protection and session expiration
+* role and permission mapping with role upgrade request flow
+* Access Context Foundation with access scopes, data resources, and simple access decisions
 
 Current active planning target:
 
 ```txt
-Milestone 2 — Auth, Users, Roles & Permissions
+Post-Milestone 2.5 Hardening — Access Context Foundation
 ```
 
-This branch adds the Milestone 2 PR 1 backend auth/session foundation: local demo login, backend session cookies, CSRF foundation, `/auth/me`, logout, and provider abstraction. Runtime permission enforcement, role upgrade flow, RLS, natural-language querying, dashboards, actions, approvals, and audit behavior remain planned for later PRs.
+This branch hardens the merged Milestone 2.5 access-context foundation. RLS policies, Query Engine, dashboards, actions, approvals, CSV export behavior, and real LLM calls remain planned for later milestones.
 
 ## License
 

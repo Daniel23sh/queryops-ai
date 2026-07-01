@@ -6,6 +6,7 @@ from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from app.auth import session as session_module
 from app.auth.providers import (
     AuthCredentials,
     AuthProviderUnavailableError,
@@ -99,9 +100,46 @@ def test_demo_login_succeeds_for_seeded_demo_users(
     csrf_cookie = _set_cookie_header(response, "qo_csrf")
     assert session_cookie is not None
     assert "httponly" in session_cookie.lower()
+    assert "max-age=28800" in session_cookie.lower()
     assert csrf_cookie is not None
     assert "httponly" not in csrf_cookie.lower()
+    assert "max-age=28800" in csrf_cookie.lower()
     assert body["data"]["csrf_token"] in csrf_cookie
+
+
+def test_valid_session_token_includes_expiration_and_decodes(
+    db_session: Session,
+) -> None:
+    user = _user_by_email(db_session, "demo.manager@queryops.local")
+
+    token = session_module.create_session_token(
+        user_id=user.id,
+        auth_provider=user.auth_provider,
+        csrf_token="test-csrf-token",
+    )
+
+    encoded_payload = token.rsplit(".", 1)[0]
+    payload = session_module._base64_decode_json(encoded_payload)
+    decoded = session_module.decode_session_token(token)
+
+    assert decoded is not None
+    assert decoded.user_id == user.id
+    assert decoded.auth_provider == user.auth_provider
+    assert decoded.csrf_token == "test-csrf-token"
+    assert payload["user_id"] == str(user.id)
+    assert payload["auth_provider"] == user.auth_provider
+    assert payload["csrf_token"] == "test-csrf-token"
+    assert isinstance(payload["iat"], int)
+    assert isinstance(payload["exp"], int)
+    assert payload["exp"] - payload["iat"] == 28800
+
+
+def test_expired_session_token_returns_none(db_session: Session) -> None:
+    user = _user_by_email(db_session, "demo.manager@queryops.local")
+
+    token = _expired_session_token(user)
+
+    assert session_module.decode_session_token(token) is None
 
 
 def test_demo_login_rejects_unknown_users(client: TestClient) -> None:
@@ -134,6 +172,19 @@ def test_demo_login_rejects_disabled_users(
 
 
 def test_auth_me_rejects_unauthenticated_requests(client: TestClient) -> None:
+    response = client.get("/api/v1/auth/me")
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "UNAUTHORIZED"
+
+
+def test_auth_me_rejects_expired_session(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    user = _user_by_email(db_session, "demo.manager@queryops.local")
+    client.cookies.set("qo_session", _expired_session_token(user))
+
     response = client.get("/api/v1/auth/me")
 
     assert response.status_code == 401
@@ -279,3 +330,22 @@ def _set_cookie_header(response, cookie_name: str) -> str | None:
         if header.startswith(f"{cookie_name}="):
             return header
     return None
+
+
+def _expired_session_token(user: AppUser) -> str:
+    payload = {
+        "user_id": str(user.id),
+        "auth_provider": user.auth_provider,
+        "csrf_token": "expired-csrf-token",
+        "iat": 1,
+        "exp": 2,
+    }
+    encoded_payload = session_module._base64_encode_json(payload)
+    signature = session_module._sign(encoded_payload)
+    return f"{encoded_payload}.{signature}"
+
+
+def _user_by_email(db_session: Session, email: str) -> AppUser:
+    user = db_session.scalar(select(AppUser).where(AppUser.email == email))
+    assert user is not None
+    return user

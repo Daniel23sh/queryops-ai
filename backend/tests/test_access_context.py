@@ -90,6 +90,28 @@ def test_evaluate_access_allows_permission_and_matching_scope() -> None:
         assert "allow" in decision.reason
 
 
+def test_evaluate_access_denies_scoped_data_without_scope_key() -> None:
+    with session_scope() as session:
+        seed_database(session, profile_name="small", reset=True)
+        subject = build_user_access_context(
+            user_by_email(session, "demo.manager@queryops.local"),
+            session,
+        )
+        resource = data_resource_by_table(session, "directory_users")
+
+        decision = evaluate_access(
+            subject,
+            "query:scoped_data",
+            resource,
+            {"scope_type": "department"},
+        )
+
+        assert decision.allowed is False
+        assert decision.effect == "deny"
+        assert decision.reason == "missing_scope_key"
+        assert decision.matched_scopes == []
+
+
 def test_evaluate_access_denies_missing_permission() -> None:
     with session_scope() as session:
         seed_database(session, profile_name="small", reset=True)

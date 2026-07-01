@@ -173,6 +173,71 @@ def test_create_role_request_can_include_requested_scope_id(
     assert created_request.requested_scope_key == "sales"
 
 
+@pytest.mark.parametrize("requested_role", ["manager", "analyst"])
+def test_non_admin_role_request_rejects_global_requested_scope_id(
+    client: TestClient,
+    db_session: Session,
+    requested_role: str,
+) -> None:
+    csrf_token = _login(client, "demo.user@queryops.local")
+    global_scope = _scope_by_type_key(db_session, "global", "global")
+
+    response = client.post(
+        "/api/v1/role-requests",
+        headers={"X-CSRF-Token": csrf_token},
+        json={
+            "requested_role": requested_role,
+            "requested_scope_id": str(global_scope.id),
+            "reason": f"I need {requested_role} access for department operations.",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID_REQUESTED_SCOPE"
+
+
+def test_admin_role_request_rejects_department_requested_scope_id(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    csrf_token = _login(client, "demo.user@queryops.local")
+    sales_scope = _scope_by_type_key(db_session, "department", "sales")
+
+    response = client.post(
+        "/api/v1/role-requests",
+        headers={"X-CSRF-Token": csrf_token},
+        json={
+            "requested_role": "admin",
+            "requested_scope_id": str(sales_scope.id),
+            "reason": "I need global administration access.",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID_REQUESTED_SCOPE"
+
+
+def test_valid_department_scope_request_still_works(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    csrf_token = _login(client, "demo.user@queryops.local")
+    sales_scope = _scope_by_type_key(db_session, "department", "sales")
+
+    response = client.post(
+        "/api/v1/role-requests",
+        headers={"X-CSRF-Token": csrf_token},
+        json={
+            "requested_role": "manager",
+            "requested_scope_id": str(sales_scope.id),
+            "reason": "I need manager access for Sales operations.",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["data"]["requested_scope"]["id"] == str(sales_scope.id)
+
+
 @pytest.mark.parametrize("requested_role", ["user", "owner", ""])
 def test_create_role_request_rejects_invalid_requested_role(
     client: TestClient,
@@ -207,6 +272,65 @@ def test_create_role_request_rejects_current_role(client: TestClient) -> None:
 
     assert response.status_code == 400
     assert response.json()["error"]["code"] == "ROLE_REQUEST_CURRENT_ROLE"
+
+
+def test_manager_can_request_analyst_role(client: TestClient) -> None:
+    csrf_token = _login(client, "demo.manager@queryops.local")
+
+    response = client.post(
+        "/api/v1/role-requests",
+        headers={"X-CSRF-Token": csrf_token},
+        json={
+            "requested_role": "analyst",
+            "reason": "I need SQL-visible access for Finance operations.",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["data"]["requested_role"] == "analyst"
+
+
+def test_analyst_can_request_admin_role(client: TestClient) -> None:
+    csrf_token = _login(client, "demo.analyst@queryops.local")
+
+    response = client.post(
+        "/api/v1/role-requests",
+        headers={"X-CSRF-Token": csrf_token},
+        json={
+            "requested_role": "admin",
+            "reason": "I need temporary global administration access.",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["data"]["requested_role"] == "admin"
+
+
+@pytest.mark.parametrize(
+    ("email", "requested_role"),
+    [
+        ("demo.analyst@queryops.local", "manager"),
+        ("demo.admin@queryops.local", "manager"),
+    ],
+)
+def test_role_request_must_be_upward_only(
+    client: TestClient,
+    email: str,
+    requested_role: str,
+) -> None:
+    csrf_token = _login(client, email)
+
+    response = client.post(
+        "/api/v1/role-requests",
+        headers={"X-CSRF-Token": csrf_token},
+        json={
+            "requested_role": requested_role,
+            "reason": "Trying to request a non-upgrade role.",
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "ROLE_REQUEST_NOT_UPWARD"
 
 
 def test_create_role_request_rejects_duplicate_pending_request(
@@ -395,6 +519,28 @@ def test_admin_can_approve_pending_role_request(
     )
 
 
+def test_approve_role_request_requires_decision_reason(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    role_request = _create_role_request(
+        db_session,
+        requester_email="demo.user@queryops.local",
+        requested_role="manager",
+        reason="I need manager access for Sales operations.",
+    )
+    csrf_token = _login(client, "demo.admin@queryops.local")
+
+    response = client.post(
+        f"/api/v1/admin/role-requests/{role_request.id}/approve",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"decision_reason": "   "},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "ROLE_REQUEST_DECISION_REASON_REQUIRED"
+
+
 def test_approve_role_request_assigns_requested_scope_for_analyst(
     client: TestClient,
     db_session: Session,
@@ -516,6 +662,28 @@ def test_admin_can_reject_pending_role_request(
         audit_log.audit_metadata["decision_reason"]
         == "Current responsibilities do not require analyst access."
     )
+
+
+def test_reject_role_request_requires_decision_reason(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    role_request = _create_role_request(
+        db_session,
+        requester_email="demo.user@queryops.local",
+        requested_role="analyst",
+        reason="I need SQL-visible access for Sales reviews.",
+    )
+    csrf_token = _login(client, "demo.admin@queryops.local")
+
+    response = client.post(
+        f"/api/v1/admin/role-requests/{role_request.id}/reject",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"decision_reason": ""},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "ROLE_REQUEST_DECISION_REASON_REQUIRED"
 
 
 @pytest.mark.parametrize("csrf_header", [None, "wrong-csrf-token"])

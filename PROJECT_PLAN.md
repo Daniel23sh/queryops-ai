@@ -4,13 +4,13 @@
 
 The current active target is:
 
-`Milestone 2.5 — Access Context Foundation`
+`Post-Milestone 2.5 Hardening — Access Context Foundation`
 
-Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, and Milestone 2 auth/users/roles/permissions work are complete under the previous scope.
+Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, and Milestone 2.5 Access Context Foundation are complete under the previous scope.
 
-Milestone 2.5 adds the Access Context Foundation. V1 access remains simple and testable: decisions are based on permission, assigned access scope, and minimal resource metadata. This milestone introduces the future ABAC-ready seams without implementing Full ABAC.
+The current work is a post-merge hardening pass for Milestone 2.5. It fixes security and correctness issues in the merged access-context foundation while keeping V1 access simple and testable: decisions are based on permission, assigned access scope, and minimal resource metadata.
 
-Milestone 2.5 includes:
+Milestone 2.5 delivered:
 
 - `access_scopes`
 - `user_access_scopes`
@@ -22,7 +22,9 @@ Milestone 2.5 includes:
 - `/auth/me` and demo login scope serialization
 - role upgrade request compatibility with optional requested scope metadata
 
-Milestone 2.5 does not implement Full ABAC, `policy_rules`, `policy_conditions`, a dynamic policy language, a policy builder UI, ReBAC, column masking, tenant/project/region UI, external authorization services, PostgreSQL RLS policies, Query Engine, real Actions/Approvals behavior, real dashboards, CSV export behavior, or real LLM calls.
+This hardening pass must be completed before starting the next milestone. Do not set Milestone 3 as active unless explicitly requested.
+
+This hardening pass does not implement Full ABAC, `policy_rules`, `policy_conditions`, a dynamic policy language, a policy builder UI, ReBAC, column masking, tenant/project/region UI, external authorization services, PostgreSQL RLS policies, Query Engine, real Actions/Approvals behavior, real dashboards, CSV export behavior, or real LLM calls.
 
 ## 2. Product Summary
 
@@ -316,8 +318,8 @@ Milestone 1 should leave the repository ready for auth, permission, and RLS work
 
 ## 14. Next Milestone
 
-After Milestone 1, the next target is:
+The next planned product milestone is:
 
-`Milestone 2 — Auth, Users, Roles & Permissions`
+`Milestone 3 — RLS & Security Foundation`
 
-Milestone 2 must not start until Milestone 1 is complete and verified.
+Milestone 3 is not active. It must not start until the post-Milestone 2.5 hardening pass is complete and the user explicitly requests the milestone change.
