@@ -3,9 +3,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from app.api.responses import ApiError
 from app.auth.access_context import UserAccessContext
+from app.core.rls import RLSExecutable, build_rls_context, set_rls_context
 from app.models.product import DataResource
 
+
+AUTHORIZATION_DENIED_MESSAGE = "You are not authorized to access this resource."
 
 ACTION_REQUIRED_PERMISSIONS = {
     "query:scoped_data": "can_query_scoped_data",
@@ -22,6 +26,13 @@ ACTION_REQUIRED_PERMISSIONS = {
 }
 
 SCOPED_DATA_ACTIONS = frozenset({"query:scoped_data", "view:scoped_data"})
+QUERY_ACTIONS = frozenset(
+    {
+        "query:scoped_data",
+        "query:global_data",
+        "query:product_tables",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -63,6 +74,16 @@ def evaluate_access(
             resource_dict,
             required_permission,
             "missing_permission",
+            [],
+        )
+
+    if action in QUERY_ACTIONS and _resource_is_explicitly_not_queryable(resource_dict):
+        return _deny(
+            subject,
+            action,
+            resource_dict,
+            required_permission,
+            "resource_not_queryable",
             [],
         )
 
@@ -140,6 +161,39 @@ def evaluate_access(
     )
 
 
+def authorize_resource_access(
+    subject: UserAccessContext,
+    action: str,
+    resource: DataResource | dict[str, Any],
+    context: dict[str, Any] | None = None,
+) -> AccessDecision:
+    return evaluate_access(subject, action, resource, context)
+
+
+def require_access_decision(decision: AccessDecision) -> None:
+    if decision.allowed:
+        return
+
+    raise ApiError(
+        code="FORBIDDEN",
+        message=AUTHORIZATION_DENIED_MESSAGE,
+        status_code=403,
+    )
+
+
+def prepare_scoped_data_access(
+    db: RLSExecutable,
+    subject: UserAccessContext,
+    action: str,
+    resource: DataResource | dict[str, Any],
+    context: dict[str, Any] | None = None,
+) -> AccessDecision:
+    decision = authorize_resource_access(subject, action, resource, context)
+    require_access_decision(decision)
+    set_rls_context(db, build_rls_context(subject))
+    return decision
+
+
 def _allow(
     subject: UserAccessContext,
     action: str,
@@ -199,6 +253,10 @@ def _resource_to_dict(resource: DataResource | dict[str, Any]) -> dict[str, Any]
         "is_exportable": resource.is_exportable,
         "llm_exposure_level": resource.llm_exposure_level,
     }
+
+
+def _resource_is_explicitly_not_queryable(resource: dict[str, Any]) -> bool:
+    return resource.get("is_queryable") is False
 
 
 def _snapshot(subject: UserAccessContext) -> dict[str, Any]:
