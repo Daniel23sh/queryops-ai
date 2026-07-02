@@ -1186,6 +1186,10 @@ describe("App", () => {
     ).toBeGreaterThan(0);
     expect((await screen.findAllByText("Unused paid licenses")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Results" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Summary" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "SQL" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Diagnostics" })).not.toBeInTheDocument();
     expectNoQueryRun(fetchMock);
   });
 
@@ -1216,6 +1220,8 @@ describe("App", () => {
 
     expect(await screen.findByText("User template query completed.")).toBeInTheDocument();
     expect(screen.queryByText("SELECT hidden_user_sql")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "SQL" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Diagnostics" })).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
@@ -1241,10 +1247,16 @@ describe("App", () => {
       within(workspaceRegion).getByRole("button", { name: "Run free query" })
     ).toBeDisabled();
     expect(screen.queryByText("Technical capability")).not.toBeInTheDocument();
+    expect(within(workspaceRegion).getByRole("tab", { name: "Results" })).toBeInTheDocument();
+    expect(within(workspaceRegion).getByRole("tab", { name: "Summary" })).toBeInTheDocument();
+    expect(within(workspaceRegion).queryByRole("tab", { name: "SQL" })).not.toBeInTheDocument();
+    expect(
+      within(workspaceRegion).queryByRole("tab", { name: "Diagnostics" })
+    ).not.toBeInTheDocument();
     expectNoQueryRun(fetchMock);
   });
 
-  it("renders the static technical capability placeholder for demo analyst", async () => {
+  it("renders role-gated SQL and diagnostics tab shells for demo analyst", async () => {
     const fetchMock = stubFetchSequence(
       successResponse(demoAnalyst),
       successResponse(askDataTemplates)
@@ -1257,9 +1269,16 @@ describe("App", () => {
     });
     fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
 
-    expect(await screen.findByText("Technical capability")).toBeInTheDocument();
-    expect(screen.getByText(/SQL and correction details will appear in PR5/i)).toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: /sql/i })).not.toBeInTheDocument();
+    const workspaceRegion = await screen.findByRole("region", {
+      name: "Ask Data workspace"
+    });
+    expect(within(workspaceRegion).getByRole("tab", { name: "Results" })).toBeInTheDocument();
+    expect(within(workspaceRegion).getByRole("tab", { name: "Summary" })).toBeInTheDocument();
+    expect(within(workspaceRegion).getByRole("tab", { name: "SQL" })).toBeInTheDocument();
+    expect(
+      within(workspaceRegion).getByRole("tab", { name: "Diagnostics" })
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Technical capability")).not.toBeInTheDocument();
     expectNoQueryRun(fetchMock);
   });
 
@@ -1278,6 +1297,13 @@ describe("App", () => {
 
     expect(await screen.findByText("Admin global shell")).toBeInTheDocument();
     expect(screen.getByText(/Global scope indicator only/i)).toBeInTheDocument();
+    const workspaceRegion = screen.getByRole("region", {
+      name: "Ask Data workspace"
+    });
+    expect(within(workspaceRegion).getByRole("tab", { name: "SQL" })).toBeInTheDocument();
+    expect(
+      within(workspaceRegion).getByRole("tab", { name: "Diagnostics" })
+    ).toBeInTheDocument();
     expectNoQueryRun(fetchMock);
   });
 

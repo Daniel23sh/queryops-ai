@@ -21,6 +21,8 @@ type TemplateLoadStatus = "loading" | "loaded" | "error";
 
 type QueryRunMode = "template" | "free" | "clarification";
 
+type AskDataResultTab = "results" | "summary" | "sql" | "diagnostics";
+
 type QueryRunState =
   | {
       status: "idle";
@@ -287,7 +289,6 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
           />
           <QuestionComposer
             canRunFreeQuery={canRunFreeQuery}
-            canViewTechnicalDetails={canViewTechnicalDetails}
             freeQuestion={freeQuestion}
             onFreeQuestionChange={setFreeQuestion}
             onRunFreeQuery={() => void handleRunFreeQuery()}
@@ -300,6 +301,7 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
           />
           <ResultPlaceholder
             canClarify={canRunFreeQuery}
+            canViewTechnicalDetails={canViewTechnicalDetails}
             clarificationDisabledReason={
               queryRunState.status === "success" &&
               queryRunState.result.clarification_required
@@ -508,7 +510,6 @@ function RoleScopeNotice({
 
 function QuestionComposer({
   canRunFreeQuery,
-  canViewTechnicalDetails,
   freeQuestion,
   onFreeQuestionChange,
   onRunFreeQuery,
@@ -516,7 +517,6 @@ function QuestionComposer({
   running
 }: {
   canRunFreeQuery: boolean;
-  canViewTechnicalDetails: boolean;
   freeQuestion: string;
   onFreeQuestionChange: (question: string) => void;
   onRunFreeQuery: () => void;
@@ -563,7 +563,6 @@ function QuestionComposer({
           {runDisabledReason ? (
             <p className="ask-data-session-message">{runDisabledReason}</p>
           ) : null}
-          {canViewTechnicalDetails ? <TechnicalCapabilityPlaceholder /> : null}
         </>
       ) : (
         <div className="ask-data-template-only-shell">
@@ -578,19 +577,120 @@ function QuestionComposer({
   );
 }
 
-function TechnicalCapabilityPlaceholder() {
+function ResultPlaceholder({
+  canClarify,
+  canViewTechnicalDetails,
+  clarificationDisabledReason,
+  clarificationQuestion,
+  onClarificationQuestionChange,
+  onSubmitClarification,
+  queryRunState
+}: {
+  canClarify: boolean;
+  canViewTechnicalDetails: boolean;
+  clarificationDisabledReason: string | null;
+  clarificationQuestion: string;
+  onClarificationQuestionChange: (question: string) => void;
+  onSubmitClarification: () => void;
+  queryRunState: QueryRunState;
+}) {
+  const [activeTab, setActiveTab] = useState<AskDataResultTab>("results");
+  const activeVisibleTab =
+    !canViewTechnicalDetails && (activeTab === "sql" || activeTab === "diagnostics")
+      ? "results"
+      : activeTab;
+
+  useEffect(() => {
+    if (activeVisibleTab !== activeTab) {
+      setActiveTab(activeVisibleTab);
+    }
+  }, [activeTab, activeVisibleTab]);
+
   return (
-    <div className="ask-data-technical-placeholder">
-      <h3>Technical capability</h3>
-      <p>
-        SQL and correction details will appear in PR5 as static role-aware tabs.
-        No live SQL tab is available in this shell.
-      </p>
+    <section className="ask-data-panel" aria-labelledby="result-placeholder-title">
+      <div className="ask-data-panel__header">
+        <p className="eyebrow">Query result</p>
+        <h2 id="result-placeholder-title">Result placeholder</h2>
+      </div>
+
+      <ResultTabs
+        activeTab={activeVisibleTab}
+        canViewTechnicalDetails={canViewTechnicalDetails}
+        onSelectTab={setActiveTab}
+      />
+
+      <div
+        className="ask-data-result-tab-panel"
+        id={`ask-data-tab-panel-${activeVisibleTab}`}
+        role="tabpanel"
+        aria-labelledby={`ask-data-tab-${activeVisibleTab}`}
+      >
+        {activeVisibleTab === "results" ? (
+          <ResultsTabContent
+            canClarify={canClarify}
+            clarificationDisabledReason={clarificationDisabledReason}
+            clarificationQuestion={clarificationQuestion}
+            onClarificationQuestionChange={onClarificationQuestionChange}
+            onSubmitClarification={onSubmitClarification}
+            queryRunState={queryRunState}
+          />
+        ) : null}
+
+        {activeVisibleTab === "summary" ? (
+          <SummaryTabContent queryRunState={queryRunState} />
+        ) : null}
+
+        {activeVisibleTab === "sql" && canViewTechnicalDetails ? (
+          <SqlTabPlaceholder />
+        ) : null}
+
+        {activeVisibleTab === "diagnostics" && canViewTechnicalDetails ? (
+          <DiagnosticsTabPlaceholder />
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function ResultTabs({
+  activeTab,
+  canViewTechnicalDetails,
+  onSelectTab
+}: {
+  activeTab: AskDataResultTab;
+  canViewTechnicalDetails: boolean;
+  onSelectTab: (tab: AskDataResultTab) => void;
+}) {
+  const tabs: { id: AskDataResultTab; label: string; technicalOnly?: boolean }[] = [
+    { id: "results", label: "Results" },
+    { id: "summary", label: "Summary" },
+    { id: "sql", label: "SQL", technicalOnly: true },
+    { id: "diagnostics", label: "Diagnostics", technicalOnly: true }
+  ];
+
+  return (
+    <div className="ask-data-result-tabs" role="tablist" aria-label="Ask Data result views">
+      {tabs
+        .filter((tab) => !tab.technicalOnly || canViewTechnicalDetails)
+        .map((tab) => (
+          <button
+            key={tab.id}
+            id={`ask-data-tab-${tab.id}`}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            aria-controls={`ask-data-tab-panel-${tab.id}`}
+            className="ask-data-result-tab"
+            onClick={() => onSelectTab(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
     </div>
   );
 }
 
-function ResultPlaceholder({
+function ResultsTabContent({
   canClarify,
   clarificationDisabledReason,
   clarificationQuestion,
@@ -606,12 +706,7 @@ function ResultPlaceholder({
   queryRunState: QueryRunState;
 }) {
   return (
-    <section className="ask-data-panel" aria-labelledby="result-placeholder-title">
-      <div className="ask-data-panel__header">
-        <p className="eyebrow">Query result</p>
-        <h2 id="result-placeholder-title">Result placeholder</h2>
-      </div>
-
+    <>
       {queryRunState.status === "idle" ? (
         <div className="ask-data-result-shell" aria-label="Result table placeholder">
           <div>Column A</div>
@@ -644,7 +739,68 @@ function ResultPlaceholder({
           result={queryRunState.result}
         />
       ) : null}
-    </section>
+    </>
+  );
+}
+
+function SummaryTabContent({ queryRunState }: { queryRunState: QueryRunState }) {
+  if (queryRunState.status === "success") {
+    return (
+      <div className="ask-data-result-tab-placeholder">
+        <h3>Summary</h3>
+        <p>{queryRunState.result.message}</p>
+        <p>Question: {queryRunState.question}</p>
+      </div>
+    );
+  }
+
+  if (queryRunState.status === "running") {
+    return (
+      <div className="ask-data-result-tab-placeholder">
+        <h3>Summary</h3>
+        <p>{runningQueryMessage(queryRunState.mode)}</p>
+      </div>
+    );
+  }
+
+  if (queryRunState.status === "error") {
+    return (
+      <div className="ask-data-result-tab-placeholder">
+        <h3>Summary</h3>
+        <p>The latest request ended with a safe error state.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="ask-data-result-tab-placeholder">
+      <h3>Summary</h3>
+      <p>Run a selected template or free question to populate the result summary.</p>
+    </div>
+  );
+}
+
+function SqlTabPlaceholder() {
+  return (
+    <div className="ask-data-result-tab-placeholder">
+      <h3>SQL</h3>
+      <p>
+        SQL visibility is available for this role. Query SQL content will be
+        added after this tab shell is reviewed.
+      </p>
+    </div>
+  );
+}
+
+function DiagnosticsTabPlaceholder() {
+  return (
+    <div className="ask-data-result-tab-placeholder">
+      <h3>Diagnostics</h3>
+      <p>
+        Safe validation, execution, and correction diagnostics will be added
+        from query metadata in the next checkpoint.
+      </p>
+    </div>
   );
 }
 

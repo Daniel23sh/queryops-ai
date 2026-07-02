@@ -606,6 +606,62 @@ h1 {
   line-height: 1.5;
 }
 
+.ask-data-result-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border-bottom: 1px solid #d7e0eb;
+  padding-bottom: 10px;
+}
+
+.ask-data-result-tab {
+  min-height: 38px;
+  border: 1px solid #cbd6e2;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #40516a;
+  padding: 0 14px;
+  font-size: 0.875rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.ask-data-result-tab[aria-selected="true"] {
+  border-color: #6b9bb9;
+  background: #eef5f8;
+  color: #152033;
+}
+
+.ask-data-result-tab:focus-visible {
+  outline: 3px solid rgba(44, 123, 229, 0.25);
+  outline-offset: 2px;
+}
+
+.ask-data-result-tab-panel {
+  display: grid;
+  gap: 12px;
+}
+
+.ask-data-result-tab-placeholder {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #d7e0eb;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 14px;
+  line-height: 1.5;
+}
+
+.ask-data-result-tab-placeholder h3,
+.ask-data-result-tab-placeholder p {
+  margin: 0;
+}
+
+.ask-data-result-tab-placeholder h3 {
+  color: #152033;
+  font-size: 1rem;
+}
+
 .ask-data-result-summary {
   display: grid;
   gap: 12px;
@@ -820,8 +876,7 @@ h1 {
   gap: 10px;
 }
 
-.ask-data-template-only-shell,
-.ask-data-technical-placeholder {
+.ask-data-template-only-shell {
   display: grid;
   gap: 8px;
   border: 1px solid #d7e0eb;
