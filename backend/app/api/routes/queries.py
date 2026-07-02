@@ -396,48 +396,108 @@ def _serialize_query_run(
 
 def _safe_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     safe: dict[str, Any] = {}
+    if not isinstance(metadata, dict):
+        return safe
+
     for key in (
         "provider",
         "model",
         "template_id",
-        "referenced_tables",
         "scope_type",
-        "clarification_required",
         "clarified_from_query_run_id",
     ):
-        if key in metadata:
-            safe[key] = metadata[key]
+        _copy_optional_string_metadata(safe, metadata, key)
+
+    if "referenced_tables" in metadata:
+        referenced_tables = _safe_string_list(metadata["referenced_tables"])
+        if referenced_tables is not None:
+            safe["referenced_tables"] = referenced_tables
+
+    if isinstance(metadata.get("clarification_required"), bool):
+        safe["clarification_required"] = metadata["clarification_required"]
 
     validation = metadata.get("validation")
     if isinstance(validation, dict):
         safe["validation"] = {
-            "valid": validation.get("valid"),
-            "error_code": validation.get("error_code"),
+            "valid": _safe_optional_bool(validation.get("valid")),
+            "error_code": _safe_optional_string(validation.get("error_code")),
         }
 
     execution = metadata.get("execution")
     if isinstance(execution, dict):
         safe["execution"] = {
-            "status": execution.get("status"),
-            "error_code": execution.get("error_code"),
-            "row_count": execution.get("row_count"),
-            "duration_ms": execution.get("duration_ms"),
-            "truncated": execution.get("truncated"),
+            "status": _safe_optional_string(execution.get("status")),
+            "error_code": _safe_optional_string(execution.get("error_code")),
+            "row_count": _safe_optional_int(execution.get("row_count")),
+            "duration_ms": _safe_optional_number(execution.get("duration_ms")),
+            "truncated": _safe_optional_bool(execution.get("truncated")),
         }
 
     self_correction = metadata.get("self_correction")
     if isinstance(self_correction, dict):
         safe["self_correction"] = {
-            "attempted": self_correction.get("attempted"),
-            "succeeded": self_correction.get("succeeded"),
-            "original_error_code": self_correction.get("original_error_code"),
+            "attempted": _safe_optional_bool(self_correction.get("attempted")),
+            "succeeded": _safe_optional_bool(self_correction.get("succeeded")),
+            "original_error_code": _safe_optional_string(
+                self_correction.get("original_error_code")
+            ),
         }
         if "final_error_code" in self_correction:
-            safe["self_correction"]["final_error_code"] = self_correction.get(
-                "final_error_code"
+            safe["self_correction"]["final_error_code"] = _safe_optional_string(
+                self_correction.get("final_error_code")
             )
 
     return safe
+
+
+def _copy_optional_string_metadata(
+    safe: dict[str, Any],
+    metadata: dict[str, Any],
+    key: str,
+) -> None:
+    if key not in metadata:
+        return
+    value = metadata[key]
+    if value is None or isinstance(value, str):
+        safe[key] = value
+
+
+def _safe_optional_string(value: Any) -> str | None:
+    if value is None or isinstance(value, str):
+        return value
+    return None
+
+
+def _safe_optional_bool(value: Any) -> bool | None:
+    if value is None or isinstance(value, bool):
+        return value
+    return None
+
+
+def _safe_optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return None
+
+
+def _safe_optional_number(value: Any) -> int | float | None:
+    if value is None:
+        return None
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return value
+    return None
+
+
+def _safe_string_list(value: Any) -> list[str] | None:
+    if not isinstance(value, list | tuple | set):
+        return None
+
+    items = [item for item in value if isinstance(item, str)]
+    if isinstance(value, set):
+        return sorted(items)
+    return items
 
 
 def _safe_json(data: Any) -> Any:

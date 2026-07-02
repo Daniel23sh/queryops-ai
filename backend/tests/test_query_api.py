@@ -214,6 +214,12 @@ def test_unsupported_free_text_returns_safe_clarification_and_persists(
     assert data["status"] == "clarification_required"
     assert data["clarification_required"] is True
     assert data["message"] == "I could not map that question to a supported query."
+    assert data["metadata"]["clarification_required"] is True
+    serialized = json.dumps(response.json())
+    assert "unsupported_reason" not in serialized
+    assert "internal parser detail" not in serialized
+    assert "runtime_role" not in serialized
+    assert "secret" not in serialized
     query_run = db_session.get(QueryRun, uuid.UUID(data["query_run_id"]))
     assert query_run is not None
     assert query_run.status == "failed"
@@ -683,6 +689,75 @@ def test_response_metadata_is_whitelisted_and_safe(client: TestClient) -> None:
     assert "secret" not in serialized
 
 
+def test_failed_validation_metadata_is_present_and_safe(client: TestClient) -> None:
+    csrf_token = _login(client, "demo.manager@queryops.local")
+
+    response = client.post(
+        "/api/v1/queries/run",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"question": "return validation failure"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["status"] == "failed"
+    assert data["error_code"] == "validation_failed"
+    assert data["metadata"] == {
+        "provider": "mock",
+        "model": "mock-queryops-v1",
+        "template_id": None,
+        "referenced_tables": [],
+        "scope_type": "department",
+        "clarification_required": False,
+        "validation": {"valid": False, "error_code": "table_not_allowed"},
+    }
+    assert "generated_sql" not in data
+    assert "executed_sql" not in data
+    serialized = json.dumps(response.json())
+    assert "internal parser detail" not in serialized
+    assert "sensitive_table" not in serialized
+    assert "SELECT hidden" not in serialized
+
+
+def test_metadata_serializer_rejects_unsafe_internal_shapes(
+    client: TestClient,
+) -> None:
+    csrf_token = _login(client, "demo.manager@queryops.local")
+
+    response = client.post(
+        "/api/v1/queries/run",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"question": "return unsafe metadata shapes"},
+    )
+
+    assert response.status_code == 200
+    metadata = response.json()["data"]["metadata"]
+    assert metadata == {
+        "template_id": "safe-template",
+        "referenced_tables": ["devices"],
+        "clarification_required": False,
+        "validation": {"valid": True, "error_code": None},
+        "execution": {
+            "status": "succeeded",
+            "error_code": None,
+            "row_count": 1,
+            "duration_ms": 2.4,
+            "truncated": False,
+        },
+        "self_correction": {
+            "attempted": True,
+            "succeeded": True,
+            "original_error_code": "select_star_not_allowed",
+        },
+    }
+    serialized = json.dumps(response.json())
+    assert "raw_prompt" not in serialized
+    assert "api_key" not in serialized
+    assert "session_cookie" not in serialized
+    assert "stack trace" not in serialized
+    assert "queryops_query_runtime" not in serialized
+
+
 def test_sensitive_errors_do_not_leak(client: TestClient) -> None:
     csrf_token = _login(client, "demo.manager@queryops.local")
 
@@ -759,10 +834,41 @@ class FakeQueryEngineService:
                 error_code="unsupported_question",
                 clarification_required=True,
                 metadata={
-                    **SAFE_METADATA,
                     **request_metadata,
+                    "provider": "mock",
+                    "model": "mock-queryops-v1",
+                    "template_id": None,
+                    "referenced_tables": [],
+                    "scope_type": "department",
                     "clarification_required": True,
                     "unsupported_reason": "unsupported_question",
+                },
+            )
+        if "validation failure" in request.question:
+            return self._persist_and_result(
+                db,
+                user,
+                request.question,
+                status="failed",
+                query_run_status="failed",
+                generated_sql="SELECT hidden",
+                executed_sql=None,
+                error_message="SQL is not allowed for safe read-only querying.",
+                error_code="validation_failed",
+                metadata={
+                    **request_metadata,
+                    "provider": "mock",
+                    "model": "mock-queryops-v1",
+                    "template_id": None,
+                    "referenced_tables": [],
+                    "scope_type": "department",
+                    "clarification_required": False,
+                    "validation": {
+                        "valid": False,
+                        "error_code": "table_not_allowed",
+                        "reason": "internal parser detail for sensitive_table",
+                    },
+                    "generated_sql": "SELECT hidden",
                 },
             )
         if "db error" in request.question:
@@ -785,6 +891,58 @@ class FakeQueryEngineService:
                         "error_code": "database_error",
                         "internal_error_type": "UndefinedColumn missing_column",
                     },
+                },
+            )
+        if "unsafe metadata shapes" in request.question:
+            return self._persist_and_result(
+                db,
+                user,
+                request.question,
+                status="succeeded",
+                query_run_status="succeeded",
+                generated_sql="SELECT generated",
+                executed_sql="SELECT executed",
+                error_message=None,
+                error_code=None,
+                metadata={
+                    **request_metadata,
+                    "provider": {
+                        "name": "mock",
+                        "raw_prompt": "do not expose",
+                    },
+                    "model": ["mock-queryops-v1", {"api_key": "secret"}],
+                    "template_id": "safe-template",
+                    "referenced_tables": [
+                        "devices",
+                        {"raw_table": "secret"},
+                        7,
+                    ],
+                    "scope_type": {
+                        "scope": "department",
+                        "session_cookie": "secret",
+                    },
+                    "clarification_required": False,
+                    "validation": {
+                        "valid": True,
+                        "error_code": None,
+                        "reason": "internal parser detail",
+                        "stack": "stack trace",
+                    },
+                    "execution": {
+                        "status": "succeeded",
+                        "error_code": None,
+                        "row_count": 1,
+                        "duration_ms": 2.4,
+                        "truncated": False,
+                        "runtime_role": "queryops_query_runtime",
+                    },
+                    "self_correction": {
+                        "attempted": True,
+                        "succeeded": True,
+                        "original_error_code": "select_star_not_allowed",
+                        "raw_prompt": "do not expose",
+                    },
+                    "session_data": "secret",
                 },
             )
         if "self corrected" in request.question:
