@@ -662,6 +662,53 @@ h1 {
   font-size: 1rem;
 }
 
+.ask-data-sql-tab-content {
+  display: grid;
+  gap: 14px;
+  border: 1px solid #d7e0eb;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 14px;
+}
+
+.ask-data-sql-tab-content h3,
+.ask-data-sql-tab-content p,
+.ask-data-sql-block h4 {
+  margin: 0;
+}
+
+.ask-data-sql-tab-content h3,
+.ask-data-sql-block h4 {
+  color: #152033;
+}
+
+.ask-data-sql-tab-content p {
+  color: #40516a;
+  line-height: 1.5;
+}
+
+.ask-data-sql-block {
+  display: grid;
+  gap: 8px;
+}
+
+.ask-data-sql-block h4 {
+  font-size: 0.875rem;
+}
+
+.ask-data-sql-code {
+  overflow-x: auto;
+  margin: 0;
+  border: 1px solid #cbd6e2;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #152033;
+  padding: 12px;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
 .ask-data-result-summary {
   display: grid;
   gap: 12px;

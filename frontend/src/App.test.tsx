@@ -709,6 +709,9 @@ describe("App", () => {
       screen.getByText("Question: Show open support tickets by priority.")
     ).toBeInTheDocument();
     expect(screen.queryByText("SELECT manager_hidden_sql")).not.toBeInTheDocument();
+    expect(screen.queryByText("Generated SQL")).not.toBeInTheDocument();
+    expect(screen.queryByText("Executed SQL")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "SQL" })).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
@@ -758,6 +761,53 @@ describe("App", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it("renders generated and executed SQL for demo analyst only in the SQL tab", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoAnalyst),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          message: "Analyst SQL query completed.",
+          generatedSql: "SELECT generated_analyst_sql FROM safe_scope",
+          executedSql: "SELECT executed_analyst_sql FROM safe_scope"
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    fireEvent.change(await screen.findByLabelText("Free question"), {
+      target: { value: "Show inactive privileged accounts." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
+
+    expect(await screen.findByText("Analyst SQL query completed.")).toBeInTheDocument();
+    expect(screen.queryByText("SELECT generated_analyst_sql FROM safe_scope")).not.toBeInTheDocument();
+    expect(screen.queryByText("SELECT executed_analyst_sql FROM safe_scope")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Summary" }));
+    expect(screen.queryByText("SELECT generated_analyst_sql FROM safe_scope")).not.toBeInTheDocument();
+    expect(screen.queryByText("SELECT executed_analyst_sql FROM safe_scope")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "SQL" }));
+    const sqlPanel = screen.getByRole("tabpanel", { name: "SQL" });
+    expect(within(sqlPanel).getByText("Generated SQL")).toBeInTheDocument();
+    expect(within(sqlPanel).getByText("Executed SQL")).toBeInTheDocument();
+    expect(
+      within(sqlPanel).getByText("SELECT generated_analyst_sql FROM safe_scope")
+    ).toBeInTheDocument();
+    expect(
+      within(sqlPanel).getByText("SELECT executed_analyst_sql FROM safe_scope")
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it("lets demo admin submit a free query", async () => {
     document.cookie = "qo_csrf=csrf-from-cookie; path=/";
     const fetchMock = stubFetchSequence(
@@ -786,6 +836,89 @@ describe("App", () => {
 
     expect(await screen.findByText("Admin free query completed.")).toBeInTheDocument();
     expect(screen.queryByText("SELECT admin_hidden_sql")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("renders generated and executed SQL for demo admin in the SQL tab", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoAdmin),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          message: "Admin SQL query completed.",
+          generatedSql: "SELECT generated_admin_sql FROM safe_scope",
+          executedSql: "SELECT executed_admin_sql FROM safe_scope"
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    fireEvent.change(await screen.findByLabelText("Free question"), {
+      target: { value: "Show global license spend by department." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
+
+    expect(await screen.findByText("Admin SQL query completed.")).toBeInTheDocument();
+    expect(screen.queryByText("SELECT generated_admin_sql FROM safe_scope")).not.toBeInTheDocument();
+    expect(screen.queryByText("SELECT executed_admin_sql FROM safe_scope")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "SQL" }));
+    const sqlPanel = screen.getByRole("tabpanel", { name: "SQL" });
+    expect(
+      within(sqlPanel).getByText("SELECT generated_admin_sql FROM safe_scope")
+    ).toBeInTheDocument();
+    expect(
+      within(sqlPanel).getByText("SELECT executed_admin_sql FROM safe_scope")
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("renders SQL empty and unavailable states for demo analyst", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoAnalyst),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          message: "Analyst result without SQL.",
+          generatedSql: null,
+          executedSql: null
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    fireEvent.click(await screen.findByRole("tab", { name: "SQL" }));
+    expect(
+      screen.getByText("Run a query to inspect SQL for this role.")
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Results" }));
+    fireEvent.change(screen.getByLabelText("Free question"), {
+      target: { value: "Show inactive privileged accounts." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
+
+    expect(await screen.findByText("Analyst result without SQL.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "SQL" }));
+    expect(
+      screen.getByText("SQL is not available for this query result.")
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Generated SQL")).not.toBeInTheDocument();
+    expect(screen.queryByText("Executed SQL")).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
@@ -1220,6 +1353,8 @@ describe("App", () => {
 
     expect(await screen.findByText("User template query completed.")).toBeInTheDocument();
     expect(screen.queryByText("SELECT hidden_user_sql")).not.toBeInTheDocument();
+    expect(screen.queryByText("Generated SQL")).not.toBeInTheDocument();
+    expect(screen.queryByText("Executed SQL")).not.toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "SQL" })).not.toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: "Diagnostics" })).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(3);

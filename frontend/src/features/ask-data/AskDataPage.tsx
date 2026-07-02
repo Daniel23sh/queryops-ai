@@ -641,7 +641,7 @@ function ResultPlaceholder({
         ) : null}
 
         {activeVisibleTab === "sql" && canViewTechnicalDetails ? (
-          <SqlTabPlaceholder />
+          <SqlTabContent queryRunState={queryRunState} />
         ) : null}
 
         {activeVisibleTab === "diagnostics" && canViewTechnicalDetails ? (
@@ -780,15 +780,68 @@ function SummaryTabContent({ queryRunState }: { queryRunState: QueryRunState }) 
   );
 }
 
-function SqlTabPlaceholder() {
+function SqlTabContent({ queryRunState }: { queryRunState: QueryRunState }) {
+  if (queryRunState.status === "idle") {
+    return (
+      <div className="ask-data-result-tab-placeholder">
+        <h3>SQL</h3>
+        <p>Run a query to inspect SQL for this role.</p>
+      </div>
+    );
+  }
+
+  if (queryRunState.status === "running") {
+    return (
+      <div className="ask-data-result-tab-placeholder">
+        <h3>SQL</h3>
+        <p>SQL will be available after the query finishes, if the backend returns it.</p>
+      </div>
+    );
+  }
+
+  if (queryRunState.status === "error") {
+    return (
+      <div className="ask-data-result-tab-placeholder">
+        <h3>SQL</h3>
+        <p>SQL is not available because the latest request ended with a safe error state.</p>
+      </div>
+    );
+  }
+
+  const generatedSql = safeSqlText(queryRunState.result.generated_sql);
+  const executedSql = safeSqlText(queryRunState.result.executed_sql);
+
+  if (!generatedSql && !executedSql) {
+    return (
+      <div className="ask-data-result-tab-placeholder">
+        <h3>SQL</h3>
+        <p>SQL is not available for this query result.</p>
+      </div>
+    );
+  }
+
   return (
-    <div className="ask-data-result-tab-placeholder">
+    <div className="ask-data-sql-tab-content">
       <h3>SQL</h3>
       <p>
-        SQL visibility is available for this role. Query SQL content will be
-        added after this tab shell is reviewed.
+        SQL is visible only for roles with SQL access. Generated SQL is the
+        provider output; executed SQL is the validated SQL sent to the query
+        executor.
       </p>
+      {generatedSql ? <SqlBlock label="Generated SQL" sql={generatedSql} /> : null}
+      {executedSql ? <SqlBlock label="Executed SQL" sql={executedSql} /> : null}
     </div>
+  );
+}
+
+function SqlBlock({ label, sql }: { label: string; sql: string }) {
+  return (
+    <section className="ask-data-sql-block" aria-label={label}>
+      <h4>{label}</h4>
+      <pre className="ask-data-sql-code">
+        <code>{sql}</code>
+      </pre>
+    </section>
   );
 }
 
@@ -802,6 +855,15 @@ function DiagnosticsTabPlaceholder() {
       </p>
     </div>
   );
+}
+
+function safeSqlText(sql: string | null | undefined): string | null {
+  if (typeof sql !== "string") {
+    return null;
+  }
+
+  const trimmedSql = sql.trim();
+  return trimmedSql.length > 0 ? trimmedSql : null;
 }
 
 function QueryResultSummary({
