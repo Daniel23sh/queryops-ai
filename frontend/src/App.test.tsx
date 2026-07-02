@@ -211,7 +211,7 @@ describe("App", () => {
     });
   });
 
-  it("shows only common navigation for demo user", async () => {
+  it("shows common navigation and limited Ask Data access for demo user", async () => {
     stubFetchSequence(successResponse(demoUser));
 
     renderApp();
@@ -222,8 +222,8 @@ describe("App", () => {
     expect(within(nav).getByRole("button", { name: "Templates" })).toBeInTheDocument();
     expect(within(nav).getByRole("button", { name: "My Dashboard" })).toBeInTheDocument();
     expect(within(nav).getByRole("button", { name: "Role Upgrade" })).toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: "Ask Data" })).toBeInTheDocument();
     expect(within(nav).queryByRole("button", { name: "Role Requests" })).not.toBeInTheDocument();
-    expect(within(nav).queryByRole("button", { name: "Ask Data" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("button", { name: "SQL / Technical" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("button", { name: "Admin Console" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("button", { name: "Users" })).not.toBeInTheDocument();
@@ -243,6 +243,159 @@ describe("App", () => {
     expect(within(nav).queryByRole("button", { name: "SQL / Technical" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("button", { name: "Role Requests" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("button", { name: "Admin Console" })).not.toBeInTheDocument();
+  });
+
+  it("renders the Ask Data page shell from workspace navigation", async () => {
+    const fetchMock = stubFetchSequence(successResponse(demoManager));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Ask Data" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Static UI shell")).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/Query integration comes in the next PR/i).length
+    ).toBeGreaterThan(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders template-only Ask Data mode for demo user without extra API calls", async () => {
+    const fetchMock = stubFetchSequence(successResponse(demoUser));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Ask Data" })
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Template-only mode").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/Approved templates will be available in PR4/i).length
+    ).toBeGreaterThan(0);
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders a disabled free-query composer for demo manager without technical details", async () => {
+    const fetchMock = stubFetchSequence(successResponse(demoManager));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    const workspaceRegion = await screen.findByRole("region", {
+      name: "Ask Data workspace"
+    });
+    expect(within(workspaceRegion).getByLabelText("Free query draft")).toBeDisabled();
+    expect(
+      within(workspaceRegion).getByRole("button", { name: "Available in next PR" })
+    ).toBeDisabled();
+    expect(screen.queryByText("Technical capability")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the static technical capability placeholder for demo analyst", async () => {
+    const fetchMock = stubFetchSequence(successResponse(demoAnalyst));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    expect(await screen.findByText("Technical capability")).toBeInTheDocument();
+    expect(screen.getByText(/SQL and correction details will appear in PR5/i)).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /sql/i })).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the admin global Ask Data shell indicator", async () => {
+    const fetchMock = stubFetchSequence(successResponse(demoAdmin));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    expect(await screen.findByText("Admin global shell")).toBeInTheDocument();
+    expect(screen.getByText(/Global scope indicator only/i)).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the static Ask Data split workspace layout", async () => {
+    const fetchMock = stubFetchSequence(successResponse(demoManager));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    const templateRegion = await screen.findByRole("region", {
+      name: "Ask Data templates"
+    });
+    expect(
+      within(templateRegion).getByRole("heading", { name: "Templates" })
+    ).toBeInTheDocument();
+    expect(within(templateRegion).getByText("Unused licenses")).toBeInTheDocument();
+    expect(within(templateRegion).getByText("Inactive users")).toBeInTheDocument();
+    expect(within(templateRegion).getByText("Security events")).toBeInTheDocument();
+
+    const workspaceRegion = screen.getByRole("region", {
+      name: "Ask Data workspace"
+    });
+    expect(
+      within(workspaceRegion).getByRole("heading", { name: "Question composer" })
+    ).toBeInTheDocument();
+    expect(within(workspaceRegion).getByText("Result placeholder")).toBeInTheDocument();
+    expect(
+      within(workspaceRegion).getByText(/Query integration comes in the next PR/i)
+    ).toBeInTheDocument();
+
+    const insightRegion = screen.getByRole("region", {
+      name: "Ask Data insights"
+    });
+    expect(
+      within(insightRegion).getByRole("heading", { name: "Explanation" })
+    ).toBeInTheDocument();
+    expect(within(insightRegion).getByText("Suggested Action")).toBeInTheDocument();
+    expect(within(insightRegion).getByText("Future status")).toBeInTheDocument();
+    expect(
+      within(insightRegion).getByRole("button", { name: "Save as Card" })
+    ).toBeDisabled();
+    expect(
+      within(insightRegion).getByText(/later dashboards\/cards milestone/i)
+    ).toBeInTheDocument();
+    expect(
+      within(insightRegion).getByRole("button", { name: "CSV Export" })
+    ).toBeDisabled();
+    expect(
+      within(insightRegion).getByText(/later export milestone/i)
+    ).toBeInTheDocument();
+    expect(
+      within(insightRegion).getByRole("button", { name: "Preview Action" })
+    ).toBeDisabled();
+    expect(
+      within(insightRegion).getByText(/later actions milestone/i)
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("shows analyst technical navigation without admin navigation", async () => {
@@ -271,6 +424,7 @@ describe("App", () => {
     const nav = await screen.findByRole("navigation", {
       name: "Workspace navigation"
     });
+    expect(within(nav).getByRole("button", { name: "Ask Data" })).toBeInTheDocument();
     expect(within(nav).getByRole("button", { name: "Role Requests" })).toBeInTheDocument();
     expect(within(nav).getByRole("button", { name: "Admin Console" })).toBeInTheDocument();
     expect(within(nav).getByRole("button", { name: "Users" })).toBeInTheDocument();

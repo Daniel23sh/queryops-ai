@@ -14,6 +14,7 @@ import {
 } from "./api/roleRequests";
 import { useAuth } from "./auth/AuthProvider";
 import type { AuthUser, PermissionKey } from "./auth/types";
+import { AskDataPage } from "./features/ask-data";
 
 type DemoProfile = {
   label: string;
@@ -109,7 +110,7 @@ const WORKSPACE_NAV_ITEMS: NavItem[] = [
     label: "Ask Data",
     title: "Ask Data placeholder",
     summary: "Future governed data questions will start here.",
-    canView: (user) => hasPermission(user, "can_run_free_query")
+    canView: (user) => hasPermission(user, "can_use_query_templates")
   },
   {
     id: "query-history",
@@ -378,7 +379,9 @@ function AuthenticatedWorkspace({
             </p>
           ) : null}
 
-          {activeNavItem.id === "role-upgrade" ? (
+          {activeNavItem.id === "ask-data" ? (
+            <AskDataPage user={user} />
+          ) : activeNavItem.id === "role-upgrade" ? (
             <RoleUpgradePanel userRole={user.role} csrfToken={csrfToken} />
           ) : activeNavItem.id === "admin-role-requests" ? (
             <AdminRoleRequestsPanel csrfToken={csrfToken} />

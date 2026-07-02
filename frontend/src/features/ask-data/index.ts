@@ -1,0 +1,1 @@
+export { AskDataPage } from "./AskDataPage";
