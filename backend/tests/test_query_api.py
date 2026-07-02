@@ -18,7 +18,16 @@ from app.db.base import Base
 from app.db.session import get_db
 from app.domains.it_operations.seed import seed_database
 from app.main import app
-from app.models.product import AppUser, Permission, PermissionEffect, QueryRun, UserPermission
+from app.models.product import (
+    AccessScope,
+    AppUser,
+    Permission,
+    PermissionEffect,
+    QueryRun,
+    Role,
+    UserAccessScope,
+    UserPermission,
+)
 from app.query_engine.result_formatter import QueryEngineServiceResult
 
 
@@ -301,6 +310,163 @@ def test_history_includes_sql_for_analyst(client: TestClient, db_session: Sessio
     row = response.json()["data"][0]
     assert row["generated_sql"] == "SELECT generated"
     assert row["executed_sql"] == "SELECT executed"
+
+
+def test_analyst_can_retrieve_scope_query_history(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    manager = _user_by_email(db_session, "demo.manager@queryops.local")
+    sales_user = _user_by_email(db_session, "demo.user@queryops.local")
+    it_peer = _add_user_with_scope(
+        db_session,
+        email="it.peer@queryops.local",
+        role_name="manager",
+        scope_type="department",
+        scope_key="it",
+        department_id=manager.department_id,
+    )
+    analyst_run = _add_query_run(db_session, analyst, "analyst it run", minute=1)
+    peer_run = _add_query_run(db_session, it_peer, "peer it run", minute=2)
+    _add_query_run(db_session, manager, "finance manager run", minute=3)
+    _add_query_run(db_session, sales_user, "sales user run", minute=4)
+    _login(client, analyst.email)
+
+    response = client.get("/api/v1/queries/scope-history")
+
+    assert response.status_code == 200
+    rows = response.json()["data"]
+    assert [row["id"] for row in rows] == [str(peer_run.id), str(analyst_run.id)]
+    assert [row["natural_language_question"] for row in rows] == [
+        "peer it run",
+        "analyst it run",
+    ]
+    assert all(row["generated_sql"] == "SELECT generated" for row in rows)
+    assert "finance manager run" not in json.dumps(rows)
+    assert "sales user run" not in json.dumps(rows)
+
+
+def test_scope_history_rejects_manager_without_scope_history_permission(
+    client: TestClient,
+) -> None:
+    _login(client, "demo.manager@queryops.local")
+
+    response = client.get("/api/v1/queries/scope-history")
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "FORBIDDEN"
+
+
+def test_scope_history_rejects_user_without_scope_history_permission(
+    client: TestClient,
+) -> None:
+    _login(client, "demo.user@queryops.local")
+
+    response = client.get("/api/v1/queries/scope-history")
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "FORBIDDEN"
+
+
+def test_admin_can_retrieve_global_scope_query_history(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    admin = _user_by_email(db_session, "demo.admin@queryops.local")
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    manager = _user_by_email(db_session, "demo.manager@queryops.local")
+    sales_user = _user_by_email(db_session, "demo.user@queryops.local")
+    _add_query_run(db_session, analyst, "analyst run", minute=1)
+    _add_query_run(db_session, manager, "manager run", minute=2)
+    _add_query_run(db_session, sales_user, "user run", minute=3)
+    _add_query_run(db_session, admin, "admin run", minute=4)
+    _login(client, admin.email)
+
+    response = client.get("/api/v1/queries/scope-history")
+
+    assert response.status_code == 200
+    questions = [row["natural_language_question"] for row in response.json()["data"]]
+    assert questions == ["admin run", "user run", "manager run", "analyst run"]
+    assert response.json()["data"][0]["generated_sql"] == "SELECT generated"
+
+
+def test_scope_history_hides_sql_without_can_view_sql(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    manager = _user_by_email(db_session, "demo.manager@queryops.local")
+    permission = _permission_by_key(db_session, "can_view_query_history_scope")
+    db_session.add(
+        UserPermission(
+            user_id=manager.id,
+            permission_id=permission.id,
+            effect=PermissionEffect.ALLOW.value,
+        )
+    )
+    manager_run = _add_query_run(db_session, manager, "manager finance run", minute=1)
+    _add_query_run(
+        db_session,
+        _user_by_email(db_session, "demo.analyst@queryops.local"),
+        "analyst it run",
+        minute=2,
+    )
+    _login(client, manager.email)
+
+    response = client.get("/api/v1/queries/scope-history")
+
+    assert response.status_code == 200
+    rows = response.json()["data"]
+    assert [row["id"] for row in rows] == [str(manager_run.id)]
+    assert "generated_sql" not in rows[0]
+    assert "executed_sql" not in rows[0]
+    assert "SELECT" not in json.dumps(rows)
+
+
+def test_department_history_alias_matches_scope_history(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    _add_query_run(db_session, analyst, "analyst run", minute=1)
+    _add_query_run(
+        db_session,
+        _add_user_with_scope(
+            db_session,
+            email="it.alias.peer@queryops.local",
+            role_name="manager",
+            scope_type="department",
+            scope_key="it",
+            department_id=analyst.department_id,
+        ),
+        "peer run",
+        minute=2,
+    )
+    _login(client, analyst.email)
+
+    scope_response = client.get("/api/v1/queries/scope-history")
+    alias_response = client.get("/api/v1/queries/department-history")
+
+    assert scope_response.status_code == 200
+    assert alias_response.status_code == 200
+    assert alias_response.json()["data"] == scope_response.json()["data"]
+
+
+def test_scope_history_applies_limit_and_offset(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    _add_query_run(db_session, analyst, "old analyst run", minute=1)
+    middle_run = _add_query_run(db_session, analyst, "middle analyst run", minute=2)
+    _add_query_run(db_session, analyst, "new analyst run", minute=3)
+    _login(client, analyst.email)
+
+    response = client.get("/api/v1/queries/scope-history?limit=1&offset=1")
+
+    assert response.status_code == 200
+    rows = response.json()["data"]
+    assert [row["id"] for row in rows] == [str(middle_run.id)]
 
 
 def test_detail_returns_only_current_user_query_run(
@@ -686,6 +852,61 @@ def _permission_by_key(session: Session, key: str) -> Permission:
     permission = session.scalar(select(Permission).where(Permission.key == key))
     assert permission is not None
     return permission
+
+
+def _role_by_name(session: Session, name: str) -> Role:
+    role = session.scalar(select(Role).where(Role.name == name))
+    assert role is not None
+    return role
+
+
+def _access_scope_by_key(
+    session: Session,
+    scope_type: str,
+    scope_key: str,
+) -> AccessScope:
+    scope = session.scalar(
+        select(AccessScope).where(
+            AccessScope.scope_type == scope_type,
+            AccessScope.scope_key == scope_key,
+        )
+    )
+    assert scope is not None
+    return scope
+
+
+def _add_user_with_scope(
+    session: Session,
+    *,
+    email: str,
+    role_name: str,
+    scope_type: str,
+    scope_key: str,
+    department_id: uuid.UUID | None,
+) -> AppUser:
+    user = AppUser(
+        auth_provider="demo",
+        provider_user_id=email,
+        email=email,
+        full_name=email.split("@")[0],
+        role_id=_role_by_name(session, role_name).id,
+        department_id=department_id,
+        status="active",
+    )
+    session.add(user)
+    session.flush()
+    scope = _access_scope_by_key(session, scope_type, scope_key)
+    session.add(
+        UserAccessScope(
+            user_id=user.id,
+            scope_id=scope.id,
+            access_level="read",
+            is_default=True,
+        )
+    )
+    session.commit()
+    session.refresh(user)
+    return user
 
 
 def _add_query_run(

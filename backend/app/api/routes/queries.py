@@ -16,7 +16,7 @@ from app.auth.access_context import UserAccessContext, build_user_access_context
 from app.auth.permissions import require_authenticated_user
 from app.auth.session import csrf_is_valid, session_from_request
 from app.db.session import get_db
-from app.models.product import AppUser, QueryRun
+from app.models.product import AppUser, QueryRun, UserAccessScope
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.service import QueryEngineRequest, QueryEngineService
 
@@ -25,6 +25,9 @@ router = APIRouter(prefix="/api/v1")
 
 ALLOWED_QUERY_RUN_FIELDS = frozenset({"question", "template_id", "parameters"})
 ALLOWED_QUERY_CLARIFY_FIELDS = frozenset({"question"})
+SCOPE_HISTORY_PERMISSIONS = frozenset(
+    {"can_view_query_history_scope", "can_view_query_history_department"}
+)
 MAX_HISTORY_LIMIT = 100
 DEFAULT_HISTORY_LIMIT = 25
 
@@ -159,6 +162,26 @@ def query_history(
     )
 
 
+@router.get("/queries/scope-history")
+def query_scope_history(
+    current_user: AppUser = Depends(require_authenticated_user),
+    db: Session = Depends(get_db),
+    limit: int = DEFAULT_HISTORY_LIMIT,
+    offset: int = 0,
+):
+    return _scope_history_response(current_user, db, limit=limit, offset=offset)
+
+
+@router.get("/queries/department-history")
+def query_department_history(
+    current_user: AppUser = Depends(require_authenticated_user),
+    db: Session = Depends(get_db),
+    limit: int = DEFAULT_HISTORY_LIMIT,
+    offset: int = 0,
+):
+    return _scope_history_response(current_user, db, limit=limit, offset=offset)
+
+
 @router.get("/queries/{query_run_id}")
 def get_query_run(
     query_run_id: UUID,
@@ -178,6 +201,67 @@ def get_query_run(
             )
         )
     )
+
+
+def _scope_history_response(
+    current_user: AppUser,
+    db: Session,
+    *,
+    limit: int,
+    offset: int,
+):
+    access_context = build_user_access_context(current_user, db)
+    if not _can_view_scope_history(access_context):
+        return _forbidden_response()
+
+    safe_limit = max(1, min(int(limit), MAX_HISTORY_LIMIT))
+    safe_offset = max(0, int(offset))
+    query_runs = _scope_history_query_runs(
+        db,
+        access_context,
+        limit=safe_limit,
+        offset=safe_offset,
+    )
+
+    return success_response(
+        _safe_json(
+            [
+                _serialize_query_run(
+                    query_run,
+                    can_view_sql=access_context.has_permission("can_view_sql"),
+                )
+                for query_run in query_runs
+            ]
+        )
+    )
+
+
+def _can_view_scope_history(access_context: UserAccessContext) -> bool:
+    return access_context.has_global_scope or any(
+        access_context.has_permission(permission)
+        for permission in SCOPE_HISTORY_PERMISSIONS
+    )
+
+
+def _scope_history_query_runs(
+    db: Session,
+    access_context: UserAccessContext,
+    *,
+    limit: int,
+    offset: int,
+) -> list[QueryRun]:
+    query = select(QueryRun).order_by(QueryRun.created_at.desc(), QueryRun.id.desc())
+
+    if not access_context.has_global_scope:
+        scope_ids = [scope.id for scope in access_context.scopes]
+        if not scope_ids:
+            return []
+        visible_user_ids = select(UserAccessScope.user_id).where(
+            UserAccessScope.scope_id.in_(scope_ids)
+        )
+        query = query.where(QueryRun.user_id.in_(visible_user_ids))
+
+    return list(db.scalars(query.limit(limit).offset(offset)).all())
 
 
 def _csrf_error_response(request: Request):
