@@ -56,6 +56,37 @@ def test_successful_template_query_creates_succeeded_query_run(
     assert query_run.query_metadata["execution"]["status"] == "succeeded"
 
 
+def test_template_user_can_run_approved_template_without_free_query_permission(
+    db_session: Session,
+) -> None:
+    executor = FakeExecutor()
+    service = QueryEngineService(executor=executor)
+    user = user_by_email(db_session, "demo.user@queryops.local")
+    access_context = build_user_access_context(user, db_session)
+
+    assert access_context.has_permission("can_use_query_templates")
+    assert not access_context.has_permission("can_run_free_query")
+    assert not access_context.has_permission("can_query_scoped_data")
+
+    result = service.run(
+        db_session,
+        user,
+        QueryEngineRequest(
+            question="How many open support tickets exist in my department by priority?",
+            template_id="open_support_tickets_by_department",
+        ),
+    )
+
+    query_run = only_query_run(db_session)
+    assert result.status == "succeeded"
+    assert query_run.status == "succeeded"
+    assert query_run.generated_sql is not None
+    assert query_run.executed_sql == executor.seen_sql[0]
+    assert query_run.query_metadata["template_id"] == "open_support_tickets_by_department"
+    assert query_run.query_metadata["validation"]["valid"] is True
+    assert query_run.query_metadata["execution"]["status"] == "succeeded"
+
+
 def test_successful_known_mock_free_text_query_creates_succeeded_query_run(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,

@@ -10,8 +10,10 @@ from app.models.product import DataResource
 
 
 AUTHORIZATION_DENIED_MESSAGE = "You are not authorized to access this resource."
+APPROVED_TEMPLATE_QUERY_ACTION = "query:approved_template"
 
 ACTION_REQUIRED_PERMISSIONS = {
+    APPROVED_TEMPLATE_QUERY_ACTION: "can_use_query_templates",
     "query:scoped_data": "can_query_scoped_data",
     "view:scoped_data": "can_view_scoped_data",
     "query:global_data": "can_query_global_data",
@@ -25,9 +27,12 @@ ACTION_REQUIRED_PERMISSIONS = {
     "query_history:view_scope": "can_view_query_history_scope",
 }
 
-SCOPED_DATA_ACTIONS = frozenset({"query:scoped_data", "view:scoped_data"})
+SCOPED_DATA_ACTIONS = frozenset(
+    {APPROVED_TEMPLATE_QUERY_ACTION, "query:scoped_data", "view:scoped_data"}
+)
 QUERY_ACTIONS = frozenset(
     {
+        APPROVED_TEMPLATE_QUERY_ACTION,
         "query:scoped_data",
         "query:global_data",
         "query:product_tables",

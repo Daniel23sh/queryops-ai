@@ -3,13 +3,14 @@ from __future__ import annotations
 import re
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from sqlalchemy.orm import Session
 
 from app.auth.access_context import UserAccessContext, build_user_access_context
+from app.auth.access_policy import APPROVED_TEMPLATE_QUERY_ACTION
 from app.models.product import AppUser, QueryRun, RunStatus
 from app.query_engine.domain_pack import DomainPack, QueryTemplate
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
@@ -91,7 +92,10 @@ class QueryEngineService:
             db,
             access_context,
             domain_pack=domain_pack,
-            options=SchemaContextOptions(template_id=request.template_id),
+            options=SchemaContextOptions(
+                template_id=request.template_id,
+                query_action=_query_action_for_request(request),
+            ),
         )
 
         generation_result = self._generate_sql(
@@ -196,7 +200,7 @@ class QueryEngineService:
             db,
             access_context,
             validation_result,
-            options=request.execution_options or SQLExecutionOptions(),
+            options=_execution_options_for_request(request),
         )
         metadata = {
             **metadata,
@@ -374,6 +378,17 @@ def _sql_literal(value: Any) -> str:
     if value is None:
         return "NULL"
     return "'" + str(value).replace("'", "''") + "'"
+
+
+def _query_action_for_request(request: QueryEngineRequest) -> str:
+    if request.template_id is not None:
+        return APPROVED_TEMPLATE_QUERY_ACTION
+    return "query:scoped_data"
+
+
+def _execution_options_for_request(request: QueryEngineRequest) -> SQLExecutionOptions:
+    options = request.execution_options or SQLExecutionOptions()
+    return replace(options, query_action=_query_action_for_request(request))
 
 
 def _user_generation_context(access_context: UserAccessContext) -> dict[str, Any]:
