@@ -8,6 +8,7 @@ import type {
   QueryResultRow,
   QueryRowValue,
   QueryRunResult,
+  QuerySelfCorrectionMetadata,
   QueryTemplate,
   QueryTemplateCategory
 } from "./types";
@@ -22,6 +23,11 @@ type TemplateLoadStatus = "loading" | "loaded" | "error";
 type QueryRunMode = "template" | "free" | "clarification";
 
 type AskDataResultTab = "results" | "summary" | "sql" | "diagnostics";
+
+type DiagnosticItem = {
+  label: string;
+  value: boolean | number | string | null | undefined;
+};
 
 type QueryRunState =
   | {
@@ -645,7 +651,7 @@ function ResultPlaceholder({
         ) : null}
 
         {activeVisibleTab === "diagnostics" && canViewTechnicalDetails ? (
-          <DiagnosticsTabPlaceholder />
+          <DiagnosticsTabContent queryRunState={queryRunState} />
         ) : null}
       </div>
     </section>
@@ -845,15 +851,167 @@ function SqlBlock({ label, sql }: { label: string; sql: string }) {
   );
 }
 
-function DiagnosticsTabPlaceholder() {
+function DiagnosticsTabContent({ queryRunState }: { queryRunState: QueryRunState }) {
+  if (queryRunState.status === "idle") {
+    return (
+      <div className="ask-data-result-tab-placeholder">
+        <h3>Diagnostics</h3>
+        <p>Run a query to inspect diagnostics for this role.</p>
+      </div>
+    );
+  }
+
+  if (queryRunState.status === "running") {
+    return (
+      <div className="ask-data-result-tab-placeholder">
+        <h3>Diagnostics</h3>
+        <p>Diagnostics will be available after the query finishes.</p>
+      </div>
+    );
+  }
+
+  if (queryRunState.status === "error") {
+    return (
+      <div className="ask-data-result-tab-placeholder">
+        <h3>Diagnostics</h3>
+        <p>
+          Diagnostics are not available because the latest request ended with a
+          safe error state.
+        </p>
+      </div>
+    );
+  }
+
+  const { result } = queryRunState;
+  const metadata = result.metadata;
+  const validation = metadata.validation;
+  const execution = metadata.execution;
+  const selfCorrection = metadata.self_correction;
+  const safeWarnings = result.warnings
+    .map(safeDiagnosticText)
+    .filter((warning): warning is string => warning !== null);
+
   return (
-    <div className="ask-data-result-tab-placeholder">
+    <div className="ask-data-diagnostics-tab-content">
       <h3>Diagnostics</h3>
       <p>
-        Safe validation, execution, and correction diagnostics will be added
-        from query metadata in the next checkpoint.
+        Technical diagnostics are built from safe query metadata. SQL text stays
+        in the SQL tab.
       </p>
+
+      <DiagnosticSection
+        title="Run"
+        items={[
+          { label: "Query run ID", value: result.query_run_id },
+          { label: "Status", value: result.status },
+          { label: "Error code", value: result.error_code },
+          {
+            label: "Clarification required",
+            value: result.clarification_required
+          }
+        ]}
+      />
+
+      <DiagnosticSection
+        title="Generation"
+        items={[
+          { label: "Provider", value: metadata.provider },
+          { label: "Model", value: metadata.model },
+          { label: "Template", value: metadata.template_id },
+          { label: "Scope", value: metadata.scope_type },
+          {
+            label: "Referenced tables",
+            value: formatReferencedTables(metadata.referenced_tables)
+          }
+        ]}
+      />
+
+      {validation ? (
+        <DiagnosticSection
+          title="Validation"
+          items={[
+            {
+              label: "Validation status",
+              value: formatValidationStatus(validation.valid)
+            },
+            { label: "Validation error code", value: validation.error_code }
+          ]}
+        />
+      ) : null}
+
+      {execution ? (
+        <DiagnosticSection
+          title="Execution"
+          items={[
+            { label: "Execution status", value: execution.status },
+            { label: "Execution error code", value: execution.error_code },
+            { label: "Execution row count", value: execution.row_count },
+            {
+              label: "Execution duration",
+              value:
+                typeof execution.duration_ms === "number"
+                  ? `${execution.duration_ms} ms`
+                  : null
+            },
+            { label: "Execution truncated", value: execution.truncated }
+          ]}
+        />
+      ) : null}
+
+      {selfCorrection ? (
+        <DiagnosticSection
+          title="Self-correction"
+          items={selfCorrectionItems(selfCorrection)}
+        />
+      ) : null}
+
+      {safeWarnings.length > 0 ? (
+        <section
+          className="ask-data-diagnostics-section"
+          aria-label="Diagnostic warnings"
+        >
+          <h4>Warnings</h4>
+          <ul className="ask-data-diagnostics-warnings">
+            {safeWarnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
     </div>
+  );
+}
+
+function DiagnosticSection({
+  items,
+  title
+}: {
+  items: DiagnosticItem[];
+  title: string;
+}) {
+  const visibleItems = items
+    .map((item) => ({
+      label: item.label,
+      value: formatDiagnosticValue(item.value)
+    }))
+    .filter((item): item is { label: string; value: string } => item.value !== null);
+
+  if (visibleItems.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="ask-data-diagnostics-section" aria-label={`${title} diagnostics`}>
+      <h4>{title}</h4>
+      <dl className="ask-data-diagnostics-grid">
+        {visibleItems.map((item) => (
+          <div key={item.label}>
+            <dt>{item.label}</dt>
+            <dd>{item.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
   );
 }
 
@@ -864,6 +1022,108 @@ function safeSqlText(sql: string | null | undefined): string | null {
 
   const trimmedSql = sql.trim();
   return trimmedSql.length > 0 ? trimmedSql : null;
+}
+
+function safeDiagnosticText(value: string | null | undefined): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmedValue = value.trim();
+  if (!trimmedValue || containsSqlLikeText(trimmedValue)) {
+    return null;
+  }
+
+  return trimmedValue;
+}
+
+function formatDiagnosticValue(
+  value: boolean | number | string | null | undefined
+): string | null {
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+
+  if (typeof value === "number") {
+    return String(value);
+  }
+
+  return safeDiagnosticText(value);
+}
+
+function formatReferencedTables(tables: string[] | undefined): string | null {
+  if (!Array.isArray(tables)) {
+    return null;
+  }
+
+  const safeTables = tables
+    .map(safeDiagnosticText)
+    .filter((table): table is string => table !== null);
+
+  return safeTables.length > 0 ? safeTables.join(", ") : null;
+}
+
+function formatValidationStatus(valid: boolean | null): string | null {
+  if (valid === true) {
+    return "Valid";
+  }
+
+  if (valid === false) {
+    return "Invalid";
+  }
+
+  return null;
+}
+
+function selfCorrectionItems(
+  selfCorrection: QuerySelfCorrectionMetadata
+): DiagnosticItem[] {
+  return [
+    {
+      label: "Correction attempted",
+      value: selfCorrection.attempted
+    },
+    {
+      label: "Correction status",
+      value: formatSelfCorrectionStatus(selfCorrection)
+    },
+    {
+      label: "Original correction error code",
+      value: selfCorrection.original_error_code
+    },
+    {
+      label: "Final correction error code",
+      value: selfCorrection.final_error_code
+    }
+  ];
+}
+
+function formatSelfCorrectionStatus(
+  selfCorrection: QuerySelfCorrectionMetadata
+): string | null {
+  if (selfCorrection.attempted === false) {
+    return "Not attempted";
+  }
+
+  if (selfCorrection.attempted !== true) {
+    return null;
+  }
+
+  if (selfCorrection.succeeded === true) {
+    return "Succeeded";
+  }
+
+  if (selfCorrection.succeeded === false) {
+    return "Failed";
+  }
+
+  return "Attempted";
+}
+
+function containsSqlLikeText(value: string): boolean {
+  return /\b(select|with|insert|update|delete|drop|alter|create|truncate)\b/i.test(
+    value
+  );
 }
 
 function QueryResultSummary({

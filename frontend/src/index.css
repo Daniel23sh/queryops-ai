@@ -709,6 +709,84 @@ h1 {
   white-space: pre-wrap;
 }
 
+.ask-data-diagnostics-tab-content {
+  display: grid;
+  gap: 14px;
+  border: 1px solid #d7e0eb;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 14px;
+}
+
+.ask-data-diagnostics-tab-content h3,
+.ask-data-diagnostics-tab-content p,
+.ask-data-diagnostics-section h4 {
+  margin: 0;
+}
+
+.ask-data-diagnostics-tab-content h3,
+.ask-data-diagnostics-section h4 {
+  color: #152033;
+}
+
+.ask-data-diagnostics-tab-content p {
+  color: #40516a;
+  line-height: 1.5;
+}
+
+.ask-data-diagnostics-section {
+  display: grid;
+  gap: 10px;
+}
+
+.ask-data-diagnostics-section h4 {
+  font-size: 0.875rem;
+}
+
+.ask-data-diagnostics-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.ask-data-diagnostics-grid > div {
+  display: grid;
+  gap: 4px;
+  border: 1px solid #d7e0eb;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 10px 12px;
+}
+
+.ask-data-diagnostics-grid dt {
+  color: #5c6b82;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.ask-data-diagnostics-grid dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #152033;
+  font-size: 0.875rem;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.ask-data-diagnostics-warnings {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  border: 1px solid #f0d6a8;
+  border-radius: 8px;
+  background: #fff8ed;
+  color: #7a4a11;
+  padding: 12px 14px 12px 32px;
+  line-height: 1.5;
+}
+
 .ask-data-result-summary {
   display: grid;
   gap: 12px;
