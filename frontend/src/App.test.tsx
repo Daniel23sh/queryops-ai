@@ -377,6 +377,24 @@ describe("App", () => {
     ).toBeInTheDocument();
     expect(within(insightRegion).getByText("Suggested Action")).toBeInTheDocument();
     expect(within(insightRegion).getByText("Future status")).toBeInTheDocument();
+    expect(
+      within(insightRegion).getByRole("button", { name: "Save as Card" })
+    ).toBeDisabled();
+    expect(
+      within(insightRegion).getByText(/later dashboards\/cards milestone/i)
+    ).toBeInTheDocument();
+    expect(
+      within(insightRegion).getByRole("button", { name: "CSV Export" })
+    ).toBeDisabled();
+    expect(
+      within(insightRegion).getByText(/later export milestone/i)
+    ).toBeInTheDocument();
+    expect(
+      within(insightRegion).getByRole("button", { name: "Preview Action" })
+    ).toBeDisabled();
+    expect(
+      within(insightRegion).getByText(/later actions milestone/i)
+    ).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

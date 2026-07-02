@@ -22,6 +22,24 @@ const TEMPLATE_EXAMPLES = [
   }
 ];
 
+const FUTURE_OPERATION_PLACEHOLDERS = [
+  {
+    label: "Save as Card",
+    milestone: "Later dashboards/cards milestone",
+    summary: "Saving query results as dashboard cards is intentionally unavailable in this shell."
+  },
+  {
+    label: "CSV Export",
+    milestone: "Later export milestone",
+    summary: "Export controls stay disabled until a dedicated export milestone defines the behavior."
+  },
+  {
+    label: "Preview Action",
+    milestone: "Later actions milestone",
+    summary: "Action previews require future deterministic action and approval flows before activation."
+  }
+];
+
 export function AskDataPage({ user }: AskDataPageProps) {
   const canRunFreeQuery = user.permissions.includes("can_run_free_query");
   const canViewTechnicalDetails = user.permissions.includes("can_view_sql");
@@ -251,6 +269,20 @@ function InsightPanel() {
       <div className="ask-data-insight-block">
         <h3>Future status</h3>
         <p>Loading, clarification, and no-row states will be wired in PR4.</p>
+      </div>
+
+      <div className="ask-data-disabled-actions" aria-label="Future operational actions">
+        {FUTURE_OPERATION_PLACEHOLDERS.map((placeholder) => (
+          <div className="ask-data-disabled-action" key={placeholder.label}>
+            <button type="button" disabled>
+              {placeholder.label}
+            </button>
+            <div>
+              <strong>{placeholder.milestone}</strong>
+              <p>{placeholder.summary}</p>
+            </div>
+          </div>
+        ))}
       </div>
     </section>
   );
