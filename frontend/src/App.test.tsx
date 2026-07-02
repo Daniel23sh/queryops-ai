@@ -489,6 +489,175 @@ describe("App", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it("lets demo manager submit a free query with CSRF and without template id", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          message: "Free query completed.",
+          generatedSql: "SELECT manager_hidden_sql",
+          executedSql: "SELECT manager_hidden_sql"
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    const freeQuestionInput = await screen.findByLabelText("Free question");
+    const submitButton = screen.getByRole("button", { name: "Run free query" });
+    expect(submitButton).toBeDisabled();
+
+    fireEvent.change(freeQuestionInput, {
+      target: { value: "Show open support tickets by priority." }
+    });
+    expect(submitButton).not.toBeDisabled();
+    fireEvent.click(submitButton);
+
+    expect(await screen.findByText("Free query completed.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Question: Show open support tickets by priority.")
+    ).toBeInTheDocument();
+    expect(screen.queryByText("SELECT manager_hidden_sql")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:8000/api/v1/queries/run",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        headers: expect.objectContaining({
+          "Content-Type": "application/json",
+          "X-CSRF-Token": "csrf-from-cookie"
+        }),
+        body: JSON.stringify({
+          question: "Show open support tickets by priority."
+        })
+      })
+    );
+  });
+
+  it("lets demo analyst submit a free query", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoAnalyst),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          message: "Analyst free query completed.",
+          generatedSql: "SELECT analyst_hidden_sql",
+          executedSql: "SELECT analyst_hidden_sql"
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    fireEvent.change(await screen.findByLabelText("Free question"), {
+      target: { value: "Show inactive privileged accounts." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
+
+    expect(await screen.findByText("Analyst free query completed.")).toBeInTheDocument();
+    expect(screen.queryByText("SELECT analyst_hidden_sql")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("lets demo admin submit a free query", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoAdmin),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          message: "Admin free query completed.",
+          generatedSql: "SELECT admin_hidden_sql",
+          executedSql: "SELECT admin_hidden_sql"
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    fireEvent.change(await screen.findByLabelText("Free question"), {
+      target: { value: "Show global license spend by department." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
+
+    expect(await screen.findByText("Admin free query completed.")).toBeInTheDocument();
+    expect(screen.queryByText("SELECT admin_hidden_sql")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("prevents free query submit without CSRF", async () => {
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates)
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    fireEvent.change(await screen.findByLabelText("Free question"), {
+      target: { value: "Show open support tickets." }
+    });
+
+    expect(screen.getByRole("button", { name: "Run free query" })).toBeDisabled();
+    expect(
+      screen.getByText("Refresh your session before running a free query.")
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expectNoQueryRun(fetchMock);
+  });
+
+  it("keeps the free query submit disabled while running", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(successResponse(demoManager))
+      .mockResolvedValueOnce(successResponse(askDataTemplates))
+      .mockReturnValueOnce(new Promise(() => undefined));
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    fireEvent.change(await screen.findByLabelText("Free question"), {
+      target: { value: "Show stale devices." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
+
+    expect(await screen.findByText("Running free query...")).toBeInTheDocument();
+    const runningButton = screen.getByRole("button", { name: "Running query..." });
+    expect(runningButton).toBeDisabled();
+    fireEvent.click(runningButton);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it("renders query template loading errors safely", async () => {
     const fetchMock = stubFetchSequence(
       successResponse(demoManager),
@@ -584,7 +753,8 @@ describe("App", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
-  it("renders a disabled free-query composer for demo manager without technical details", async () => {
+  it("renders a live free-query composer for demo manager without technical details", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
     const fetchMock = stubFetchSequence(
       successResponse(demoManager),
       successResponse(askDataTemplates)
@@ -600,9 +770,9 @@ describe("App", () => {
     const workspaceRegion = await screen.findByRole("region", {
       name: "Ask Data workspace"
     });
-    expect(within(workspaceRegion).getByLabelText("Free query draft")).toBeDisabled();
+    expect(within(workspaceRegion).getByLabelText("Free question")).not.toBeDisabled();
     expect(
-      within(workspaceRegion).getByRole("button", { name: "Available in next PR" })
+      within(workspaceRegion).getByRole("button", { name: "Run free query" })
     ).toBeDisabled();
     expect(screen.queryByText("Technical capability")).not.toBeInTheDocument();
     expectNoQueryRun(fetchMock);
@@ -679,7 +849,7 @@ describe("App", () => {
     ).toBeInTheDocument();
     expect(within(workspaceRegion).getByText("Result placeholder")).toBeInTheDocument();
     expect(
-      within(workspaceRegion).getAllByText(/Query execution is wired in later PR4 checkpoints/i)
+      within(workspaceRegion).getAllByText(/History endpoints remain idle here/i)
         .length
     ).toBeGreaterThan(0);
 

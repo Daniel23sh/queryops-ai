@@ -13,12 +13,15 @@ type AskDataPageProps = {
 
 type TemplateLoadStatus = "loading" | "loaded" | "error";
 
-type TemplateRunState =
+type QueryRunMode = "template" | "free";
+
+type QueryRunState =
   | {
       status: "idle";
     }
   | {
       status: "running";
+      mode: QueryRunMode;
       question: string;
     }
   | {
@@ -58,9 +61,10 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
     useState<TemplateLoadStatus>("loading");
   const [templateLoadError, setTemplateLoadError] = useState<string | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
-  const [templateRunState, setTemplateRunState] = useState<TemplateRunState>({
+  const [queryRunState, setQueryRunState] = useState<QueryRunState>({
     status: "idle"
   });
+  const [freeQuestion, setFreeQuestion] = useState("");
   const templateCategories = useMemo(
     () => groupTemplatesByCategory(templates),
     [templates]
@@ -71,7 +75,7 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
     isAdmin ? "Global admin scope" : user.department?.name ?? "No scope";
   const modeLabel = canRunFreeQuery ? "Free-query shell" : "Template-only mode";
   const modeDescription = canRunFreeQuery
-    ? "Free-query composer controls remain disabled until the free-query checkpoint."
+    ? "Free-query composer is available for this role and still uses backend authorization."
     : "Selected templates can be used here; free-query access is not enabled for this role.";
 
   useEffect(() => {
@@ -116,12 +120,12 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
   }, []);
 
   async function handleRunSelectedTemplate() {
-    if (templateRunState.status === "running" || selectedTemplate === null) {
+    if (queryRunState.status === "running" || selectedTemplate === null) {
       return;
     }
 
     if (!csrfToken) {
-      setTemplateRunState({
+      setQueryRunState({
         status: "error",
         message: "Refresh your session before running a template query."
       });
@@ -129,8 +133,9 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
     }
 
     const question = selectedTemplate.natural_language_question;
-    setTemplateRunState({
+    setQueryRunState({
       status: "running",
+      mode: "template",
       question
     });
 
@@ -142,13 +147,53 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
         },
         csrfToken
       );
-      setTemplateRunState({
+      setQueryRunState({
         status: "success",
         question,
         result
       });
     } catch (error: unknown) {
-      setTemplateRunState({
+      setQueryRunState({
+        status: "error",
+        message: formatQueryRunError(error)
+      });
+    }
+  }
+
+  async function handleRunFreeQuery() {
+    const question = freeQuestion.trim();
+    if (queryRunState.status === "running" || !question) {
+      return;
+    }
+
+    if (!csrfToken) {
+      setQueryRunState({
+        status: "error",
+        message: "Refresh your session before running a free query."
+      });
+      return;
+    }
+
+    setQueryRunState({
+      status: "running",
+      mode: "free",
+      question
+    });
+
+    try {
+      const result = await runQuery(
+        {
+          question
+        },
+        csrfToken
+      );
+      setQueryRunState({
+        status: "success",
+        question,
+        result
+      });
+    } catch (error: unknown) {
+      setQueryRunState({
         status: "error",
         message: formatQueryRunError(error)
       });
@@ -162,7 +207,8 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
         <h1 id="workspace-title">Ask Data</h1>
         <p className="subtitle">
           Prepare governed data questions in a dedicated workspace. Templates load
-          from the Query API; query execution is wired in later PR4 checkpoints.
+          from the Query API; result tables and clarification states arrive in
+          later PR4 checkpoints.
         </p>
       </div>
 
@@ -177,7 +223,7 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
               ? "Refresh your session before running a template query."
               : null
           }
-          running={templateRunState.status === "running"}
+          running={queryRunState.status === "running"}
           selectedTemplate={selectedTemplate}
           selectedTemplateId={selectedTemplateId}
           status={templateLoadStatus}
@@ -196,8 +242,17 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
           <QuestionComposer
             canRunFreeQuery={canRunFreeQuery}
             canViewTechnicalDetails={canViewTechnicalDetails}
+            freeQuestion={freeQuestion}
+            onFreeQuestionChange={setFreeQuestion}
+            onRunFreeQuery={() => void handleRunFreeQuery()}
+            runDisabledReason={
+              canRunFreeQuery && !csrfToken
+                ? "Refresh your session before running a free query."
+                : null
+            }
+            running={queryRunState.status === "running"}
           />
-          <ResultPlaceholder templateRunState={templateRunState} />
+          <ResultPlaceholder queryRunState={queryRunState} />
         </section>
         <InsightPanel />
       </div>
@@ -364,8 +419,8 @@ function RoleScopeNotice({
       <div>
         <h2>Role and scope</h2>
         <p>
-          Templates load from the Query API in this checkpoint. Query execution
-          is wired in later PR4 checkpoints, and history endpoints remain idle here.
+          Templates and questions use the Query API in this checkpoint. History
+          endpoints remain idle here.
         </p>
       </div>
       <dl className="ask-data-status-grid" aria-label="Ask Data access summary">
@@ -395,11 +450,25 @@ function RoleScopeNotice({
 
 function QuestionComposer({
   canRunFreeQuery,
-  canViewTechnicalDetails
+  canViewTechnicalDetails,
+  freeQuestion,
+  onFreeQuestionChange,
+  onRunFreeQuery,
+  runDisabledReason,
+  running
 }: {
   canRunFreeQuery: boolean;
   canViewTechnicalDetails: boolean;
+  freeQuestion: string;
+  onFreeQuestionChange: (question: string) => void;
+  onRunFreeQuery: () => void;
+  runDisabledReason: string | null;
+  running: boolean;
 }) {
+  const trimmedFreeQuestion = freeQuestion.trim();
+  const canRunFreeQueryNow =
+    trimmedFreeQuestion.length > 0 && runDisabledReason === null && !running;
+
   return (
     <section className="ask-data-panel" aria-labelledby="question-composer-title">
       <div className="ask-data-panel__header">
@@ -408,24 +477,34 @@ function QuestionComposer({
       </div>
       {canRunFreeQuery ? (
         <>
-          <label className="ask-data-question-shell" htmlFor="ask-data-free-query-draft">
-            <span>Free query draft</span>
+          <label className="ask-data-question-shell" htmlFor="ask-data-free-question">
+            <span>Free question</span>
             <textarea
-              id="ask-data-free-query-draft"
+              id="ask-data-free-question"
               rows={4}
-              disabled
-              placeholder="Query execution is wired in later PR4 checkpoints."
+              placeholder="Ask a governed data question."
+              value={freeQuestion}
+              disabled={running}
+              onChange={(event) => onFreeQuestionChange(event.target.value)}
             />
           </label>
           <div className="ask-data-composer-actions">
-            <button type="button" className="primary-action-button" disabled>
-              Available in next PR
+            <button
+              type="button"
+              className="primary-action-button"
+              disabled={!canRunFreeQueryNow}
+              onClick={onRunFreeQuery}
+            >
+              {running ? "Running query..." : "Run free query"}
             </button>
           </div>
           <p className="ask-data-mode-note">
-            The composer is disabled in this PR. It will call the Query API only
-            after the free-query checkpoint adds query execution.
+            Free questions are sent to the Query API using your current role and
+            access scope.
           </p>
+          {runDisabledReason ? (
+            <p className="ask-data-session-message">{runDisabledReason}</p>
+          ) : null}
           {canViewTechnicalDetails ? <TechnicalCapabilityPlaceholder /> : null}
         </>
       ) : (
@@ -454,54 +533,57 @@ function TechnicalCapabilityPlaceholder() {
 }
 
 function ResultPlaceholder({
-  templateRunState
+  queryRunState
 }: {
-  templateRunState: TemplateRunState;
+  queryRunState: QueryRunState;
 }) {
   return (
     <section className="ask-data-panel" aria-labelledby="result-placeholder-title">
       <div className="ask-data-panel__header">
-        <p className="eyebrow">Template result</p>
+        <p className="eyebrow">Query result</p>
         <h2 id="result-placeholder-title">Result placeholder</h2>
       </div>
 
-      {templateRunState.status === "idle" ? (
+      {queryRunState.status === "idle" ? (
         <div className="ask-data-result-shell" aria-label="Result table placeholder">
           <div>Column A</div>
           <div>Column B</div>
           <div>Value pending</div>
-          <div>Run a selected template to preview the query result summary.</div>
+          <div>Run a selected template or free question to preview the query result summary.</div>
         </div>
       ) : null}
 
-      {templateRunState.status === "running" ? (
+      {queryRunState.status === "running" ? (
         <p className="ask-data-state-message" role="status">
-          Running selected template...
+          {queryRunState.mode === "template"
+            ? "Running selected template..."
+            : "Running free query..."}
         </p>
       ) : null}
 
-      {templateRunState.status === "error" ? (
+      {queryRunState.status === "error" ? (
         <p className="form-message form-message--error" role="alert">
-          {templateRunState.message}
+          {queryRunState.message}
         </p>
       ) : null}
 
-      {templateRunState.status === "success" ? (
+      {queryRunState.status === "success" ? (
         <div className="ask-data-result-summary" aria-label="Query result summary">
           <h3>Query result</h3>
-          <p>{templateRunState.result.message}</p>
+          <p>{queryRunState.result.message}</p>
+          <p>Question: {queryRunState.question}</p>
           <dl className="ask-data-result-metadata">
             <div>
               <dt>Status</dt>
-              <dd>Status: {templateRunState.result.status}</dd>
+              <dd>Status: {queryRunState.result.status}</dd>
             </div>
             <div>
               <dt>Rows</dt>
-              <dd>{templateRunState.result.row_count}</dd>
+              <dd>{queryRunState.result.row_count}</dd>
             </div>
             <div>
               <dt>Duration</dt>
-              <dd>{templateRunState.result.duration_ms} ms</dd>
+              <dd>{queryRunState.result.duration_ms} ms</dd>
             </div>
           </dl>
         </div>
@@ -591,5 +673,5 @@ function formatQueryRunError(error: unknown): string {
     return error.message;
   }
 
-  return "Template query could not be run.";
+  return "Query could not be run.";
 }
