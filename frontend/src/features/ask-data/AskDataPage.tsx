@@ -4,7 +4,13 @@ import { ApiError } from "../../api/client";
 import { listQueryTemplates } from "../../api/queryTemplates";
 import { runQuery } from "../../api/queries";
 import type { AuthUser } from "../../auth/types";
-import type { QueryRunResult, QueryTemplate, QueryTemplateCategory } from "./types";
+import type {
+  QueryResultRow,
+  QueryRowValue,
+  QueryRunResult,
+  QueryTemplate,
+  QueryTemplateCategory
+} from "./types";
 
 type AskDataPageProps = {
   user: AuthUser;
@@ -206,9 +212,9 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
         <p className="eyebrow">Query integration</p>
         <h1 id="workspace-title">Ask Data</h1>
         <p className="subtitle">
-          Prepare governed data questions in a dedicated workspace. Templates load
-          from the Query API; result tables and clarification states arrive in
-          later PR4 checkpoints.
+          Prepare governed data questions in a dedicated workspace. Templates,
+          questions, and result tables use the Query API; clarification states
+          arrive in later PR4 checkpoints.
         </p>
       </div>
 
@@ -568,27 +574,105 @@ function ResultPlaceholder({
       ) : null}
 
       {queryRunState.status === "success" ? (
-        <div className="ask-data-result-summary" aria-label="Query result summary">
-          <h3>Query result</h3>
-          <p>{queryRunState.result.message}</p>
-          <p>Question: {queryRunState.question}</p>
-          <dl className="ask-data-result-metadata">
-            <div>
-              <dt>Status</dt>
-              <dd>Status: {queryRunState.result.status}</dd>
-            </div>
-            <div>
-              <dt>Rows</dt>
-              <dd>{queryRunState.result.row_count}</dd>
-            </div>
-            <div>
-              <dt>Duration</dt>
-              <dd>{queryRunState.result.duration_ms} ms</dd>
-            </div>
-          </dl>
-        </div>
+        <QueryResultSummary
+          question={queryRunState.question}
+          result={queryRunState.result}
+        />
       ) : null}
     </section>
+  );
+}
+
+function QueryResultSummary({
+  question,
+  result
+}: {
+  question: string;
+  result: QueryRunResult;
+}) {
+  const columns = result.columns.length > 0 ? result.columns : firstRowColumns(result.rows);
+  const hasRows = result.rows.length > 0 && columns.length > 0;
+
+  return (
+    <div className="ask-data-result-summary" aria-label="Query result summary">
+      <h3>Query result</h3>
+      <p>{result.message}</p>
+      <p>Question: {question}</p>
+      <dl className="ask-data-result-metadata">
+        <div>
+          <dt>Status</dt>
+          <dd>Status: {result.status}</dd>
+        </div>
+        <div>
+          <dt>Rows</dt>
+          <dd>{result.row_count}</dd>
+        </div>
+        <div>
+          <dt>Duration</dt>
+          <dd>{result.duration_ms} ms</dd>
+        </div>
+      </dl>
+
+      {result.truncated || result.warnings.length > 0 ? (
+        <div className="ask-data-result-notices">
+          {result.truncated ? (
+            <p className="ask-data-truncated-notice">
+              <strong>Results truncated</strong>
+              <span>Only the returned rows are shown in this preview.</span>
+            </p>
+          ) : null}
+          {result.warnings.length > 0 ? (
+            <div className="ask-data-warning-list" aria-label="Query warnings">
+              <h4>Warnings</h4>
+              <ul>
+                {result.warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      {hasRows ? (
+        <QueryResultTable columns={columns} rows={result.rows} />
+      ) : (
+        <p className="ask-data-empty-result">No rows returned.</p>
+      )}
+    </div>
+  );
+}
+
+function QueryResultTable({
+  columns,
+  rows
+}: {
+  columns: string[];
+  rows: QueryResultRow[];
+}) {
+  return (
+    <div className="ask-data-result-table-wrap">
+      <table className="ask-data-result-table" aria-label="Query results">
+        <thead>
+          <tr>
+            {columns.map((column) => (
+              <th key={column} scope="col">
+                {column}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, rowIndex) => (
+            <tr key={rowIndex}>
+              {columns.map((column) => (
+                <td key={column}>{formatResultValue(valueForColumn(row, column))}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -614,7 +698,7 @@ function InsightPanel() {
 
       <div className="ask-data-insight-block">
         <h3>Future status</h3>
-        <p>Loading, clarification, and no-row states will be wired in PR4.</p>
+        <p>Clarification and retry states will be wired in the next PR4 checkpoint.</p>
       </div>
 
       <div className="ask-data-disabled-actions" aria-label="Future operational actions">
@@ -658,6 +742,35 @@ function groupTemplatesByCategory(
     category,
     templates: categoryTemplates
   }));
+}
+
+function firstRowColumns(rows: QueryResultRow[]): string[] {
+  return rows[0] ? Object.keys(rows[0]) : [];
+}
+
+function valueForColumn(
+  row: QueryResultRow,
+  column: string
+): QueryRowValue | undefined {
+  return Object.prototype.hasOwnProperty.call(row, column)
+    ? row[column]
+    : undefined;
+}
+
+function formatResultValue(value: QueryRowValue | undefined): string {
+  if (value === undefined || value === null) {
+    return "null";
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  return JSON.stringify(value) ?? "";
 }
 
 function formatTemplateLoadError(error: unknown): string {

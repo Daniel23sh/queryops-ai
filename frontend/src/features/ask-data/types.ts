@@ -2,6 +2,13 @@ import type { PermissionKey } from "../../auth/types";
 
 export type JsonPrimitive = string | number | boolean | null;
 
+export type JsonValue =
+  | JsonPrimitive
+  | JsonValue[]
+  | {
+      [key: string]: JsonValue;
+    };
+
 export type QueryTemplateParameterValue = JsonPrimitive;
 
 export type QueryTemplateParameter = {
@@ -55,7 +62,7 @@ export type QueryWarning = string;
 
 export type QueryErrorCode = string;
 
-export type QueryRowValue = JsonPrimitive;
+export type QueryRowValue = JsonValue;
 
 export type QueryResultRow = Record<string, QueryRowValue>;
 

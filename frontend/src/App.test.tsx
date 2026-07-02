@@ -415,6 +415,176 @@ describe("App", () => {
     );
   });
 
+  it("renders dynamic result table values from template query results", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          message: "Dynamic table ready.",
+          columns: [
+            "product_name",
+            "unused_count",
+            "has_owner",
+            "last_seen",
+            "owner",
+            "metadata",
+            "tags"
+          ],
+          rows: [
+            {
+              product_name: "Microsoft 365 E5",
+              unused_count: 12,
+              has_owner: true,
+              last_seen: "2026-07-01T12:30:00Z",
+              owner: null,
+              metadata: {
+                department: "Finance",
+                priority: 2
+              },
+              tags: ["license", "unused"]
+            }
+          ],
+          durationMs: 87,
+          generatedSql: "SELECT dynamic_hidden_sql",
+          executedSql: "SELECT dynamic_hidden_sql"
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Run selected template" }));
+
+    const resultSummary = await screen.findByLabelText("Query result summary");
+    expect(within(resultSummary).getByText("Dynamic table ready.")).toBeInTheDocument();
+    expect(within(resultSummary).getByText("Status: succeeded")).toBeInTheDocument();
+    expect(within(resultSummary).getByText("87 ms")).toBeInTheDocument();
+
+    const table = screen.getByRole("table", { name: "Query results" });
+    expect(
+      within(table).getByRole("columnheader", { name: "product_name" })
+    ).toBeInTheDocument();
+    expect(
+      within(table).getByRole("columnheader", { name: "unused_count" })
+    ).toBeInTheDocument();
+    expect(within(table).getByRole("cell", { name: "Microsoft 365 E5" })).toBeInTheDocument();
+    expect(within(table).getByRole("cell", { name: "12" })).toBeInTheDocument();
+    expect(within(table).getByRole("cell", { name: "true" })).toBeInTheDocument();
+    expect(
+      within(table).getByRole("cell", { name: "2026-07-01T12:30:00Z" })
+    ).toBeInTheDocument();
+    expect(within(table).getByRole("cell", { name: "null" })).toBeInTheDocument();
+    expect(
+      within(table).getByRole("cell", {
+        name: '{"department":"Finance","priority":2}'
+      })
+    ).toBeInTheDocument();
+    expect(
+      within(table).getByRole("cell", { name: '["license","unused"]' })
+    ).toBeInTheDocument();
+    expect(screen.queryByText("SELECT dynamic_hidden_sql")).not.toBeInTheDocument();
+
+    const insightRegion = screen.getByRole("region", {
+      name: "Ask Data insights"
+    });
+    expect(
+      within(insightRegion).getByRole("button", { name: "Save as Card" })
+    ).toBeDisabled();
+    expect(
+      within(insightRegion).getByRole("button", { name: "CSV Export" })
+    ).toBeDisabled();
+    expect(
+      within(insightRegion).getByRole("button", { name: "Preview Action" })
+    ).toBeDisabled();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("renders a no rows state for successful empty query results", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoUser),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          message: "No matching records.",
+          columns: ["product_name", "unused_count"],
+          rows: [],
+          rowCount: 0
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Run selected template" }));
+
+    expect(await screen.findByText("No matching records.")).toBeInTheDocument();
+    expect(screen.getByText("No rows returned.")).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "Query results" })).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("renders truncated and warning states for free query results", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          message: "Free query returned many rows.",
+          columns: ["priority", "ticket_count"],
+          rows: [
+            {
+              priority: "high",
+              ticket_count: 500
+            }
+          ],
+          rowCount: 500,
+          durationMs: 120,
+          truncated: true,
+          warnings: [
+            "Results were limited to 100 rows.",
+            "Some matching rows are not shown."
+          ],
+          generatedSql: "SELECT warning_hidden_sql",
+          executedSql: "SELECT warning_hidden_sql"
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    fireEvent.change(await screen.findByLabelText("Free question"), {
+      target: { value: "Show support ticket counts by priority." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
+
+    expect(await screen.findByText("Free query returned many rows.")).toBeInTheDocument();
+    expect(screen.getByText("Results truncated")).toBeInTheDocument();
+    expect(screen.getByText("Results were limited to 100 rows.")).toBeInTheDocument();
+    expect(screen.getByText("Some matching rows are not shown.")).toBeInTheDocument();
+    const table = screen.getByRole("table", { name: "Query results" });
+    expect(within(table).getByRole("cell", { name: "high" })).toBeInTheDocument();
+    expect(within(table).getByRole("cell", { name: "500" })).toBeInTheDocument();
+    expect(screen.queryByText("SELECT warning_hidden_sql")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it("prevents selected template run without a CSRF token", async () => {
     const fetchMock = stubFetchSequence(
       successResponse(demoManager),
@@ -1654,37 +1824,49 @@ function backendQueryTemplate({
 
 function backendQueryRunResult({
   message,
+  columns = ["product_name", "unused_count"],
+  rows = [
+    {
+      product_name: "Microsoft 365 E5",
+      unused_count: 12
+    }
+  ],
+  rowCount = rows.length,
+  durationMs = 42,
+  truncated = false,
+  warnings = [],
   generatedSql = null,
   executedSql = null
 }: {
   message: string;
+  columns?: string[];
+  rows?: Array<Record<string, unknown>>;
+  rowCount?: number;
+  durationMs?: number;
+  truncated?: boolean;
+  warnings?: string[];
   generatedSql?: string | null;
   executedSql?: string | null;
 }) {
   return {
     query_run_id: "query-run-id",
     status: "succeeded",
-    columns: ["product_name", "unused_count"],
-    rows: [
-      {
-        product_name: "Microsoft 365 E5",
-        unused_count: 12
-      }
-    ],
-    row_count: 1,
-    duration_ms: 42,
-    truncated: false,
+    columns,
+    rows,
+    row_count: rowCount,
+    duration_ms: durationMs,
+    truncated,
     message,
-    warnings: [],
+    warnings,
     clarification_required: false,
     metadata: {
       template_id: "unused_licenses_department",
       execution: {
         status: "succeeded",
         error_code: null,
-        row_count: 1,
-        duration_ms: 42,
-        truncated: false
+        row_count: rowCount,
+        duration_ms: durationMs,
+        truncated
       }
     },
     generated_sql: generatedSql,
