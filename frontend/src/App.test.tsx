@@ -468,6 +468,9 @@ describe("App", () => {
     expect(within(resultSummary).getByText("Dynamic table ready.")).toBeInTheDocument();
     expect(within(resultSummary).getByText("Status: succeeded")).toBeInTheDocument();
     expect(within(resultSummary).getByText("87 ms")).toBeInTheDocument();
+    expect(
+      within(resultSummary).getByLabelText("Visualization suggestion")
+    ).toHaveTextContent("Chart available later: compare unused_count by product_name.");
 
     const table = screen.getByRole("table", { name: "Query results" });
     expect(
@@ -532,6 +535,10 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Run selected template" }));
 
     expect(await screen.findByText("No matching records.")).toBeInTheDocument();
+    const resultSummary = screen.getByLabelText("Query result summary");
+    expect(
+      within(resultSummary).getByLabelText("Visualization suggestion")
+    ).toHaveTextContent("Chart available later when rows are returned.");
     expect(screen.getByText("No rows returned.")).toBeInTheDocument();
     expect(screen.queryByRole("table", { name: "Query results" })).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(3);
@@ -578,6 +585,10 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
 
     expect(await screen.findByText("Free query returned many rows.")).toBeInTheDocument();
+    const resultSummary = screen.getByLabelText("Query result summary");
+    expect(
+      within(resultSummary).getByLabelText("Visualization suggestion")
+    ).toHaveTextContent("Chart available later: compare ticket_count by priority.");
     expect(screen.getByText("Results truncated")).toBeInTheDocument();
     expect(screen.getByText("Results were limited to 100 rows.")).toBeInTheDocument();
     expect(screen.getByText("Some matching rows are not shown.")).toBeInTheDocument();

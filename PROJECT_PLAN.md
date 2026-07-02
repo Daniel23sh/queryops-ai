@@ -4,11 +4,11 @@
 
 The current milestone status is:
 
-`Milestone 5 PR3 — Ask Data UI Shell & Layout` is complete on branch `feature/m5-ask-data-shell` and pending review/merge.
+`Milestone 5 PR4 — Ask Data Query Integration` is complete on branch `feature/m5-ask-data-query-integration` and pending review.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, and Milestone 4 Query Engine Backend are complete.
 
-Milestone 5 has started. PR1 backend compliance and PR2 frontend API clients have been reviewed and merged. PR3 adds the static Ask Data shell/layout only, with no backend/API integration or browser query execution. Browser query execution starts in PR4, SQL/technical role tabs are completed in PR5, and the Tailwind/style foundation is handled as the final M5 PR6. Do not start dashboards, dashboard cards, CSV export, actions, approvals, or notifications until those later PRs are explicitly started.
+Milestone 5 has started. PR1 backend compliance, PR2 frontend API clients, and PR3 Ask Data shell/layout have been reviewed and merged. PR4 adds browser query execution through Ask Data using the existing frontend API clients and Query API endpoints. SQL/technical role tabs and final role-gated technical tests are completed in PR5, and the Tailwind/style foundation is handled as the final M5 PR6. Do not start dashboards, dashboard cards, CSV export, actions, approvals, or notifications until those later PRs are explicitly started.
 
 Milestone 2.5 delivered:
 
@@ -64,6 +64,8 @@ Milestone 5 PR1 did not add frontend Ask Data UI, a real LLM provider, dashboard
 Milestone 5 PR2 is complete on branch `feature/m5-ask-data-api-clients`. This branch adds frontend-safe Ask Data types and API clients for query templates, query runs, clarification, own history, scope history, and the department-history compatibility alias. It does not add Ask Data UI or backend behavior.
 
 Milestone 5 PR3 is complete on branch `feature/m5-ask-data-shell`. This branch adds the static Ask Data page shell, split workspace layout, role-aware composer states, and disabled future operational placeholders. It does not call Query API clients, run browser queries, change backend behavior, or add Tailwind.
+
+Milestone 5 PR4 is complete on branch `feature/m5-ask-data-query-integration`. This branch adds browser query execution through Ask Data: real template loading, selected-template runs, free-query runs for Manager/Analyst/Admin, User template-only behavior, result tables, loading/error/no-row/truncated/warning states, clarification flow, and a safe visualization suggestion placeholder. PR4 does not change backend behavior, add SQL/technical tabs, add Tailwind, or implement dashboards/cards, CSV export, actions, approvals, notifications, real LLM providers, Supabase Auth, or domain pack expansion.
 
 Items still out of scope and reserved for future milestones:
 

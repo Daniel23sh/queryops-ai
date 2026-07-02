@@ -722,6 +722,8 @@ function QueryResultSummary({
         </div>
       ) : null}
 
+      <VisualizationSuggestion columns={columns} rows={result.rows} />
+
       {hasRows ? (
         <QueryResultTable columns={columns} rows={result.rows} />
       ) : (
@@ -785,6 +787,24 @@ function ClarificationPanel({
           ask for a more specific template.
         </p>
       )}
+    </div>
+  );
+}
+
+function VisualizationSuggestion({
+  columns,
+  rows
+}: {
+  columns: string[];
+  rows: QueryResultRow[];
+}) {
+  return (
+    <div
+      className="ask-data-visualization-suggestion"
+      aria-label="Visualization suggestion"
+    >
+      <h4>Visualization suggestion</h4>
+      <p>{buildVisualizationSuggestion(columns, rows)}</p>
     </div>
   );
 }
@@ -856,7 +876,10 @@ function InsightPanel() {
 
       <div className="ask-data-insight-block">
         <h3>Future status</h3>
-        <p>Retry controls and visualization suggestions will be polished in the next PR4 checkpoint.</p>
+        <p>
+          Visualization suggestions now appear with completed results; fuller
+          charts remain unavailable until a later visualization milestone.
+        </p>
       </div>
 
       <div className="ask-data-disabled-actions" aria-label="Future operational actions">
@@ -929,6 +952,38 @@ function formatResultValue(value: QueryRowValue | undefined): string {
   }
 
   return JSON.stringify(value) ?? "";
+}
+
+function buildVisualizationSuggestion(
+  columns: string[],
+  rows: QueryResultRow[]
+): string {
+  if (columns.length === 0 || rows.length === 0) {
+    return "Chart available later when rows are returned.";
+  }
+
+  const numericColumn = columns.find((column) =>
+    rows.some((row) => {
+      const value = valueForColumn(row, column);
+      return typeof value === "number" && Number.isFinite(value);
+    })
+  );
+
+  if (!numericColumn) {
+    return "Chart available later: table view is the safest display for this result shape.";
+  }
+
+  const labelColumn = columns.find(
+    (column) =>
+      column !== numericColumn &&
+      rows.some((row) => typeof valueForColumn(row, column) === "string")
+  );
+
+  if (!labelColumn) {
+    return `Chart available later: summarize ${numericColumn}.`;
+  }
+
+  return `Chart available later: compare ${numericColumn} by ${labelColumn}.`;
 }
 
 function clarificationDisabledReason(

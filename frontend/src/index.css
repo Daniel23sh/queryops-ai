@@ -645,6 +645,27 @@ h1 {
   gap: 10px;
 }
 
+.ask-data-visualization-suggestion {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #c9d8ee;
+  border-radius: 8px;
+  background: #f6f9fd;
+  color: #40516a;
+  padding: 12px 14px;
+  line-height: 1.5;
+}
+
+.ask-data-visualization-suggestion h4,
+.ask-data-visualization-suggestion p {
+  margin: 0;
+}
+
+.ask-data-visualization-suggestion h4 {
+  color: #152033;
+  font-size: 0.875rem;
+}
+
 .ask-data-truncated-notice,
 .ask-data-warning-list,
 .ask-data-empty-result {
