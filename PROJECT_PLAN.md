@@ -49,6 +49,8 @@ Milestone 4 delivered:
 
 Milestone 4 preserved the existing Access Context Foundation and PostgreSQL RLS behavior while adding only backend query-engine capabilities.
 
+Milestone 5 is planned but not active. When Milestone 5 is explicitly started, the first PR must close the remaining Milestone 4 backend compliance gaps before any frontend Ask Data UI work begins. Do not start frontend Ask Data work until the backend compliance PR is complete, tested, and merged.
+
 Items still out of scope and reserved for future milestones:
 
 - dashboards UI
@@ -368,3 +370,121 @@ The latest completed product milestone is:
 Milestone 4 is complete. It delivered backend Query Engine foundations only: domain pack loading, query templates, mock LLM generation, schema context, SQL validation, runtime RLS role hardening, scoped read-only execution with PostgreSQL RLS, query run APIs, `QueryRun` persistence, PostgreSQL-backed tests, and security regression/evaluation tests.
 
 Milestone 5 is not active. Milestone 5 or later remains responsible for Ask Data UI, dashboards, dashboard cards, CSV export, actions, approvals, and notification behavior unless explicitly requested.
+
+## 15. Milestone 5 Implementation Plan
+
+Milestone 5 remains planned but not active unless explicitly requested. When activated, use one branch per PR, do not include PR numbers in branch names, split every PR into checkpoints, and end each checkpoint with its own commit. Do not create one large commit for an entire PR.
+
+The first Milestone 5 PR must close the remaining Milestone 4 backend compliance gaps and make the Query API ready for the Ask Data UI. Frontend Ask Data implementation must not begin until PR1 is complete, tested, and merged.
+
+### PR1: M4 Query Backend Compliance
+
+Branch:
+
+```text
+feature/m5-fix-m4-query-backend-compliance
+```
+
+Goal:
+
+Close Milestone 4 backend compliance gaps and make the Query API ready for Milestone 5 UI.
+
+Checkpoints:
+
+1. Checkpoint 1.1 — Document the M4 backend compliance scope in `PROJECT_PLAN.md` or `AGENTS.md`.
+   - Commit: `docs: document m4 backend compliance scope for m5`
+
+2. Checkpoint 1.2 — Add `POST /api/v1/queries/{query_run_id}/clarify`.
+   - Verify ownership of the original query run.
+   - Reject invalid payloads.
+   - Create a new `QueryRun`.
+   - Store safe metadata linking it to the original query.
+   - Commit: `feat(api): add query clarification endpoint`
+
+3. Checkpoint 1.3 — Add `GET /api/v1/queries/scope-history` and `GET /api/v1/queries/department-history` as a V1 compatibility alias.
+   - Use `UserAccessContext` and access scopes, not direct department authorization.
+   - Hide SQL unless the viewer has `can_view_sql`.
+   - Commit: `feat(api): add scope-aware query history endpoints`
+
+4. Checkpoint 1.4 — Add deterministic self-correction support in `QueryEngineService`.
+   - If generated SQL fails validation, allow one safe correction attempt using only safe validation metadata.
+   - Do not add real LLM providers, external provider integrations, API keys, or API-key requirements.
+   - Commit: `feat(query-engine): add deterministic self-correction flow`
+
+5. Checkpoint 1.5 — Expose safe query metadata needed by Ask Data UI.
+   - Include self-correction metadata when present.
+   - Do not expose unsafe provider internals.
+   - Commit: `fix(api): expose safe query metadata for ask data ui`
+
+6. Checkpoint 1.6 — Add or update backend tests and documentation.
+   - Run backend tests and PostgreSQL query/RLS tests where available.
+   - Commit: `docs: mark m4 query backend cleanup complete`
+
+### PR2: Ask Data API Clients
+
+Branch:
+
+```text
+feature/m5-ask-data-api-clients
+```
+
+Goal:
+
+Build frontend API clients and types for query templates and query runs.
+
+Start only after PR1 is merged.
+
+### PR3: Ask Data Shell
+
+Branch:
+
+```text
+feature/m5-ask-data-shell
+```
+
+Goal:
+
+Replace the Ask Data placeholder with a real split workspace layout.
+
+Start only after PR1 is merged.
+
+### PR4: Ask Data Query Integration
+
+Branch:
+
+```text
+feature/m5-ask-data-query-integration
+```
+
+Goal:
+
+Load templates, run template queries, run free queries by role, and render the result table, clarification, loading, error, and no-row states.
+
+Start only after PR1 is merged.
+
+### PR5: Ask Data Role Tabs and Tests
+
+Branch:
+
+```text
+feature/m5-ask-data-role-tabs-tests
+```
+
+Goal:
+
+Add the SQL tab for Analyst/Admin only, technical/corrections tab, role-based tests, query state tests, and final docs polish.
+
+Start only after PR1 is merged.
+
+### Milestone 5 Out of Scope
+
+Do not include the following in Milestone 5 unless explicitly approved in a later scope update:
+
+- dashboards/cards behavior
+- CSV export
+- action preview
+- approvals
+- notifications
+- real LLM providers
+- Supabase Auth
+- full expansion to 36 templates / 40 evaluation cases unless handled in a separate Domain Pack PR
