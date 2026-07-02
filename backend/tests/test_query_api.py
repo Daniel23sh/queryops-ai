@@ -55,6 +55,16 @@ def test_query_run_requires_authentication(client: TestClient) -> None:
     assert response.json()["error"]["code"] == "UNAUTHORIZED"
 
 
+def test_query_clarify_requires_authentication(client: TestClient) -> None:
+    response = client.post(
+        f"/api/v1/queries/{uuid.uuid4()}/clarify",
+        json={"question": "hello"},
+    )
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "UNAUTHORIZED"
+
+
 def test_query_run_requires_csrf_for_authenticated_post(client: TestClient) -> None:
     _login(client, "demo.manager@queryops.local")
 
@@ -336,6 +346,148 @@ def test_another_users_query_run_detail_returns_safe_404(
     assert "analyst run" not in body["error"]["message"]
 
 
+def test_user_can_clarify_own_query_run_and_new_run_links_metadata(
+    client: TestClient,
+    db_session: Session,
+    fake_service: FakeQueryEngineService,
+) -> None:
+    manager = _user_by_email(db_session, "demo.manager@queryops.local")
+    original_run = _add_query_run(db_session, manager, "ambiguous manager run", minute=1)
+    csrf_token = _login(client, manager.email)
+
+    response = client.post(
+        f"/api/v1/queries/{original_run.id}/clarify",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"question": "Show non-compliant devices in my department."},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["status"] == "succeeded"
+    assert data["query_run_id"] != str(original_run.id)
+    assert "generated_sql" not in data
+    assert "executed_sql" not in data
+
+    clarified_run = db_session.get(QueryRun, uuid.UUID(data["query_run_id"]))
+    assert clarified_run is not None
+    assert clarified_run.user_id == manager.id
+    assert clarified_run.natural_language_question == "Show non-compliant devices in my department."
+    assert clarified_run.query_metadata["clarified_from_query_run_id"] == str(original_run.id)
+    assert fake_service.calls[-1].question == "Show non-compliant devices in my department."
+    assert fake_service.calls[-1].metadata == {
+        "clarified_from_query_run_id": str(original_run.id)
+    }
+
+
+def test_clarify_requires_csrf_for_authenticated_post(
+    client: TestClient,
+    db_session: Session,
+    fake_service: FakeQueryEngineService,
+) -> None:
+    manager = _user_by_email(db_session, "demo.manager@queryops.local")
+    original_run = _add_query_run(db_session, manager, "ambiguous manager run", minute=1)
+    _login(client, manager.email)
+
+    response = client.post(
+        f"/api/v1/queries/{original_run.id}/clarify",
+        json={"question": "Show non-compliant devices in my department."},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "CSRF_TOKEN_MISSING"
+    assert fake_service.calls == []
+
+
+def test_unknown_query_run_clarify_returns_safe_404(
+    client: TestClient,
+    fake_service: FakeQueryEngineService,
+) -> None:
+    csrf_token = _login(client, "demo.manager@queryops.local")
+
+    response = client.post(
+        f"/api/v1/queries/{uuid.uuid4()}/clarify",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"question": "Show non-compliant devices in my department."},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "QUERY_RUN_NOT_FOUND"
+    assert fake_service.calls == []
+
+
+def test_user_cannot_clarify_another_users_query_run(
+    client: TestClient,
+    db_session: Session,
+    fake_service: FakeQueryEngineService,
+) -> None:
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    other_run = _add_query_run(db_session, analyst, "analyst run", minute=1)
+    csrf_token = _login(client, "demo.manager@queryops.local")
+
+    response = client.post(
+        f"/api/v1/queries/{other_run.id}/clarify",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"question": "Show non-compliant devices in my department."},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "QUERY_RUN_NOT_FOUND"
+    assert fake_service.calls == []
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        None,
+        [],
+        {},
+        {"question": ""},
+        {"question": "   "},
+        {"question": "Show devices.", "template_id": "non_compliant_devices_by_department"},
+        {"question": "Show devices.", "unknown": "field"},
+    ],
+)
+def test_invalid_clarify_payload_is_rejected(
+    client: TestClient,
+    db_session: Session,
+    fake_service: FakeQueryEngineService,
+    payload: Any,
+) -> None:
+    manager = _user_by_email(db_session, "demo.manager@queryops.local")
+    original_run = _add_query_run(db_session, manager, "ambiguous manager run", minute=1)
+    csrf_token = _login(client, manager.email)
+
+    response = client.post(
+        f"/api/v1/queries/{original_run.id}/clarify",
+        headers={"X-CSRF-Token": csrf_token},
+        json=payload,
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID_QUERY_REQUEST"
+    assert fake_service.calls == []
+
+
+def test_clarify_response_includes_sql_only_for_can_view_sql(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    original_run = _add_query_run(db_session, analyst, "ambiguous analyst run", minute=1)
+    csrf_token = _login(client, analyst.email)
+
+    response = client.post(
+        f"/api/v1/queries/{original_run.id}/clarify",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"question": "Show non-compliant devices in my department."},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["generated_sql"] == "SELECT generated"
+    assert data["executed_sql"] == "SELECT executed"
+
+
 def test_response_metadata_is_whitelisted_and_safe(client: TestClient) -> None:
     csrf_token = _login(client, "demo.manager@queryops.local")
 
@@ -393,6 +545,7 @@ class FakeQueryEngineService:
         request: Any,
     ) -> QueryEngineServiceResult:
         self.calls.append(request)
+        request_metadata = getattr(request, "metadata", {})
         if "forecast" in request.question:
             return self._persist_and_result(
                 db,
@@ -407,6 +560,7 @@ class FakeQueryEngineService:
                 clarification_required=True,
                 metadata={
                     **SAFE_METADATA,
+                    **request_metadata,
                     "clarification_required": True,
                     "unsupported_reason": "unsupported_question",
                 },
@@ -424,6 +578,7 @@ class FakeQueryEngineService:
                 error_code="database_error",
                 metadata={
                     **SAFE_METADATA,
+                    **request_metadata,
                     "execution": {
                         **SAFE_METADATA["execution"],
                         "status": "failed",
@@ -442,7 +597,7 @@ class FakeQueryEngineService:
             executed_sql="SELECT executed",
             error_message=None,
             error_code=None,
-            metadata=SAFE_METADATA,
+            metadata={**SAFE_METADATA, **request_metadata},
         )
 
     def _persist_and_result(

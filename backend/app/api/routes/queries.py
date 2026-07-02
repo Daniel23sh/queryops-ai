@@ -24,6 +24,7 @@ from app.query_engine.service import QueryEngineRequest, QueryEngineService
 router = APIRouter(prefix="/api/v1")
 
 ALLOWED_QUERY_RUN_FIELDS = frozenset({"question", "template_id", "parameters"})
+ALLOWED_QUERY_CLARIFY_FIELDS = frozenset({"question"})
 MAX_HISTORY_LIMIT = 100
 DEFAULT_HISTORY_LIMIT = 25
 
@@ -68,6 +69,51 @@ def run_query(
         QueryEngineRequest(
             question=question,
             template_id=template_id,
+        ),
+    )
+    query_run = _query_run_for_result(db, result.query_run_id)
+    return success_response(
+        _safe_json(
+            _serialize_query_result(
+                result,
+                query_run,
+                can_view_sql=access_context.has_permission("can_view_sql"),
+            )
+        )
+    )
+
+
+@router.post("/queries/{query_run_id}/clarify")
+def clarify_query(
+    query_run_id: UUID,
+    request: Request,
+    payload: Any = Body(default=None),
+    current_user: AppUser = Depends(require_authenticated_user),
+    db: Session = Depends(get_db),
+    service: QueryEngineService = Depends(get_query_engine_service),
+):
+    csrf_error = _csrf_error_response(request)
+    if csrf_error is not None:
+        return csrf_error
+
+    request_payload_or_error = _parse_query_clarify_payload(payload)
+    if not isinstance(request_payload_or_error, dict):
+        return request_payload_or_error
+
+    original_query_run = db.get(QueryRun, query_run_id)
+    if original_query_run is None or original_query_run.user_id != current_user.id:
+        return _query_run_not_found_response()
+
+    access_context = build_user_access_context(current_user, db)
+    if not access_context.has_permission("can_run_free_query"):
+        return _forbidden_response()
+
+    result = service.run(
+        db,
+        current_user,
+        QueryEngineRequest(
+            question=request_payload_or_error["question"],
+            metadata={"clarified_from_query_run_id": str(original_query_run.id)},
         ),
     )
     query_run = _query_run_for_result(db, result.query_run_id)
@@ -176,6 +222,21 @@ def _parse_query_run_payload(payload: Any):
     return parsed
 
 
+def _parse_query_clarify_payload(payload: Any):
+    if not isinstance(payload, dict):
+        return _invalid_query_request_response()
+
+    unknown_fields = sorted(set(payload) - ALLOWED_QUERY_CLARIFY_FIELDS)
+    if unknown_fields:
+        return _invalid_query_request_response()
+
+    question = payload.get("question")
+    if not isinstance(question, str) or not question.strip():
+        return _invalid_query_request_response()
+
+    return {"question": question.strip()}
+
+
 def _template_request_error(
     template_id: str,
     access_context: UserAccessContext,
@@ -258,6 +319,7 @@ def _safe_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
         "referenced_tables",
         "scope_type",
         "clarification_required",
+        "clarified_from_query_run_id",
     ):
         if key in metadata:
             safe[key] = metadata[key]

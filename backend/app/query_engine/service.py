@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
@@ -61,6 +61,7 @@ class QueryEngineRequest:
     template_id: str | None = None
     saved_query_id: uuid.UUID | None = None
     execution_options: SQLExecutionOptions | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class QueryEngineService:
@@ -376,7 +377,19 @@ def _base_metadata(
         "referenced_tables": sorted(str(table) for table in referenced_tables),
         "scope_type": _metadata_scope_type(access_context),
         "clarification_required": generation_result.clarification_required,
+        **_safe_request_metadata(request.metadata),
     }
+
+
+def _safe_request_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    safe: dict[str, Any] = {}
+    clarified_from = metadata.get("clarified_from_query_run_id")
+    if isinstance(clarified_from, str):
+        try:
+            safe["clarified_from_query_run_id"] = str(uuid.UUID(clarified_from))
+        except ValueError:
+            pass
+    return safe
 
 
 def _metadata_scope_type(access_context: UserAccessContext) -> str:

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 from collections.abc import Generator
 from typing import Any
 
@@ -204,6 +205,31 @@ def test_generated_and_executed_sql_follow_security_storage_expectations(
     assert "ORDER BY hostname" in query_run.generated_sql
     assert query_run.executed_sql == "SELECT id, hostname FROM devices LIMIT 25"
     assert executor.seen_sql == ["SELECT id, hostname FROM devices LIMIT 25"]
+
+
+def test_request_metadata_persists_safe_clarification_link_only(
+    db_session: Session,
+) -> None:
+    clarified_from_id = str(uuid.uuid4())
+    executor = FakeExecutor()
+    service = QueryEngineService(executor=executor)
+    user = user_by_email(db_session, "demo.analyst@queryops.local")
+
+    service.run(
+        db_session,
+        user,
+        QueryEngineRequest(
+            question="Show non-compliant devices in my department.",
+            metadata={
+                "clarified_from_query_run_id": clarified_from_id,
+                "unsafe_internal_detail": "do not persist",
+            },
+        ),
+    )
+
+    query_run = only_query_run(db_session)
+    assert query_run.query_metadata["clarified_from_query_run_id"] == clarified_from_id
+    assert "unsafe_internal_detail" not in query_run.query_metadata
 
 
 def test_service_never_executes_unsupported_provider_output(
