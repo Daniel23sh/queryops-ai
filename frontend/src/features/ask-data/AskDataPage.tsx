@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { ApiError } from "../../api/client";
 import { listQueryTemplates } from "../../api/queryTemplates";
-import { runQuery } from "../../api/queries";
+import { clarifyQuery, runQuery } from "../../api/queries";
 import type { AuthUser } from "../../auth/types";
 import type {
   QueryResultRow,
@@ -19,7 +19,7 @@ type AskDataPageProps = {
 
 type TemplateLoadStatus = "loading" | "loaded" | "error";
 
-type QueryRunMode = "template" | "free";
+type QueryRunMode = "template" | "free" | "clarification";
 
 type QueryRunState =
   | {
@@ -71,6 +71,7 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
     status: "idle"
   });
   const [freeQuestion, setFreeQuestion] = useState("");
+  const [clarificationQuestion, setClarificationQuestion] = useState("");
   const templateCategories = useMemo(
     () => groupTemplatesByCategory(templates),
     [templates]
@@ -139,6 +140,7 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
     }
 
     const question = selectedTemplate.natural_language_question;
+    setClarificationQuestion("");
     setQueryRunState({
       status: "running",
       mode: "template",
@@ -185,6 +187,7 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
       mode: "free",
       question
     });
+    setClarificationQuestion("");
 
     try {
       const result = await runQuery(
@@ -206,6 +209,44 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
     }
   }
 
+  async function handleSubmitClarification() {
+    const question = clarificationQuestion.trim();
+    if (
+      queryRunState.status === "running" ||
+      queryRunState.status !== "success" ||
+      !queryRunState.result.clarification_required ||
+      !question
+    ) {
+      return;
+    }
+
+    const queryRunId = queryRunState.result.query_run_id;
+    if (!queryRunId || !csrfToken) {
+      return;
+    }
+
+    setQueryRunState({
+      status: "running",
+      mode: "clarification",
+      question
+    });
+
+    try {
+      const result = await clarifyQuery(queryRunId, question, csrfToken);
+      setClarificationQuestion("");
+      setQueryRunState({
+        status: "success",
+        question,
+        result
+      });
+    } catch (error: unknown) {
+      setQueryRunState({
+        status: "error",
+        message: formatClarificationError(error)
+      });
+    }
+  }
+
   return (
     <article className="ask-data-page" aria-labelledby="workspace-title">
       <div className="ask-data-page__header">
@@ -213,8 +254,7 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
         <h1 id="workspace-title">Ask Data</h1>
         <p className="subtitle">
           Prepare governed data questions in a dedicated workspace. Templates,
-          questions, and result tables use the Query API; clarification states
-          arrive in later PR4 checkpoints.
+          questions, result tables, and clarification states use the Query API.
         </p>
       </div>
 
@@ -258,7 +298,19 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
             }
             running={queryRunState.status === "running"}
           />
-          <ResultPlaceholder queryRunState={queryRunState} />
+          <ResultPlaceholder
+            canClarify={canRunFreeQuery}
+            clarificationDisabledReason={
+              queryRunState.status === "success" &&
+              queryRunState.result.clarification_required
+                ? clarificationDisabledReason(queryRunState.result, csrfToken)
+                : null
+            }
+            clarificationQuestion={clarificationQuestion}
+            onClarificationQuestionChange={setClarificationQuestion}
+            onSubmitClarification={() => void handleSubmitClarification()}
+            queryRunState={queryRunState}
+          />
         </section>
         <InsightPanel />
       </div>
@@ -539,8 +591,18 @@ function TechnicalCapabilityPlaceholder() {
 }
 
 function ResultPlaceholder({
+  canClarify,
+  clarificationDisabledReason,
+  clarificationQuestion,
+  onClarificationQuestionChange,
+  onSubmitClarification,
   queryRunState
 }: {
+  canClarify: boolean;
+  clarificationDisabledReason: string | null;
+  clarificationQuestion: string;
+  onClarificationQuestionChange: (question: string) => void;
+  onSubmitClarification: () => void;
   queryRunState: QueryRunState;
 }) {
   return (
@@ -561,9 +623,7 @@ function ResultPlaceholder({
 
       {queryRunState.status === "running" ? (
         <p className="ask-data-state-message" role="status">
-          {queryRunState.mode === "template"
-            ? "Running selected template..."
-            : "Running free query..."}
+          {runningQueryMessage(queryRunState.mode)}
         </p>
       ) : null}
 
@@ -575,6 +635,11 @@ function ResultPlaceholder({
 
       {queryRunState.status === "success" ? (
         <QueryResultSummary
+          canClarify={canClarify}
+          clarificationDisabledReason={clarificationDisabledReason}
+          clarificationQuestion={clarificationQuestion}
+          onClarificationQuestionChange={onClarificationQuestionChange}
+          onSubmitClarification={onSubmitClarification}
           question={queryRunState.question}
           result={queryRunState.result}
         />
@@ -584,14 +649,37 @@ function ResultPlaceholder({
 }
 
 function QueryResultSummary({
+  canClarify,
+  clarificationDisabledReason,
+  clarificationQuestion,
+  onClarificationQuestionChange,
+  onSubmitClarification,
   question,
   result
 }: {
+  canClarify: boolean;
+  clarificationDisabledReason: string | null;
+  clarificationQuestion: string;
+  onClarificationQuestionChange: (question: string) => void;
+  onSubmitClarification: () => void;
   question: string;
   result: QueryRunResult;
 }) {
   const columns = result.columns.length > 0 ? result.columns : firstRowColumns(result.rows);
   const hasRows = result.rows.length > 0 && columns.length > 0;
+
+  if (result.clarification_required) {
+    return (
+      <ClarificationPanel
+        canClarify={canClarify}
+        disabledReason={clarificationDisabledReason}
+        message={result.message}
+        onQuestionChange={onClarificationQuestionChange}
+        onSubmit={onSubmitClarification}
+        question={clarificationQuestion}
+      />
+    );
+  }
 
   return (
     <div className="ask-data-result-summary" aria-label="Query result summary">
@@ -643,6 +731,64 @@ function QueryResultSummary({
   );
 }
 
+function ClarificationPanel({
+  canClarify,
+  disabledReason,
+  message,
+  onQuestionChange,
+  onSubmit,
+  question
+}: {
+  canClarify: boolean;
+  disabledReason: string | null;
+  message: string;
+  onQuestionChange: (question: string) => void;
+  onSubmit: () => void;
+  question: string;
+}) {
+  const canSubmit =
+    canClarify && question.trim().length > 0 && disabledReason === null;
+
+  return (
+    <div className="ask-data-clarification-panel" aria-label="Clarification required">
+      <h3>Clarification required</h3>
+      <p>{message}</p>
+      {canClarify ? (
+        <>
+          <label className="ask-data-question-shell" htmlFor="ask-data-clarification-question">
+            <span>Revised question</span>
+            <textarea
+              id="ask-data-clarification-question"
+              rows={4}
+              placeholder="Add the missing detail and submit again."
+              value={question}
+              onChange={(event) => onQuestionChange(event.target.value)}
+            />
+          </label>
+          {disabledReason ? (
+            <p className="ask-data-session-message">{disabledReason}</p>
+          ) : null}
+          <div className="ask-data-composer-actions">
+            <button
+              type="button"
+              className="primary-action-button"
+              disabled={!canSubmit}
+              onClick={onSubmit}
+            >
+              Submit clarification
+            </button>
+          </div>
+        </>
+      ) : (
+        <p className="ask-data-mode-note">
+          This query needs refinement. Choose a different approved template or
+          ask for a more specific template.
+        </p>
+      )}
+    </div>
+  );
+}
+
 function QueryResultTable({
   columns,
   rows
@@ -676,6 +822,18 @@ function QueryResultTable({
   );
 }
 
+function runningQueryMessage(mode: QueryRunMode): string {
+  if (mode === "template") {
+    return "Running selected template...";
+  }
+
+  if (mode === "clarification") {
+    return "Submitting clarification...";
+  }
+
+  return "Running free query...";
+}
+
 function InsightPanel() {
   return (
     <section className="ask-data-panel" aria-label="Ask Data insights">
@@ -698,7 +856,7 @@ function InsightPanel() {
 
       <div className="ask-data-insight-block">
         <h3>Future status</h3>
-        <p>Clarification and retry states will be wired in the next PR4 checkpoint.</p>
+        <p>Retry controls and visualization suggestions will be polished in the next PR4 checkpoint.</p>
       </div>
 
       <div className="ask-data-disabled-actions" aria-label="Future operational actions">
@@ -773,6 +931,21 @@ function formatResultValue(value: QueryRowValue | undefined): string {
   return JSON.stringify(value) ?? "";
 }
 
+function clarificationDisabledReason(
+  result: QueryRunResult,
+  csrfToken: string | null
+): string | null {
+  if (!result.query_run_id) {
+    return "This clarification cannot be continued. Run a new query instead.";
+  }
+
+  if (!csrfToken) {
+    return "Refresh your session before submitting clarification.";
+  }
+
+  return null;
+}
+
 function formatTemplateLoadError(error: unknown): string {
   if (error instanceof ApiError) {
     return error.message;
@@ -787,4 +960,12 @@ function formatQueryRunError(error: unknown): string {
   }
 
   return "Query could not be run.";
+}
+
+function formatClarificationError(error: unknown): string {
+  if (error instanceof ApiError) {
+    return error.message;
+  }
+
+  return "Clarification could not be run.";
 }

@@ -1,8 +1,11 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
 import { AuthProvider } from "./auth/AuthProvider";
+import type { AuthUser } from "./auth/types";
+import { AskDataPage } from "./features/ask-data";
 
 const demoUser = backendUser({
   id: "user-id",
@@ -826,6 +829,288 @@ describe("App", () => {
     expect(runningButton).toBeDisabled();
     fireEvent.click(runningButton);
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("renders clarification and submits a revised manager question", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          queryRunId: "query run/id",
+          status: "clarification_required",
+          message: "Which inactive asset type should QueryOps use?",
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          clarificationRequired: true,
+          generatedSql: "SELECT clarification_hidden_sql",
+          executedSql: "SELECT clarification_hidden_sql"
+        })
+      ),
+      successResponse(
+        backendQueryRunResult({
+          message: "Clarified query completed.",
+          columns: ["asset_type", "inactive_count"],
+          rows: [
+            {
+              asset_type: "users",
+              inactive_count: 7
+            }
+          ],
+          generatedSql: "SELECT clarified_hidden_sql",
+          executedSql: "SELECT clarified_hidden_sql"
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Run selected template" }));
+
+    const clarificationPanel = await screen.findByLabelText("Clarification required");
+    expect(
+      within(clarificationPanel).getByText("Which inactive asset type should QueryOps use?")
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "Query results" })).not.toBeInTheDocument();
+    expect(screen.queryByText("SELECT clarification_hidden_sql")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Submit clarification" })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Revised question"), {
+      target: { value: "Show inactive users, not devices." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit clarification" }));
+
+    expect(await screen.findByText("Clarified query completed.")).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Query results" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "users" })).toBeInTheDocument();
+    expect(screen.queryByText("SELECT clarified_hidden_sql")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "http://localhost:8000/api/v1/queries/query%20run%2Fid/clarify",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        headers: expect.objectContaining({
+          "Content-Type": "application/json",
+          "X-CSRF-Token": "csrf-from-cookie"
+        }),
+        body: JSON.stringify({
+          question: "Show inactive users, not devices."
+        })
+      })
+    );
+  });
+
+  it("keeps demo user clarification in template-only mode", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoUser),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          status: "clarification_required",
+          message: "Which license timeframe should QueryOps use?",
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          clarificationRequired: true
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Run selected template" }));
+
+    const clarificationPanel = await screen.findByLabelText("Clarification required");
+    expect(
+      within(clarificationPanel).getByText("Which license timeframe should QueryOps use?")
+    ).toBeInTheDocument();
+    expect(
+      within(clarificationPanel).getByText(/Choose a different approved template/i)
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Revised question")).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([
+    ["demo analyst", demoAnalyst, "Show inactive privileged users."],
+    ["demo admin", demoAdmin, "Show inactive accounts globally."]
+  ])("lets %s submit clarification", async (_label, user, revisedQuestion) => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(user),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          queryRunId: `${user.role}-clarify-id`,
+          status: "clarification_required",
+          message: "Clarify which inactive records to inspect.",
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          clarificationRequired: true
+        })
+      ),
+      successResponse(
+        backendQueryRunResult({
+          message: "Clarification completed.",
+          columns: ["record_type"],
+          rows: [
+            {
+              record_type: user.role
+            }
+          ]
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Run selected template" }));
+
+    fireEvent.change(await screen.findByLabelText("Revised question"), {
+      target: { value: revisedQuestion }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit clarification" }));
+
+    expect(await screen.findByText("Clarification completed.")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      `http://localhost:8000/api/v1/queries/${user.role}-clarify-id/clarify`,
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "X-CSRF-Token": "csrf-from-cookie"
+        }),
+        body: JSON.stringify({
+          question: revisedQuestion
+        })
+      })
+    );
+  });
+
+  it("prevents clarification submit when the query run id is missing", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          queryRunId: null,
+          status: "clarification_required",
+          message: "QueryOps needs a more specific question.",
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          clarificationRequired: true
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Run selected template" }));
+
+    fireEvent.change(await screen.findByLabelText("Revised question"), {
+      target: { value: "Use inactive users." }
+    });
+
+    expect(screen.getByRole("button", { name: "Submit clarification" })).toBeDisabled();
+    expect(
+      screen.getByText("This clarification cannot be continued. Run a new query instead.")
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("prevents clarification submit when the CSRF token is missing", async () => {
+    const fetchMock = stubFetchSequence(
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          queryRunId: "missing-csrf-query-id",
+          status: "clarification_required",
+          message: "QueryOps needs one more detail.",
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          clarificationRequired: true
+        })
+      )
+    );
+
+    renderAskDataPageWithMutableCsrf(demoManager, "csrf-from-state");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Run selected template" }));
+    await screen.findByLabelText("Clarification required");
+    fireEvent.click(screen.getByRole("button", { name: "Drop CSRF" }));
+    fireEvent.change(screen.getByLabelText("Revised question"), {
+      target: { value: "Use inactive users." }
+    });
+
+    expect(screen.getByRole("button", { name: "Submit clarification" })).toBeDisabled();
+    expect(
+      screen.getByText("Refresh your session before submitting clarification.")
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders clarification API errors safely", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          queryRunId: "clarify-error-id",
+          status: "clarification_required",
+          message: "QueryOps needs one more detail.",
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          clarificationRequired: true
+        })
+      ),
+      errorResponse("CLARIFICATION_FAILED", 500, "Clarification could not be run safely.")
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Run selected template" }));
+
+    fireEvent.change(await screen.findByLabelText("Revised question"), {
+      target: { value: "Use inactive users." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit clarification" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Clarification could not be run safely."
+    );
+    expect(screen.queryByText("CLARIFICATION_FAILED")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("renders query template loading errors safely", async () => {
@@ -1689,6 +1974,49 @@ function renderApp() {
   );
 }
 
+function renderAskDataPageWithMutableCsrf(
+  user: ReturnType<typeof backendUser>,
+  initialCsrfToken: string
+) {
+  function AskDataHarness() {
+    const [csrfToken, setCsrfToken] = useState<string | null>(initialCsrfToken);
+
+    return (
+      <>
+        <button type="button" onClick={() => setCsrfToken(null)}>
+          Drop CSRF
+        </button>
+        <AskDataPage user={mapBackendUserForAskData(user)} csrfToken={csrfToken} />
+      </>
+    );
+  }
+
+  render(<AskDataHarness />);
+}
+
+function mapBackendUserForAskData(user: ReturnType<typeof backendUser>): AuthUser {
+  return {
+    id: user.id,
+    email: user.email,
+    fullName: user.full_name,
+    role: user.role as AuthUser["role"],
+    departmentId: user.department_id,
+    department: user.department,
+    scopes: user.scopes.map((scope) => ({
+      id: scope.id,
+      type: scope.type,
+      key: scope.key,
+      displayName: scope.display_name,
+      accessLevel: scope.access_level,
+      isDefault: scope.is_default,
+      departmentId: scope.department_id
+    })),
+    status: user.status,
+    permissions: user.permissions as AuthUser["permissions"],
+    authMode: user.auth_mode
+  };
+}
+
 function backendUser({
   id,
   email,
@@ -1823,6 +2151,8 @@ function backendQueryTemplate({
 }
 
 function backendQueryRunResult({
+  queryRunId = "query-run-id",
+  status = "succeeded",
   message,
   columns = ["product_name", "unused_count"],
   rows = [
@@ -1835,9 +2165,12 @@ function backendQueryRunResult({
   durationMs = 42,
   truncated = false,
   warnings = [],
+  clarificationRequired = false,
   generatedSql = null,
   executedSql = null
 }: {
+  queryRunId?: string | null;
+  status?: string;
   message: string;
   columns?: string[];
   rows?: Array<Record<string, unknown>>;
@@ -1845,12 +2178,13 @@ function backendQueryRunResult({
   durationMs?: number;
   truncated?: boolean;
   warnings?: string[];
+  clarificationRequired?: boolean;
   generatedSql?: string | null;
   executedSql?: string | null;
 }) {
   return {
-    query_run_id: "query-run-id",
-    status: "succeeded",
+    query_run_id: queryRunId,
+    status,
     columns,
     rows,
     row_count: rowCount,
@@ -1858,11 +2192,11 @@ function backendQueryRunResult({
     truncated,
     message,
     warnings,
-    clarification_required: false,
+    clarification_required: clarificationRequired,
     metadata: {
       template_id: "unused_licenses_department",
       execution: {
-        status: "succeeded",
+        status,
         error_code: null,
         row_count: rowCount,
         duration_ms: durationMs,
