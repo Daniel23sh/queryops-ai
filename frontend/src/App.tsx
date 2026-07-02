@@ -380,7 +380,7 @@ function AuthenticatedWorkspace({
           ) : null}
 
           {activeNavItem.id === "ask-data" ? (
-            <AskDataPage user={user} />
+            <AskDataPage user={user} csrfToken={csrfToken} />
           ) : activeNavItem.id === "role-upgrade" ? (
             <RoleUpgradePanel userRole={user.role} csrfToken={csrfToken} />
           ) : activeNavItem.id === "admin-role-requests" ? (

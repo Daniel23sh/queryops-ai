@@ -592,6 +592,54 @@ h1 {
   padding-left: 12px;
 }
 
+.ask-data-template-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.ask-data-session-message {
+  margin: 0;
+  color: #9a5b13;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.ask-data-result-summary {
+  display: grid;
+  gap: 12px;
+  border: 1px solid #d7e0eb;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 14px;
+}
+
+.ask-data-result-metadata {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.ask-data-result-metadata > div {
+  display: grid;
+  gap: 4px;
+}
+
+.ask-data-result-metadata dt {
+  color: #5c6b82;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.ask-data-result-metadata dd {
+  margin: 0;
+  color: #152033;
+  font-weight: 700;
+}
+
 .ask-data-disabled-actions {
   display: grid;
   gap: 10px;

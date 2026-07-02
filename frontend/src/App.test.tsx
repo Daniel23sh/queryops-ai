@@ -370,6 +370,125 @@ describe("App", () => {
     expectNoQueryRun(fetchMock);
   });
 
+  it("runs the selected template with CSRF and hides returned SQL fields", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          message: "Template query completed.",
+          generatedSql: "SELECT secret_value FROM internal_table",
+          executedSql: "SELECT secret_value FROM internal_table"
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Run selected template" }));
+
+    expect(await screen.findByText("Template query completed.")).toBeInTheDocument();
+    expect(screen.getByText("Status: succeeded")).toBeInTheDocument();
+    expect(screen.queryByText("SELECT secret_value FROM internal_table")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:8000/api/v1/queries/run",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        headers: expect.objectContaining({
+          "Content-Type": "application/json",
+          "X-CSRF-Token": "csrf-from-cookie"
+        }),
+        body: JSON.stringify({
+          question: "Show unused paid licenses in my department.",
+          template_id: "unused_licenses_department"
+        })
+      })
+    );
+  });
+
+  it("prevents selected template run without a CSRF token", async () => {
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates)
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    const runButton = await screen.findByRole("button", {
+      name: "Run selected template"
+    });
+    expect(runButton).toBeDisabled();
+    expect(
+      screen.getByText("Refresh your session before running a template query.")
+    ).toBeInTheDocument();
+    fireEvent.click(runButton);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expectNoQueryRun(fetchMock);
+  });
+
+  it("keeps the selected template run button disabled while running", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(successResponse(demoManager))
+      .mockResolvedValueOnce(successResponse(askDataTemplates))
+      .mockReturnValueOnce(new Promise(() => undefined));
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Run selected template" }));
+
+    expect(await screen.findByText("Running selected template...")).toBeInTheDocument();
+    const runningButton = screen.getByRole("button", { name: "Running template..." });
+    expect(runningButton).toBeDisabled();
+    fireEvent.click(runningButton);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("renders selected template run API errors safely", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates),
+      errorResponse("QUERY_RUN_FAILED", 500, "Template query could not be run.")
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Run selected template" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Template query could not be run."
+    );
+    expect(screen.queryByText("QUERY_RUN_FAILED")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it("renders query template loading errors safely", async () => {
     const fetchMock = stubFetchSequence(
       successResponse(demoManager),
@@ -433,6 +552,36 @@ describe("App", () => {
     expect((await screen.findAllByText("Unused paid licenses")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     expectNoQueryRun(fetchMock);
+  });
+
+  it("allows demo user to run a selected template without exposing SQL", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoUser),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          message: "User template query completed.",
+          generatedSql: "SELECT hidden_user_sql",
+          executedSql: "SELECT hidden_user_sql"
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    expect((await screen.findAllByText("Unused paid licenses")).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Run selected template" }));
+
+    expect(await screen.findByText("User template query completed.")).toBeInTheDocument();
+    expect(screen.queryByText("SELECT hidden_user_sql")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("renders a disabled free-query composer for demo manager without technical details", async () => {
@@ -1330,6 +1479,46 @@ function backendQueryTemplate({
     parameters,
     scope_type: "department",
     required_permission: "can_use_query_templates"
+  };
+}
+
+function backendQueryRunResult({
+  message,
+  generatedSql = null,
+  executedSql = null
+}: {
+  message: string;
+  generatedSql?: string | null;
+  executedSql?: string | null;
+}) {
+  return {
+    query_run_id: "query-run-id",
+    status: "succeeded",
+    columns: ["product_name", "unused_count"],
+    rows: [
+      {
+        product_name: "Microsoft 365 E5",
+        unused_count: 12
+      }
+    ],
+    row_count: 1,
+    duration_ms: 42,
+    truncated: false,
+    message,
+    warnings: [],
+    clarification_required: false,
+    metadata: {
+      template_id: "unused_licenses_department",
+      execution: {
+        status: "succeeded",
+        error_code: null,
+        row_count: 1,
+        duration_ms: 42,
+        truncated: false
+      }
+    },
+    generated_sql: generatedSql,
+    executed_sql: executedSql
   };
 }
 

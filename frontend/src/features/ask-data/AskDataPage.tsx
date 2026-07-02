@@ -2,14 +2,34 @@ import { useEffect, useMemo, useState } from "react";
 
 import { ApiError } from "../../api/client";
 import { listQueryTemplates } from "../../api/queryTemplates";
+import { runQuery } from "../../api/queries";
 import type { AuthUser } from "../../auth/types";
-import type { QueryTemplate, QueryTemplateCategory } from "./types";
+import type { QueryRunResult, QueryTemplate, QueryTemplateCategory } from "./types";
 
 type AskDataPageProps = {
   user: AuthUser;
+  csrfToken: string | null;
 };
 
 type TemplateLoadStatus = "loading" | "loaded" | "error";
+
+type TemplateRunState =
+  | {
+      status: "idle";
+    }
+  | {
+      status: "running";
+      question: string;
+    }
+  | {
+      status: "success";
+      question: string;
+      result: QueryRunResult;
+    }
+  | {
+      status: "error";
+      message: string;
+    };
 
 const FUTURE_OPERATION_PLACEHOLDERS = [
   {
@@ -29,7 +49,7 @@ const FUTURE_OPERATION_PLACEHOLDERS = [
   }
 ];
 
-export function AskDataPage({ user }: AskDataPageProps) {
+export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
   const canRunFreeQuery = user.permissions.includes("can_run_free_query");
   const canViewTechnicalDetails = user.permissions.includes("can_view_sql");
   const isAdmin = user.role === "admin";
@@ -38,6 +58,9 @@ export function AskDataPage({ user }: AskDataPageProps) {
     useState<TemplateLoadStatus>("loading");
   const [templateLoadError, setTemplateLoadError] = useState<string | null>(null);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [templateRunState, setTemplateRunState] = useState<TemplateRunState>({
+    status: "idle"
+  });
   const templateCategories = useMemo(
     () => groupTemplatesByCategory(templates),
     [templates]
@@ -92,6 +115,46 @@ export function AskDataPage({ user }: AskDataPageProps) {
     };
   }, []);
 
+  async function handleRunSelectedTemplate() {
+    if (templateRunState.status === "running" || selectedTemplate === null) {
+      return;
+    }
+
+    if (!csrfToken) {
+      setTemplateRunState({
+        status: "error",
+        message: "Refresh your session before running a template query."
+      });
+      return;
+    }
+
+    const question = selectedTemplate.natural_language_question;
+    setTemplateRunState({
+      status: "running",
+      question
+    });
+
+    try {
+      const result = await runQuery(
+        {
+          question,
+          template_id: selectedTemplate.id
+        },
+        csrfToken
+      );
+      setTemplateRunState({
+        status: "success",
+        question,
+        result
+      });
+    } catch (error: unknown) {
+      setTemplateRunState({
+        status: "error",
+        message: formatQueryRunError(error)
+      });
+    }
+  }
+
   return (
     <article className="ask-data-page" aria-labelledby="workspace-title">
       <div className="ask-data-page__header">
@@ -108,6 +171,13 @@ export function AskDataPage({ user }: AskDataPageProps) {
           categories={templateCategories}
           error={templateLoadError}
           onSelectTemplate={setSelectedTemplateId}
+          onRunSelectedTemplate={() => void handleRunSelectedTemplate()}
+          runDisabledReason={
+            selectedTemplate && !csrfToken
+              ? "Refresh your session before running a template query."
+              : null
+          }
+          running={templateRunState.status === "running"}
           selectedTemplate={selectedTemplate}
           selectedTemplateId={selectedTemplateId}
           status={templateLoadStatus}
@@ -127,7 +197,7 @@ export function AskDataPage({ user }: AskDataPageProps) {
             canRunFreeQuery={canRunFreeQuery}
             canViewTechnicalDetails={canViewTechnicalDetails}
           />
-          <ResultPlaceholder />
+          <ResultPlaceholder templateRunState={templateRunState} />
         </section>
         <InsightPanel />
       </div>
@@ -139,6 +209,9 @@ function TemplatePanel({
   categories,
   error,
   onSelectTemplate,
+  onRunSelectedTemplate,
+  runDisabledReason,
+  running,
   selectedTemplate,
   selectedTemplateId,
   status
@@ -146,6 +219,9 @@ function TemplatePanel({
   categories: QueryTemplateCategory[];
   error: string | null;
   onSelectTemplate: (templateId: string) => void;
+  onRunSelectedTemplate: () => void;
+  runDisabledReason: string | null;
+  running: boolean;
   selectedTemplate: QueryTemplate | null;
   selectedTemplateId: string | null;
   status: TemplateLoadStatus;
@@ -212,12 +288,29 @@ function TemplatePanel({
         </>
       ) : null}
 
-      <SelectedTemplateDetails template={selectedTemplate} />
+      <SelectedTemplateDetails
+        disabledReason={runDisabledReason}
+        onRunSelectedTemplate={onRunSelectedTemplate}
+        running={running}
+        template={selectedTemplate}
+      />
     </section>
   );
 }
 
-function SelectedTemplateDetails({ template }: { template: QueryTemplate | null }) {
+function SelectedTemplateDetails({
+  disabledReason,
+  onRunSelectedTemplate,
+  running,
+  template
+}: {
+  disabledReason: string | null;
+  onRunSelectedTemplate: () => void;
+  running: boolean;
+  template: QueryTemplate | null;
+}) {
+  const canRunTemplate = template !== null && disabledReason === null && !running;
+
   return (
     <div className="ask-data-selected-template" aria-label="Selected query template">
       <h3>Selected template</h3>
@@ -231,6 +324,19 @@ function SelectedTemplateDetails({ template }: { template: QueryTemplate | null 
               Custom parameters are not supported yet; backend template defaults
               will be used.
             </p>
+          ) : null}
+          <div className="ask-data-template-actions">
+            <button
+              type="button"
+              className="primary-action-button"
+              disabled={!canRunTemplate}
+              onClick={onRunSelectedTemplate}
+            >
+              {running ? "Running template..." : "Run selected template"}
+            </button>
+          </div>
+          {disabledReason ? (
+            <p className="ask-data-session-message">{disabledReason}</p>
           ) : null}
         </>
       ) : (
@@ -280,7 +386,7 @@ function RoleScopeNotice({
       {showAdminGlobalIndicator ? (
         <p className="ask-data-admin-note">
           <strong>Admin global shell</strong>
-          <span>Global scope indicator only. No backend query is connected in this PR.</span>
+          <span>Global scope indicator only. Template runs still use backend authorization.</span>
         </p>
       ) : null}
     </section>
@@ -347,19 +453,59 @@ function TechnicalCapabilityPlaceholder() {
   );
 }
 
-function ResultPlaceholder() {
+function ResultPlaceholder({
+  templateRunState
+}: {
+  templateRunState: TemplateRunState;
+}) {
   return (
     <section className="ask-data-panel" aria-labelledby="result-placeholder-title">
       <div className="ask-data-panel__header">
-        <p className="eyebrow">Static result</p>
+        <p className="eyebrow">Template result</p>
         <h2 id="result-placeholder-title">Result placeholder</h2>
       </div>
-      <div className="ask-data-result-shell" aria-label="Result table placeholder">
-        <div>Column A</div>
-        <div>Column B</div>
-        <div>Value pending</div>
-        <div>Query execution is wired in later PR4 checkpoints.</div>
-      </div>
+
+      {templateRunState.status === "idle" ? (
+        <div className="ask-data-result-shell" aria-label="Result table placeholder">
+          <div>Column A</div>
+          <div>Column B</div>
+          <div>Value pending</div>
+          <div>Run a selected template to preview the query result summary.</div>
+        </div>
+      ) : null}
+
+      {templateRunState.status === "running" ? (
+        <p className="ask-data-state-message" role="status">
+          Running selected template...
+        </p>
+      ) : null}
+
+      {templateRunState.status === "error" ? (
+        <p className="form-message form-message--error" role="alert">
+          {templateRunState.message}
+        </p>
+      ) : null}
+
+      {templateRunState.status === "success" ? (
+        <div className="ask-data-result-summary" aria-label="Query result summary">
+          <h3>Query result</h3>
+          <p>{templateRunState.result.message}</p>
+          <dl className="ask-data-result-metadata">
+            <div>
+              <dt>Status</dt>
+              <dd>Status: {templateRunState.result.status}</dd>
+            </div>
+            <div>
+              <dt>Rows</dt>
+              <dd>{templateRunState.result.row_count}</dd>
+            </div>
+            <div>
+              <dt>Duration</dt>
+              <dd>{templateRunState.result.duration_ms} ms</dd>
+            </div>
+          </dl>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -438,4 +584,12 @@ function formatTemplateLoadError(error: unknown): string {
   }
 
   return "Query templates could not be loaded.";
+}
+
+function formatQueryRunError(error: unknown): string {
+  if (error instanceof ApiError) {
+    return error.message;
+  }
+
+  return "Template query could not be run.";
 }
