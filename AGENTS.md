@@ -69,10 +69,10 @@ The milestone status is defined in `PROJECT_PLAN.md`.
 At the time this file was updated, the latest completed target is:
 
 ```txt
-Milestone 5 PR1 — M4 Query Backend Compliance
+Milestone 5 PR5 — Ask Data Role Tabs, SQL, Corrections & Final Role Tests
 ```
 
-Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, Milestone 3, and Milestone 4 are complete under the previous scopes. Milestone 5 PR1 is complete for backend/API compliance only on branch `feature/m5-fix-m4-query-backend-compliance` and pending review/merge.
+Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, Milestone 3, and Milestone 4 are complete under the previous scopes. Milestone 5 PR1 through PR4 have been reviewed and merged. Milestone 5 PR5 is complete on branch `feature/m5-ask-data-role-tabs-tests` and pending review. Milestone 5 PR6 remains reserved for Tailwind/style foundation and final UI polish.
 
 Milestone 2.5 introduced `access_scopes`, `user_access_scopes`, `data_resources`, `UserAccessContext`, `AccessDecision`, and `evaluate_access(subject, action, resource, context)`.
 
@@ -82,7 +82,7 @@ Milestone 3 delivered scope-aware PostgreSQL RLS, a `SET LOCAL` RLS context help
 
 Milestone 4 implemented the backend Query Engine foundation on top of the existing Access Context Foundation and PostgreSQL RLS behavior.
 
-Milestone 5 PR1 closes the remaining Milestone 4 backend Query Engine compliance gaps before frontend Ask Data UI begins. This PR implemented:
+Milestone 5 PR1 closed the remaining Milestone 4 backend Query Engine compliance gaps before frontend Ask Data UI began. That PR implemented:
 
 * `POST /api/v1/queries/{query_run_id}/clarify`
 * `GET /api/v1/queries/scope-history`
@@ -90,7 +90,7 @@ Milestone 5 PR1 closes the remaining Milestone 4 backend Query Engine compliance
 * deterministic self-correction
 * hardened safe query metadata for the future Ask Data UI
 
-Milestone 5 PR1 did not implement frontend Ask Data UI, a real LLM provider, dashboards, CSV export, actions, approvals, notifications, Supabase Auth, or full domain pack expansion. Frontend Ask Data UI work can start only after this backend compliance PR is reviewed and merged.
+Milestone 5 PR5 added Ask Data role-gated SQL and Diagnostics tabs. Analyst/Admin can view generated/executed SQL in the SQL tab and safe technical diagnostics in the Diagnostics tab. User/Manager cannot view SQL tabs, Diagnostics tabs, generated SQL, executed SQL, or technical diagnostics. PR5 also added final Ask Data role matrix tests for User, Manager, Analyst, and Admin.
 
 Milestone 4 delivered:
 
@@ -132,7 +132,7 @@ Out of scope unless explicitly requested in a future milestone:
 * notifications behavior
 * real external LLM calls
 * Supabase Auth
-* frontend Ask Data UI
+* Ask Data work outside the approved Milestone 5 PR sequence
 * full domain pack expansion to 36 templates / 40 evaluation cases
 * Full ABAC
 * ReBAC
@@ -144,7 +144,7 @@ Out of scope unless explicitly requested in a future milestone:
 * Redis
 * API rate limiter
 
-Milestone 5 or later will handle dashboards, UI, actions, and approvals unless explicitly requested. Do not add frontend Ask Data UI, dashboard behavior, action execution, approval behavior, or CSV export without explicit scope approval.
+Milestone 5 PR6 will handle Tailwind/style foundation and final UI polish unless explicitly changed. Later milestones will handle dashboards, actions, approvals, and exports unless explicitly requested. Do not add dashboard behavior, action execution, approval behavior, CSV export, real LLM providers, API keys, Supabase Auth, or new Ask Data behavior outside the active approved PR scope.
 
 ## 6. Product Direction
 

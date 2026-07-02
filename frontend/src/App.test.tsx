@@ -709,6 +709,9 @@ describe("App", () => {
       screen.getByText("Question: Show open support tickets by priority.")
     ).toBeInTheDocument();
     expect(screen.queryByText("SELECT manager_hidden_sql")).not.toBeInTheDocument();
+    expect(screen.queryByText("Generated SQL")).not.toBeInTheDocument();
+    expect(screen.queryByText("Executed SQL")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "SQL" })).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(fetchMock).toHaveBeenNthCalledWith(
       3,
@@ -758,6 +761,53 @@ describe("App", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it("renders generated and executed SQL for demo analyst only in the SQL tab", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoAnalyst),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          message: "Analyst SQL query completed.",
+          generatedSql: "SELECT generated_analyst_sql FROM safe_scope",
+          executedSql: "SELECT executed_analyst_sql FROM safe_scope"
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    fireEvent.change(await screen.findByLabelText("Free question"), {
+      target: { value: "Show inactive privileged accounts." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
+
+    expect(await screen.findByText("Analyst SQL query completed.")).toBeInTheDocument();
+    expect(screen.queryByText("SELECT generated_analyst_sql FROM safe_scope")).not.toBeInTheDocument();
+    expect(screen.queryByText("SELECT executed_analyst_sql FROM safe_scope")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Summary" }));
+    expect(screen.queryByText("SELECT generated_analyst_sql FROM safe_scope")).not.toBeInTheDocument();
+    expect(screen.queryByText("SELECT executed_analyst_sql FROM safe_scope")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "SQL" }));
+    const sqlPanel = screen.getByRole("tabpanel", { name: "SQL" });
+    expect(within(sqlPanel).getByText("Generated SQL")).toBeInTheDocument();
+    expect(within(sqlPanel).getByText("Executed SQL")).toBeInTheDocument();
+    expect(
+      within(sqlPanel).getByText("SELECT generated_analyst_sql FROM safe_scope")
+    ).toBeInTheDocument();
+    expect(
+      within(sqlPanel).getByText("SELECT executed_analyst_sql FROM safe_scope")
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it("lets demo admin submit a free query", async () => {
     document.cookie = "qo_csrf=csrf-from-cookie; path=/";
     const fetchMock = stubFetchSequence(
@@ -787,6 +837,501 @@ describe("App", () => {
     expect(await screen.findByText("Admin free query completed.")).toBeInTheDocument();
     expect(screen.queryByText("SELECT admin_hidden_sql")).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("renders generated and executed SQL for demo admin in the SQL tab", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoAdmin),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          message: "Admin SQL query completed.",
+          generatedSql: "SELECT generated_admin_sql FROM safe_scope",
+          executedSql: "SELECT executed_admin_sql FROM safe_scope"
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    fireEvent.change(await screen.findByLabelText("Free question"), {
+      target: { value: "Show global license spend by department." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
+
+    expect(await screen.findByText("Admin SQL query completed.")).toBeInTheDocument();
+    expect(screen.queryByText("SELECT generated_admin_sql FROM safe_scope")).not.toBeInTheDocument();
+    expect(screen.queryByText("SELECT executed_admin_sql FROM safe_scope")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "SQL" }));
+    const sqlPanel = screen.getByRole("tabpanel", { name: "SQL" });
+    expect(
+      within(sqlPanel).getByText("SELECT generated_admin_sql FROM safe_scope")
+    ).toBeInTheDocument();
+    expect(
+      within(sqlPanel).getByText("SELECT executed_admin_sql FROM safe_scope")
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("renders SQL empty and unavailable states for demo analyst", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoAnalyst),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          message: "Analyst result without SQL.",
+          generatedSql: null,
+          executedSql: null
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    fireEvent.click(await screen.findByRole("tab", { name: "SQL" }));
+    expect(
+      screen.getByText("Run a query to inspect SQL for this role.")
+    ).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Results" }));
+    fireEvent.change(screen.getByLabelText("Free question"), {
+      target: { value: "Show inactive privileged accounts." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
+
+    expect(await screen.findByText("Analyst result without SQL.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "SQL" }));
+    expect(
+      screen.getByText("SQL is not available for this query result.")
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Generated SQL")).not.toBeInTheDocument();
+    expect(screen.queryByText("Executed SQL")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("renders safe diagnostics for demo analyst without exposing SQL metadata", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoAnalyst),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          queryRunId: "analyst-diagnostics-id",
+          message: "Analyst diagnostics ready.",
+          rowCount: 7,
+          durationMs: 31,
+          warnings: ["Result warning without SQL"],
+          generatedSql: "SELECT generated_analyst_sql FROM safe_scope",
+          executedSql: "SELECT executed_analyst_sql FROM safe_scope",
+          metadata: {
+            provider: "mock",
+            model: "mock-queryops-v1",
+            template_id: "inactive_users_by_department",
+            scope_type: "department",
+            referenced_tables: ["directory_users", "login_events"],
+            clarification_required: false,
+            validation: {
+              valid: true,
+              error_code: null,
+              generated_sql: "SELECT metadata_generated_sql"
+            },
+            execution: {
+              status: "succeeded",
+              error_code: null,
+              row_count: 7,
+              duration_ms: 31,
+              truncated: false,
+              executed_sql: "SELECT metadata_executed_sql"
+            },
+            self_correction: {
+              attempted: true,
+              succeeded: true,
+              original_error_code: "select_star",
+              final_error_code: null,
+              generated_sql: "SELECT correction_sql"
+            },
+            generated_sql: "SELECT metadata_generated_sql",
+            executed_sql: "SELECT metadata_executed_sql"
+          }
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    fireEvent.change(await screen.findByLabelText("Free question"), {
+      target: { value: "Show inactive privileged accounts." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
+
+    expect(await screen.findByText("Analyst diagnostics ready.")).toBeInTheDocument();
+    expect(screen.queryByText("mock-queryops-v1")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Summary" }));
+    expect(screen.queryByText("mock-queryops-v1")).not.toBeInTheDocument();
+    expect(screen.queryByText("directory_users, login_events")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Diagnostics" }));
+    const diagnosticsPanel = screen.getByRole("tabpanel", { name: "Diagnostics" });
+    expect(within(diagnosticsPanel).getByText("Query run ID")).toBeInTheDocument();
+    expect(within(diagnosticsPanel).getByText("analyst-diagnostics-id")).toBeInTheDocument();
+    expect(within(diagnosticsPanel).getByText("Provider")).toBeInTheDocument();
+    expect(within(diagnosticsPanel).getByText("mock")).toBeInTheDocument();
+    expect(within(diagnosticsPanel).getByText("Model")).toBeInTheDocument();
+    expect(within(diagnosticsPanel).getByText("mock-queryops-v1")).toBeInTheDocument();
+    expect(within(diagnosticsPanel).getByText("Template")).toBeInTheDocument();
+    expect(within(diagnosticsPanel).getByText("inactive_users_by_department")).toBeInTheDocument();
+    expect(within(diagnosticsPanel).getByText("Referenced tables")).toBeInTheDocument();
+    expect(within(diagnosticsPanel).getByText("directory_users, login_events")).toBeInTheDocument();
+    expect(within(diagnosticsPanel).getByText("Validation status")).toBeInTheDocument();
+    expect(within(diagnosticsPanel).getByText("Valid")).toBeInTheDocument();
+    expect(within(diagnosticsPanel).getByText("Execution row count")).toBeInTheDocument();
+    expect(within(diagnosticsPanel).getByText("7")).toBeInTheDocument();
+    expect(within(diagnosticsPanel).getByText("Correction attempted")).toBeInTheDocument();
+    expect(within(diagnosticsPanel).getByText("Yes")).toBeInTheDocument();
+    expect(within(diagnosticsPanel).getByText("Correction status")).toBeInTheDocument();
+    expect(within(diagnosticsPanel).getByText("Succeeded")).toBeInTheDocument();
+    expect(within(diagnosticsPanel).getByText("Original correction error code")).toBeInTheDocument();
+    expect(within(diagnosticsPanel).getByText("select_star")).toBeInTheDocument();
+    expect(within(diagnosticsPanel).getByText("Result warning without SQL")).toBeInTheDocument();
+    expect(within(diagnosticsPanel).queryByText("SELECT metadata_generated_sql")).not.toBeInTheDocument();
+    expect(within(diagnosticsPanel).queryByText("SELECT metadata_executed_sql")).not.toBeInTheDocument();
+    expect(within(diagnosticsPanel).queryByText("SELECT correction_sql")).not.toBeInTheDocument();
+    expect(screen.queryByText("SELECT generated_analyst_sql FROM safe_scope")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("tab", { name: "SQL" }));
+    expect(screen.getByText("SELECT generated_analyst_sql FROM safe_scope")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("renders diagnostics content for demo admin", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoAdmin),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          queryRunId: "admin-diagnostics-id",
+          message: "Admin diagnostics ready.",
+          metadata: {
+            provider: "mock",
+            model: "mock-queryops-v1",
+            scope_type: "global",
+            validation: {
+              valid: false,
+              error_code: "forbidden_table"
+            },
+            execution: {
+              status: "failed",
+              error_code: "validation_failed",
+              row_count: 0,
+              duration_ms: 0,
+              truncated: false
+            },
+            self_correction: {
+              attempted: true,
+              succeeded: false,
+              original_error_code: "forbidden_table",
+              final_error_code: "forbidden_table"
+            }
+          }
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    fireEvent.change(await screen.findByLabelText("Free question"), {
+      target: { value: "Show global license spend by department." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
+
+    expect(await screen.findByText("Admin diagnostics ready.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "Diagnostics" }));
+    const diagnosticsPanel = screen.getByRole("tabpanel", { name: "Diagnostics" });
+    expect(within(diagnosticsPanel).getByText("admin-diagnostics-id")).toBeInTheDocument();
+    expect(within(diagnosticsPanel).getByText("global")).toBeInTheDocument();
+    expect(within(diagnosticsPanel).getByText("Invalid")).toBeInTheDocument();
+    expect(within(diagnosticsPanel).getByText("validation_failed")).toBeInTheDocument();
+    expect(within(diagnosticsPanel).getByText("Failed")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([
+    ["demo user", demoUser, null],
+    ["demo manager", demoManager, "Show open support tickets by priority."]
+  ] as const)("keeps diagnostics hidden from %s", async (_label, user, question) => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(user),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          message: `${user.role} diagnostics hidden.`,
+          metadata: {
+            provider: `hidden-provider-${user.role}`,
+            model: `hidden-model-${user.role}`,
+            template_id: `hidden-template-${user.role}`,
+            validation: {
+              valid: true,
+              error_code: null
+            },
+            execution: {
+              status: "succeeded",
+              error_code: null,
+              row_count: 1,
+              duration_ms: 10,
+              truncated: false
+            },
+            self_correction: {
+              attempted: true,
+              succeeded: true,
+              original_error_code: "hidden_original_error",
+              final_error_code: null
+            }
+          }
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    if (question === null) {
+      fireEvent.click(await screen.findByRole("button", { name: "Run selected template" }));
+    } else {
+      fireEvent.change(await screen.findByLabelText("Free question"), {
+        target: { value: question }
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
+    }
+
+    expect(await screen.findByText(`${user.role} diagnostics hidden.`)).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Diagnostics" })).not.toBeInTheDocument();
+    expect(screen.queryByText(`hidden-provider-${user.role}`)).not.toBeInTheDocument();
+    expect(screen.queryByText(`hidden-model-${user.role}`)).not.toBeInTheDocument();
+    expect(screen.queryByText(`hidden-template-${user.role}`)).not.toBeInTheDocument();
+    expect(screen.queryByText("hidden_original_error")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("renders diagnostics empty state before a query", async () => {
+    const fetchMock = stubFetchSequence(
+      successResponse(demoAnalyst),
+      successResponse(askDataTemplates)
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    fireEvent.click(await screen.findByRole("tab", { name: "Diagnostics" }));
+    expect(
+      screen.getByText("Run a query to inspect diagnostics for this role.")
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  describe("Ask Data role matrix", () => {
+    it("covers demo user template-only behavior and hides technical response data", async () => {
+      document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+      const fetchMock = stubFetchSequence(
+        successResponse(demoUser),
+        successResponse(askDataTemplates),
+        successResponse(
+          sensitiveQueryRunResult({
+            role: "user",
+            message: "User matrix template completed."
+          })
+        )
+      );
+
+      renderApp();
+
+      await openAskData();
+      expectApprovedTemplatesVisible();
+      expect(screen.queryByLabelText("Free question")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Run free query" })).not.toBeInTheDocument();
+      expectFutureControlsDisabled();
+
+      fireEvent.click(screen.getByRole("button", { name: "Run selected template" }));
+
+      expect(await screen.findByText("User matrix template completed.")).toBeInTheDocument();
+      expect(screen.getByRole("table", { name: "Query results" })).toBeInTheDocument();
+      expectSensitiveTechnicalFieldsHidden("user");
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        3,
+        "http://localhost:8000/api/v1/queries/run",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            question: "Show unused paid licenses in my department.",
+            template_id: "unused_licenses_department"
+          })
+        })
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+
+    it("covers demo manager template and free-query behavior without technical visibility", async () => {
+      document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+      const fetchMock = stubFetchSequence(
+        successResponse(demoManager),
+        successResponse(askDataTemplates),
+        successResponse(
+          sensitiveQueryRunResult({
+            role: "manager-template",
+            message: "Manager matrix template completed."
+          })
+        ),
+        successResponse(
+          sensitiveQueryRunResult({
+            role: "manager-free",
+            message: "Manager matrix free query completed."
+          })
+        )
+      );
+
+      renderApp();
+
+      await openAskData();
+      expectApprovedTemplatesVisible();
+      expect(screen.getByLabelText("Free question")).not.toBeDisabled();
+      expectFutureControlsDisabled();
+
+      fireEvent.click(screen.getByRole("button", { name: "Run selected template" }));
+      expect(await screen.findByText("Manager matrix template completed.")).toBeInTheDocument();
+      expectSensitiveTechnicalFieldsHidden("manager-template");
+
+      fireEvent.change(screen.getByLabelText("Free question"), {
+        target: { value: "Show open support tickets by priority." }
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
+
+      expect(await screen.findByText("Manager matrix free query completed.")).toBeInTheDocument();
+      expectSensitiveTechnicalFieldsHidden("manager-free");
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        4,
+        "http://localhost:8000/api/v1/queries/run",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            question: "Show open support tickets by priority."
+          })
+        })
+      );
+      expect(fetchMock).toHaveBeenCalledTimes(4);
+    });
+
+    it.each([
+      ["demo analyst", demoAnalyst, "analyst", "Show inactive privileged accounts."],
+      ["demo admin", demoAdmin, "admin", "Show global license spend by department."]
+    ] as const)(
+      "covers %s template, free-query, SQL, and diagnostics behavior",
+      async (_label, user, role, question) => {
+        document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+        const fetchMock = stubFetchSequence(
+          successResponse(user),
+          successResponse(askDataTemplates),
+          successResponse(
+            sensitiveQueryRunResult({
+              role: `${role}-template`,
+              message: `${role} matrix template completed.`
+            })
+          ),
+          successResponse(
+            sensitiveQueryRunResult({
+              role,
+              message: `${role} matrix free query completed.`
+            })
+          )
+        );
+
+        renderApp();
+
+        await openAskData();
+        expectApprovedTemplatesVisible();
+        expect(screen.getByLabelText("Free question")).not.toBeDisabled();
+        expect(screen.getByRole("tab", { name: "SQL" })).toBeInTheDocument();
+        expect(screen.getByRole("tab", { name: "Diagnostics" })).toBeInTheDocument();
+        expectFutureControlsDisabled();
+
+        fireEvent.click(screen.getByRole("button", { name: "Run selected template" }));
+        expect(await screen.findByText(`${role} matrix template completed.`)).toBeInTheDocument();
+        expect(screen.queryByText(`SELECT generated_${role}-template_matrix_sql FROM safe_scope`)).not.toBeInTheDocument();
+
+        fireEvent.change(screen.getByLabelText("Free question"), {
+          target: { value: question }
+        });
+        fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
+
+        expect(await screen.findByText(`${role} matrix free query completed.`)).toBeInTheDocument();
+        expect(screen.queryByText(`SELECT generated_${role}_matrix_sql FROM safe_scope`)).not.toBeInTheDocument();
+        expect(screen.queryByText(`SELECT executed_${role}_matrix_sql FROM safe_scope`)).not.toBeInTheDocument();
+        expect(screen.queryByText(`matrix-provider-${role}`)).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("tab", { name: "Diagnostics" }));
+        const diagnosticsPanel = screen.getByRole("tabpanel", { name: "Diagnostics" });
+        expect(within(diagnosticsPanel).getByText(`matrix-provider-${role}`)).toBeInTheDocument();
+        expect(within(diagnosticsPanel).getByText(`matrix-model-${role}`)).toBeInTheDocument();
+        expect(within(diagnosticsPanel).getByText(`matrix-template-${role}`)).toBeInTheDocument();
+        expect(within(diagnosticsPanel).getByText("Valid")).toBeInTheDocument();
+        expect(within(diagnosticsPanel).getAllByText("succeeded").length).toBeGreaterThan(0);
+        expect(within(diagnosticsPanel).getByText("matrix_original_error")).toBeInTheDocument();
+        expect(within(diagnosticsPanel).queryByText(`SELECT metadata_generated_${role}`)).not.toBeInTheDocument();
+        expect(within(diagnosticsPanel).queryByText(`SELECT metadata_executed_${role}`)).not.toBeInTheDocument();
+        expect(within(diagnosticsPanel).queryByText(`SELECT correction_${role}`)).not.toBeInTheDocument();
+        expect(screen.queryByText(`SELECT generated_${role}_matrix_sql FROM safe_scope`)).not.toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("tab", { name: "SQL" }));
+        expect(screen.getByText(`SELECT generated_${role}_matrix_sql FROM safe_scope`)).toBeInTheDocument();
+        expect(screen.getByText(`SELECT executed_${role}_matrix_sql FROM safe_scope`)).toBeInTheDocument();
+
+        fireEvent.click(screen.getByRole("tab", { name: "Results" }));
+        expect(screen.queryByText(`SELECT generated_${role}_matrix_sql FROM safe_scope`)).not.toBeInTheDocument();
+        expect(fetchMock).toHaveBeenNthCalledWith(
+          4,
+          "http://localhost:8000/api/v1/queries/run",
+          expect.objectContaining({
+            method: "POST",
+            body: JSON.stringify({
+              question
+            })
+          })
+        );
+        expect(fetchMock).toHaveBeenCalledTimes(4);
+      }
+    );
   });
 
   it("prevents free query submit without CSRF", async () => {
@@ -930,7 +1475,24 @@ describe("App", () => {
           columns: [],
           rows: [],
           rowCount: 0,
-          clarificationRequired: true
+          clarificationRequired: true,
+          metadata: {
+            provider: "hidden-user-clarification-provider",
+            model: "hidden-user-clarification-model",
+            validation: {
+              valid: true,
+              error_code: null
+            },
+            execution: {
+              status: "clarification_required",
+              error_code: null,
+              row_count: 0,
+              duration_ms: 0,
+              truncated: false
+            }
+          },
+          generatedSql: "SELECT user_clarification_hidden_sql",
+          executedSql: "SELECT user_clarification_hidden_sql"
         })
       )
     );
@@ -952,6 +1514,10 @@ describe("App", () => {
     ).toBeInTheDocument();
     expect(screen.queryByLabelText("Revised question")).not.toBeInTheDocument();
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "SQL" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Diagnostics" })).not.toBeInTheDocument();
+    expect(screen.queryByText("SELECT user_clarification_hidden_sql")).not.toBeInTheDocument();
+    expect(screen.queryByText("hidden-user-clarification-provider")).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
@@ -982,7 +1548,9 @@ describe("App", () => {
             {
               record_type: user.role
             }
-          ]
+          ],
+          generatedSql: `SELECT ${user.role}_clarification_generated_sql`,
+          executedSql: `SELECT ${user.role}_clarification_executed_sql`
         })
       )
     );
@@ -1001,6 +1569,10 @@ describe("App", () => {
     fireEvent.click(screen.getByRole("button", { name: "Submit clarification" }));
 
     expect(await screen.findByText("Clarification completed.")).toBeInTheDocument();
+    expect(screen.queryByText(`SELECT ${user.role}_clarification_generated_sql`)).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: "SQL" }));
+    expect(screen.getByText(`SELECT ${user.role}_clarification_generated_sql`)).toBeInTheDocument();
+    expect(screen.getByText(`SELECT ${user.role}_clarification_executed_sql`)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenNthCalledWith(
       4,
       `http://localhost:8000/api/v1/queries/${user.role}-clarify-id/clarify`,
@@ -1186,6 +1758,10 @@ describe("App", () => {
     ).toBeGreaterThan(0);
     expect((await screen.findAllByText("Unused paid licenses")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Results" })).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Summary" })).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "SQL" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Diagnostics" })).not.toBeInTheDocument();
     expectNoQueryRun(fetchMock);
   });
 
@@ -1216,6 +1792,10 @@ describe("App", () => {
 
     expect(await screen.findByText("User template query completed.")).toBeInTheDocument();
     expect(screen.queryByText("SELECT hidden_user_sql")).not.toBeInTheDocument();
+    expect(screen.queryByText("Generated SQL")).not.toBeInTheDocument();
+    expect(screen.queryByText("Executed SQL")).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "SQL" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: "Diagnostics" })).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
@@ -1241,10 +1821,16 @@ describe("App", () => {
       within(workspaceRegion).getByRole("button", { name: "Run free query" })
     ).toBeDisabled();
     expect(screen.queryByText("Technical capability")).not.toBeInTheDocument();
+    expect(within(workspaceRegion).getByRole("tab", { name: "Results" })).toBeInTheDocument();
+    expect(within(workspaceRegion).getByRole("tab", { name: "Summary" })).toBeInTheDocument();
+    expect(within(workspaceRegion).queryByRole("tab", { name: "SQL" })).not.toBeInTheDocument();
+    expect(
+      within(workspaceRegion).queryByRole("tab", { name: "Diagnostics" })
+    ).not.toBeInTheDocument();
     expectNoQueryRun(fetchMock);
   });
 
-  it("renders the static technical capability placeholder for demo analyst", async () => {
+  it("renders role-gated SQL and diagnostics tab shells for demo analyst", async () => {
     const fetchMock = stubFetchSequence(
       successResponse(demoAnalyst),
       successResponse(askDataTemplates)
@@ -1257,9 +1843,16 @@ describe("App", () => {
     });
     fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
 
-    expect(await screen.findByText("Technical capability")).toBeInTheDocument();
-    expect(screen.getByText(/SQL and correction details will appear in PR5/i)).toBeInTheDocument();
-    expect(screen.queryByRole("tab", { name: /sql/i })).not.toBeInTheDocument();
+    const workspaceRegion = await screen.findByRole("region", {
+      name: "Ask Data workspace"
+    });
+    expect(within(workspaceRegion).getByRole("tab", { name: "Results" })).toBeInTheDocument();
+    expect(within(workspaceRegion).getByRole("tab", { name: "Summary" })).toBeInTheDocument();
+    expect(within(workspaceRegion).getByRole("tab", { name: "SQL" })).toBeInTheDocument();
+    expect(
+      within(workspaceRegion).getByRole("tab", { name: "Diagnostics" })
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Technical capability")).not.toBeInTheDocument();
     expectNoQueryRun(fetchMock);
   });
 
@@ -1278,6 +1871,13 @@ describe("App", () => {
 
     expect(await screen.findByText("Admin global shell")).toBeInTheDocument();
     expect(screen.getByText(/Global scope indicator only/i)).toBeInTheDocument();
+    const workspaceRegion = screen.getByRole("region", {
+      name: "Ask Data workspace"
+    });
+    expect(within(workspaceRegion).getByRole("tab", { name: "SQL" })).toBeInTheDocument();
+    expect(
+      within(workspaceRegion).getByRole("tab", { name: "Diagnostics" })
+    ).toBeInTheDocument();
     expectNoQueryRun(fetchMock);
   });
 
@@ -2028,6 +2628,63 @@ function mapBackendUserForAskData(user: ReturnType<typeof backendUser>): AuthUse
   };
 }
 
+async function openAskData() {
+  const nav = await screen.findByRole("navigation", {
+    name: "Workspace navigation"
+  });
+  fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+  await screen.findByRole("heading", { name: "Ask Data" });
+  await screen.findByRole("region", { name: "Ask Data templates" });
+}
+
+function expectApprovedTemplatesVisible() {
+  const templateRegion = screen.getByRole("region", {
+    name: "Ask Data templates"
+  });
+  expect(
+    within(templateRegion).getByRole("button", { name: /Unused paid licenses/i })
+  ).toBeInTheDocument();
+  expect(
+    within(templateRegion).getByRole("button", { name: /Security events/i })
+  ).toBeInTheDocument();
+}
+
+function expectFutureControlsDisabled() {
+  const insightRegion = screen.getByRole("region", {
+    name: "Ask Data insights"
+  });
+  expect(
+    within(insightRegion).getByRole("button", { name: "Save as Card" })
+  ).toBeDisabled();
+  expect(
+    within(insightRegion).getByRole("button", { name: "CSV Export" })
+  ).toBeDisabled();
+  expect(
+    within(insightRegion).getByRole("button", { name: "Preview Action" })
+  ).toBeDisabled();
+}
+
+function expectSensitiveTechnicalFieldsHidden(role: string) {
+  expect(screen.queryByRole("tab", { name: "SQL" })).not.toBeInTheDocument();
+  expect(screen.queryByRole("tab", { name: "Diagnostics" })).not.toBeInTheDocument();
+  expect(screen.queryByText("Generated SQL")).not.toBeInTheDocument();
+  expect(screen.queryByText("Executed SQL")).not.toBeInTheDocument();
+  expect(screen.queryByText("Provider")).not.toBeInTheDocument();
+  expect(screen.queryByText("Model")).not.toBeInTheDocument();
+  expect(screen.queryByText("Correction attempted")).not.toBeInTheDocument();
+  expect(screen.queryByText(`matrix-provider-${role}`)).not.toBeInTheDocument();
+  expect(screen.queryByText(`matrix-model-${role}`)).not.toBeInTheDocument();
+  expect(screen.queryByText(`matrix-template-${role}`)).not.toBeInTheDocument();
+  expect(screen.queryByText(`matrix_resource_${role}`)).not.toBeInTheDocument();
+  expect(screen.queryByText("matrix_original_error")).not.toBeInTheDocument();
+  expect(screen.queryByText(`SELECT generated_${role}_matrix_sql FROM safe_scope`)).not.toBeInTheDocument();
+  expect(screen.queryByText(`SELECT executed_${role}_matrix_sql FROM safe_scope`)).not.toBeInTheDocument();
+  expect(screen.queryByText(`SELECT metadata_generated_${role}`)).not.toBeInTheDocument();
+  expect(screen.queryByText(`SELECT metadata_executed_${role}`)).not.toBeInTheDocument();
+  expect(screen.queryByText(`SELECT validation_${role}`)).not.toBeInTheDocument();
+  expect(screen.queryByText(`SELECT correction_${role}`)).not.toBeInTheDocument();
+}
+
 function backendUser({
   id,
   email,
@@ -2127,6 +2784,58 @@ function backendRoleRequest({
   };
 }
 
+function sensitiveQueryRunResult({
+  message,
+  role
+}: {
+  message: string;
+  role: string;
+}) {
+  return backendQueryRunResult({
+    queryRunId: `${role}-matrix-run-id`,
+    message,
+    rowCount: 1,
+    durationMs: 25,
+    warnings: [`Matrix safe warning for ${role}`],
+    metadata: sensitiveQueryMetadata(role),
+    generatedSql: `SELECT generated_${role}_matrix_sql FROM safe_scope`,
+    executedSql: `SELECT executed_${role}_matrix_sql FROM safe_scope`
+  });
+}
+
+function sensitiveQueryMetadata(role: string): Record<string, unknown> {
+  return {
+    provider: `matrix-provider-${role}`,
+    model: `matrix-model-${role}`,
+    template_id: `matrix-template-${role}`,
+    scope_type: role.includes("admin") ? "global" : "department",
+    referenced_tables: [`matrix_resource_${role}`],
+    clarification_required: false,
+    validation: {
+      valid: true,
+      error_code: null,
+      generated_sql: `SELECT validation_${role}`
+    },
+    execution: {
+      status: "succeeded",
+      error_code: null,
+      row_count: 1,
+      duration_ms: 25,
+      truncated: false,
+      executed_sql: `SELECT metadata_executed_${role}`
+    },
+    self_correction: {
+      attempted: true,
+      succeeded: true,
+      original_error_code: "matrix_original_error",
+      final_error_code: null,
+      generated_sql: `SELECT correction_${role}`
+    },
+    generated_sql: `SELECT metadata_generated_${role}`,
+    executed_sql: `SELECT metadata_executed_${role}`
+  };
+}
+
 function backendQueryTemplate({
   id,
   category,
@@ -2177,6 +2886,16 @@ function backendQueryRunResult({
   truncated = false,
   warnings = [],
   clarificationRequired = false,
+  metadata = {
+    template_id: "unused_licenses_department",
+    execution: {
+      status,
+      error_code: null,
+      row_count: rowCount,
+      duration_ms: durationMs,
+      truncated
+    }
+  },
   generatedSql = null,
   executedSql = null
 }: {
@@ -2190,6 +2909,7 @@ function backendQueryRunResult({
   truncated?: boolean;
   warnings?: string[];
   clarificationRequired?: boolean;
+  metadata?: Record<string, unknown>;
   generatedSql?: string | null;
   executedSql?: string | null;
 }) {
@@ -2204,16 +2924,7 @@ function backendQueryRunResult({
     message,
     warnings,
     clarification_required: clarificationRequired,
-    metadata: {
-      template_id: "unused_licenses_department",
-      execution: {
-        status,
-        error_code: null,
-        row_count: rowCount,
-        duration_ms: durationMs,
-        truncated
-      }
-    },
+    metadata,
     generated_sql: generatedSql,
     executed_sql: executedSql
   };

@@ -8,6 +8,7 @@ import type {
   QueryResultRow,
   QueryRowValue,
   QueryRunResult,
+  QuerySelfCorrectionMetadata,
   QueryTemplate,
   QueryTemplateCategory
 } from "./types";
@@ -20,6 +21,13 @@ type AskDataPageProps = {
 type TemplateLoadStatus = "loading" | "loaded" | "error";
 
 type QueryRunMode = "template" | "free" | "clarification";
+
+type AskDataResultTab = "results" | "summary" | "sql" | "diagnostics";
+
+type DiagnosticItem = {
+  label: string;
+  value: boolean | number | string | null | undefined;
+};
 
 type QueryRunState =
   | {
@@ -287,7 +295,6 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
           />
           <QuestionComposer
             canRunFreeQuery={canRunFreeQuery}
-            canViewTechnicalDetails={canViewTechnicalDetails}
             freeQuestion={freeQuestion}
             onFreeQuestionChange={setFreeQuestion}
             onRunFreeQuery={() => void handleRunFreeQuery()}
@@ -300,6 +307,7 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
           />
           <ResultPlaceholder
             canClarify={canRunFreeQuery}
+            canViewTechnicalDetails={canViewTechnicalDetails}
             clarificationDisabledReason={
               queryRunState.status === "success" &&
               queryRunState.result.clarification_required
@@ -508,7 +516,6 @@ function RoleScopeNotice({
 
 function QuestionComposer({
   canRunFreeQuery,
-  canViewTechnicalDetails,
   freeQuestion,
   onFreeQuestionChange,
   onRunFreeQuery,
@@ -516,7 +523,6 @@ function QuestionComposer({
   running
 }: {
   canRunFreeQuery: boolean;
-  canViewTechnicalDetails: boolean;
   freeQuestion: string;
   onFreeQuestionChange: (question: string) => void;
   onRunFreeQuery: () => void;
@@ -563,7 +569,6 @@ function QuestionComposer({
           {runDisabledReason ? (
             <p className="ask-data-session-message">{runDisabledReason}</p>
           ) : null}
-          {canViewTechnicalDetails ? <TechnicalCapabilityPlaceholder /> : null}
         </>
       ) : (
         <div className="ask-data-template-only-shell">
@@ -578,19 +583,120 @@ function QuestionComposer({
   );
 }
 
-function TechnicalCapabilityPlaceholder() {
+function ResultPlaceholder({
+  canClarify,
+  canViewTechnicalDetails,
+  clarificationDisabledReason,
+  clarificationQuestion,
+  onClarificationQuestionChange,
+  onSubmitClarification,
+  queryRunState
+}: {
+  canClarify: boolean;
+  canViewTechnicalDetails: boolean;
+  clarificationDisabledReason: string | null;
+  clarificationQuestion: string;
+  onClarificationQuestionChange: (question: string) => void;
+  onSubmitClarification: () => void;
+  queryRunState: QueryRunState;
+}) {
+  const [activeTab, setActiveTab] = useState<AskDataResultTab>("results");
+  const activeVisibleTab =
+    !canViewTechnicalDetails && (activeTab === "sql" || activeTab === "diagnostics")
+      ? "results"
+      : activeTab;
+
+  useEffect(() => {
+    if (activeVisibleTab !== activeTab) {
+      setActiveTab(activeVisibleTab);
+    }
+  }, [activeTab, activeVisibleTab]);
+
   return (
-    <div className="ask-data-technical-placeholder">
-      <h3>Technical capability</h3>
-      <p>
-        SQL and correction details will appear in PR5 as static role-aware tabs.
-        No live SQL tab is available in this shell.
-      </p>
+    <section className="ask-data-panel" aria-labelledby="result-placeholder-title">
+      <div className="ask-data-panel__header">
+        <p className="eyebrow">Query result</p>
+        <h2 id="result-placeholder-title">Result placeholder</h2>
+      </div>
+
+      <ResultTabs
+        activeTab={activeVisibleTab}
+        canViewTechnicalDetails={canViewTechnicalDetails}
+        onSelectTab={setActiveTab}
+      />
+
+      <div
+        className="ask-data-result-tab-panel"
+        id={`ask-data-tab-panel-${activeVisibleTab}`}
+        role="tabpanel"
+        aria-labelledby={`ask-data-tab-${activeVisibleTab}`}
+      >
+        {activeVisibleTab === "results" ? (
+          <ResultsTabContent
+            canClarify={canClarify}
+            clarificationDisabledReason={clarificationDisabledReason}
+            clarificationQuestion={clarificationQuestion}
+            onClarificationQuestionChange={onClarificationQuestionChange}
+            onSubmitClarification={onSubmitClarification}
+            queryRunState={queryRunState}
+          />
+        ) : null}
+
+        {activeVisibleTab === "summary" ? (
+          <SummaryTabContent queryRunState={queryRunState} />
+        ) : null}
+
+        {activeVisibleTab === "sql" && canViewTechnicalDetails ? (
+          <SqlTabContent queryRunState={queryRunState} />
+        ) : null}
+
+        {activeVisibleTab === "diagnostics" && canViewTechnicalDetails ? (
+          <DiagnosticsTabContent queryRunState={queryRunState} />
+        ) : null}
+      </div>
+    </section>
+  );
+}
+
+function ResultTabs({
+  activeTab,
+  canViewTechnicalDetails,
+  onSelectTab
+}: {
+  activeTab: AskDataResultTab;
+  canViewTechnicalDetails: boolean;
+  onSelectTab: (tab: AskDataResultTab) => void;
+}) {
+  const tabs: { id: AskDataResultTab; label: string; technicalOnly?: boolean }[] = [
+    { id: "results", label: "Results" },
+    { id: "summary", label: "Summary" },
+    { id: "sql", label: "SQL", technicalOnly: true },
+    { id: "diagnostics", label: "Diagnostics", technicalOnly: true }
+  ];
+
+  return (
+    <div className="ask-data-result-tabs" role="tablist" aria-label="Ask Data result views">
+      {tabs
+        .filter((tab) => !tab.technicalOnly || canViewTechnicalDetails)
+        .map((tab) => (
+          <button
+            key={tab.id}
+            id={`ask-data-tab-${tab.id}`}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
+            aria-controls={`ask-data-tab-panel-${tab.id}`}
+            className="ask-data-result-tab"
+            onClick={() => onSelectTab(tab.id)}
+          >
+            {tab.label}
+          </button>
+        ))}
     </div>
   );
 }
 
-function ResultPlaceholder({
+function ResultsTabContent({
   canClarify,
   clarificationDisabledReason,
   clarificationQuestion,
@@ -606,12 +712,7 @@ function ResultPlaceholder({
   queryRunState: QueryRunState;
 }) {
   return (
-    <section className="ask-data-panel" aria-labelledby="result-placeholder-title">
-      <div className="ask-data-panel__header">
-        <p className="eyebrow">Query result</p>
-        <h2 id="result-placeholder-title">Result placeholder</h2>
-      </div>
-
+    <>
       {queryRunState.status === "idle" ? (
         <div className="ask-data-result-shell" aria-label="Result table placeholder">
           <div>Column A</div>
@@ -644,7 +745,384 @@ function ResultPlaceholder({
           result={queryRunState.result}
         />
       ) : null}
+    </>
+  );
+}
+
+function SummaryTabContent({ queryRunState }: { queryRunState: QueryRunState }) {
+  if (queryRunState.status === "success") {
+    return (
+      <div className="ask-data-result-tab-placeholder">
+        <h3>Summary</h3>
+        <p>{queryRunState.result.message}</p>
+        <p>Question: {queryRunState.question}</p>
+      </div>
+    );
+  }
+
+  if (queryRunState.status === "running") {
+    return (
+      <div className="ask-data-result-tab-placeholder">
+        <h3>Summary</h3>
+        <p>{runningQueryMessage(queryRunState.mode)}</p>
+      </div>
+    );
+  }
+
+  if (queryRunState.status === "error") {
+    return (
+      <div className="ask-data-result-tab-placeholder">
+        <h3>Summary</h3>
+        <p>The latest request ended with a safe error state.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="ask-data-result-tab-placeholder">
+      <h3>Summary</h3>
+      <p>Run a selected template or free question to populate the result summary.</p>
+    </div>
+  );
+}
+
+function SqlTabContent({ queryRunState }: { queryRunState: QueryRunState }) {
+  if (queryRunState.status === "idle") {
+    return (
+      <div className="ask-data-result-tab-placeholder">
+        <h3>SQL</h3>
+        <p>Run a query to inspect SQL for this role.</p>
+      </div>
+    );
+  }
+
+  if (queryRunState.status === "running") {
+    return (
+      <div className="ask-data-result-tab-placeholder">
+        <h3>SQL</h3>
+        <p>SQL will be available after the query finishes, if the backend returns it.</p>
+      </div>
+    );
+  }
+
+  if (queryRunState.status === "error") {
+    return (
+      <div className="ask-data-result-tab-placeholder">
+        <h3>SQL</h3>
+        <p>SQL is not available because the latest request ended with a safe error state.</p>
+      </div>
+    );
+  }
+
+  const generatedSql = safeSqlText(queryRunState.result.generated_sql);
+  const executedSql = safeSqlText(queryRunState.result.executed_sql);
+
+  if (!generatedSql && !executedSql) {
+    return (
+      <div className="ask-data-result-tab-placeholder">
+        <h3>SQL</h3>
+        <p>SQL is not available for this query result.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="ask-data-sql-tab-content">
+      <h3>SQL</h3>
+      <p>
+        SQL is visible only for roles with SQL access. Generated SQL is the
+        provider output; executed SQL is the validated SQL sent to the query
+        executor.
+      </p>
+      {generatedSql ? <SqlBlock label="Generated SQL" sql={generatedSql} /> : null}
+      {executedSql ? <SqlBlock label="Executed SQL" sql={executedSql} /> : null}
+    </div>
+  );
+}
+
+function SqlBlock({ label, sql }: { label: string; sql: string }) {
+  return (
+    <section className="ask-data-sql-block" aria-label={label}>
+      <h4>{label}</h4>
+      <pre className="ask-data-sql-code">
+        <code>{sql}</code>
+      </pre>
     </section>
+  );
+}
+
+function DiagnosticsTabContent({ queryRunState }: { queryRunState: QueryRunState }) {
+  if (queryRunState.status === "idle") {
+    return (
+      <div className="ask-data-result-tab-placeholder">
+        <h3>Diagnostics</h3>
+        <p>Run a query to inspect diagnostics for this role.</p>
+      </div>
+    );
+  }
+
+  if (queryRunState.status === "running") {
+    return (
+      <div className="ask-data-result-tab-placeholder">
+        <h3>Diagnostics</h3>
+        <p>Diagnostics will be available after the query finishes.</p>
+      </div>
+    );
+  }
+
+  if (queryRunState.status === "error") {
+    return (
+      <div className="ask-data-result-tab-placeholder">
+        <h3>Diagnostics</h3>
+        <p>
+          Diagnostics are not available because the latest request ended with a
+          safe error state.
+        </p>
+      </div>
+    );
+  }
+
+  const { result } = queryRunState;
+  const metadata = result.metadata;
+  const validation = metadata.validation;
+  const execution = metadata.execution;
+  const selfCorrection = metadata.self_correction;
+  const safeWarnings = result.warnings
+    .map(safeDiagnosticText)
+    .filter((warning): warning is string => warning !== null);
+
+  return (
+    <div className="ask-data-diagnostics-tab-content">
+      <h3>Diagnostics</h3>
+      <p>
+        Technical diagnostics are built from safe query metadata. SQL text stays
+        in the SQL tab.
+      </p>
+
+      <DiagnosticSection
+        title="Run"
+        items={[
+          { label: "Query run ID", value: result.query_run_id },
+          { label: "Status", value: result.status },
+          { label: "Error code", value: result.error_code },
+          {
+            label: "Clarification required",
+            value: result.clarification_required
+          }
+        ]}
+      />
+
+      <DiagnosticSection
+        title="Generation"
+        items={[
+          { label: "Provider", value: metadata.provider },
+          { label: "Model", value: metadata.model },
+          { label: "Template", value: metadata.template_id },
+          { label: "Scope", value: metadata.scope_type },
+          {
+            label: "Referenced tables",
+            value: formatReferencedTables(metadata.referenced_tables)
+          }
+        ]}
+      />
+
+      {validation ? (
+        <DiagnosticSection
+          title="Validation"
+          items={[
+            {
+              label: "Validation status",
+              value: formatValidationStatus(validation.valid)
+            },
+            { label: "Validation error code", value: validation.error_code }
+          ]}
+        />
+      ) : null}
+
+      {execution ? (
+        <DiagnosticSection
+          title="Execution"
+          items={[
+            { label: "Execution status", value: execution.status },
+            { label: "Execution error code", value: execution.error_code },
+            { label: "Execution row count", value: execution.row_count },
+            {
+              label: "Execution duration",
+              value:
+                typeof execution.duration_ms === "number"
+                  ? `${execution.duration_ms} ms`
+                  : null
+            },
+            { label: "Execution truncated", value: execution.truncated }
+          ]}
+        />
+      ) : null}
+
+      {selfCorrection ? (
+        <DiagnosticSection
+          title="Self-correction"
+          items={selfCorrectionItems(selfCorrection)}
+        />
+      ) : null}
+
+      {safeWarnings.length > 0 ? (
+        <section
+          className="ask-data-diagnostics-section"
+          aria-label="Diagnostic warnings"
+        >
+          <h4>Warnings</h4>
+          <ul className="ask-data-diagnostics-warnings">
+            {safeWarnings.map((warning) => (
+              <li key={warning}>{warning}</li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function DiagnosticSection({
+  items,
+  title
+}: {
+  items: DiagnosticItem[];
+  title: string;
+}) {
+  const visibleItems = items
+    .map((item) => ({
+      label: item.label,
+      value: formatDiagnosticValue(item.value)
+    }))
+    .filter((item): item is { label: string; value: string } => item.value !== null);
+
+  if (visibleItems.length === 0) {
+    return null;
+  }
+
+  return (
+    <section className="ask-data-diagnostics-section" aria-label={`${title} diagnostics`}>
+      <h4>{title}</h4>
+      <dl className="ask-data-diagnostics-grid">
+        {visibleItems.map((item) => (
+          <div key={item.label}>
+            <dt>{item.label}</dt>
+            <dd>{item.value}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+function safeSqlText(sql: string | null | undefined): string | null {
+  if (typeof sql !== "string") {
+    return null;
+  }
+
+  const trimmedSql = sql.trim();
+  return trimmedSql.length > 0 ? trimmedSql : null;
+}
+
+function safeDiagnosticText(value: string | null | undefined): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const trimmedValue = value.trim();
+  if (!trimmedValue || containsSqlLikeText(trimmedValue)) {
+    return null;
+  }
+
+  return trimmedValue;
+}
+
+function formatDiagnosticValue(
+  value: boolean | number | string | null | undefined
+): string | null {
+  if (typeof value === "boolean") {
+    return value ? "Yes" : "No";
+  }
+
+  if (typeof value === "number") {
+    return String(value);
+  }
+
+  return safeDiagnosticText(value);
+}
+
+function formatReferencedTables(tables: string[] | undefined): string | null {
+  if (!Array.isArray(tables)) {
+    return null;
+  }
+
+  const safeTables = tables
+    .map(safeDiagnosticText)
+    .filter((table): table is string => table !== null);
+
+  return safeTables.length > 0 ? safeTables.join(", ") : null;
+}
+
+function formatValidationStatus(valid: boolean | null): string | null {
+  if (valid === true) {
+    return "Valid";
+  }
+
+  if (valid === false) {
+    return "Invalid";
+  }
+
+  return null;
+}
+
+function selfCorrectionItems(
+  selfCorrection: QuerySelfCorrectionMetadata
+): DiagnosticItem[] {
+  return [
+    {
+      label: "Correction attempted",
+      value: selfCorrection.attempted
+    },
+    {
+      label: "Correction status",
+      value: formatSelfCorrectionStatus(selfCorrection)
+    },
+    {
+      label: "Original correction error code",
+      value: selfCorrection.original_error_code
+    },
+    {
+      label: "Final correction error code",
+      value: selfCorrection.final_error_code
+    }
+  ];
+}
+
+function formatSelfCorrectionStatus(
+  selfCorrection: QuerySelfCorrectionMetadata
+): string | null {
+  if (selfCorrection.attempted === false) {
+    return "Not attempted";
+  }
+
+  if (selfCorrection.attempted !== true) {
+    return null;
+  }
+
+  if (selfCorrection.succeeded === true) {
+    return "Succeeded";
+  }
+
+  if (selfCorrection.succeeded === false) {
+    return "Failed";
+  }
+
+  return "Attempted";
+}
+
+function containsSqlLikeText(value: string): boolean {
+  return /\b(select|with|insert|update|delete|drop|alter|create|truncate)\b/i.test(
+    value
   );
 }
 
