@@ -1,26 +1,44 @@
+import { useEffect, useMemo, useState } from "react";
+
+import { ApiError } from "../../api/client";
+import { listQueryTemplates } from "../../api/queryTemplates";
+import { clarifyQuery, runQuery } from "../../api/queries";
 import type { AuthUser } from "../../auth/types";
+import type {
+  QueryResultRow,
+  QueryRowValue,
+  QueryRunResult,
+  QueryTemplate,
+  QueryTemplateCategory
+} from "./types";
 
 type AskDataPageProps = {
   user: AuthUser;
+  csrfToken: string | null;
 };
 
-const TEMPLATE_EXAMPLES = [
-  {
-    category: "Licenses",
-    title: "Unused licenses",
-    summary: "Find reclaim opportunities from approved license templates."
-  },
-  {
-    category: "Identity",
-    title: "Inactive users",
-    summary: "Review stale account patterns once template data loads."
-  },
-  {
-    category: "Security",
-    title: "Security events",
-    summary: "Prepare security event reviews for scoped query integration."
-  }
-];
+type TemplateLoadStatus = "loading" | "loaded" | "error";
+
+type QueryRunMode = "template" | "free" | "clarification";
+
+type QueryRunState =
+  | {
+      status: "idle";
+    }
+  | {
+      status: "running";
+      mode: QueryRunMode;
+      question: string;
+    }
+  | {
+      status: "success";
+      question: string;
+      result: QueryRunResult;
+    }
+  | {
+      status: "error";
+      message: string;
+    };
 
 const FUTURE_OPERATION_PLACEHOLDERS = [
   {
@@ -40,30 +58,222 @@ const FUTURE_OPERATION_PLACEHOLDERS = [
   }
 ];
 
-export function AskDataPage({ user }: AskDataPageProps) {
+export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
   const canRunFreeQuery = user.permissions.includes("can_run_free_query");
   const canViewTechnicalDetails = user.permissions.includes("can_view_sql");
   const isAdmin = user.role === "admin";
+  const [templates, setTemplates] = useState<QueryTemplate[]>([]);
+  const [templateLoadStatus, setTemplateLoadStatus] =
+    useState<TemplateLoadStatus>("loading");
+  const [templateLoadError, setTemplateLoadError] = useState<string | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const [queryRunState, setQueryRunState] = useState<QueryRunState>({
+    status: "idle"
+  });
+  const [freeQuestion, setFreeQuestion] = useState("");
+  const [clarificationQuestion, setClarificationQuestion] = useState("");
+  const templateCategories = useMemo(
+    () => groupTemplatesByCategory(templates),
+    [templates]
+  );
+  const selectedTemplate =
+    templates.find((template) => template.id === selectedTemplateId) ?? null;
   const scopeLabel =
     isAdmin ? "Global admin scope" : user.department?.name ?? "No scope";
   const modeLabel = canRunFreeQuery ? "Free-query shell" : "Template-only mode";
   const modeDescription = canRunFreeQuery
-    ? "Free-query composer controls are static in this PR. Query execution comes in PR4."
-    : "Approved templates will be available in PR4. Free-query access is not enabled for this role.";
+    ? "Free-query composer is available for this role and still uses backend authorization."
+    : "Selected templates can be used here; free-query access is not enabled for this role.";
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    setTemplateLoadStatus("loading");
+    setTemplateLoadError(null);
+
+    listQueryTemplates()
+      .then((loadedTemplates) => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setTemplates(loadedTemplates);
+        setSelectedTemplateId((currentTemplateId) => {
+          if (
+            currentTemplateId &&
+            loadedTemplates.some((template) => template.id === currentTemplateId)
+          ) {
+            return currentTemplateId;
+          }
+
+          return loadedTemplates[0]?.id ?? null;
+        });
+        setTemplateLoadStatus("loaded");
+      })
+      .catch((error: unknown) => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setTemplates([]);
+        setSelectedTemplateId(null);
+        setTemplateLoadError(formatTemplateLoadError(error));
+        setTemplateLoadStatus("error");
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+
+  async function handleRunSelectedTemplate() {
+    if (queryRunState.status === "running" || selectedTemplate === null) {
+      return;
+    }
+
+    if (!csrfToken) {
+      setQueryRunState({
+        status: "error",
+        message: "Refresh your session before running a template query."
+      });
+      return;
+    }
+
+    const question = selectedTemplate.natural_language_question;
+    setClarificationQuestion("");
+    setQueryRunState({
+      status: "running",
+      mode: "template",
+      question
+    });
+
+    try {
+      const result = await runQuery(
+        {
+          question,
+          template_id: selectedTemplate.id
+        },
+        csrfToken
+      );
+      setQueryRunState({
+        status: "success",
+        question,
+        result
+      });
+    } catch (error: unknown) {
+      setQueryRunState({
+        status: "error",
+        message: formatQueryRunError(error)
+      });
+    }
+  }
+
+  async function handleRunFreeQuery() {
+    const question = freeQuestion.trim();
+    if (queryRunState.status === "running" || !question) {
+      return;
+    }
+
+    if (!csrfToken) {
+      setQueryRunState({
+        status: "error",
+        message: "Refresh your session before running a free query."
+      });
+      return;
+    }
+
+    setQueryRunState({
+      status: "running",
+      mode: "free",
+      question
+    });
+    setClarificationQuestion("");
+
+    try {
+      const result = await runQuery(
+        {
+          question
+        },
+        csrfToken
+      );
+      setQueryRunState({
+        status: "success",
+        question,
+        result
+      });
+    } catch (error: unknown) {
+      setQueryRunState({
+        status: "error",
+        message: formatQueryRunError(error)
+      });
+    }
+  }
+
+  async function handleSubmitClarification() {
+    const question = clarificationQuestion.trim();
+    if (
+      queryRunState.status === "running" ||
+      queryRunState.status !== "success" ||
+      !queryRunState.result.clarification_required ||
+      !question
+    ) {
+      return;
+    }
+
+    const queryRunId = queryRunState.result.query_run_id;
+    if (!queryRunId || !csrfToken) {
+      return;
+    }
+
+    setQueryRunState({
+      status: "running",
+      mode: "clarification",
+      question
+    });
+
+    try {
+      const result = await clarifyQuery(queryRunId, question, csrfToken);
+      setClarificationQuestion("");
+      setQueryRunState({
+        status: "success",
+        question,
+        result
+      });
+    } catch (error: unknown) {
+      setQueryRunState({
+        status: "error",
+        message: formatClarificationError(error)
+      });
+    }
+  }
 
   return (
     <article className="ask-data-page" aria-labelledby="workspace-title">
       <div className="ask-data-page__header">
-        <p className="eyebrow">Static UI shell</p>
+        <p className="eyebrow">Query integration</p>
         <h1 id="workspace-title">Ask Data</h1>
         <p className="subtitle">
-          Prepare governed data questions in a dedicated workspace. Query integration
-          comes in the next PR.
+          Prepare governed data questions in a dedicated workspace. Templates,
+          questions, result tables, and clarification states use the Query API.
         </p>
       </div>
 
       <div className="ask-data-workspace">
-        <TemplatePanel />
+        <TemplatePanel
+          categories={templateCategories}
+          error={templateLoadError}
+          onSelectTemplate={setSelectedTemplateId}
+          onRunSelectedTemplate={() => void handleRunSelectedTemplate()}
+          runDisabledReason={
+            selectedTemplate && !csrfToken
+              ? "Refresh your session before running a template query."
+              : null
+          }
+          running={queryRunState.status === "running"}
+          selectedTemplate={selectedTemplate}
+          selectedTemplateId={selectedTemplateId}
+          status={templateLoadStatus}
+        />
         <section
           className="ask-data-workspace__main"
           aria-label="Ask Data workspace"
@@ -78,8 +288,29 @@ export function AskDataPage({ user }: AskDataPageProps) {
           <QuestionComposer
             canRunFreeQuery={canRunFreeQuery}
             canViewTechnicalDetails={canViewTechnicalDetails}
+            freeQuestion={freeQuestion}
+            onFreeQuestionChange={setFreeQuestion}
+            onRunFreeQuery={() => void handleRunFreeQuery()}
+            runDisabledReason={
+              canRunFreeQuery && !csrfToken
+                ? "Refresh your session before running a free query."
+                : null
+            }
+            running={queryRunState.status === "running"}
           />
-          <ResultPlaceholder />
+          <ResultPlaceholder
+            canClarify={canRunFreeQuery}
+            clarificationDisabledReason={
+              queryRunState.status === "success" &&
+              queryRunState.result.clarification_required
+                ? clarificationDisabledReason(queryRunState.result, csrfToken)
+                : null
+            }
+            clarificationQuestion={clarificationQuestion}
+            onClarificationQuestionChange={setClarificationQuestion}
+            onSubmitClarification={() => void handleSubmitClarification()}
+            queryRunState={queryRunState}
+          />
         </section>
         <InsightPanel />
       </div>
@@ -87,7 +318,29 @@ export function AskDataPage({ user }: AskDataPageProps) {
   );
 }
 
-function TemplatePanel() {
+function TemplatePanel({
+  categories,
+  error,
+  onSelectTemplate,
+  onRunSelectedTemplate,
+  runDisabledReason,
+  running,
+  selectedTemplate,
+  selectedTemplateId,
+  status
+}: {
+  categories: QueryTemplateCategory[];
+  error: string | null;
+  onSelectTemplate: (templateId: string) => void;
+  onRunSelectedTemplate: () => void;
+  runDisabledReason: string | null;
+  running: boolean;
+  selectedTemplate: QueryTemplate | null;
+  selectedTemplateId: string | null;
+  status: TemplateLoadStatus;
+}) {
+  const hasTemplates = categories.length > 0;
+
   return (
     <section className="ask-data-panel" aria-label="Ask Data templates">
       <div className="ask-data-panel__header">
@@ -95,30 +348,114 @@ function TemplatePanel() {
         <h2>Templates</h2>
       </div>
 
-      <div className="ask-data-template-groups" aria-label="Categories placeholder">
-        {["Licenses", "Identity", "Security"].map((category) => (
-          <span key={category}>{category}</span>
-        ))}
-      </div>
-
-      <ul className="ask-data-template-list" aria-label="Template list placeholder">
-        {TEMPLATE_EXAMPLES.map((template) => (
-          <li key={template.title}>
-            <span>{template.category}</span>
-            <strong>{template.title}</strong>
-            <p>{template.summary}</p>
-          </li>
-        ))}
-      </ul>
-
-      <div className="ask-data-selected-template">
-        <h3>Selected template</h3>
-        <p>
-          Choose a template here once the API is connected. These examples are
-          static placeholders only.
+      {status === "loading" ? (
+        <p className="ask-data-state-message" role="status">
+          Loading query templates...
         </p>
-      </div>
+      ) : null}
+
+      {status === "error" ? (
+        <p className="form-message form-message--error" role="alert">
+          {error ?? "Query templates could not be loaded."}
+        </p>
+      ) : null}
+
+      {status === "loaded" && !hasTemplates ? (
+        <p className="ask-data-state-message">
+          No query templates are available yet.
+        </p>
+      ) : null}
+
+      {status === "loaded" && hasTemplates ? (
+        <>
+          <div className="ask-data-template-groups" aria-label="Query template categories">
+            {categories.map((group) => (
+              <button
+                key={group.category}
+                type="button"
+                onClick={() => onSelectTemplate(group.templates[0].id)}
+              >
+                {group.category}
+              </button>
+            ))}
+          </div>
+
+          <ul className="ask-data-template-list" aria-label="Query templates">
+            {categories.flatMap((group) =>
+              group.templates.map((template) => (
+                <li key={template.id}>
+                  <button
+                    type="button"
+                    className="ask-data-template-card"
+                    aria-pressed={template.id === selectedTemplateId}
+                    data-selected={template.id === selectedTemplateId ? "true" : "false"}
+                    onClick={() => onSelectTemplate(template.id)}
+                  >
+                    <strong>{template.title}</strong>
+                    <p>{template.description}</p>
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>
+        </>
+      ) : null}
+
+      <SelectedTemplateDetails
+        disabledReason={runDisabledReason}
+        onRunSelectedTemplate={onRunSelectedTemplate}
+        running={running}
+        template={selectedTemplate}
+      />
     </section>
+  );
+}
+
+function SelectedTemplateDetails({
+  disabledReason,
+  onRunSelectedTemplate,
+  running,
+  template
+}: {
+  disabledReason: string | null;
+  onRunSelectedTemplate: () => void;
+  running: boolean;
+  template: QueryTemplate | null;
+}) {
+  const canRunTemplate = template !== null && disabledReason === null && !running;
+
+  return (
+    <div className="ask-data-selected-template" aria-label="Selected query template">
+      <h3>Selected template</h3>
+      {template ? (
+        <>
+          <strong>{template.title}</strong>
+          <p>{template.description}</p>
+          <p>{template.natural_language_question}</p>
+          {template.parameters.length > 0 ? (
+            <p className="ask-data-template-parameter-note">
+              Custom parameters are not supported yet; backend template defaults
+              will be used.
+            </p>
+          ) : null}
+          <div className="ask-data-template-actions">
+            <button
+              type="button"
+              className="primary-action-button"
+              disabled={!canRunTemplate}
+              onClick={onRunSelectedTemplate}
+            >
+              {running ? "Running template..." : "Run selected template"}
+            </button>
+          </div>
+          {disabledReason ? (
+            <p className="ask-data-session-message">{disabledReason}</p>
+          ) : null}
+        </>
+      ) : (
+        <p>Select a template to view its default question and scope.</p>
+      )}
+    </div>
   );
 }
 
@@ -140,8 +477,8 @@ function RoleScopeNotice({
       <div>
         <h2>Role and scope</h2>
         <p>
-          This page is a static shell only. It does not load templates, run
-          queries, clarify questions, or call query history endpoints yet.
+          Templates and questions use the Query API in this checkpoint. History
+          endpoints remain idle here.
         </p>
       </div>
       <dl className="ask-data-status-grid" aria-label="Ask Data access summary">
@@ -162,7 +499,7 @@ function RoleScopeNotice({
       {showAdminGlobalIndicator ? (
         <p className="ask-data-admin-note">
           <strong>Admin global shell</strong>
-          <span>Global scope indicator only. No backend query is connected in this PR.</span>
+          <span>Global scope indicator only. Template runs still use backend authorization.</span>
         </p>
       ) : null}
     </section>
@@ -171,11 +508,25 @@ function RoleScopeNotice({
 
 function QuestionComposer({
   canRunFreeQuery,
-  canViewTechnicalDetails
+  canViewTechnicalDetails,
+  freeQuestion,
+  onFreeQuestionChange,
+  onRunFreeQuery,
+  runDisabledReason,
+  running
 }: {
   canRunFreeQuery: boolean;
   canViewTechnicalDetails: boolean;
+  freeQuestion: string;
+  onFreeQuestionChange: (question: string) => void;
+  onRunFreeQuery: () => void;
+  runDisabledReason: string | null;
+  running: boolean;
 }) {
+  const trimmedFreeQuestion = freeQuestion.trim();
+  const canRunFreeQueryNow =
+    trimmedFreeQuestion.length > 0 && runDisabledReason === null && !running;
+
   return (
     <section className="ask-data-panel" aria-labelledby="question-composer-title">
       <div className="ask-data-panel__header">
@@ -184,32 +535,42 @@ function QuestionComposer({
       </div>
       {canRunFreeQuery ? (
         <>
-          <label className="ask-data-question-shell" htmlFor="ask-data-free-query-draft">
-            <span>Free query draft</span>
+          <label className="ask-data-question-shell" htmlFor="ask-data-free-question">
+            <span>Free question</span>
             <textarea
-              id="ask-data-free-query-draft"
+              id="ask-data-free-question"
               rows={4}
-              disabled
-              placeholder="Query execution comes in PR4."
+              placeholder="Ask a governed data question."
+              value={freeQuestion}
+              disabled={running}
+              onChange={(event) => onFreeQuestionChange(event.target.value)}
             />
           </label>
           <div className="ask-data-composer-actions">
-            <button type="button" className="primary-action-button" disabled>
-              Available in next PR
+            <button
+              type="button"
+              className="primary-action-button"
+              disabled={!canRunFreeQueryNow}
+              onClick={onRunFreeQuery}
+            >
+              {running ? "Running query..." : "Run free query"}
             </button>
           </div>
           <p className="ask-data-mode-note">
-            The composer is disabled in this PR. It will call the Query API only
-            after PR4 adds query integration.
+            Free questions are sent to the Query API using your current role and
+            access scope.
           </p>
+          {runDisabledReason ? (
+            <p className="ask-data-session-message">{runDisabledReason}</p>
+          ) : null}
           {canViewTechnicalDetails ? <TechnicalCapabilityPlaceholder /> : null}
         </>
       ) : (
         <div className="ask-data-template-only-shell">
           <h3>Template-only mode</h3>
           <p>
-            Approved templates will be available in PR4. This role does not receive
-            a free-query input in the shell.
+            Selected templates can be used here. This role does not receive a
+            free-query input in the shell.
           </p>
         </div>
       )}
@@ -229,21 +590,268 @@ function TechnicalCapabilityPlaceholder() {
   );
 }
 
-function ResultPlaceholder() {
+function ResultPlaceholder({
+  canClarify,
+  clarificationDisabledReason,
+  clarificationQuestion,
+  onClarificationQuestionChange,
+  onSubmitClarification,
+  queryRunState
+}: {
+  canClarify: boolean;
+  clarificationDisabledReason: string | null;
+  clarificationQuestion: string;
+  onClarificationQuestionChange: (question: string) => void;
+  onSubmitClarification: () => void;
+  queryRunState: QueryRunState;
+}) {
   return (
     <section className="ask-data-panel" aria-labelledby="result-placeholder-title">
       <div className="ask-data-panel__header">
-        <p className="eyebrow">Static result</p>
+        <p className="eyebrow">Query result</p>
         <h2 id="result-placeholder-title">Result placeholder</h2>
       </div>
-      <div className="ask-data-result-shell" aria-label="Result table placeholder">
-        <div>Column A</div>
-        <div>Column B</div>
-        <div>Value pending</div>
-        <div>Query integration comes in the next PR.</div>
-      </div>
+
+      {queryRunState.status === "idle" ? (
+        <div className="ask-data-result-shell" aria-label="Result table placeholder">
+          <div>Column A</div>
+          <div>Column B</div>
+          <div>Value pending</div>
+          <div>Run a selected template or free question to preview the query result summary.</div>
+        </div>
+      ) : null}
+
+      {queryRunState.status === "running" ? (
+        <p className="ask-data-state-message" role="status">
+          {runningQueryMessage(queryRunState.mode)}
+        </p>
+      ) : null}
+
+      {queryRunState.status === "error" ? (
+        <p className="form-message form-message--error" role="alert">
+          {queryRunState.message}
+        </p>
+      ) : null}
+
+      {queryRunState.status === "success" ? (
+        <QueryResultSummary
+          canClarify={canClarify}
+          clarificationDisabledReason={clarificationDisabledReason}
+          clarificationQuestion={clarificationQuestion}
+          onClarificationQuestionChange={onClarificationQuestionChange}
+          onSubmitClarification={onSubmitClarification}
+          question={queryRunState.question}
+          result={queryRunState.result}
+        />
+      ) : null}
     </section>
   );
+}
+
+function QueryResultSummary({
+  canClarify,
+  clarificationDisabledReason,
+  clarificationQuestion,
+  onClarificationQuestionChange,
+  onSubmitClarification,
+  question,
+  result
+}: {
+  canClarify: boolean;
+  clarificationDisabledReason: string | null;
+  clarificationQuestion: string;
+  onClarificationQuestionChange: (question: string) => void;
+  onSubmitClarification: () => void;
+  question: string;
+  result: QueryRunResult;
+}) {
+  const columns = result.columns.length > 0 ? result.columns : firstRowColumns(result.rows);
+  const hasRows = result.rows.length > 0 && columns.length > 0;
+
+  if (result.clarification_required) {
+    return (
+      <ClarificationPanel
+        canClarify={canClarify}
+        disabledReason={clarificationDisabledReason}
+        message={result.message}
+        onQuestionChange={onClarificationQuestionChange}
+        onSubmit={onSubmitClarification}
+        question={clarificationQuestion}
+      />
+    );
+  }
+
+  return (
+    <div className="ask-data-result-summary" aria-label="Query result summary">
+      <h3>Query result</h3>
+      <p>{result.message}</p>
+      <p>Question: {question}</p>
+      <dl className="ask-data-result-metadata">
+        <div>
+          <dt>Status</dt>
+          <dd>Status: {result.status}</dd>
+        </div>
+        <div>
+          <dt>Rows</dt>
+          <dd>{result.row_count}</dd>
+        </div>
+        <div>
+          <dt>Duration</dt>
+          <dd>{result.duration_ms} ms</dd>
+        </div>
+      </dl>
+
+      {result.truncated || result.warnings.length > 0 ? (
+        <div className="ask-data-result-notices">
+          {result.truncated ? (
+            <p className="ask-data-truncated-notice">
+              <strong>Results truncated</strong>
+              <span>Only the returned rows are shown in this preview.</span>
+            </p>
+          ) : null}
+          {result.warnings.length > 0 ? (
+            <div className="ask-data-warning-list" aria-label="Query warnings">
+              <h4>Warnings</h4>
+              <ul>
+                {result.warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
+      <VisualizationSuggestion columns={columns} rows={result.rows} />
+
+      {hasRows ? (
+        <QueryResultTable columns={columns} rows={result.rows} />
+      ) : (
+        <p className="ask-data-empty-result">No rows returned.</p>
+      )}
+    </div>
+  );
+}
+
+function ClarificationPanel({
+  canClarify,
+  disabledReason,
+  message,
+  onQuestionChange,
+  onSubmit,
+  question
+}: {
+  canClarify: boolean;
+  disabledReason: string | null;
+  message: string;
+  onQuestionChange: (question: string) => void;
+  onSubmit: () => void;
+  question: string;
+}) {
+  const canSubmit =
+    canClarify && question.trim().length > 0 && disabledReason === null;
+
+  return (
+    <div className="ask-data-clarification-panel" aria-label="Clarification required">
+      <h3>Clarification required</h3>
+      <p>{message}</p>
+      {canClarify ? (
+        <>
+          <label className="ask-data-question-shell" htmlFor="ask-data-clarification-question">
+            <span>Revised question</span>
+            <textarea
+              id="ask-data-clarification-question"
+              rows={4}
+              placeholder="Add the missing detail and submit again."
+              value={question}
+              onChange={(event) => onQuestionChange(event.target.value)}
+            />
+          </label>
+          {disabledReason ? (
+            <p className="ask-data-session-message">{disabledReason}</p>
+          ) : null}
+          <div className="ask-data-composer-actions">
+            <button
+              type="button"
+              className="primary-action-button"
+              disabled={!canSubmit}
+              onClick={onSubmit}
+            >
+              Submit clarification
+            </button>
+          </div>
+        </>
+      ) : (
+        <p className="ask-data-mode-note">
+          This query needs refinement. Choose a different approved template or
+          ask for a more specific template.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function VisualizationSuggestion({
+  columns,
+  rows
+}: {
+  columns: string[];
+  rows: QueryResultRow[];
+}) {
+  return (
+    <div
+      className="ask-data-visualization-suggestion"
+      aria-label="Visualization suggestion"
+    >
+      <h4>Visualization suggestion</h4>
+      <p>{buildVisualizationSuggestion(columns, rows)}</p>
+    </div>
+  );
+}
+
+function QueryResultTable({
+  columns,
+  rows
+}: {
+  columns: string[];
+  rows: QueryResultRow[];
+}) {
+  return (
+    <div className="ask-data-result-table-wrap">
+      <table className="ask-data-result-table" aria-label="Query results">
+        <thead>
+          <tr>
+            {columns.map((column) => (
+              <th key={column} scope="col">
+                {column}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, rowIndex) => (
+            <tr key={rowIndex}>
+              {columns.map((column) => (
+                <td key={column}>{formatResultValue(valueForColumn(row, column))}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function runningQueryMessage(mode: QueryRunMode): string {
+  if (mode === "template") {
+    return "Running selected template...";
+  }
+
+  if (mode === "clarification") {
+    return "Submitting clarification...";
+  }
+
+  return "Running free query...";
 }
 
 function InsightPanel() {
@@ -268,7 +876,10 @@ function InsightPanel() {
 
       <div className="ask-data-insight-block">
         <h3>Future status</h3>
-        <p>Loading, clarification, and no-row states will be wired in PR4.</p>
+        <p>
+          Visualization suggestions now appear with completed results; fuller
+          charts remain unavailable until a later visualization milestone.
+        </p>
       </div>
 
       <div className="ask-data-disabled-actions" aria-label="Future operational actions">
@@ -294,4 +905,122 @@ function formatRole(role: AuthUser["role"]): string {
   }
 
   return role.charAt(0).toUpperCase() + role.slice(1);
+}
+
+function groupTemplatesByCategory(
+  templates: QueryTemplate[]
+): QueryTemplateCategory[] {
+  const categoryMap = new Map<string, QueryTemplate[]>();
+
+  for (const template of templates) {
+    const category = template.category || "Uncategorized";
+    const categoryTemplates = categoryMap.get(category) ?? [];
+    categoryTemplates.push(template);
+    categoryMap.set(category, categoryTemplates);
+  }
+
+  return Array.from(categoryMap, ([category, categoryTemplates]) => ({
+    category,
+    templates: categoryTemplates
+  }));
+}
+
+function firstRowColumns(rows: QueryResultRow[]): string[] {
+  return rows[0] ? Object.keys(rows[0]) : [];
+}
+
+function valueForColumn(
+  row: QueryResultRow,
+  column: string
+): QueryRowValue | undefined {
+  return Object.prototype.hasOwnProperty.call(row, column)
+    ? row[column]
+    : undefined;
+}
+
+function formatResultValue(value: QueryRowValue | undefined): string {
+  if (value === undefined || value === null) {
+    return "null";
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value);
+  }
+
+  return JSON.stringify(value) ?? "";
+}
+
+function buildVisualizationSuggestion(
+  columns: string[],
+  rows: QueryResultRow[]
+): string {
+  if (columns.length === 0 || rows.length === 0) {
+    return "Chart available later when rows are returned.";
+  }
+
+  const numericColumn = columns.find((column) =>
+    rows.some((row) => {
+      const value = valueForColumn(row, column);
+      return typeof value === "number" && Number.isFinite(value);
+    })
+  );
+
+  if (!numericColumn) {
+    return "Chart available later: table view is the safest display for this result shape.";
+  }
+
+  const labelColumn = columns.find(
+    (column) =>
+      column !== numericColumn &&
+      rows.some((row) => typeof valueForColumn(row, column) === "string")
+  );
+
+  if (!labelColumn) {
+    return `Chart available later: summarize ${numericColumn}.`;
+  }
+
+  return `Chart available later: compare ${numericColumn} by ${labelColumn}.`;
+}
+
+function clarificationDisabledReason(
+  result: QueryRunResult,
+  csrfToken: string | null
+): string | null {
+  if (!result.query_run_id) {
+    return "This clarification cannot be continued. Run a new query instead.";
+  }
+
+  if (!csrfToken) {
+    return "Refresh your session before submitting clarification.";
+  }
+
+  return null;
+}
+
+function formatTemplateLoadError(error: unknown): string {
+  if (error instanceof ApiError) {
+    return error.message;
+  }
+
+  return "Query templates could not be loaded.";
+}
+
+function formatQueryRunError(error: unknown): string {
+  if (error instanceof ApiError) {
+    return error.message;
+  }
+
+  return "Query could not be run.";
+}
+
+function formatClarificationError(error: unknown): string {
+  if (error instanceof ApiError) {
+    return error.message;
+  }
+
+  return "Clarification could not be run.";
 }

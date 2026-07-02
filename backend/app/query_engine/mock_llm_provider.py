@@ -6,6 +6,7 @@ from typing import Any
 from app.query_engine.domain_pack import DomainPack, QueryTemplate
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.llm_provider import SQLGenerationResult
+from app.query_engine.template_sql import render_template_sql
 
 
 class MockLLMProvider:
@@ -30,8 +31,12 @@ class MockLLMProvider:
         if template is None or template.sql is None:
             return self._unsupported_result(question, schema_context, user_context)
 
+        rendered_sql = render_template_sql(template)
+        if rendered_sql is None:
+            return self._unsupported_result(question, schema_context, user_context)
+
         return SQLGenerationResult(
-            generated_sql=template.sql,
+            generated_sql=rendered_sql,
             provider_name=self.provider_name,
             model_name=self.model_name,
             generation_metadata={
@@ -45,6 +50,11 @@ class MockLLMProvider:
                     for table in schema_context.get("allowed_tables", [])
                 ),
                 "user_scope_type": user_context.get("scope_type"),
+                "parameters_applied": [
+                    parameter.name
+                    for parameter in template.parameters
+                    if parameter.default is not None
+                ],
             },
             clarification_required=False,
         )
@@ -86,4 +96,3 @@ class MockLLMProvider:
 
 def _normalize_question(question: str) -> str:
     return " ".join(question.strip().lower().rstrip(".?").split())
-

@@ -40,6 +40,8 @@ def test_mock_provider_is_deterministic_for_known_template() -> None:
     assert first.generated_sql is not None
     assert "license_assignments" in first.generated_sql
     assert "licenses" in first.generated_sql
+    assert ":unused_days" not in first.generated_sql
+    assert "60 * INTERVAL '1 day'" in first.generated_sql
     assert first.generation_metadata["template_id"] == "unused_licenses_by_department"
     assert first.generation_metadata["source"] == "domain_pack_template"
 
@@ -57,6 +59,8 @@ def test_mock_provider_maps_known_question_to_structured_sql_result() -> None:
     assert result.generated_sql is not None
     assert result.generated_sql.startswith("SELECT ")
     assert "directory_users" in result.generated_sql
+    assert ":inactive_days" not in result.generated_sql
+    assert "90 * INTERVAL '1 day'" in result.generated_sql
     assert result.provider_name == "mock"
     assert result.model_name == "mock-queryops-v1"
     assert result.clarification_required is False

@@ -21,6 +21,7 @@ EXCLUDED_LLM_EXPOSURE_LEVELS = frozenset({"none"})
 class SchemaContextOptions:
     domain_id: str | None = None
     template_id: str | None = None
+    query_action: str = QUERY_ACTION
 
 
 def build_schema_context(
@@ -51,6 +52,7 @@ def build_schema_context(
         resources_by_table,
         access_context,
         table_filter,
+        request_options.query_action,
     )
     allowed_table_names = [table["name"] for table in tables]
 
@@ -111,6 +113,7 @@ def _build_table_contexts(
     resources_by_table: dict[str, DataResource],
     access_context: UserAccessContext,
     table_filter: frozenset[str] | None,
+    query_action: str,
 ) -> list[dict[str, Any]]:
     allowed_resource_names = frozenset(domain_pack.allowed_resource_table_names)
     tables: list[dict[str, Any]] = []
@@ -126,7 +129,7 @@ def _build_table_contexts(
             continue
         if not _resource_is_safe_for_schema_context(resource):
             continue
-        if not _resource_is_allowed(access_context, resource):
+        if not _resource_is_allowed(access_context, resource, query_action):
             continue
 
         tables.append(_serialize_table(table, resource))
@@ -143,6 +146,7 @@ def _resource_is_safe_for_schema_context(resource: DataResource) -> bool:
 def _resource_is_allowed(
     access_context: UserAccessContext,
     resource: DataResource,
+    query_action: str,
 ) -> bool:
     runtime_context: dict[str, str] = {}
     if resource.scope_type:
@@ -153,7 +157,7 @@ def _resource_is_allowed(
 
     decision = authorize_resource_access(
         access_context,
-        QUERY_ACTION,
+        query_action,
         resource,
         runtime_context,
     )

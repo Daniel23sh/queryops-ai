@@ -54,6 +54,34 @@ def test_manager_scoped_template_query_via_api_uses_rls(
     assert "executed_sql" not in data
 
 
+def test_user_template_query_via_api_uses_rls_and_hides_sql(
+    client: TestClient,
+    postgres_engine: Engine,
+) -> None:
+    clear_query_runs(postgres_engine)
+    with Session(postgres_engine) as session:
+        user = user_by_email(session, "demo.user@queryops.local")
+        access_context = build_user_access_context(user, session)
+        assert access_context.has_permission("can_use_query_templates")
+        assert not access_context.has_permission("can_run_free_query")
+        assert not access_context.has_permission("can_query_scoped_data")
+        expected_rows = expected_support_ticket_rows(
+            session,
+            department_id=access_context.default_scope.department_id,
+        )
+    csrf_token = login(client, "demo.user@queryops.local")
+
+    response = post_template_run(client, csrf_token)
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["status"] == "succeeded"
+    assert data["rows"] == expected_rows
+    assert data["row_count"] == len(expected_rows)
+    assert "generated_sql" not in data
+    assert "executed_sql" not in data
+
+
 def test_analyst_free_text_query_via_api_works_for_assigned_scope(
     client: TestClient,
     postgres_engine: Engine,
@@ -81,6 +109,29 @@ def test_analyst_free_text_query_via_api_works_for_assigned_scope(
     assert data["row_count"] > 0
     assert data["generated_sql"].startswith("SELECT")
     assert data["executed_sql"].startswith("SELECT")
+
+
+def test_manager_parameterized_free_text_template_uses_default_values(
+    client: TestClient,
+    postgres_engine: Engine,
+) -> None:
+    clear_query_runs(postgres_engine)
+    csrf_token = login(client, "demo.manager@queryops.local")
+
+    response = client.post(
+        "/api/v1/queries/run",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"question": "Show inactive users in my department."},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["status"] == "succeeded"
+    assert data["metadata"]["template_id"] == "inactive_users_by_department"
+    assert data["metadata"]["execution"]["status"] == "succeeded"
+    assert data.get("error_code") is None
+    assert "generated_sql" not in data
+    assert "executed_sql" not in data
 
 
 def test_admin_global_template_query_via_api_returns_allowed_global_data(

@@ -11,7 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.auth.access_context import UserAccessContext
-from app.auth.access_policy import authorize_resource_access
+from app.auth.access_policy import QUERY_ACTIONS, authorize_resource_access
 from app.core.rls import build_rls_context, set_rls_context
 from app.models.product import DataResource
 from app.query_engine.runtime_role import QUERY_RUNTIME_ROLE, set_query_runtime_role
@@ -62,6 +62,7 @@ class ValidationLike(Protocol):
 class SQLExecutionOptions:
     statement_timeout_ms: int = DEFAULT_STATEMENT_TIMEOUT_MS
     row_limit: int = DEFAULT_ROW_LIMIT
+    query_action: str = QUERY_ACTION
 
 
 @dataclass(frozen=True)
@@ -134,6 +135,7 @@ def execute_validated_sql(
         resources,
         referenced_tables,
         access_context,
+        execution_options.query_action,
     )
     if resource_error is not None:
         return _failure(
@@ -176,6 +178,11 @@ def _normalize_options(options: SQLExecutionOptions | None) -> SQLExecutionOptio
     return SQLExecutionOptions(
         statement_timeout_ms=statement_timeout_ms,
         row_limit=row_limit,
+        query_action=(
+            raw_options.query_action
+            if raw_options.query_action in QUERY_ACTIONS
+            else QUERY_ACTION
+        ),
     )
 
 
@@ -212,6 +219,7 @@ def _validate_and_authorize_resources(
     resources_by_table: dict[str, DataResource],
     referenced_tables: list[str],
     access_context: UserAccessContext,
+    query_action: str,
 ) -> str | None:
     for table_name in referenced_tables:
         resource = resources_by_table.get(table_name)
@@ -222,7 +230,7 @@ def _validate_and_authorize_resources(
 
         decision = authorize_resource_access(
             access_context,
-            QUERY_ACTION,
+            query_action,
             resource,
             _runtime_context_for_resource(access_context, resource),
         )

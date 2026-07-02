@@ -103,7 +103,7 @@ def test_query_templates_list_returns_allowed_templates_for_query_roles(
     assert_no_sql_payload(templates)
 
 
-def test_user_does_not_see_templates_requiring_missing_permission(
+def test_user_can_list_approved_query_templates(
     client: TestClient,
 ) -> None:
     _login(client, "demo.user@queryops.local")
@@ -111,7 +111,9 @@ def test_user_does_not_see_templates_requiring_missing_permission(
     response = client.get("/api/v1/query-templates")
 
     assert response.status_code == 200
-    assert response.json()["data"] == []
+    templates = response.json()["data"]
+    assert [template["id"] for template in templates] == EXPECTED_TEMPLATE_IDS
+    assert_no_sql_payload(templates)
 
 
 def test_query_template_detail_matches_list_filtering(client: TestClient) -> None:
@@ -154,16 +156,18 @@ def test_query_template_unknown_id_returns_safe_404(client: TestClient) -> None:
     assert "not-a-template" not in body["error"]["message"]
 
 
-def test_query_template_unauthorized_id_returns_safe_404(client: TestClient) -> None:
+def test_query_template_detail_is_available_to_template_user(
+    client: TestClient,
+) -> None:
     _login(client, "demo.user@queryops.local")
 
     response = client.get("/api/v1/query-templates/inactive_users_by_department")
 
-    assert response.status_code == 404
-    body = response.json()
-    assert body["error"]["code"] == "QUERY_TEMPLATE_NOT_FOUND"
-    assert body["error"]["message"] == "Query template was not found."
-    assert "inactive_users_by_department" not in body["error"]["message"]
+    assert response.status_code == 200
+    detail = response.json()["data"]
+    assert detail["id"] == "inactive_users_by_department"
+    assert detail["domain"] == "it_operations"
+    assert_no_sql_payload(detail)
 
 
 def test_query_template_detail_does_not_expose_raw_sql_by_default(

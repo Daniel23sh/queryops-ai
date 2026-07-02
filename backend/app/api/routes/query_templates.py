@@ -5,7 +5,10 @@ from sqlalchemy.orm import Session
 
 from app.api.responses import error_response, success_response
 from app.auth.access_context import UserAccessContext, build_user_access_context
-from app.auth.access_policy import authorize_resource_access
+from app.auth.access_policy import (
+    APPROVED_TEMPLATE_QUERY_ACTION,
+    authorize_resource_access,
+)
 from app.auth.permissions import require_authenticated_user
 from app.db.session import get_db
 from app.models.product import AppUser
@@ -57,7 +60,7 @@ def _template_is_allowed(
 ) -> bool:
     decision = authorize_resource_access(
         access_context,
-        template.required_action,
+        APPROVED_TEMPLATE_QUERY_ACTION,
         {
             "resource_type": "query_template",
             "domain": "it_operations",

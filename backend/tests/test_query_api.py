@@ -134,7 +134,7 @@ def test_user_without_free_query_permission_is_denied(client: TestClient) -> Non
     assert response.json()["error"]["code"] == "FORBIDDEN"
 
 
-def test_user_without_scoped_query_permission_cannot_run_hidden_template(
+def test_user_can_run_approved_template_without_sql_visibility(
     client: TestClient,
     fake_service: FakeQueryEngineService,
 ) -> None:
@@ -149,9 +149,14 @@ def test_user_without_scoped_query_permission_cannot_run_hidden_template(
         },
     )
 
-    assert response.status_code == 404
-    assert response.json()["error"]["code"] == "QUERY_TEMPLATE_NOT_FOUND"
-    assert fake_service.calls == []
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["status"] == "succeeded"
+    assert "generated_sql" not in data
+    assert "executed_sql" not in data
+    assert "SELECT" not in json.dumps(data)
+    assert len(fake_service.calls) == 1
+    assert fake_service.calls[0].template_id == "open_support_tickets_by_department"
 
 
 def test_manager_template_response_hides_sql(client: TestClient) -> None:

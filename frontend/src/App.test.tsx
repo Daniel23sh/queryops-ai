@@ -1,8 +1,11 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import App from "./App";
 import { AuthProvider } from "./auth/AuthProvider";
+import type { AuthUser } from "./auth/types";
+import { AskDataPage } from "./features/ask-data";
 
 const demoUser = backendUser({
   id: "user-id",
@@ -125,6 +128,32 @@ const demoAdmin = backendUser({
   ]
 });
 
+const askDataTemplates = [
+  backendQueryTemplate({
+    id: "unused_licenses_department",
+    category: "Licenses",
+    title: "Unused paid licenses",
+    description: "Find reclaimable paid licenses in the current scope.",
+    naturalLanguageQuestion: "Show unused paid licenses in my department.",
+    parameters: [
+      {
+        name: "days_unused",
+        data_type: "integer",
+        description: "Days since the license was last used.",
+        required: false,
+        default: 60
+      }
+    ]
+  }),
+  backendQueryTemplate({
+    id: "security_events_review",
+    category: "Security",
+    title: "Security events",
+    description: "Review recent security events by scope.",
+    naturalLanguageQuestion: "Show recent security events in my scope."
+  })
+];
+
 afterEach(() => {
   clearCsrfCookie();
   vi.unstubAllGlobals();
@@ -246,7 +275,10 @@ describe("App", () => {
   });
 
   it("renders the Ask Data page shell from workspace navigation", async () => {
-    const fetchMock = stubFetchSequence(successResponse(demoManager));
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates)
+    );
 
     renderApp();
 
@@ -258,15 +290,885 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: "Ask Data" })
     ).toBeInTheDocument();
-    expect(screen.getByText("Static UI shell")).toBeInTheDocument();
-    expect(
-      screen.getAllByText(/Query integration comes in the next PR/i).length
-    ).toBeGreaterThan(0);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Query integration")).toBeInTheDocument();
+    expect((await screen.findAllByText("Unused paid licenses")).length).toBeGreaterThan(0);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/api/v1/query-templates",
+      expect.objectContaining({
+        method: "GET",
+        credentials: "include"
+      })
+    );
+    expectNoQueryRun(fetchMock);
   });
 
-  it("renders template-only Ask Data mode for demo user without extra API calls", async () => {
-    const fetchMock = stubFetchSequence(successResponse(demoUser));
+  it("renders template loading state while query templates are pending", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(successResponse(demoManager))
+      .mockReturnValueOnce(new Promise(() => undefined));
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Ask Data" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Loading query templates...")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expectNoQueryRun(fetchMock);
+  });
+
+  it("loads real Ask Data templates and updates selected template details", async () => {
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates)
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    const templateRegion = await screen.findByRole("region", {
+      name: "Ask Data templates"
+    });
+    expect(within(templateRegion).getByText("Licenses")).toBeInTheDocument();
+    expect(within(templateRegion).getByText("Security")).toBeInTheDocument();
+    const unusedLicensesTemplate = within(templateRegion).getByRole("button", {
+      name: /Unused paid licenses/i
+    });
+    expect(unusedLicensesTemplate).toBeInTheDocument();
+    expect(
+      within(unusedLicensesTemplate).getByText(
+        "Find reclaimable paid licenses in the current scope."
+      )
+    ).toBeInTheDocument();
+    expect(
+      within(templateRegion).getByText(/Custom parameters are not supported yet/i)
+    ).toBeInTheDocument();
+    expect(
+      within(templateRegion).getByText(/backend template defaults will be used/i)
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      within(templateRegion).getByRole("button", { name: /Security events/i })
+    );
+
+    const selectedTemplate = within(templateRegion).getByLabelText(
+      "Selected query template"
+    );
+    expect(within(selectedTemplate).getByText("Security events")).toBeInTheDocument();
+    expect(
+      within(selectedTemplate).getByText("Show recent security events in my scope.")
+    ).toBeInTheDocument();
+    expectNoQueryRun(fetchMock);
+  });
+
+  it("runs the selected template with CSRF and hides returned SQL fields", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          message: "Template query completed.",
+          generatedSql: "SELECT secret_value FROM internal_table",
+          executedSql: "SELECT secret_value FROM internal_table"
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Run selected template" }));
+
+    expect(await screen.findByText("Template query completed.")).toBeInTheDocument();
+    expect(screen.getByText("Status: succeeded")).toBeInTheDocument();
+    expect(screen.queryByText("SELECT secret_value FROM internal_table")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:8000/api/v1/queries/run",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        headers: expect.objectContaining({
+          "Content-Type": "application/json",
+          "X-CSRF-Token": "csrf-from-cookie"
+        }),
+        body: JSON.stringify({
+          question: "Show unused paid licenses in my department.",
+          template_id: "unused_licenses_department"
+        })
+      })
+    );
+  });
+
+  it("renders dynamic result table values from template query results", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          message: "Dynamic table ready.",
+          columns: [
+            "product_name",
+            "unused_count",
+            "has_owner",
+            "last_seen",
+            "owner",
+            "metadata",
+            "tags"
+          ],
+          rows: [
+            {
+              product_name: "Microsoft 365 E5",
+              unused_count: 12,
+              has_owner: true,
+              last_seen: "2026-07-01T12:30:00Z",
+              owner: null,
+              metadata: {
+                department: "Finance",
+                priority: 2
+              },
+              tags: ["license", "unused"]
+            }
+          ],
+          durationMs: 87,
+          generatedSql: "SELECT dynamic_hidden_sql",
+          executedSql: "SELECT dynamic_hidden_sql"
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Run selected template" }));
+
+    const resultSummary = await screen.findByLabelText("Query result summary");
+    expect(within(resultSummary).getByText("Dynamic table ready.")).toBeInTheDocument();
+    expect(within(resultSummary).getByText("Status: succeeded")).toBeInTheDocument();
+    expect(within(resultSummary).getByText("87 ms")).toBeInTheDocument();
+    expect(
+      within(resultSummary).getByLabelText("Visualization suggestion")
+    ).toHaveTextContent("Chart available later: compare unused_count by product_name.");
+
+    const table = screen.getByRole("table", { name: "Query results" });
+    expect(
+      within(table).getByRole("columnheader", { name: "product_name" })
+    ).toBeInTheDocument();
+    expect(
+      within(table).getByRole("columnheader", { name: "unused_count" })
+    ).toBeInTheDocument();
+    expect(within(table).getByRole("cell", { name: "Microsoft 365 E5" })).toBeInTheDocument();
+    expect(within(table).getByRole("cell", { name: "12" })).toBeInTheDocument();
+    expect(within(table).getByRole("cell", { name: "true" })).toBeInTheDocument();
+    expect(
+      within(table).getByRole("cell", { name: "2026-07-01T12:30:00Z" })
+    ).toBeInTheDocument();
+    expect(within(table).getByRole("cell", { name: "null" })).toBeInTheDocument();
+    expect(
+      within(table).getByRole("cell", {
+        name: '{"department":"Finance","priority":2}'
+      })
+    ).toBeInTheDocument();
+    expect(
+      within(table).getByRole("cell", { name: '["license","unused"]' })
+    ).toBeInTheDocument();
+    expect(screen.queryByText("SELECT dynamic_hidden_sql")).not.toBeInTheDocument();
+
+    const insightRegion = screen.getByRole("region", {
+      name: "Ask Data insights"
+    });
+    expect(
+      within(insightRegion).getByRole("button", { name: "Save as Card" })
+    ).toBeDisabled();
+    expect(
+      within(insightRegion).getByRole("button", { name: "CSV Export" })
+    ).toBeDisabled();
+    expect(
+      within(insightRegion).getByRole("button", { name: "Preview Action" })
+    ).toBeDisabled();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("renders a no rows state for successful empty query results", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoUser),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          message: "No matching records.",
+          columns: ["product_name", "unused_count"],
+          rows: [],
+          rowCount: 0
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Run selected template" }));
+
+    expect(await screen.findByText("No matching records.")).toBeInTheDocument();
+    const resultSummary = screen.getByLabelText("Query result summary");
+    expect(
+      within(resultSummary).getByLabelText("Visualization suggestion")
+    ).toHaveTextContent("Chart available later when rows are returned.");
+    expect(screen.getByText("No rows returned.")).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "Query results" })).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("renders truncated and warning states for free query results", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          message: "Free query returned many rows.",
+          columns: ["priority", "ticket_count"],
+          rows: [
+            {
+              priority: "high",
+              ticket_count: 500
+            }
+          ],
+          rowCount: 500,
+          durationMs: 120,
+          truncated: true,
+          warnings: [
+            "Results were limited to 100 rows.",
+            "Some matching rows are not shown."
+          ],
+          generatedSql: "SELECT warning_hidden_sql",
+          executedSql: "SELECT warning_hidden_sql"
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    fireEvent.change(await screen.findByLabelText("Free question"), {
+      target: { value: "Show support ticket counts by priority." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
+
+    expect(await screen.findByText("Free query returned many rows.")).toBeInTheDocument();
+    const resultSummary = screen.getByLabelText("Query result summary");
+    expect(
+      within(resultSummary).getByLabelText("Visualization suggestion")
+    ).toHaveTextContent("Chart available later: compare ticket_count by priority.");
+    expect(screen.getByText("Results truncated")).toBeInTheDocument();
+    expect(screen.getByText("Results were limited to 100 rows.")).toBeInTheDocument();
+    expect(screen.getByText("Some matching rows are not shown.")).toBeInTheDocument();
+    const table = screen.getByRole("table", { name: "Query results" });
+    expect(within(table).getByRole("cell", { name: "high" })).toBeInTheDocument();
+    expect(within(table).getByRole("cell", { name: "500" })).toBeInTheDocument();
+    expect(screen.queryByText("SELECT warning_hidden_sql")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("prevents selected template run without a CSRF token", async () => {
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates)
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    const runButton = await screen.findByRole("button", {
+      name: "Run selected template"
+    });
+    expect(runButton).toBeDisabled();
+    expect(
+      screen.getByText("Refresh your session before running a template query.")
+    ).toBeInTheDocument();
+    fireEvent.click(runButton);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expectNoQueryRun(fetchMock);
+  });
+
+  it("keeps the selected template run button disabled while running", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(successResponse(demoManager))
+      .mockResolvedValueOnce(successResponse(askDataTemplates))
+      .mockReturnValueOnce(new Promise(() => undefined));
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Run selected template" }));
+
+    expect(await screen.findByText("Running selected template...")).toBeInTheDocument();
+    const runningButton = screen.getByRole("button", { name: "Running template..." });
+    expect(runningButton).toBeDisabled();
+    fireEvent.click(runningButton);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("renders selected template run API errors safely", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates),
+      errorResponse("QUERY_RUN_FAILED", 500, "Template query could not be run.")
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Run selected template" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Template query could not be run."
+    );
+    expect(screen.queryByText("QUERY_RUN_FAILED")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("lets demo manager submit a free query with CSRF and without template id", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          message: "Free query completed.",
+          generatedSql: "SELECT manager_hidden_sql",
+          executedSql: "SELECT manager_hidden_sql"
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    const freeQuestionInput = await screen.findByLabelText("Free question");
+    const submitButton = screen.getByRole("button", { name: "Run free query" });
+    expect(submitButton).toBeDisabled();
+
+    fireEvent.change(freeQuestionInput, {
+      target: { value: "Show open support tickets by priority." }
+    });
+    expect(submitButton).not.toBeDisabled();
+    fireEvent.click(submitButton);
+
+    expect(await screen.findByText("Free query completed.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Question: Show open support tickets by priority.")
+    ).toBeInTheDocument();
+    expect(screen.queryByText("SELECT manager_hidden_sql")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:8000/api/v1/queries/run",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        headers: expect.objectContaining({
+          "Content-Type": "application/json",
+          "X-CSRF-Token": "csrf-from-cookie"
+        }),
+        body: JSON.stringify({
+          question: "Show open support tickets by priority."
+        })
+      })
+    );
+  });
+
+  it("lets demo analyst submit a free query", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoAnalyst),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          message: "Analyst free query completed.",
+          generatedSql: "SELECT analyst_hidden_sql",
+          executedSql: "SELECT analyst_hidden_sql"
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    fireEvent.change(await screen.findByLabelText("Free question"), {
+      target: { value: "Show inactive privileged accounts." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
+
+    expect(await screen.findByText("Analyst free query completed.")).toBeInTheDocument();
+    expect(screen.queryByText("SELECT analyst_hidden_sql")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("lets demo admin submit a free query", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoAdmin),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          message: "Admin free query completed.",
+          generatedSql: "SELECT admin_hidden_sql",
+          executedSql: "SELECT admin_hidden_sql"
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    fireEvent.change(await screen.findByLabelText("Free question"), {
+      target: { value: "Show global license spend by department." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
+
+    expect(await screen.findByText("Admin free query completed.")).toBeInTheDocument();
+    expect(screen.queryByText("SELECT admin_hidden_sql")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("prevents free query submit without CSRF", async () => {
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates)
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    fireEvent.change(await screen.findByLabelText("Free question"), {
+      target: { value: "Show open support tickets." }
+    });
+
+    expect(screen.getByRole("button", { name: "Run free query" })).toBeDisabled();
+    expect(
+      screen.getByText("Refresh your session before running a free query.")
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expectNoQueryRun(fetchMock);
+  });
+
+  it("keeps the free query submit disabled while running", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(successResponse(demoManager))
+      .mockResolvedValueOnce(successResponse(askDataTemplates))
+      .mockReturnValueOnce(new Promise(() => undefined));
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    fireEvent.change(await screen.findByLabelText("Free question"), {
+      target: { value: "Show stale devices." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
+
+    expect(await screen.findByText("Running free query...")).toBeInTheDocument();
+    const runningButton = screen.getByRole("button", { name: "Running query..." });
+    expect(runningButton).toBeDisabled();
+    fireEvent.click(runningButton);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("renders clarification and submits a revised manager question", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          queryRunId: "query run/id",
+          status: "clarification_required",
+          message: "Which inactive asset type should QueryOps use?",
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          clarificationRequired: true,
+          generatedSql: "SELECT clarification_hidden_sql",
+          executedSql: "SELECT clarification_hidden_sql"
+        })
+      ),
+      successResponse(
+        backendQueryRunResult({
+          message: "Clarified query completed.",
+          columns: ["asset_type", "inactive_count"],
+          rows: [
+            {
+              asset_type: "users",
+              inactive_count: 7
+            }
+          ],
+          generatedSql: "SELECT clarified_hidden_sql",
+          executedSql: "SELECT clarified_hidden_sql"
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Run selected template" }));
+
+    const clarificationPanel = await screen.findByLabelText("Clarification required");
+    expect(
+      within(clarificationPanel).getByText("Which inactive asset type should QueryOps use?")
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "Query results" })).not.toBeInTheDocument();
+    expect(screen.queryByText("SELECT clarification_hidden_sql")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Submit clarification" })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Revised question"), {
+      target: { value: "Show inactive users, not devices." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit clarification" }));
+
+    expect(await screen.findByText("Clarified query completed.")).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Query results" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "users" })).toBeInTheDocument();
+    expect(screen.queryByText("SELECT clarified_hidden_sql")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "http://localhost:8000/api/v1/queries/query%20run%2Fid/clarify",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        headers: expect.objectContaining({
+          "Content-Type": "application/json",
+          "X-CSRF-Token": "csrf-from-cookie"
+        }),
+        body: JSON.stringify({
+          question: "Show inactive users, not devices."
+        })
+      })
+    );
+  });
+
+  it("keeps demo user clarification in template-only mode", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoUser),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          status: "clarification_required",
+          message: "Which license timeframe should QueryOps use?",
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          clarificationRequired: true
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Run selected template" }));
+
+    const clarificationPanel = await screen.findByLabelText("Clarification required");
+    expect(
+      within(clarificationPanel).getByText("Which license timeframe should QueryOps use?")
+    ).toBeInTheDocument();
+    expect(
+      within(clarificationPanel).getByText(/Choose a different approved template/i)
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Revised question")).not.toBeInTheDocument();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it.each([
+    ["demo analyst", demoAnalyst, "Show inactive privileged users."],
+    ["demo admin", demoAdmin, "Show inactive accounts globally."]
+  ])("lets %s submit clarification", async (_label, user, revisedQuestion) => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(user),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          queryRunId: `${user.role}-clarify-id`,
+          status: "clarification_required",
+          message: "Clarify which inactive records to inspect.",
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          clarificationRequired: true
+        })
+      ),
+      successResponse(
+        backendQueryRunResult({
+          message: "Clarification completed.",
+          columns: ["record_type"],
+          rows: [
+            {
+              record_type: user.role
+            }
+          ]
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Run selected template" }));
+
+    fireEvent.change(await screen.findByLabelText("Revised question"), {
+      target: { value: revisedQuestion }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit clarification" }));
+
+    expect(await screen.findByText("Clarification completed.")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      `http://localhost:8000/api/v1/queries/${user.role}-clarify-id/clarify`,
+      expect.objectContaining({
+        method: "POST",
+        headers: expect.objectContaining({
+          "X-CSRF-Token": "csrf-from-cookie"
+        }),
+        body: JSON.stringify({
+          question: revisedQuestion
+        })
+      })
+    );
+  });
+
+  it("prevents clarification submit when the query run id is missing", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          queryRunId: null,
+          status: "clarification_required",
+          message: "QueryOps needs a more specific question.",
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          clarificationRequired: true
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Run selected template" }));
+
+    fireEvent.change(await screen.findByLabelText("Revised question"), {
+      target: { value: "Use inactive users." }
+    });
+
+    expect(screen.getByRole("button", { name: "Submit clarification" })).toBeDisabled();
+    expect(
+      screen.getByText("This clarification cannot be continued. Run a new query instead.")
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("prevents clarification submit when the CSRF token is missing", async () => {
+    const fetchMock = stubFetchSequence(
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          queryRunId: "missing-csrf-query-id",
+          status: "clarification_required",
+          message: "QueryOps needs one more detail.",
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          clarificationRequired: true
+        })
+      )
+    );
+
+    renderAskDataPageWithMutableCsrf(demoManager, "csrf-from-state");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Run selected template" }));
+    await screen.findByLabelText("Clarification required");
+    fireEvent.click(screen.getByRole("button", { name: "Drop CSRF" }));
+    fireEvent.change(screen.getByLabelText("Revised question"), {
+      target: { value: "Use inactive users." }
+    });
+
+    expect(screen.getByRole("button", { name: "Submit clarification" })).toBeDisabled();
+    expect(
+      screen.getByText("Refresh your session before submitting clarification.")
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders clarification API errors safely", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          queryRunId: "clarify-error-id",
+          status: "clarification_required",
+          message: "QueryOps needs one more detail.",
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          clarificationRequired: true
+        })
+      ),
+      errorResponse("CLARIFICATION_FAILED", 500, "Clarification could not be run safely.")
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Run selected template" }));
+
+    fireEvent.change(await screen.findByLabelText("Revised question"), {
+      target: { value: "Use inactive users." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Submit clarification" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Clarification could not be run safely."
+    );
+    expect(screen.queryByText("CLARIFICATION_FAILED")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("renders query template loading errors safely", async () => {
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      errorResponse(
+        "QUERY_TEMPLATES_UNAVAILABLE",
+        500,
+        "Templates are temporarily unavailable."
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Templates are temporarily unavailable."
+    );
+    expect(screen.queryByText("unused_licenses_department")).not.toBeInTheDocument();
+    expectNoQueryRun(fetchMock);
+  });
+
+  it("renders an empty state when no query templates are returned", async () => {
+    const fetchMock = stubFetchSequence(successResponse(demoManager), successResponse([]));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    expect(
+      await screen.findByText("No query templates are available yet.")
+    ).toBeInTheDocument();
+    expectNoQueryRun(fetchMock);
+  });
+
+  it("renders template-only Ask Data mode for demo user while loading templates", async () => {
+    const fetchMock = stubFetchSequence(
+      successResponse(demoUser),
+      successResponse(askDataTemplates)
+    );
 
     renderApp();
 
@@ -280,14 +1182,49 @@ describe("App", () => {
     ).toBeInTheDocument();
     expect(screen.getAllByText("Template-only mode").length).toBeGreaterThan(0);
     expect(
-      screen.getAllByText(/Approved templates will be available in PR4/i).length
+      screen.getAllByText(/Selected templates can be used here/i).length
     ).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Unused paid licenses")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expectNoQueryRun(fetchMock);
   });
 
-  it("renders a disabled free-query composer for demo manager without technical details", async () => {
-    const fetchMock = stubFetchSequence(successResponse(demoManager));
+  it("allows demo user to run a selected template without exposing SQL", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoUser),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          message: "User template query completed.",
+          generatedSql: "SELECT hidden_user_sql",
+          executedSql: "SELECT hidden_user_sql"
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    expect((await screen.findAllByText("Unused paid licenses")).length).toBeGreaterThan(0);
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Run selected template" }));
+
+    expect(await screen.findByText("User template query completed.")).toBeInTheDocument();
+    expect(screen.queryByText("SELECT hidden_user_sql")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("renders a live free-query composer for demo manager without technical details", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates)
+    );
 
     renderApp();
 
@@ -299,16 +1236,19 @@ describe("App", () => {
     const workspaceRegion = await screen.findByRole("region", {
       name: "Ask Data workspace"
     });
-    expect(within(workspaceRegion).getByLabelText("Free query draft")).toBeDisabled();
+    expect(within(workspaceRegion).getByLabelText("Free question")).not.toBeDisabled();
     expect(
-      within(workspaceRegion).getByRole("button", { name: "Available in next PR" })
+      within(workspaceRegion).getByRole("button", { name: "Run free query" })
     ).toBeDisabled();
     expect(screen.queryByText("Technical capability")).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expectNoQueryRun(fetchMock);
   });
 
   it("renders the static technical capability placeholder for demo analyst", async () => {
-    const fetchMock = stubFetchSequence(successResponse(demoAnalyst));
+    const fetchMock = stubFetchSequence(
+      successResponse(demoAnalyst),
+      successResponse(askDataTemplates)
+    );
 
     renderApp();
 
@@ -320,11 +1260,14 @@ describe("App", () => {
     expect(await screen.findByText("Technical capability")).toBeInTheDocument();
     expect(screen.getByText(/SQL and correction details will appear in PR5/i)).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: /sql/i })).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expectNoQueryRun(fetchMock);
   });
 
   it("renders the admin global Ask Data shell indicator", async () => {
-    const fetchMock = stubFetchSequence(successResponse(demoAdmin));
+    const fetchMock = stubFetchSequence(
+      successResponse(demoAdmin),
+      successResponse(askDataTemplates)
+    );
 
     renderApp();
 
@@ -335,11 +1278,14 @@ describe("App", () => {
 
     expect(await screen.findByText("Admin global shell")).toBeInTheDocument();
     expect(screen.getByText(/Global scope indicator only/i)).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expectNoQueryRun(fetchMock);
   });
 
   it("renders the static Ask Data split workspace layout", async () => {
-    const fetchMock = stubFetchSequence(successResponse(demoManager));
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates)
+    );
 
     renderApp();
 
@@ -354,9 +1300,12 @@ describe("App", () => {
     expect(
       within(templateRegion).getByRole("heading", { name: "Templates" })
     ).toBeInTheDocument();
-    expect(within(templateRegion).getByText("Unused licenses")).toBeInTheDocument();
-    expect(within(templateRegion).getByText("Inactive users")).toBeInTheDocument();
-    expect(within(templateRegion).getByText("Security events")).toBeInTheDocument();
+    expect(
+      within(templateRegion).getByRole("button", { name: /Unused paid licenses/i })
+    ).toBeInTheDocument();
+    expect(
+      within(templateRegion).getByRole("button", { name: /Security events/i })
+    ).toBeInTheDocument();
 
     const workspaceRegion = screen.getByRole("region", {
       name: "Ask Data workspace"
@@ -366,8 +1315,9 @@ describe("App", () => {
     ).toBeInTheDocument();
     expect(within(workspaceRegion).getByText("Result placeholder")).toBeInTheDocument();
     expect(
-      within(workspaceRegion).getByText(/Query integration comes in the next PR/i)
-    ).toBeInTheDocument();
+      within(workspaceRegion).getAllByText(/History endpoints remain idle here/i)
+        .length
+    ).toBeGreaterThan(0);
 
     const insightRegion = screen.getByRole("region", {
       name: "Ask Data insights"
@@ -395,7 +1345,7 @@ describe("App", () => {
     expect(
       within(insightRegion).getByText(/later actions milestone/i)
     ).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expectNoQueryRun(fetchMock);
   });
 
   it("shows analyst technical navigation without admin navigation", async () => {
@@ -1035,6 +1985,49 @@ function renderApp() {
   );
 }
 
+function renderAskDataPageWithMutableCsrf(
+  user: ReturnType<typeof backendUser>,
+  initialCsrfToken: string
+) {
+  function AskDataHarness() {
+    const [csrfToken, setCsrfToken] = useState<string | null>(initialCsrfToken);
+
+    return (
+      <>
+        <button type="button" onClick={() => setCsrfToken(null)}>
+          Drop CSRF
+        </button>
+        <AskDataPage user={mapBackendUserForAskData(user)} csrfToken={csrfToken} />
+      </>
+    );
+  }
+
+  render(<AskDataHarness />);
+}
+
+function mapBackendUserForAskData(user: ReturnType<typeof backendUser>): AuthUser {
+  return {
+    id: user.id,
+    email: user.email,
+    fullName: user.full_name,
+    role: user.role as AuthUser["role"],
+    departmentId: user.department_id,
+    department: user.department,
+    scopes: user.scopes.map((scope) => ({
+      id: scope.id,
+      type: scope.type,
+      key: scope.key,
+      displayName: scope.display_name,
+      accessLevel: scope.access_level,
+      isDefault: scope.is_default,
+      departmentId: scope.department_id
+    })),
+    status: user.status,
+    permissions: user.permissions as AuthUser["permissions"],
+    authMode: user.auth_mode
+  };
+}
+
 function backendUser({
   id,
   email,
@@ -1132,6 +2125,106 @@ function backendRoleRequest({
     created_at: "2026-06-29T12:00:00Z",
     updated_at: "2026-06-29T12:00:00Z"
   };
+}
+
+function backendQueryTemplate({
+  id,
+  category,
+  title,
+  description,
+  naturalLanguageQuestion,
+  parameters = []
+}: {
+  id: string;
+  category: string;
+  title: string;
+  description: string;
+  naturalLanguageQuestion: string;
+  parameters?: Array<{
+    name: string;
+    data_type: string;
+    description: string;
+    required: boolean;
+    default: string | number | boolean | null;
+  }>;
+}) {
+  return {
+    id,
+    title,
+    description,
+    domain: "it_operations",
+    category,
+    natural_language_question: naturalLanguageQuestion,
+    parameters,
+    scope_type: "department",
+    required_permission: "can_use_query_templates"
+  };
+}
+
+function backendQueryRunResult({
+  queryRunId = "query-run-id",
+  status = "succeeded",
+  message,
+  columns = ["product_name", "unused_count"],
+  rows = [
+    {
+      product_name: "Microsoft 365 E5",
+      unused_count: 12
+    }
+  ],
+  rowCount = rows.length,
+  durationMs = 42,
+  truncated = false,
+  warnings = [],
+  clarificationRequired = false,
+  generatedSql = null,
+  executedSql = null
+}: {
+  queryRunId?: string | null;
+  status?: string;
+  message: string;
+  columns?: string[];
+  rows?: Array<Record<string, unknown>>;
+  rowCount?: number;
+  durationMs?: number;
+  truncated?: boolean;
+  warnings?: string[];
+  clarificationRequired?: boolean;
+  generatedSql?: string | null;
+  executedSql?: string | null;
+}) {
+  return {
+    query_run_id: queryRunId,
+    status,
+    columns,
+    rows,
+    row_count: rowCount,
+    duration_ms: durationMs,
+    truncated,
+    message,
+    warnings,
+    clarification_required: clarificationRequired,
+    metadata: {
+      template_id: "unused_licenses_department",
+      execution: {
+        status,
+        error_code: null,
+        row_count: rowCount,
+        duration_ms: durationMs,
+        truncated
+      }
+    },
+    generated_sql: generatedSql,
+    executed_sql: executedSql
+  };
+}
+
+function expectNoQueryRun(fetchMock: ReturnType<typeof vi.fn>) {
+  expect(
+    fetchMock.mock.calls.some(([url]) =>
+      String(url).includes("/api/v1/queries/run")
+    )
+  ).toBe(false);
 }
 
 function stubFetchSequence(...responses: Array<ReturnType<typeof jsonResponse>>) {
