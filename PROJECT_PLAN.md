@@ -1,14 +1,14 @@
 # QueryOps AI — Project Plan
 
-## 1. Current Development Target
+## 1. Current Development Status
 
-The current active target is:
+The current milestone status is:
 
-`Milestone 4 — Query Engine Backend`
+`Milestone 4 — Query Engine Backend` is complete.
 
-Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, and Milestone 3 RLS & Security Foundation are complete.
+Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, and Milestone 4 Query Engine Backend are complete.
 
-Milestone 4 implements the backend Query Engine foundation on top of the Milestone 3 RLS and Security Foundation. It must preserve the existing Access Context Foundation and RLS behavior while adding only backend query-engine capabilities.
+Milestone 5 is planned but not active. Do not start Milestone 5, Ask Data UI, dashboards, dashboard cards, CSV export, actions, approvals, notifications, or frontend work unless explicitly requested.
 
 Milestone 2.5 delivered:
 
@@ -30,7 +30,7 @@ Milestone 3 delivered:
 - initial security and RLS tests
 - policy helper refinements where needed
 
-Milestone 4 scope:
+Milestone 4 delivered:
 
 - Domain Pack Loader
 - Query Templates API
@@ -39,12 +39,17 @@ Milestone 4 scope:
 - SQL generator wrapper
 - Schema Context Builder
 - SQL validator
-- read-only scoped Query Executor
+- runtime RLS role hardening with `queryops_query_runtime`
+- scoped read-only Query Executor
+- internal Query Engine orchestration service
 - Query Run API
 - `QueryRun` persistence
 - PostgreSQL/RLS query tests
+- security regression and deterministic MockLLM evaluation tests
 
-Milestone 4 out of scope:
+Milestone 4 preserved the existing Access Context Foundation and PostgreSQL RLS behavior while adding only backend query-engine capabilities.
+
+Items still out of scope and reserved for future milestones:
 
 - dashboards UI
 - dashboard cards behavior
@@ -62,7 +67,7 @@ Milestone 4 out of scope:
 - masking
 - tenant/project/region governance
 
-Milestone 5 or later will handle dashboards, UI, actions, and approvals unless explicitly requested. Milestone 4 must not add frontend Ask Data UI, dashboard behavior, action execution, approval behavior, or CSV export.
+Milestone 5 or later will handle dashboards, UI, actions, and approvals unless explicitly requested.
 
 ## 2. Product Summary
 
@@ -354,12 +359,12 @@ Milestone 1 is complete when:
 
 Milestone 1 should leave the repository ready for auth, permission, and RLS work without implementing those later milestones early.
 
-## 14. Active Milestone
+## 14. Milestone Status
 
-The active product milestone is:
+The latest completed product milestone is:
 
 `Milestone 4 — Query Engine Backend`
 
-Milestone 4 is active. It focuses on backend Query Engine foundations only: domain pack loading, query templates, mock LLM generation, schema context, SQL validation, scoped read-only execution with PostgreSQL RLS, query run APIs, and `QueryRun` persistence.
+Milestone 4 is complete. It delivered backend Query Engine foundations only: domain pack loading, query templates, mock LLM generation, schema context, SQL validation, runtime RLS role hardening, scoped read-only execution with PostgreSQL RLS, query run APIs, `QueryRun` persistence, PostgreSQL-backed tests, and security regression/evaluation tests.
 
-Milestone 5 or later remains responsible for Ask Data UI, dashboards, dashboard cards, CSV export, actions, approvals, and notification behavior unless explicitly requested.
+Milestone 5 is not active. Milestone 5 or later remains responsible for Ask Data UI, dashboards, dashboard cards, CSV export, actions, approvals, and notification behavior unless explicitly requested.

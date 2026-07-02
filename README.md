@@ -327,7 +327,7 @@ Default local URLs:
 * Backend health endpoint: `http://localhost:8000/health`
 * PostgreSQL: `localhost:5432`
 
-PostgreSQL is included for the local development environment. The current backend includes the database foundation, deterministic IT Operations seed data, local demo auth session endpoints, the Access Context Foundation, and scope-aware PostgreSQL RLS policies for IT Operations domain tables. Milestone 4 is active for backend Query Engine foundation work. Dashboards, actions, approvals, CSV export, frontend Ask Data UI, and audit behavior remain planned for later milestones.
+PostgreSQL is included for the local development environment. The current backend includes the database foundation, deterministic IT Operations seed data, local demo auth session endpoints, the Access Context Foundation, scope-aware PostgreSQL RLS policies for IT Operations domain tables, and the Milestone 4 backend Query Engine foundation. Dashboards, actions, approvals, CSV export, frontend Ask Data UI, and dashboard card behavior remain planned for later milestones.
 
 Stop the stack:
 
@@ -394,6 +394,125 @@ app.has_global_scope
 
 For V1 IT Operations RLS, `app.current_scope_keys` contains comma-separated department UUID strings from assigned department access scopes. Human-readable `access_scopes.scope_key` values such as `finance` remain product metadata; domain table RLS compares against `department_id` UUIDs. Missing RLS context fails closed at the policy layer unless `app.has_global_scope` is true.
 
+### Query Engine Backend
+
+Milestone 4 implemented the backend Query Engine foundation. It includes:
+
+* Domain Pack Loader in `backend/app/query_engine/domain_pack_loader.py`
+* IT Operations domain pack files under `backend/app/domains/it_operations/domain_pack/`
+* Query Templates API
+* `LLMProvider` interface and deterministic `MockLLMProvider`
+* SQL generator wrapper
+* Schema Context Builder
+* read-only SQL Validator
+* dedicated read-only PostgreSQL runtime role hardening
+* scoped SQL Executor that uses PostgreSQL RLS
+* internal Query Engine orchestration service
+* Query Run API and `QueryRun` persistence
+* PostgreSQL/RLS-backed query tests and security regression tests
+
+The Domain Pack Loader loads the local IT Operations schema, business terms, and approved query templates. It is the source for safe schema context and deterministic template-backed SQL generation. `MockLLMProvider` maps known domain-pack questions to structured SQL generation results and returns safe clarification for unsupported questions. No real LLM provider, network call, API key, OpenAI, Groq, or Anthropic integration is required in Milestone 4.
+
+Query Templates API:
+
+```txt
+GET /api/v1/query-templates
+GET /api/v1/query-templates/{id}
+```
+
+Query Run API:
+
+```txt
+POST /api/v1/queries/run
+GET /api/v1/queries/history
+GET /api/v1/queries/{query_run_id}
+```
+
+SQL visibility is permission-controlled:
+
+* Manager responses do not include `generated_sql` or `executed_sql`.
+* Analyst and Admin responses include SQL only through `can_view_sql`.
+* SQL visibility is an API response rule; `QueryRun` may store generated and executed SQL internally for auditability and testing.
+
+RLS runtime model:
+
+* The local `queryops` role owns tables, so PostgreSQL table-owner RLS bypass is relevant.
+* Query execution switches transaction-locally to the dedicated non-owner read-only role `queryops_query_runtime`.
+* The runtime role has SELECT-only grants for allowed queryable tables and cannot access non-queryable `it_audit_events`.
+* Query execution uses validator `sanitized_sql`, transaction-local RLS context, PostgreSQL RLS, read-only transaction mode, statement timeout, and row caps.
+
+Current Milestone 4 limitations:
+
+* User-supplied template parameters are not supported through the public API.
+* Raw SQL input is not supported.
+* Real LLM providers are not implemented.
+* Frontend Ask Data UI is not implemented.
+* Query history and detail endpoints return only the authenticated user's own runs.
+* Dashboards, dashboard cards, CSV export, actions, approvals, and notifications are not implemented in Milestone 4.
+
+Run Query Engine unit/API tests:
+
+```bash
+cd backend
+.venv/bin/pytest \
+  tests/test_domain_pack_loader.py \
+  tests/test_query_templates_api.py \
+  tests/test_llm_provider.py \
+  tests/test_sql_generator.py \
+  tests/test_schema_context.py \
+  tests/test_sql_validator.py \
+  tests/test_query_engine_service.py \
+  tests/test_query_api.py \
+  tests/test_query_engine_security_regression.py \
+  tests/test_query_evaluation_set.py -q
+```
+
+Run PostgreSQL query/RLS tests:
+
+```bash
+docker compose up -d postgres
+cd backend
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic upgrade head
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic check
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/pytest \
+  tests/test_rls_postgres.py \
+  tests/test_query_runtime_role_postgres.py \
+  tests/test_sql_executor_postgres.py \
+  tests/test_query_engine_postgres.py \
+  tests/test_query_api_postgres.py \
+  tests/test_query_engine_security_postgres.py -q -rs
+```
+
+Safe local API smoke examples:
+
+```bash
+# Login as a manager. Save cookies and copy csrf_token from the JSON response.
+curl -i -c /tmp/queryops-cookies.txt \
+  -H "Content-Type: application/json" \
+  -X POST http://localhost:8000/api/v1/demo/login \
+  -d '{"email":"demo.manager@queryops.local"}'
+
+# Use the csrf_token from login for POST requests.
+export CSRF_TOKEN="paste-csrf-token-here"
+
+curl -b /tmp/queryops-cookies.txt \
+  http://localhost:8000/api/v1/query-templates
+
+curl -b /tmp/queryops-cookies.txt \
+  -H "Content-Type: application/json" \
+  -H "X-CSRF-Token: $CSRF_TOKEN" \
+  -X POST http://localhost:8000/api/v1/queries/run \
+  -d '{"question":"How many open support tickets exist in my department by priority?","template_id":"open_support_tickets_by_department"}'
+
+curl -b /tmp/queryops-cookies.txt \
+  http://localhost:8000/api/v1/queries/history
+
+curl -b /tmp/queryops-cookies.txt \
+  http://localhost:8000/api/v1/queries/{query_run_id}
+```
+
+The manager example intentionally does not return raw SQL. Use an Analyst or Admin demo session to verify SQL visibility through `can_view_sql`.
+
 Seed deterministic development data after migrations have been applied:
 
 ```bash
@@ -447,6 +566,16 @@ cd backend
 DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic upgrade head
 DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic check
 DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/pytest tests/test_rls_postgres.py -q
+```
+
+Run the full backend suite with PostgreSQL-specific Query Engine tests enabled:
+
+```bash
+docker compose up -d postgres
+cd backend
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic upgrade head
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic check
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/pytest
 ```
 
 ### Frontend
@@ -510,7 +639,7 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-Milestone 0 foundation work, Milestone 1 database/seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, and Post-Milestone 2.5 hardening are complete.
+Milestone 0 foundation work, Milestone 1 database/seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, and Milestone 4 Query Engine Backend are complete.
 
 Implemented foundation functionality includes:
 
@@ -528,18 +657,16 @@ Implemented foundation functionality includes:
 * Access Context Foundation with access scopes, data resources, and simple access decisions
 * scope-aware PostgreSQL RLS policies for department-scoped IT Operations domain tables
 * RLS context helper and initial security/RLS test suite
+* backend Query Engine foundation with domain packs, templates, mock generation, schema context, SQL validation, scoped read-only execution, Query Run API, `QueryRun` persistence, and security regression tests
 
 Current milestone status:
 
 ```txt
-Milestone 4 — Query Engine Backend is active.
+Milestone 4 — Query Engine Backend is complete.
+Milestone 5 is planned but not active.
 ```
 
-Milestone 3 delivered scope-aware PostgreSQL RLS, a transaction-local RLS context helper, safe access policy helpers, and security/RLS tests.
-
-Milestone 4 scope is backend-only Query Engine foundation work: Domain Pack Loader, Query Templates API, `LLMProvider` interface, `MockLLMProvider`, SQL generator wrapper, Schema Context Builder, SQL validator, read-only scoped Query Executor, Query Run API, `QueryRun` persistence, and PostgreSQL/RLS query tests.
-
-Milestone 4 does not include dashboards UI, dashboard cards behavior, CSV export, actions behavior, approvals behavior, notifications behavior, real external LLM calls, Supabase Auth, frontend Ask Data UI, Full ABAC, ReBAC, policy builder UI, dynamic policy engine, masking, or tenant/project/region governance. Milestone 5 or later will handle dashboards, UI, actions, and approvals unless explicitly requested.
+Milestone 4 delivered backend-only Query Engine foundation work. It does not include dashboards UI, dashboard cards behavior, CSV export, actions behavior, approvals behavior, notifications behavior, real external LLM calls, Supabase Auth, frontend Ask Data UI, Full ABAC, ReBAC, policy builder UI, dynamic policy engine, masking, or tenant/project/region governance. Milestone 5 or later will handle dashboards, UI, actions, and approvals unless explicitly requested.
 
 ## License
 
