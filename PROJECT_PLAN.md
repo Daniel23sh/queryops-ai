@@ -4,11 +4,11 @@
 
 The current milestone status is:
 
-`Milestone 4 — Query Engine Backend` is complete.
+`Milestone 5 PR1 — M4 Query Backend Compliance` is active.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, and Milestone 4 Query Engine Backend are complete.
 
-Milestone 5 is planned but not active. Do not start Milestone 5, Ask Data UI, dashboards, dashboard cards, CSV export, actions, approvals, notifications, or frontend work unless explicitly requested.
+Milestone 5 has started with the first backend compliance PR only. Do not start Ask Data UI, dashboards, dashboard cards, CSV export, actions, approvals, notifications, or frontend work until the backend compliance PR is complete, tested, and merged.
 
 Milestone 2.5 delivered:
 
@@ -49,7 +49,17 @@ Milestone 4 delivered:
 
 Milestone 4 preserved the existing Access Context Foundation and PostgreSQL RLS behavior while adding only backend query-engine capabilities.
 
-Milestone 5 is planned but not active. When Milestone 5 is explicitly started, the first PR must close the remaining Milestone 4 backend compliance gaps before any frontend Ask Data UI work begins. Do not start frontend Ask Data work until the backend compliance PR is complete, tested, and merged.
+Milestone 5 PR1 is active on branch `feature/m5-fix-m4-query-backend-compliance`. This branch closes the remaining Milestone 4 backend compliance gaps before any frontend Ask Data UI work begins. Do not start frontend Ask Data work until the backend compliance PR is complete, tested, and merged.
+
+Milestone 5 PR1 scope:
+
+- add `POST /api/v1/queries/{query_run_id}/clarify`
+- add `GET /api/v1/queries/scope-history`
+- add `GET /api/v1/queries/department-history` as a V1 compatibility alias
+- add deterministic self-correction in the backend query engine
+- expose safe query metadata needed by the future Ask Data UI
+
+Milestone 5 PR1 must not add frontend Ask Data UI, a real LLM provider, dashboards, CSV export, actions, approvals, or notifications.
 
 Items still out of scope and reserved for future milestones:
 
@@ -369,11 +379,11 @@ The latest completed product milestone is:
 
 Milestone 4 is complete. It delivered backend Query Engine foundations only: domain pack loading, query templates, mock LLM generation, schema context, SQL validation, runtime RLS role hardening, scoped read-only execution with PostgreSQL RLS, query run APIs, `QueryRun` persistence, PostgreSQL-backed tests, and security regression/evaluation tests.
 
-Milestone 5 is not active. Milestone 5 or later remains responsible for Ask Data UI, dashboards, dashboard cards, CSV export, actions, approvals, and notification behavior unless explicitly requested.
+Milestone 5 PR1 is active for backend/API compliance only. Milestone 5 later PRs remain responsible for Ask Data UI. Dashboards, dashboard cards, CSV export, actions, approvals, and notification behavior remain out of scope unless explicitly requested in a later milestone or PR.
 
 ## 15. Milestone 5 Implementation Plan
 
-Milestone 5 remains planned but not active unless explicitly requested. When activated, use one branch per PR, do not include PR numbers in branch names, split every PR into checkpoints, and end each checkpoint with its own commit. Do not create one large commit for an entire PR.
+Milestone 5 PR1 is active. Use one branch per PR, do not include PR numbers in branch names, split every PR into checkpoints, and end each checkpoint with its own commit. Do not create one large commit for an entire PR.
 
 The first Milestone 5 PR must close the remaining Milestone 4 backend compliance gaps and make the Query API ready for the Ask Data UI. Frontend Ask Data implementation must not begin until PR1 is complete, tested, and merged.
 

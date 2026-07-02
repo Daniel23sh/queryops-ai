@@ -72,7 +72,7 @@ At the time this file was updated, the latest completed target is:
 Milestone 4 — Query Engine Backend
 ```
 
-Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, Milestone 3, and Milestone 4 are complete under the previous scopes. Milestone 5 is planned but not active unless explicitly requested.
+Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, Milestone 3, and Milestone 4 are complete under the previous scopes. Milestone 5 PR1 is active for backend/API compliance only on branch `feature/m5-fix-m4-query-backend-compliance`.
 
 Milestone 2.5 introduced `access_scopes`, `user_access_scopes`, `data_resources`, `UserAccessContext`, `AccessDecision`, and `evaluate_access(subject, action, resource, context)`.
 
@@ -81,6 +81,16 @@ Milestone 3 added the security foundation for scope-aware PostgreSQL RLS before 
 Milestone 3 delivered scope-aware PostgreSQL RLS, a `SET LOCAL` RLS context helper, DB session/helper integration for future Query Engine use, initial security/RLS tests, and policy helper refinements.
 
 Milestone 4 implemented the backend Query Engine foundation on top of the existing Access Context Foundation and PostgreSQL RLS behavior.
+
+Milestone 5 PR1 closes the remaining Milestone 4 backend Query Engine compliance gaps before frontend Ask Data UI begins. This PR may implement:
+
+* `POST /api/v1/queries/{query_run_id}/clarify`
+* `GET /api/v1/queries/scope-history`
+* `GET /api/v1/queries/department-history` as a V1 compatibility alias
+* deterministic self-correction
+* safe query metadata for the future Ask Data UI
+
+Milestone 5 PR1 must not implement frontend Ask Data UI, a real LLM provider, dashboards, CSV export, actions, approvals, or notifications.
 
 Milestone 4 delivered:
 
