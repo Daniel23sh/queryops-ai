@@ -278,11 +278,63 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: "Ask Data" })
     ).toBeInTheDocument();
-    expect(screen.getByText("Template-only mode")).toBeInTheDocument();
+    expect(screen.getAllByText("Template-only mode").length).toBeGreaterThan(0);
     expect(
-      screen.getByText(/Use approved templates when query integration arrives/i)
-    ).toBeInTheDocument();
-    expect(screen.queryByLabelText(/free query/i)).not.toBeInTheDocument();
+      screen.getAllByText(/Approved templates will be available in PR4/i).length
+    ).toBeGreaterThan(0);
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders a disabled free-query composer for demo manager without technical details", async () => {
+    const fetchMock = stubFetchSequence(successResponse(demoManager));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    const workspaceRegion = await screen.findByRole("region", {
+      name: "Ask Data workspace"
+    });
+    expect(within(workspaceRegion).getByLabelText("Free query draft")).toBeDisabled();
+    expect(
+      within(workspaceRegion).getByRole("button", { name: "Available in next PR" })
+    ).toBeDisabled();
+    expect(screen.queryByText("Technical capability")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the static technical capability placeholder for demo analyst", async () => {
+    const fetchMock = stubFetchSequence(successResponse(demoAnalyst));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    expect(await screen.findByText("Technical capability")).toBeInTheDocument();
+    expect(screen.getByText(/SQL and correction details will appear in PR5/i)).toBeInTheDocument();
+    expect(screen.queryByRole("tab", { name: /sql/i })).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the admin global Ask Data shell indicator", async () => {
+    const fetchMock = stubFetchSequence(successResponse(demoAdmin));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    expect(await screen.findByText("Admin global shell")).toBeInTheDocument();
+    expect(screen.getByText(/Global scope indicator only/i)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

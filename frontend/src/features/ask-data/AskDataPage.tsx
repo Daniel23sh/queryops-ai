@@ -24,12 +24,14 @@ const TEMPLATE_EXAMPLES = [
 
 export function AskDataPage({ user }: AskDataPageProps) {
   const canRunFreeQuery = user.permissions.includes("can_run_free_query");
+  const canViewTechnicalDetails = user.permissions.includes("can_view_sql");
+  const isAdmin = user.role === "admin";
   const scopeLabel =
-    user.role === "admin" ? "Global admin scope" : user.department?.name ?? "No scope";
+    isAdmin ? "Global admin scope" : user.department?.name ?? "No scope";
   const modeLabel = canRunFreeQuery ? "Free-query shell" : "Template-only mode";
   const modeDescription = canRunFreeQuery
-    ? "Free-query composer controls will appear here in a later checkpoint. This shell still does not run queries."
-    : "Use approved templates when query integration arrives. Free-query access is not enabled for this role.";
+    ? "Free-query composer controls are static in this PR. Query execution comes in PR4."
+    : "Approved templates will be available in PR4. Free-query access is not enabled for this role.";
 
   return (
     <article className="ask-data-page" aria-labelledby="workspace-title">
@@ -53,8 +55,12 @@ export function AskDataPage({ user }: AskDataPageProps) {
             modeDescription={modeDescription}
             roleLabel={formatRole(user.role)}
             scopeLabel={scopeLabel}
+            showAdminGlobalIndicator={isAdmin}
           />
-          <QuestionComposer />
+          <QuestionComposer
+            canRunFreeQuery={canRunFreeQuery}
+            canViewTechnicalDetails={canViewTechnicalDetails}
+          />
           <ResultPlaceholder />
         </section>
         <InsightPanel />
@@ -102,12 +108,14 @@ function RoleScopeNotice({
   modeLabel,
   modeDescription,
   roleLabel,
-  scopeLabel
+  scopeLabel,
+  showAdminGlobalIndicator
 }: {
   modeLabel: string;
   modeDescription: string;
   roleLabel: string;
   scopeLabel: string;
+  showAdminGlobalIndicator: boolean;
 }) {
   return (
     <section className="ask-data-status-panel" aria-label="Ask Data shell status">
@@ -133,31 +141,73 @@ function RoleScopeNotice({
         </div>
       </dl>
       <p className="ask-data-mode-note">{modeDescription}</p>
+      {showAdminGlobalIndicator ? (
+        <p className="ask-data-admin-note">
+          <strong>Admin global shell</strong>
+          <span>Global scope indicator only. No backend query is connected in this PR.</span>
+        </p>
+      ) : null}
     </section>
   );
 }
 
-function QuestionComposer() {
+function QuestionComposer({
+  canRunFreeQuery,
+  canViewTechnicalDetails
+}: {
+  canRunFreeQuery: boolean;
+  canViewTechnicalDetails: boolean;
+}) {
   return (
     <section className="ask-data-panel" aria-labelledby="question-composer-title">
       <div className="ask-data-panel__header">
         <p className="eyebrow">Center panel</p>
         <h2 id="question-composer-title">Question composer</h2>
       </div>
-      <label className="ask-data-question-shell" htmlFor="ask-data-question-draft">
-        <span>Question draft</span>
-        <textarea
-          id="ask-data-question-draft"
-          rows={4}
-          disabled
-          placeholder="Query integration comes in the next PR."
-        />
-      </label>
-      <p className="ask-data-mode-note">
-        The composer is disabled in this PR. It will call the Query API only after
-        PR4 adds query integration.
-      </p>
+      {canRunFreeQuery ? (
+        <>
+          <label className="ask-data-question-shell" htmlFor="ask-data-free-query-draft">
+            <span>Free query draft</span>
+            <textarea
+              id="ask-data-free-query-draft"
+              rows={4}
+              disabled
+              placeholder="Query execution comes in PR4."
+            />
+          </label>
+          <div className="ask-data-composer-actions">
+            <button type="button" className="primary-action-button" disabled>
+              Available in next PR
+            </button>
+          </div>
+          <p className="ask-data-mode-note">
+            The composer is disabled in this PR. It will call the Query API only
+            after PR4 adds query integration.
+          </p>
+          {canViewTechnicalDetails ? <TechnicalCapabilityPlaceholder /> : null}
+        </>
+      ) : (
+        <div className="ask-data-template-only-shell">
+          <h3>Template-only mode</h3>
+          <p>
+            Approved templates will be available in PR4. This role does not receive
+            a free-query input in the shell.
+          </p>
+        </div>
+      )}
     </section>
+  );
+}
+
+function TechnicalCapabilityPlaceholder() {
+  return (
+    <div className="ask-data-technical-placeholder">
+      <h3>Technical capability</h3>
+      <p>
+        SQL and correction details will appear in PR5 as static role-aware tabs.
+        No live SQL tab is available in this shell.
+      </p>
+    </div>
   );
 }
 

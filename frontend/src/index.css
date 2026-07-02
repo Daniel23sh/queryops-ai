@@ -495,6 +495,22 @@ h1 {
   line-height: 1.6;
 }
 
+.ask-data-admin-note {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  border: 1px solid #d7e0eb;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #40516a;
+  padding: 14px;
+  line-height: 1.55;
+}
+
+.ask-data-admin-note strong {
+  color: #0f172a;
+}
+
 .ask-data-template-groups {
   display: flex;
   flex-wrap: wrap;
@@ -560,6 +576,22 @@ h1 {
   padding: 12px 14px;
   line-height: 1.5;
   resize: vertical;
+}
+
+.ask-data-composer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.ask-data-template-only-shell,
+.ask-data-technical-placeholder {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #d7e0eb;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 14px;
 }
 
 .ask-data-result-shell {
