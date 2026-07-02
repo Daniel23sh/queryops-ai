@@ -125,6 +125,32 @@ const demoAdmin = backendUser({
   ]
 });
 
+const askDataTemplates = [
+  backendQueryTemplate({
+    id: "unused_licenses_department",
+    category: "Licenses",
+    title: "Unused paid licenses",
+    description: "Find reclaimable paid licenses in the current scope.",
+    naturalLanguageQuestion: "Show unused paid licenses in my department.",
+    parameters: [
+      {
+        name: "days_unused",
+        data_type: "integer",
+        description: "Days since the license was last used.",
+        required: false,
+        default: 60
+      }
+    ]
+  }),
+  backendQueryTemplate({
+    id: "security_events_review",
+    category: "Security",
+    title: "Security events",
+    description: "Review recent security events by scope.",
+    naturalLanguageQuestion: "Show recent security events in my scope."
+  })
+];
+
 afterEach(() => {
   clearCsrfCookie();
   vi.unstubAllGlobals();
@@ -246,7 +272,10 @@ describe("App", () => {
   });
 
   it("renders the Ask Data page shell from workspace navigation", async () => {
-    const fetchMock = stubFetchSequence(successResponse(demoManager));
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates)
+    );
 
     renderApp();
 
@@ -258,15 +287,134 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: "Ask Data" })
     ).toBeInTheDocument();
-    expect(screen.getByText("Static UI shell")).toBeInTheDocument();
-    expect(
-      screen.getAllByText(/Query integration comes in the next PR/i).length
-    ).toBeGreaterThan(0);
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByText("Query integration")).toBeInTheDocument();
+    expect((await screen.findAllByText("Unused paid licenses")).length).toBeGreaterThan(0);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/api/v1/query-templates",
+      expect.objectContaining({
+        method: "GET",
+        credentials: "include"
+      })
+    );
+    expectNoQueryRun(fetchMock);
   });
 
-  it("renders template-only Ask Data mode for demo user without extra API calls", async () => {
-    const fetchMock = stubFetchSequence(successResponse(demoUser));
+  it("renders template loading state while query templates are pending", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(successResponse(demoManager))
+      .mockReturnValueOnce(new Promise(() => undefined));
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Ask Data" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Loading query templates...")).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expectNoQueryRun(fetchMock);
+  });
+
+  it("loads real Ask Data templates and updates selected template details", async () => {
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates)
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    const templateRegion = await screen.findByRole("region", {
+      name: "Ask Data templates"
+    });
+    expect(within(templateRegion).getByText("Licenses")).toBeInTheDocument();
+    expect(within(templateRegion).getByText("Security")).toBeInTheDocument();
+    const unusedLicensesTemplate = within(templateRegion).getByRole("button", {
+      name: /Unused paid licenses/i
+    });
+    expect(unusedLicensesTemplate).toBeInTheDocument();
+    expect(
+      within(unusedLicensesTemplate).getByText(
+        "Find reclaimable paid licenses in the current scope."
+      )
+    ).toBeInTheDocument();
+    expect(
+      within(templateRegion).getByText(/Custom parameters are not supported yet/i)
+    ).toBeInTheDocument();
+    expect(
+      within(templateRegion).getByText(/backend template defaults will be used/i)
+    ).toBeInTheDocument();
+
+    fireEvent.click(
+      within(templateRegion).getByRole("button", { name: /Security events/i })
+    );
+
+    const selectedTemplate = within(templateRegion).getByLabelText(
+      "Selected query template"
+    );
+    expect(within(selectedTemplate).getByText("Security events")).toBeInTheDocument();
+    expect(
+      within(selectedTemplate).getByText("Show recent security events in my scope.")
+    ).toBeInTheDocument();
+    expectNoQueryRun(fetchMock);
+  });
+
+  it("renders query template loading errors safely", async () => {
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      errorResponse(
+        "QUERY_TEMPLATES_UNAVAILABLE",
+        500,
+        "Templates are temporarily unavailable."
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Templates are temporarily unavailable."
+    );
+    expect(screen.queryByText("unused_licenses_department")).not.toBeInTheDocument();
+    expectNoQueryRun(fetchMock);
+  });
+
+  it("renders an empty state when no query templates are returned", async () => {
+    const fetchMock = stubFetchSequence(successResponse(demoManager), successResponse([]));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    expect(
+      await screen.findByText("No query templates are available yet.")
+    ).toBeInTheDocument();
+    expectNoQueryRun(fetchMock);
+  });
+
+  it("renders template-only Ask Data mode for demo user while loading templates", async () => {
+    const fetchMock = stubFetchSequence(
+      successResponse(demoUser),
+      successResponse(askDataTemplates)
+    );
 
     renderApp();
 
@@ -280,14 +428,18 @@ describe("App", () => {
     ).toBeInTheDocument();
     expect(screen.getAllByText("Template-only mode").length).toBeGreaterThan(0);
     expect(
-      screen.getAllByText(/Approved templates will be available in PR4/i).length
+      screen.getAllByText(/Selected templates can be used here/i).length
     ).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Unused paid licenses")).length).toBeGreaterThan(0);
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expectNoQueryRun(fetchMock);
   });
 
   it("renders a disabled free-query composer for demo manager without technical details", async () => {
-    const fetchMock = stubFetchSequence(successResponse(demoManager));
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates)
+    );
 
     renderApp();
 
@@ -304,11 +456,14 @@ describe("App", () => {
       within(workspaceRegion).getByRole("button", { name: "Available in next PR" })
     ).toBeDisabled();
     expect(screen.queryByText("Technical capability")).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expectNoQueryRun(fetchMock);
   });
 
   it("renders the static technical capability placeholder for demo analyst", async () => {
-    const fetchMock = stubFetchSequence(successResponse(demoAnalyst));
+    const fetchMock = stubFetchSequence(
+      successResponse(demoAnalyst),
+      successResponse(askDataTemplates)
+    );
 
     renderApp();
 
@@ -320,11 +475,14 @@ describe("App", () => {
     expect(await screen.findByText("Technical capability")).toBeInTheDocument();
     expect(screen.getByText(/SQL and correction details will appear in PR5/i)).toBeInTheDocument();
     expect(screen.queryByRole("tab", { name: /sql/i })).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expectNoQueryRun(fetchMock);
   });
 
   it("renders the admin global Ask Data shell indicator", async () => {
-    const fetchMock = stubFetchSequence(successResponse(demoAdmin));
+    const fetchMock = stubFetchSequence(
+      successResponse(demoAdmin),
+      successResponse(askDataTemplates)
+    );
 
     renderApp();
 
@@ -335,11 +493,14 @@ describe("App", () => {
 
     expect(await screen.findByText("Admin global shell")).toBeInTheDocument();
     expect(screen.getByText(/Global scope indicator only/i)).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expectNoQueryRun(fetchMock);
   });
 
   it("renders the static Ask Data split workspace layout", async () => {
-    const fetchMock = stubFetchSequence(successResponse(demoManager));
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse(askDataTemplates)
+    );
 
     renderApp();
 
@@ -354,9 +515,12 @@ describe("App", () => {
     expect(
       within(templateRegion).getByRole("heading", { name: "Templates" })
     ).toBeInTheDocument();
-    expect(within(templateRegion).getByText("Unused licenses")).toBeInTheDocument();
-    expect(within(templateRegion).getByText("Inactive users")).toBeInTheDocument();
-    expect(within(templateRegion).getByText("Security events")).toBeInTheDocument();
+    expect(
+      within(templateRegion).getByRole("button", { name: /Unused paid licenses/i })
+    ).toBeInTheDocument();
+    expect(
+      within(templateRegion).getByRole("button", { name: /Security events/i })
+    ).toBeInTheDocument();
 
     const workspaceRegion = screen.getByRole("region", {
       name: "Ask Data workspace"
@@ -366,8 +530,9 @@ describe("App", () => {
     ).toBeInTheDocument();
     expect(within(workspaceRegion).getByText("Result placeholder")).toBeInTheDocument();
     expect(
-      within(workspaceRegion).getByText(/Query integration comes in the next PR/i)
-    ).toBeInTheDocument();
+      within(workspaceRegion).getAllByText(/Query execution is wired in later PR4 checkpoints/i)
+        .length
+    ).toBeGreaterThan(0);
 
     const insightRegion = screen.getByRole("region", {
       name: "Ask Data insights"
@@ -395,7 +560,7 @@ describe("App", () => {
     expect(
       within(insightRegion).getByText(/later actions milestone/i)
     ).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expectNoQueryRun(fetchMock);
   });
 
   it("shows analyst technical navigation without admin navigation", async () => {
@@ -1132,6 +1297,48 @@ function backendRoleRequest({
     created_at: "2026-06-29T12:00:00Z",
     updated_at: "2026-06-29T12:00:00Z"
   };
+}
+
+function backendQueryTemplate({
+  id,
+  category,
+  title,
+  description,
+  naturalLanguageQuestion,
+  parameters = []
+}: {
+  id: string;
+  category: string;
+  title: string;
+  description: string;
+  naturalLanguageQuestion: string;
+  parameters?: Array<{
+    name: string;
+    data_type: string;
+    description: string;
+    required: boolean;
+    default: string | number | boolean | null;
+  }>;
+}) {
+  return {
+    id,
+    title,
+    description,
+    domain: "it_operations",
+    category,
+    natural_language_question: naturalLanguageQuestion,
+    parameters,
+    scope_type: "department",
+    required_permission: "can_use_query_templates"
+  };
+}
+
+function expectNoQueryRun(fetchMock: ReturnType<typeof vi.fn>) {
+  expect(
+    fetchMock.mock.calls.some(([url]) =>
+      String(url).includes("/api/v1/queries/run")
+    )
+  ).toBe(false);
 }
 
 function stubFetchSequence(...responses: Array<ReturnType<typeof jsonResponse>>) {

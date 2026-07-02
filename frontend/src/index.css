@@ -517,13 +517,24 @@ h1 {
   gap: 8px;
 }
 
-.ask-data-template-groups span {
+.ask-data-template-groups button {
+  border: 0;
   border-radius: 8px;
   background: #e9f6f0;
   color: #17643a;
   padding: 6px 10px;
   font-size: 0.8125rem;
   font-weight: 700;
+}
+
+.ask-data-state-message {
+  margin: 0;
+  border: 1px solid #d7e0eb;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #526176;
+  padding: 14px;
+  line-height: 1.6;
 }
 
 .ask-data-template-list {
@@ -555,6 +566,30 @@ h1 {
 
 .ask-data-template-list strong {
   color: #152033;
+}
+
+.ask-data-template-card {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  text-align: left;
+}
+
+.ask-data-template-card[data-selected="true"] strong {
+  color: #17643a;
+}
+
+.ask-data-selected-template strong {
+  color: #152033;
+}
+
+.ask-data-template-parameter-note {
+  border-left: 4px solid #2c7be5;
+  padding-left: 12px;
 }
 
 .ask-data-disabled-actions {

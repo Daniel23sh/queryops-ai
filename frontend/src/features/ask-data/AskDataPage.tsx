@@ -1,26 +1,15 @@
+import { useEffect, useMemo, useState } from "react";
+
+import { ApiError } from "../../api/client";
+import { listQueryTemplates } from "../../api/queryTemplates";
 import type { AuthUser } from "../../auth/types";
+import type { QueryTemplate, QueryTemplateCategory } from "./types";
 
 type AskDataPageProps = {
   user: AuthUser;
 };
 
-const TEMPLATE_EXAMPLES = [
-  {
-    category: "Licenses",
-    title: "Unused licenses",
-    summary: "Find reclaim opportunities from approved license templates."
-  },
-  {
-    category: "Identity",
-    title: "Inactive users",
-    summary: "Review stale account patterns once template data loads."
-  },
-  {
-    category: "Security",
-    title: "Security events",
-    summary: "Prepare security event reviews for scoped query integration."
-  }
-];
+type TemplateLoadStatus = "loading" | "loaded" | "error";
 
 const FUTURE_OPERATION_PLACEHOLDERS = [
   {
@@ -44,26 +33,85 @@ export function AskDataPage({ user }: AskDataPageProps) {
   const canRunFreeQuery = user.permissions.includes("can_run_free_query");
   const canViewTechnicalDetails = user.permissions.includes("can_view_sql");
   const isAdmin = user.role === "admin";
+  const [templates, setTemplates] = useState<QueryTemplate[]>([]);
+  const [templateLoadStatus, setTemplateLoadStatus] =
+    useState<TemplateLoadStatus>("loading");
+  const [templateLoadError, setTemplateLoadError] = useState<string | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
+  const templateCategories = useMemo(
+    () => groupTemplatesByCategory(templates),
+    [templates]
+  );
+  const selectedTemplate =
+    templates.find((template) => template.id === selectedTemplateId) ?? null;
   const scopeLabel =
     isAdmin ? "Global admin scope" : user.department?.name ?? "No scope";
   const modeLabel = canRunFreeQuery ? "Free-query shell" : "Template-only mode";
   const modeDescription = canRunFreeQuery
-    ? "Free-query composer controls are static in this PR. Query execution comes in PR4."
-    : "Approved templates will be available in PR4. Free-query access is not enabled for this role.";
+    ? "Free-query composer controls remain disabled until the free-query checkpoint."
+    : "Selected templates can be used here; free-query access is not enabled for this role.";
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    setTemplateLoadStatus("loading");
+    setTemplateLoadError(null);
+
+    listQueryTemplates()
+      .then((loadedTemplates) => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setTemplates(loadedTemplates);
+        setSelectedTemplateId((currentTemplateId) => {
+          if (
+            currentTemplateId &&
+            loadedTemplates.some((template) => template.id === currentTemplateId)
+          ) {
+            return currentTemplateId;
+          }
+
+          return loadedTemplates[0]?.id ?? null;
+        });
+        setTemplateLoadStatus("loaded");
+      })
+      .catch((error: unknown) => {
+        if (!isCurrent) {
+          return;
+        }
+
+        setTemplates([]);
+        setSelectedTemplateId(null);
+        setTemplateLoadError(formatTemplateLoadError(error));
+        setTemplateLoadStatus("error");
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
 
   return (
     <article className="ask-data-page" aria-labelledby="workspace-title">
       <div className="ask-data-page__header">
-        <p className="eyebrow">Static UI shell</p>
+        <p className="eyebrow">Query integration</p>
         <h1 id="workspace-title">Ask Data</h1>
         <p className="subtitle">
-          Prepare governed data questions in a dedicated workspace. Query integration
-          comes in the next PR.
+          Prepare governed data questions in a dedicated workspace. Templates load
+          from the Query API; query execution is wired in later PR4 checkpoints.
         </p>
       </div>
 
       <div className="ask-data-workspace">
-        <TemplatePanel />
+        <TemplatePanel
+          categories={templateCategories}
+          error={templateLoadError}
+          onSelectTemplate={setSelectedTemplateId}
+          selectedTemplate={selectedTemplate}
+          selectedTemplateId={selectedTemplateId}
+          status={templateLoadStatus}
+        />
         <section
           className="ask-data-workspace__main"
           aria-label="Ask Data workspace"
@@ -87,7 +135,23 @@ export function AskDataPage({ user }: AskDataPageProps) {
   );
 }
 
-function TemplatePanel() {
+function TemplatePanel({
+  categories,
+  error,
+  onSelectTemplate,
+  selectedTemplate,
+  selectedTemplateId,
+  status
+}: {
+  categories: QueryTemplateCategory[];
+  error: string | null;
+  onSelectTemplate: (templateId: string) => void;
+  selectedTemplate: QueryTemplate | null;
+  selectedTemplateId: string | null;
+  status: TemplateLoadStatus;
+}) {
+  const hasTemplates = categories.length > 0;
+
   return (
     <section className="ask-data-panel" aria-label="Ask Data templates">
       <div className="ask-data-panel__header">
@@ -95,30 +159,84 @@ function TemplatePanel() {
         <h2>Templates</h2>
       </div>
 
-      <div className="ask-data-template-groups" aria-label="Categories placeholder">
-        {["Licenses", "Identity", "Security"].map((category) => (
-          <span key={category}>{category}</span>
-        ))}
-      </div>
-
-      <ul className="ask-data-template-list" aria-label="Template list placeholder">
-        {TEMPLATE_EXAMPLES.map((template) => (
-          <li key={template.title}>
-            <span>{template.category}</span>
-            <strong>{template.title}</strong>
-            <p>{template.summary}</p>
-          </li>
-        ))}
-      </ul>
-
-      <div className="ask-data-selected-template">
-        <h3>Selected template</h3>
-        <p>
-          Choose a template here once the API is connected. These examples are
-          static placeholders only.
+      {status === "loading" ? (
+        <p className="ask-data-state-message" role="status">
+          Loading query templates...
         </p>
-      </div>
+      ) : null}
+
+      {status === "error" ? (
+        <p className="form-message form-message--error" role="alert">
+          {error ?? "Query templates could not be loaded."}
+        </p>
+      ) : null}
+
+      {status === "loaded" && !hasTemplates ? (
+        <p className="ask-data-state-message">
+          No query templates are available yet.
+        </p>
+      ) : null}
+
+      {status === "loaded" && hasTemplates ? (
+        <>
+          <div className="ask-data-template-groups" aria-label="Query template categories">
+            {categories.map((group) => (
+              <button
+                key={group.category}
+                type="button"
+                onClick={() => onSelectTemplate(group.templates[0].id)}
+              >
+                {group.category}
+              </button>
+            ))}
+          </div>
+
+          <ul className="ask-data-template-list" aria-label="Query templates">
+            {categories.flatMap((group) =>
+              group.templates.map((template) => (
+                <li key={template.id}>
+                  <button
+                    type="button"
+                    className="ask-data-template-card"
+                    aria-pressed={template.id === selectedTemplateId}
+                    data-selected={template.id === selectedTemplateId ? "true" : "false"}
+                    onClick={() => onSelectTemplate(template.id)}
+                  >
+                    <strong>{template.title}</strong>
+                    <p>{template.description}</p>
+                  </button>
+                </li>
+              ))
+            )}
+          </ul>
+        </>
+      ) : null}
+
+      <SelectedTemplateDetails template={selectedTemplate} />
     </section>
+  );
+}
+
+function SelectedTemplateDetails({ template }: { template: QueryTemplate | null }) {
+  return (
+    <div className="ask-data-selected-template" aria-label="Selected query template">
+      <h3>Selected template</h3>
+      {template ? (
+        <>
+          <strong>{template.title}</strong>
+          <p>{template.description}</p>
+          <p>{template.natural_language_question}</p>
+          {template.parameters.length > 0 ? (
+            <p className="ask-data-template-parameter-note">
+              Custom parameters are not supported yet; backend template defaults
+              will be used.
+            </p>
+          ) : null}
+        </>
+      ) : (
+        <p>Select a template to view its default question and scope.</p>
+      )}
+    </div>
   );
 }
 
@@ -140,8 +258,8 @@ function RoleScopeNotice({
       <div>
         <h2>Role and scope</h2>
         <p>
-          This page is a static shell only. It does not load templates, run
-          queries, clarify questions, or call query history endpoints yet.
+          Templates load from the Query API in this checkpoint. Query execution
+          is wired in later PR4 checkpoints, and history endpoints remain idle here.
         </p>
       </div>
       <dl className="ask-data-status-grid" aria-label="Ask Data access summary">
@@ -190,7 +308,7 @@ function QuestionComposer({
               id="ask-data-free-query-draft"
               rows={4}
               disabled
-              placeholder="Query execution comes in PR4."
+              placeholder="Query execution is wired in later PR4 checkpoints."
             />
           </label>
           <div className="ask-data-composer-actions">
@@ -200,7 +318,7 @@ function QuestionComposer({
           </div>
           <p className="ask-data-mode-note">
             The composer is disabled in this PR. It will call the Query API only
-            after PR4 adds query integration.
+            after the free-query checkpoint adds query execution.
           </p>
           {canViewTechnicalDetails ? <TechnicalCapabilityPlaceholder /> : null}
         </>
@@ -208,8 +326,8 @@ function QuestionComposer({
         <div className="ask-data-template-only-shell">
           <h3>Template-only mode</h3>
           <p>
-            Approved templates will be available in PR4. This role does not receive
-            a free-query input in the shell.
+            Selected templates can be used here. This role does not receive a
+            free-query input in the shell.
           </p>
         </div>
       )}
@@ -240,7 +358,7 @@ function ResultPlaceholder() {
         <div>Column A</div>
         <div>Column B</div>
         <div>Value pending</div>
-        <div>Query integration comes in the next PR.</div>
+        <div>Query execution is wired in later PR4 checkpoints.</div>
       </div>
     </section>
   );
@@ -294,4 +412,30 @@ function formatRole(role: AuthUser["role"]): string {
   }
 
   return role.charAt(0).toUpperCase() + role.slice(1);
+}
+
+function groupTemplatesByCategory(
+  templates: QueryTemplate[]
+): QueryTemplateCategory[] {
+  const categoryMap = new Map<string, QueryTemplate[]>();
+
+  for (const template of templates) {
+    const category = template.category || "Uncategorized";
+    const categoryTemplates = categoryMap.get(category) ?? [];
+    categoryTemplates.push(template);
+    categoryMap.set(category, categoryTemplates);
+  }
+
+  return Array.from(categoryMap, ([category, categoryTemplates]) => ({
+    category,
+    templates: categoryTemplates
+  }));
+}
+
+function formatTemplateLoadError(error: unknown): string {
+  if (error instanceof ApiError) {
+    return error.message;
+  }
+
+  return "Query templates could not be loaded.";
 }
