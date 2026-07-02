@@ -260,8 +260,8 @@ describe("App", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("Static UI shell")).toBeInTheDocument();
     expect(
-      screen.getByText(/Query integration comes in the next PR/i)
-    ).toBeInTheDocument();
+      screen.getAllByText(/Query integration comes in the next PR/i).length
+    ).toBeGreaterThan(0);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -283,6 +283,48 @@ describe("App", () => {
       screen.getByText(/Use approved templates when query integration arrives/i)
     ).toBeInTheDocument();
     expect(screen.queryByLabelText(/free query/i)).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders the static Ask Data split workspace layout", async () => {
+    const fetchMock = stubFetchSequence(successResponse(demoManager));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    const templateRegion = await screen.findByRole("region", {
+      name: "Ask Data templates"
+    });
+    expect(
+      within(templateRegion).getByRole("heading", { name: "Templates" })
+    ).toBeInTheDocument();
+    expect(within(templateRegion).getByText("Unused licenses")).toBeInTheDocument();
+    expect(within(templateRegion).getByText("Inactive users")).toBeInTheDocument();
+    expect(within(templateRegion).getByText("Security events")).toBeInTheDocument();
+
+    const workspaceRegion = screen.getByRole("region", {
+      name: "Ask Data workspace"
+    });
+    expect(
+      within(workspaceRegion).getByRole("heading", { name: "Question composer" })
+    ).toBeInTheDocument();
+    expect(within(workspaceRegion).getByText("Result placeholder")).toBeInTheDocument();
+    expect(
+      within(workspaceRegion).getByText(/Query integration comes in the next PR/i)
+    ).toBeInTheDocument();
+
+    const insightRegion = screen.getByRole("region", {
+      name: "Ask Data insights"
+    });
+    expect(
+      within(insightRegion).getByRole("heading", { name: "Explanation" })
+    ).toBeInTheDocument();
+    expect(within(insightRegion).getByText("Suggested Action")).toBeInTheDocument();
+    expect(within(insightRegion).getByText("Future status")).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

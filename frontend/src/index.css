@@ -390,36 +390,70 @@ h1 {
 
 .ask-data-page {
   display: grid;
-  gap: 20px;
+  gap: 18px;
   min-height: 420px;
-  border: 1px solid #d7e0eb;
-  border-radius: 8px;
-  background: #ffffff;
-  padding: 32px;
 }
 
 .ask-data-page__header {
+  border: 1px solid #d7e0eb;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 28px;
   max-width: 760px;
 }
 
+.ask-data-workspace {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.82fr) minmax(360px, 1.35fr) minmax(220px, 0.9fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.ask-data-workspace__main {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.ask-data-panel,
 .ask-data-status-panel {
   display: grid;
-  gap: 18px;
+  gap: 16px;
   border: 1px solid #d7e0eb;
   border-radius: 8px;
-  background: #f8fafc;
+  background: #ffffff;
   padding: 20px;
 }
 
+.ask-data-panel__header {
+  display: grid;
+  gap: 6px;
+}
+
+.ask-data-panel__header .eyebrow {
+  margin-bottom: 0;
+}
+
+.ask-data-panel h2,
+.ask-data-panel h3,
 .ask-data-status-panel h2 {
   margin: 0;
   color: #0f172a;
-  font-size: 1.125rem;
   letter-spacing: 0;
 }
 
+.ask-data-panel h2,
+.ask-data-status-panel h2 {
+  font-size: 1.125rem;
+}
+
+.ask-data-panel h3 {
+  font-size: 0.9375rem;
+}
+
+.ask-data-panel p,
 .ask-data-status-panel p {
-  margin: 8px 0 0;
+  margin: 0;
   color: #526176;
   line-height: 1.6;
 }
@@ -459,6 +493,103 @@ h1 {
   color: #40516a;
   padding-left: 14px;
   line-height: 1.6;
+}
+
+.ask-data-template-groups {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ask-data-template-groups span {
+  border-radius: 8px;
+  background: #e9f6f0;
+  color: #17643a;
+  padding: 6px 10px;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.ask-data-template-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ask-data-template-list li,
+.ask-data-selected-template,
+.ask-data-insight-block {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #d7e0eb;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 14px;
+}
+
+.ask-data-template-list span {
+  color: #5c6b82;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.ask-data-template-list strong {
+  color: #152033;
+}
+
+.ask-data-question-shell {
+  display: grid;
+  gap: 8px;
+}
+
+.ask-data-question-shell span {
+  color: #334155;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+
+.ask-data-question-shell textarea {
+  width: 100%;
+  border: 1px solid #cbd6e2;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #526176;
+  padding: 12px 14px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.ask-data-result-shell {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  overflow: hidden;
+  border: 1px solid #d7e0eb;
+  border-radius: 8px;
+}
+
+.ask-data-result-shell div {
+  min-height: 44px;
+  border-bottom: 1px solid #d7e0eb;
+  color: #40516a;
+  padding: 12px;
+  line-height: 1.4;
+}
+
+.ask-data-result-shell div:nth-child(odd) {
+  border-right: 1px solid #d7e0eb;
+}
+
+.ask-data-result-shell div:nth-child(-n + 2) {
+  background: #f8fafc;
+  color: #152033;
+  font-weight: 700;
+}
+
+.ask-data-result-shell div:nth-last-child(-n + 2) {
+  border-bottom: 0;
 }
 
 .role-upgrade-panel {
@@ -769,6 +900,10 @@ h1 {
   }
 
   .workspace-topbar {
+    grid-template-columns: 1fr;
+  }
+
+  .ask-data-workspace {
     grid-template-columns: 1fr;
   }
 
