@@ -14,6 +14,7 @@ import {
 } from "./api/roleRequests";
 import { useAuth } from "./auth/AuthProvider";
 import type { AuthUser, PermissionKey } from "./auth/types";
+import { AskDataPage } from "./features/ask-data";
 
 type DemoProfile = {
   label: string;
@@ -378,7 +379,9 @@ function AuthenticatedWorkspace({
             </p>
           ) : null}
 
-          {activeNavItem.id === "role-upgrade" ? (
+          {activeNavItem.id === "ask-data" ? (
+            <AskDataPage user={user} />
+          ) : activeNavItem.id === "role-upgrade" ? (
             <RoleUpgradePanel userRole={user.role} csrfToken={csrfToken} />
           ) : activeNavItem.id === "admin-role-requests" ? (
             <AdminRoleRequestsPanel csrfToken={csrfToken} />

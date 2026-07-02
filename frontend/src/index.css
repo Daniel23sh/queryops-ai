@@ -388,6 +388,71 @@ h1 {
   line-height: 1.6;
 }
 
+.ask-data-page {
+  display: grid;
+  gap: 20px;
+  min-height: 420px;
+  border: 1px solid #d7e0eb;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 32px;
+}
+
+.ask-data-page__header {
+  max-width: 760px;
+}
+
+.ask-data-status-panel {
+  display: grid;
+  gap: 18px;
+  border: 1px solid #d7e0eb;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 20px;
+}
+
+.ask-data-status-panel h2 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 1.125rem;
+  letter-spacing: 0;
+}
+
+.ask-data-status-panel p {
+  margin: 8px 0 0;
+  color: #526176;
+  line-height: 1.6;
+}
+
+.ask-data-status-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.ask-data-status-grid > div {
+  border: 1px solid #d7e0eb;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 14px;
+}
+
+.ask-data-status-grid dt {
+  margin: 0 0 6px;
+  color: #5c6b82;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.ask-data-status-grid dd {
+  margin: 0;
+  color: #152033;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
 .role-upgrade-panel {
   display: grid;
   gap: 28px;
@@ -749,12 +814,18 @@ h1 {
     padding: 24px;
   }
 
+  .ask-data-page {
+    min-height: 320px;
+    padding: 24px;
+  }
+
   .role-request-list__item {
     grid-template-columns: 1fr;
   }
 
   .admin-role-request-card__summary,
-  .admin-role-request-details {
+  .admin-role-request-details,
+  .ask-data-status-grid {
     grid-template-columns: 1fr;
   }
 }

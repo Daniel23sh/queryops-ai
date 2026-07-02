@@ -245,6 +245,26 @@ describe("App", () => {
     expect(within(nav).queryByRole("button", { name: "Admin Console" })).not.toBeInTheDocument();
   });
 
+  it("renders the Ask Data page shell from workspace navigation", async () => {
+    const fetchMock = stubFetchSequence(successResponse(demoManager));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Ask Data" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Static UI shell")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Query integration comes in the next PR/i)
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("shows analyst technical navigation without admin navigation", async () => {
     stubFetchSequence(successResponse(demoAnalyst));
 
