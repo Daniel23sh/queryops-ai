@@ -15,15 +15,15 @@ The `docs/planning/` directory is intentionally ignored by Git. It may exist onl
 
 Do not commit files from `docs/planning/`. Do not modify files under `docs/planning/` unless explicitly asked.
 
-## 2. Active Milestone Source of Truth
+## 2. Milestone Source of Truth
 
-The current active development target is defined in `PROJECT_PLAN.md`.
+The current development status and any active target are defined in `PROJECT_PLAN.md`.
 
 ```txt
-Agents must follow the active milestone scope in PROJECT_PLAN.md and must not implement future milestone work unless explicitly requested.
+Agents must follow PROJECT_PLAN.md and must not implement future milestone work unless explicitly requested.
 ```
 
-If a task is outside the active milestone in `PROJECT_PLAN.md`, stop and report the mismatch instead of implementing it.
+If no milestone is active, do not infer the next milestone. If a task is outside the current approved scope in `PROJECT_PLAN.md`, stop and report the mismatch instead of implementing it.
 
 ## 3. Scope Control
 
@@ -64,15 +64,15 @@ Prefer boring, maintainable structure over clever abstractions.
 
 ## 5. Current Milestone Notes
 
-The active milestone is defined in `PROJECT_PLAN.md`.
+The milestone status is defined in `PROJECT_PLAN.md`.
 
-At the time this file was updated, the active target is:
+At the time this file was updated, the latest completed target is:
 
 ```txt
-Milestone 3 — RLS & Security Foundation is complete.
+Milestone 4 — Query Engine Backend
 ```
 
-Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, and Milestone 3 are complete under the previous scope.
+Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, Milestone 3, and Milestone 4 are complete under the previous scopes. Milestone 5 is planned but not active unless explicitly requested.
 
 Milestone 2.5 introduced `access_scopes`, `user_access_scopes`, `data_resources`, `UserAccessContext`, `AccessDecision`, and `evaluate_access(subject, action, resource, context)`.
 
@@ -80,11 +80,60 @@ Milestone 3 added the security foundation for scope-aware PostgreSQL RLS before 
 
 Milestone 3 delivered scope-aware PostgreSQL RLS, a `SET LOCAL` RLS context helper, DB session/helper integration for future Query Engine use, initial security/RLS tests, and policy helper refinements.
 
-V1 access decisions must remain simple and testable: permission plus assigned access scope plus minimal resource metadata.
+Milestone 4 implemented the backend Query Engine foundation on top of the existing Access Context Foundation and PostgreSQL RLS behavior.
 
-Milestone 3 did not implement Query Engine, LLM calls, SQL generation, dashboards, actions behavior, approval/action execution behavior, CSV export behavior, Full ABAC, dynamic policy engine, `policy_rules`, policy builder UI, ReBAC, masking, tenant/project/region management, or external authorization services.
+Milestone 4 delivered:
 
-Milestone 4 is Query Engine Backend. It remains planned and must not start unless explicitly requested.
+* Domain Pack Loader
+* Query Templates API
+* `LLMProvider` interface
+* `MockLLMProvider`
+* SQL generator wrapper
+* Schema Context Builder
+* SQL validator
+* runtime RLS role hardening
+* scoped read-only Query Executor
+* internal Query Engine orchestration service
+* Query Run API
+* `QueryRun` persistence
+* PostgreSQL/RLS query tests
+* Query Engine security regression and deterministic MockLLM evaluation tests
+
+Query Engine security rules:
+
+* Backend authorization is the source of truth; frontend visibility is never enough.
+* Query execution is read-only.
+* SQL must be validated before execution.
+* Execute only validator `sanitized_sql`, never raw user or provider output.
+* Execution must use the dedicated non-owner read-only role `queryops_query_runtime`.
+* Execution must use transaction-local PostgreSQL RLS context and PostgreSQL RLS.
+* Non-queryable `DataResource` records are denied.
+* `it_audit_events` is intentionally non-queryable in V1.
+* Query Engine code must continue to use `UserAccessContext`, `DataResource`, `AccessDecision`, `evaluate_access(...)`, `authorize_resource_access(...)`, `RLSContext`, `build_rls_context(...)`, `set_rls_context(...)`, PostgreSQL RLS policies from `0005_scope_aware_rls.py`, and the existing `QueryRun` model.
+* No real LLM calls, external provider integrations, or API-key requirements are allowed in Milestone 4.
+
+Out of scope unless explicitly requested in a future milestone:
+
+* dashboards UI
+* dashboard cards behavior
+* CSV export
+* actions behavior
+* approvals behavior
+* notifications behavior
+* real external LLM calls
+* Supabase Auth
+* frontend Ask Data UI
+* Full ABAC
+* ReBAC
+* masking
+* policy builder UI
+* dynamic policy engine
+* tenant/project/region governance
+* background jobs
+* Redis
+* API rate limiter
+
+Milestone 5 or later will handle dashboards, UI, actions, and approvals unless explicitly requested. Do not add frontend Ask Data UI, dashboard behavior, action execution, approval behavior, or CSV export without explicit scope approval.
 
 ## 6. Product Direction
 
@@ -156,6 +205,42 @@ When adding database schema or seed behavior, add or update migration, seed, and
 Security-related behavior in later milestones must have tests.
 
 Do not add complex E2E tests before the supporting app behavior exists.
+
+Current verification commands:
+
+Default backend suite:
+
+```bash
+cd backend
+.venv/bin/pytest
+```
+
+PostgreSQL/RLS/Query Engine suite:
+
+```bash
+docker compose up -d postgres
+cd backend
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic upgrade head
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic check
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/pytest
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/pytest tests/test_rls_postgres.py -q -rs
+```
+
+Alembic with local PostgreSQL:
+
+```bash
+cd backend
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic upgrade head
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic check
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm test
+npm run build
+```
 
 ## 10. Git Rules
 
