@@ -114,6 +114,34 @@ def test_successful_known_mock_free_text_query_creates_succeeded_query_run(
     assert query_run.query_metadata["model"] == "mock-queryops-v1"
 
 
+def test_mock_free_text_template_query_applies_default_parameters(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    executor = FakeExecutor()
+    service = QueryEngineService(executor=executor)
+    user = user_by_email(db_session, "demo.manager@queryops.local")
+
+    result = service.run(
+        db_session,
+        user,
+        QueryEngineRequest(question="Show inactive users in my department."),
+    )
+
+    query_run = only_query_run(db_session)
+    assert result.status == "succeeded"
+    assert query_run.status == "succeeded"
+    assert query_run.query_metadata["template_id"] == "inactive_users_by_department"
+    assert query_run.generated_sql is not None
+    assert ":inactive_days" not in query_run.generated_sql
+    assert "90 * INTERVAL '1 day'" in query_run.generated_sql
+    assert query_run.executed_sql == executor.seen_sql[0]
+    assert ":inactive_days" not in query_run.executed_sql
+
+
 def test_unsupported_question_creates_clarification_query_run_without_execution(
     db_session: Session,
 ) -> None:

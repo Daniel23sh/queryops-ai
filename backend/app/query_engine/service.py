@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.auth.access_context import UserAccessContext, build_user_access_context
 from app.auth.access_policy import APPROVED_TEMPLATE_QUERY_ACTION
 from app.models.product import AppUser, QueryRun, RunStatus
-from app.query_engine.domain_pack import DomainPack, QueryTemplate
+from app.query_engine.domain_pack import DomainPack
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.llm_provider import LLMProvider
 from app.query_engine.mock_llm_provider import MockLLMProvider
@@ -33,6 +33,7 @@ from app.query_engine.sql_executor import (
 )
 from app.query_engine.sql_generator import SQLGenerator, SQLGeneratorResult
 from app.query_engine.sql_validator import SQLValidationResult, validate_sql
+from app.query_engine.template_sql import render_template_sql
 
 
 VALIDATION_FAILURE_CODE = "validation_failed"
@@ -322,7 +323,7 @@ def _template_generation_result(
             safe_error=TEMPLATE_NOT_FOUND_MESSAGE,
         )
 
-    rendered_sql = _render_template_sql(template)
+    rendered_sql = render_template_sql(template)
     if rendered_sql is None:
         return SQLGeneratorResult(
             generated_sql=None,
@@ -352,32 +353,6 @@ def _template_generation_result(
         },
         clarification_required=False,
     )
-
-
-def _render_template_sql(template: QueryTemplate) -> str | None:
-    if template.sql is None:
-        return None
-
-    sql = template.sql
-    for parameter in template.parameters:
-        if parameter.default is None:
-            return None
-        sql = re.sub(
-            rf":{re.escape(parameter.name)}\b",
-            _sql_literal(parameter.default),
-            sql,
-        )
-    return sql
-
-
-def _sql_literal(value: Any) -> str:
-    if isinstance(value, bool):
-        return "true" if value else "false"
-    if isinstance(value, int | float):
-        return str(value)
-    if value is None:
-        return "NULL"
-    return "'" + str(value).replace("'", "''") + "'"
 
 
 def _query_action_for_request(request: QueryEngineRequest) -> str:

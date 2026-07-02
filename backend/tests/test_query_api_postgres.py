@@ -111,6 +111,29 @@ def test_analyst_free_text_query_via_api_works_for_assigned_scope(
     assert data["executed_sql"].startswith("SELECT")
 
 
+def test_manager_parameterized_free_text_template_uses_default_values(
+    client: TestClient,
+    postgres_engine: Engine,
+) -> None:
+    clear_query_runs(postgres_engine)
+    csrf_token = login(client, "demo.manager@queryops.local")
+
+    response = client.post(
+        "/api/v1/queries/run",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"question": "Show inactive users in my department."},
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["status"] == "succeeded"
+    assert data["metadata"]["template_id"] == "inactive_users_by_department"
+    assert data["metadata"]["execution"]["status"] == "succeeded"
+    assert data.get("error_code") is None
+    assert "generated_sql" not in data
+    assert "executed_sql" not in data
+
+
 def test_admin_global_template_query_via_api_returns_allowed_global_data(
     client: TestClient,
     postgres_engine: Engine,
