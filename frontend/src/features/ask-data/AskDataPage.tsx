@@ -5,8 +5,13 @@ type AskDataPageProps = {
 };
 
 export function AskDataPage({ user }: AskDataPageProps) {
+  const canRunFreeQuery = user.permissions.includes("can_run_free_query");
   const scopeLabel =
     user.role === "admin" ? "Global admin scope" : user.department?.name ?? "No scope";
+  const modeLabel = canRunFreeQuery ? "Free-query shell" : "Template-only mode";
+  const modeDescription = canRunFreeQuery
+    ? "Free-query composer controls will appear here in a later checkpoint. This shell still does not run queries."
+    : "Use approved templates when query integration arrives. Free-query access is not enabled for this role.";
 
   return (
     <article className="ask-data-page" aria-labelledby="workspace-title">
@@ -30,7 +35,7 @@ export function AskDataPage({ user }: AskDataPageProps) {
         <dl className="ask-data-status-grid" aria-label="Ask Data access summary">
           <div>
             <dt>Mode</dt>
-            <dd>Static shell</dd>
+            <dd>{modeLabel}</dd>
           </div>
           <div>
             <dt>Role</dt>
@@ -41,6 +46,7 @@ export function AskDataPage({ user }: AskDataPageProps) {
             <dd>{scopeLabel}</dd>
           </div>
         </dl>
+        <p className="ask-data-mode-note">{modeDescription}</p>
       </section>
     </article>
   );

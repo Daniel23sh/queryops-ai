@@ -110,7 +110,7 @@ const WORKSPACE_NAV_ITEMS: NavItem[] = [
     label: "Ask Data",
     title: "Ask Data placeholder",
     summary: "Future governed data questions will start here.",
-    canView: (user) => hasPermission(user, "can_run_free_query")
+    canView: (user) => hasPermission(user, "can_use_query_templates")
   },
   {
     id: "query-history",

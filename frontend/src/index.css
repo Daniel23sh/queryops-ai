@@ -453,6 +453,14 @@ h1 {
   line-height: 1.45;
 }
 
+.ask-data-mode-note {
+  margin: 0;
+  border-left: 4px solid #2c7be5;
+  color: #40516a;
+  padding-left: 14px;
+  line-height: 1.6;
+}
+
 .role-upgrade-panel {
   display: grid;
   gap: 28px;

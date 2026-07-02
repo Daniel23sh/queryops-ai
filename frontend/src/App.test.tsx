@@ -211,7 +211,7 @@ describe("App", () => {
     });
   });
 
-  it("shows only common navigation for demo user", async () => {
+  it("shows common navigation and limited Ask Data access for demo user", async () => {
     stubFetchSequence(successResponse(demoUser));
 
     renderApp();
@@ -222,8 +222,8 @@ describe("App", () => {
     expect(within(nav).getByRole("button", { name: "Templates" })).toBeInTheDocument();
     expect(within(nav).getByRole("button", { name: "My Dashboard" })).toBeInTheDocument();
     expect(within(nav).getByRole("button", { name: "Role Upgrade" })).toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: "Ask Data" })).toBeInTheDocument();
     expect(within(nav).queryByRole("button", { name: "Role Requests" })).not.toBeInTheDocument();
-    expect(within(nav).queryByRole("button", { name: "Ask Data" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("button", { name: "SQL / Technical" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("button", { name: "Admin Console" })).not.toBeInTheDocument();
     expect(within(nav).queryByRole("button", { name: "Users" })).not.toBeInTheDocument();
@@ -265,6 +265,27 @@ describe("App", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("renders template-only Ask Data mode for demo user without extra API calls", async () => {
+    const fetchMock = stubFetchSequence(successResponse(demoUser));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Ask Data" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Template-only mode")).toBeInTheDocument();
+    expect(
+      screen.getByText(/Use approved templates when query integration arrives/i)
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/free query/i)).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("shows analyst technical navigation without admin navigation", async () => {
     stubFetchSequence(successResponse(demoAnalyst));
 
@@ -291,6 +312,7 @@ describe("App", () => {
     const nav = await screen.findByRole("navigation", {
       name: "Workspace navigation"
     });
+    expect(within(nav).getByRole("button", { name: "Ask Data" })).toBeInTheDocument();
     expect(within(nav).getByRole("button", { name: "Role Requests" })).toBeInTheDocument();
     expect(within(nav).getByRole("button", { name: "Admin Console" })).toBeInTheDocument();
     expect(within(nav).getByRole("button", { name: "Users" })).toBeInTheDocument();
