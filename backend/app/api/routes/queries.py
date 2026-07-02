@@ -425,6 +425,18 @@ def _safe_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
             "truncated": execution.get("truncated"),
         }
 
+    self_correction = metadata.get("self_correction")
+    if isinstance(self_correction, dict):
+        safe["self_correction"] = {
+            "attempted": self_correction.get("attempted"),
+            "succeeded": self_correction.get("succeeded"),
+            "original_error_code": self_correction.get("original_error_code"),
+        }
+        if "final_error_code" in self_correction:
+            safe["self_correction"]["final_error_code"] = self_correction.get(
+                "final_error_code"
+            )
+
     return safe
 
 

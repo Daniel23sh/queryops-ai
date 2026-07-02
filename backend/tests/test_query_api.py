@@ -700,6 +700,40 @@ def test_sensitive_errors_do_not_leak(client: TestClient) -> None:
     assert response.json()["data"]["message"] == "Query execution failed safely."
 
 
+def test_self_correction_metadata_is_safe_and_sql_visibility_is_unchanged(
+    client: TestClient,
+) -> None:
+    manager_csrf_token = _login(client, "demo.manager@queryops.local")
+    manager_response = client.post(
+        "/api/v1/queries/run",
+        headers={"X-CSRF-Token": manager_csrf_token},
+        json={"question": "return self corrected result"},
+    )
+
+    assert manager_response.status_code == 200
+    manager_data = manager_response.json()["data"]
+    assert manager_data["metadata"]["self_correction"] == {
+        "attempted": True,
+        "succeeded": True,
+        "original_error_code": "select_star_not_allowed",
+    }
+    assert "generated_sql" not in manager_data
+    assert "executed_sql" not in manager_data
+
+    analyst_csrf_token = _login(client, "demo.analyst@queryops.local")
+    analyst_response = client.post(
+        "/api/v1/queries/run",
+        headers={"X-CSRF-Token": analyst_csrf_token},
+        json={"question": "return self corrected result"},
+    )
+
+    assert analyst_response.status_code == 200
+    analyst_data = analyst_response.json()["data"]
+    assert analyst_data["generated_sql"] == "SELECT generated"
+    assert analyst_data["executed_sql"] == "SELECT executed"
+    assert analyst_data["metadata"]["self_correction"]["attempted"] is True
+
+
 class FakeQueryEngineService:
     def __init__(self) -> None:
         self.calls: list[Any] = []
@@ -750,6 +784,28 @@ class FakeQueryEngineService:
                         "status": "failed",
                         "error_code": "database_error",
                         "internal_error_type": "UndefinedColumn missing_column",
+                    },
+                },
+            )
+        if "self corrected" in request.question:
+            return self._persist_and_result(
+                db,
+                user,
+                request.question,
+                status="succeeded",
+                query_run_status="succeeded",
+                generated_sql="SELECT generated",
+                executed_sql="SELECT executed",
+                error_message=None,
+                error_code=None,
+                metadata={
+                    **SAFE_METADATA,
+                    **request_metadata,
+                    "self_correction": {
+                        "attempted": True,
+                        "succeeded": True,
+                        "original_error_code": "select_star_not_allowed",
+                        "unsafe_internal_detail": "do not expose",
                     },
                 },
             )
