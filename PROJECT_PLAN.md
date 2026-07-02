@@ -4,11 +4,11 @@
 
 The current milestone status is:
 
-`Milestone 5 PR1 — M4 Query Backend Compliance` is complete on branch `feature/m5-fix-m4-query-backend-compliance` and pending review/merge.
+`Milestone 5 PR2 — Ask Data API Clients & Types` is complete on branch `feature/m5-ask-data-api-clients` and pending review/merge.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, and Milestone 4 Query Engine Backend are complete.
 
-Milestone 5 has started with the first backend compliance PR only. Do not start Ask Data UI, dashboards, dashboard cards, CSV export, actions, approvals, notifications, or frontend work until the backend compliance PR is reviewed and merged.
+Milestone 5 has started. PR1 backend compliance has been reviewed and merged, and PR2 adds frontend API clients and TypeScript types only. Do not start Ask Data UI, dashboards, dashboard cards, CSV export, actions, approvals, or notifications until those later PRs are explicitly started.
 
 Milestone 2.5 delivered:
 
@@ -49,7 +49,7 @@ Milestone 4 delivered:
 
 Milestone 4 preserved the existing Access Context Foundation and PostgreSQL RLS behavior while adding only backend query-engine capabilities.
 
-Milestone 5 PR1 is complete on branch `feature/m5-fix-m4-query-backend-compliance`. This branch closes the remaining Milestone 4 backend compliance gaps before any frontend Ask Data UI work begins. Do not start frontend Ask Data work until the backend compliance PR is reviewed and merged.
+Milestone 5 PR1 was completed on branch `feature/m5-fix-m4-query-backend-compliance`. That branch closed the remaining Milestone 4 backend compliance gaps before any frontend Ask Data UI work began.
 
 Milestone 5 PR1 completed:
 
@@ -60,6 +60,8 @@ Milestone 5 PR1 completed:
 - hardened safe query metadata needed by the future Ask Data UI
 
 Milestone 5 PR1 did not add frontend Ask Data UI, a real LLM provider, dashboards, CSV export, actions, approvals, or notifications.
+
+Milestone 5 PR2 is complete on branch `feature/m5-ask-data-api-clients`. This branch adds frontend-safe Ask Data types and API clients for query templates, query runs, clarification, own history, scope history, and the department-history compatibility alias. It does not add Ask Data UI or backend behavior.
 
 Items still out of scope and reserved for future milestones:
 
@@ -376,17 +378,17 @@ Milestone 1 should leave the repository ready for auth, permission, and RLS work
 
 The latest completed product milestone is:
 
-`Milestone 4 — Query Engine Backend`
+`Milestone 5 PR2 — Ask Data API Clients & Types`
 
-Milestone 4 is complete. It delivered backend Query Engine foundations only: domain pack loading, query templates, mock LLM generation, schema context, SQL validation, runtime RLS role hardening, scoped read-only execution with PostgreSQL RLS, query run APIs, `QueryRun` persistence, PostgreSQL-backed tests, and security regression/evaluation tests.
+Milestone 5 PR2 is complete and pending review/merge. It adds frontend-safe Ask Data TypeScript models, query template API clients, query run/clarify/history API clients, and focused frontend API client tests.
 
-Milestone 5 PR1 is complete in this branch for backend/API compliance only. After PR1 is reviewed and merged, the Milestone 5 Ask Data UI PRs can begin. Dashboards, dashboard cards, CSV export, actions, approvals, notification behavior, real LLM providers, Supabase Auth, and full domain pack expansion remain out of scope unless explicitly requested in a later milestone or PR.
+Milestone 5 PR1 is merged. Milestone 5 PR2 does not include Ask Data UI, dashboards, dashboard cards, CSV export, actions, approvals, notification behavior, real LLM providers, Supabase Auth, or full domain pack expansion.
 
 ## 15. Milestone 5 Implementation Plan
 
-Milestone 5 PR1 is complete in this branch and pending review/merge. Use one branch per PR, do not include PR numbers in branch names, split every PR into checkpoints, and end each checkpoint with its own commit. Do not create one large commit for an entire PR.
+Milestone 5 PR2 is complete in this branch and pending review/merge. Use one branch per PR, do not include PR numbers in branch names, split every PR into checkpoints, and end each checkpoint with its own commit. Do not create one large commit for an entire PR.
 
-The first Milestone 5 PR closes the remaining Milestone 4 backend compliance gaps and makes the Query API ready for the Ask Data UI. Frontend Ask Data implementation must not begin until PR1 is reviewed and merged.
+The first Milestone 5 PR closed the remaining Milestone 4 backend compliance gaps and made the Query API ready for frontend Ask Data work. The second PR adds the frontend API client layer only. Ask Data UI implementation begins in later PRs.
 
 ### PR1: M4 Query Backend Compliance
 
@@ -452,7 +454,13 @@ Goal:
 
 Build frontend API clients and types for query templates and query runs.
 
-Start only after PR1 is merged.
+Completed PR2 behavior:
+
+- Added frontend-safe Ask Data query/template/result/history metadata types.
+- Added query template list/detail API clients under `/api/v1`.
+- Added query run, clarify, own-history, scope-history, and department-history API clients under `/api/v1`.
+- Added focused frontend API client tests for paths, CSRF headers, URL encoding, pagination, unsupported parameters, shared API errors, and pass-through response data.
+- Kept Ask Data UI, backend behavior, dashboards/cards, CSV export, actions, approvals, notifications, real LLM providers, Supabase Auth, Redis/background jobs, and full domain pack expansion out of scope.
 
 ### PR3: Ask Data Shell
 

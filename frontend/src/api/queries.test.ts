@@ -238,7 +238,7 @@ describe("queries API client", () => {
     expect(result).toEqual([backendHistoryItem]);
   });
 
-  it("gets scope query history", async () => {
+  it("gets scope query history with encoded pagination params", async () => {
     const fetchMock = stubFetch({
       data: [backendHistoryItem],
       meta: {
@@ -247,10 +247,10 @@ describe("queries API client", () => {
       }
     });
 
-    await getScopeQueryHistory({ limit: 25 });
+    await getScopeQueryHistory({ limit: 25, offset: 10 });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:8000/api/v1/queries/scope-history?limit=25",
+      "http://localhost:8000/api/v1/queries/scope-history?limit=25&offset=10",
       {
         method: "GET",
         credentials: "include",
@@ -270,10 +270,10 @@ describe("queries API client", () => {
       }
     });
 
-    await getDepartmentQueryHistory({ offset: 20 });
+    await getDepartmentQueryHistory({ limit: 30, offset: 20 });
 
     expect(fetchMock).toHaveBeenCalledWith(
-      "http://localhost:8000/api/v1/queries/department-history?offset=20",
+      "http://localhost:8000/api/v1/queries/department-history?limit=30&offset=20",
       {
         method: "GET",
         credentials: "include",
