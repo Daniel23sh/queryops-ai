@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import uuid
 from collections.abc import Generator
 from typing import Any
 
@@ -21,7 +22,7 @@ from app.query_engine.service import (
     QueryEngineServiceResult,
 )
 from app.query_engine.sql_executor import SQLExecutionResult
-from app.query_engine.sql_validator import SQLValidationResult
+from app.query_engine.sql_validator import SQLValidationResult, validate_sql
 
 
 def test_successful_template_query_creates_succeeded_query_run(
@@ -206,6 +207,189 @@ def test_generated_and_executed_sql_follow_security_storage_expectations(
     assert executor.seen_sql == ["SELECT id, hostname FROM devices LIMIT 25"]
 
 
+def test_valid_sql_path_does_not_attempt_self_correction(
+    db_session: Session,
+) -> None:
+    executor = FakeExecutor()
+    validator = RecordingValidator()
+    service = QueryEngineService(
+        provider=StaticSQLProvider(
+            "SELECT id, hostname FROM devices ORDER BY hostname LIMIT 25"
+        ),
+        executor=executor,
+        validator=validator,
+    )
+    user = user_by_email(db_session, "demo.analyst@queryops.local")
+
+    result = service.run(
+        db_session,
+        user,
+        QueryEngineRequest(question="Show non-compliant devices in my department."),
+    )
+
+    query_run = only_query_run(db_session)
+    assert result.status == "succeeded"
+    assert validator.seen_sql == [
+        "SELECT id, hostname FROM devices ORDER BY hostname LIMIT 25"
+    ]
+    assert "self_correction" not in query_run.query_metadata
+    assert executor.seen_sql == [
+        "SELECT id, hostname FROM devices ORDER BY hostname LIMIT 25"
+    ]
+
+
+def test_select_star_validation_failure_triggers_one_correction_attempt_and_executes(
+    db_session: Session,
+) -> None:
+    executor = FakeExecutor()
+    validator = RecordingValidator()
+    service = QueryEngineService(
+        provider=StaticSQLProvider("SELECT * FROM devices ORDER BY hostname"),
+        executor=executor,
+        validator=validator,
+    )
+    user = user_by_email(db_session, "demo.analyst@queryops.local")
+
+    result = service.run(
+        db_session,
+        user,
+        QueryEngineRequest(question="Show non-compliant devices in my department."),
+    )
+
+    query_run = only_query_run(db_session)
+    assert result.status == "succeeded"
+    assert len(validator.seen_sql) == 2
+    assert validator.seen_sql[0] == "SELECT * FROM devices ORDER BY hostname"
+    assert validator.seen_sql[1].startswith("SELECT ")
+    assert " FROM devices ORDER BY hostname" in validator.seen_sql[1]
+    assert "*" not in validator.seen_sql[1]
+    assert query_run.generated_sql == "SELECT * FROM devices ORDER BY hostname"
+    assert query_run.executed_sql == executor.seen_sql[0]
+    assert "*" not in query_run.executed_sql
+    assert query_run.query_metadata["self_correction"] == {
+        "attempted": True,
+        "succeeded": True,
+        "original_error_code": "select_star_not_allowed",
+    }
+
+
+def test_correction_failure_returns_safe_failure_metadata(
+    db_session: Session,
+) -> None:
+    executor = FakeExecutor()
+    validator = SequenceValidator(
+        [
+            SQLValidationResult(
+                valid=False,
+                sanitized_sql=None,
+                referenced_tables=[],
+                error_code="select_star_not_allowed",
+                public_error="SQL is not allowed for safe read-only querying.",
+            ),
+            SQLValidationResult(
+                valid=False,
+                sanitized_sql=None,
+                referenced_tables=[],
+                error_code="table_not_allowed",
+                reason="internal table detail",
+                public_error="SQL is not allowed for safe read-only querying.",
+            ),
+        ]
+    )
+    service = QueryEngineService(
+        provider=StaticSQLProvider("SELECT * FROM devices ORDER BY hostname"),
+        executor=executor,
+        validator=validator,
+    )
+    user = user_by_email(db_session, "demo.analyst@queryops.local")
+
+    result = service.run(
+        db_session,
+        user,
+        QueryEngineRequest(question="Show non-compliant devices in my department."),
+    )
+
+    query_run = only_query_run(db_session)
+    assert result.status == "failed"
+    assert result.error_code == "validation_failed"
+    assert query_run.error_message == "SQL is not allowed for safe read-only querying."
+    assert query_run.executed_sql is None
+    assert executor.seen_sql == []
+    assert len(validator.seen_sql) == 2
+    assert query_run.query_metadata["self_correction"] == {
+        "attempted": True,
+        "succeeded": False,
+        "original_error_code": "select_star_not_allowed",
+        "final_error_code": "table_not_allowed",
+    }
+    assert "internal table detail" not in str(query_run.query_metadata)
+
+
+@pytest.mark.parametrize(
+    ("sql", "expected_error_code"),
+    [
+        (
+            "SELECT id FROM devices; DROP TABLE devices",
+            "multiple_statements",
+        ),
+        ("UPDATE devices SET hostname = 'bad'", "prohibited_statement"),
+        ("SELECT id FROM devices -- leak", "comments_not_allowed"),
+        ("SELECT id, event_type FROM it_audit_events", "forbidden_table"),
+    ],
+)
+def test_unsafe_validation_failures_are_not_corrected_or_executed(
+    db_session: Session,
+    sql: str,
+    expected_error_code: str,
+) -> None:
+    executor = FakeExecutor()
+    validator = RecordingValidator()
+    service = QueryEngineService(
+        provider=StaticSQLProvider(sql),
+        executor=executor,
+        validator=validator,
+    )
+    user = user_by_email(db_session, "demo.admin@queryops.local")
+
+    result = service.run(
+        db_session,
+        user,
+        QueryEngineRequest(question="Try unsafe SQL."),
+    )
+
+    query_run = only_query_run(db_session)
+    assert result.status == "failed"
+    assert query_run.query_metadata["validation"]["error_code"] == expected_error_code
+    assert "self_correction" not in query_run.query_metadata
+    assert validator.seen_sql == [sql]
+    assert executor.seen_sql == []
+
+
+def test_request_metadata_persists_safe_clarification_link_only(
+    db_session: Session,
+) -> None:
+    clarified_from_id = str(uuid.uuid4())
+    executor = FakeExecutor()
+    service = QueryEngineService(executor=executor)
+    user = user_by_email(db_session, "demo.analyst@queryops.local")
+
+    service.run(
+        db_session,
+        user,
+        QueryEngineRequest(
+            question="Show non-compliant devices in my department.",
+            metadata={
+                "clarified_from_query_run_id": clarified_from_id,
+                "unsafe_internal_detail": "do not persist",
+            },
+        ),
+    )
+
+    query_run = only_query_run(db_session)
+    assert query_run.query_metadata["clarified_from_query_run_id"] == clarified_from_id
+    assert "unsafe_internal_detail" not in query_run.query_metadata
+
+
 def test_service_never_executes_unsupported_provider_output(
     db_session: Session,
 ) -> None:
@@ -307,6 +491,57 @@ class UnsupportedSqlProvider:
             unsupported_reason="unsupported_question",
             safe_error="I could not map that question to a supported query.",
         )
+
+
+class StaticSQLProvider:
+    provider_name = "static-service-test-provider"
+    model_name = "static-service-test-model"
+
+    def __init__(self, generated_sql: str) -> None:
+        self.generated_sql = generated_sql
+
+    def generate_sql(
+        self,
+        _question: str,
+        _schema_context: dict[str, Any],
+        _user_context: dict[str, Any],
+        _options: dict[str, Any],
+    ) -> SQLGenerationResult:
+        return SQLGenerationResult(
+            generated_sql=self.generated_sql,
+            provider_name=self.provider_name,
+            model_name=self.model_name,
+            generation_metadata={"source": "self_correction_test"},
+            clarification_required=False,
+        )
+
+
+class RecordingValidator:
+    def __init__(self) -> None:
+        self.seen_sql: list[str] = []
+
+    def __call__(
+        self,
+        sql: str,
+        schema_context: dict[str, Any],
+    ) -> SQLValidationResult:
+        self.seen_sql.append(sql)
+        return validate_sql(sql, schema_context)
+
+
+class SequenceValidator:
+    def __init__(self, results: list[SQLValidationResult]) -> None:
+        self.results = list(results)
+        self.seen_sql: list[str] = []
+
+    def __call__(
+        self,
+        sql: str,
+        _schema_context: dict[str, Any],
+    ) -> SQLValidationResult:
+        self.seen_sql.append(sql)
+        assert self.results
+        return self.results.pop(0)
 
 
 def only_query_run(session: Session) -> QueryRun:

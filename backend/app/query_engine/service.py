@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import uuid
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
@@ -61,6 +61,7 @@ class QueryEngineRequest:
     template_id: str | None = None
     saved_query_id: uuid.UUID | None = None
     execution_options: SQLExecutionOptions | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class QueryEngineService:
@@ -145,27 +146,51 @@ class QueryEngineService:
             "validation": _validation_summary(validation_result),
         }
         if not validation_result.valid or validation_result.sanitized_sql is None:
-            public_error = validation_result.public_error or QUERY_RESULT_FAILURE_MESSAGE
-            query_run = self._persist_query_run(
-                db,
-                user,
-                request,
-                RunStatus.FAILED.value,
-                started_at=started_at,
-                generated_sql=generation_result.generated_sql,
-                executed_sql=None,
-                row_count=0,
-                duration_ms=0,
-                error_message=public_error,
-                metadata=metadata,
+            corrected_sql = _deterministic_sql_correction(
+                generation_result.generated_sql,
+                validation_result,
+                schema_context,
             )
-            return format_query_result(
-                status="failed",
-                query_run_id=str(query_run.id),
-                public_error=public_error,
-                error_code=VALIDATION_FAILURE_CODE,
-                metadata=query_run.query_metadata,
-            )
+            if corrected_sql is not None:
+                corrected_validation_result = self._validator(
+                    corrected_sql,
+                    schema_context,
+                )
+                metadata = {
+                    **metadata,
+                    "referenced_tables": sorted(
+                        corrected_validation_result.referenced_tables
+                    ),
+                    "validation": _validation_summary(corrected_validation_result),
+                    "self_correction": _self_correction_summary(
+                        original_validation_result=validation_result,
+                        corrected_validation_result=corrected_validation_result,
+                    ),
+                }
+                validation_result = corrected_validation_result
+
+            if not validation_result.valid or validation_result.sanitized_sql is None:
+                public_error = validation_result.public_error or QUERY_RESULT_FAILURE_MESSAGE
+                query_run = self._persist_query_run(
+                    db,
+                    user,
+                    request,
+                    RunStatus.FAILED.value,
+                    started_at=started_at,
+                    generated_sql=generation_result.generated_sql,
+                    executed_sql=None,
+                    row_count=0,
+                    duration_ms=0,
+                    error_message=public_error,
+                    metadata=metadata,
+                )
+                return format_query_result(
+                    status="failed",
+                    query_run_id=str(query_run.id),
+                    public_error=public_error,
+                    error_code=VALIDATION_FAILURE_CODE,
+                    metadata=query_run.query_metadata,
+                )
 
         execution_result = self._executor(
             db,
@@ -376,7 +401,94 @@ def _base_metadata(
         "referenced_tables": sorted(str(table) for table in referenced_tables),
         "scope_type": _metadata_scope_type(access_context),
         "clarification_required": generation_result.clarification_required,
+        **_safe_request_metadata(request.metadata),
     }
+
+
+def _safe_request_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    safe: dict[str, Any] = {}
+    clarified_from = metadata.get("clarified_from_query_run_id")
+    if isinstance(clarified_from, str):
+        try:
+            safe["clarified_from_query_run_id"] = str(uuid.UUID(clarified_from))
+        except ValueError:
+            pass
+    return safe
+
+
+def _deterministic_sql_correction(
+    generated_sql: str,
+    validation_result: SQLValidationResult,
+    schema_context: dict[str, Any],
+) -> str | None:
+    if validation_result.error_code != "select_star_not_allowed":
+        return None
+
+    normalized_sql = _normalize_sql_for_correction(generated_sql)
+    if normalized_sql is None:
+        return None
+
+    match = re.match(
+        r"^select\s+\*\s+from\s+(?P<table>[A-Za-z_][A-Za-z0-9_]*)\b(?P<rest>.*)$",
+        normalized_sql,
+        flags=re.IGNORECASE,
+    )
+    if match is None:
+        return None
+
+    table_name = match.group("table")
+    rest = match.group("rest")
+    if re.search(r"\bjoin\b|,", rest, flags=re.IGNORECASE):
+        return None
+
+    columns = _allowed_columns_for_correction(table_name, schema_context)
+    if not columns:
+        return None
+
+    return f"SELECT {', '.join(columns)} FROM {table_name}{rest}"
+
+
+def _normalize_sql_for_correction(sql: str) -> str | None:
+    if any(marker in sql for marker in ("--", "/*", "*/", "#")):
+        return None
+
+    stripped = sql.strip()
+    if ";" in stripped.rstrip(";"):
+        return None
+    stripped = stripped.rstrip(";").strip()
+    normalized = " ".join(stripped.split())
+    return normalized or None
+
+
+def _allowed_columns_for_correction(
+    table_name: str,
+    schema_context: dict[str, Any],
+) -> list[str]:
+    if table_name not in set(str(name) for name in schema_context.get("allowed_tables", [])):
+        return []
+
+    columns = schema_context.get("allowed_columns", {}).get(table_name, [])
+    return [
+        str(column)
+        for column in columns
+        if isinstance(column, str) and re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", column)
+    ]
+
+
+def _self_correction_summary(
+    *,
+    original_validation_result: SQLValidationResult,
+    corrected_validation_result: SQLValidationResult,
+) -> dict[str, Any]:
+    summary: dict[str, Any] = {
+        "attempted": True,
+        "succeeded": corrected_validation_result.valid
+        and corrected_validation_result.sanitized_sql is not None,
+        "original_error_code": original_validation_result.error_code,
+    }
+    if not summary["succeeded"]:
+        summary["final_error_code"] = corrected_validation_result.error_code
+    return summary
 
 
 def _metadata_scope_type(access_context: UserAccessContext) -> str:

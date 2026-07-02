@@ -327,7 +327,7 @@ Default local URLs:
 * Backend health endpoint: `http://localhost:8000/health`
 * PostgreSQL: `localhost:5432`
 
-PostgreSQL is included for the local development environment. The current backend includes the database foundation, deterministic IT Operations seed data, local demo auth session endpoints, the Access Context Foundation, scope-aware PostgreSQL RLS policies for IT Operations domain tables, and the Milestone 4 backend Query Engine foundation. Dashboards, actions, approvals, CSV export, frontend Ask Data UI, and dashboard card behavior remain planned for later milestones.
+PostgreSQL is included for the local development environment. The current backend includes the database foundation, deterministic IT Operations seed data, local demo auth session endpoints, the Access Context Foundation, scope-aware PostgreSQL RLS policies for IT Operations domain tables, the Milestone 4 backend Query Engine foundation, and the Milestone 5 PR1 backend compliance cleanup. Dashboards, actions, approvals, CSV export, frontend Ask Data UI, dashboard card behavior, real LLM providers, Supabase Auth, and full domain pack expansion remain planned for later milestones.
 
 Stop the stack:
 
@@ -396,7 +396,7 @@ For V1 IT Operations RLS, `app.current_scope_keys` contains comma-separated depa
 
 ### Query Engine Backend
 
-Milestone 4 implemented the backend Query Engine foundation. It includes:
+Milestone 4 implemented the backend Query Engine foundation, and Milestone 5 PR1 closed the remaining backend compliance gaps needed before Ask Data UI work can begin. The backend includes:
 
 * Domain Pack Loader in `backend/app/query_engine/domain_pack_loader.py`
 * IT Operations domain pack files under `backend/app/domains/it_operations/domain_pack/`
@@ -409,9 +409,14 @@ Milestone 4 implemented the backend Query Engine foundation. It includes:
 * scoped SQL Executor that uses PostgreSQL RLS
 * internal Query Engine orchestration service
 * Query Run API and `QueryRun` persistence
+* query clarification endpoint
+* own-history and scope-aware query history endpoints
+* `department-history` V1 compatibility alias
+* deterministic self-correction for safe validation failures
+* hardened safe query metadata for future Ask Data UI technical states
 * PostgreSQL/RLS-backed query tests and security regression tests
 
-The Domain Pack Loader loads the local IT Operations schema, business terms, and approved query templates. It is the source for safe schema context and deterministic template-backed SQL generation. `MockLLMProvider` maps known domain-pack questions to structured SQL generation results and returns safe clarification for unsupported questions. No real LLM provider, network call, API key, OpenAI, Groq, or Anthropic integration is required in Milestone 4.
+The Domain Pack Loader loads the local IT Operations schema, business terms, and approved query templates. It is the source for safe schema context and deterministic template-backed SQL generation. `MockLLMProvider` maps known domain-pack questions to structured SQL generation results and returns safe clarification for unsupported questions. No real LLM provider, network call, API key, OpenAI, Groq, or Anthropic integration is required.
 
 Query Templates API:
 
@@ -424,7 +429,10 @@ Query Run API:
 
 ```txt
 POST /api/v1/queries/run
+POST /api/v1/queries/{query_run_id}/clarify
 GET /api/v1/queries/history
+GET /api/v1/queries/scope-history
+GET /api/v1/queries/department-history
 GET /api/v1/queries/{query_run_id}
 ```
 
@@ -441,14 +449,16 @@ RLS runtime model:
 * The runtime role has SELECT-only grants for allowed queryable tables and cannot access non-queryable `it_audit_events`.
 * Query execution uses validator `sanitized_sql`, transaction-local RLS context, PostgreSQL RLS, read-only transaction mode, statement timeout, and row caps.
 
-Current Milestone 4 limitations:
+Current Query Engine limitations:
 
 * User-supplied template parameters are not supported through the public API.
 * Raw SQL input is not supported.
 * Real LLM providers are not implemented.
 * Frontend Ask Data UI is not implemented.
-* Query history and detail endpoints return only the authenticated user's own runs.
-* Dashboards, dashboard cards, CSV export, actions, approvals, and notifications are not implemented in Milestone 4.
+* Query detail endpoints return only the authenticated user's own runs.
+* Scope-aware query history requires assigned access scopes and the appropriate history permission.
+* Full domain pack expansion to 36 templates / 40 evaluation cases is not implemented.
+* Dashboards, dashboard cards, CSV export, actions, approvals, and notifications are not implemented.
 
 Run Query Engine unit/API tests:
 
@@ -639,7 +649,7 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-Milestone 0 foundation work, Milestone 1 database/seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, and Milestone 4 Query Engine Backend are complete.
+Milestone 0 foundation work, Milestone 1 database/seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 PR1 M4 Query Backend Compliance are complete.
 
 Implemented foundation functionality includes:
 
@@ -658,15 +668,16 @@ Implemented foundation functionality includes:
 * scope-aware PostgreSQL RLS policies for department-scoped IT Operations domain tables
 * RLS context helper and initial security/RLS test suite
 * backend Query Engine foundation with domain packs, templates, mock generation, schema context, SQL validation, scoped read-only execution, Query Run API, `QueryRun` persistence, and security regression tests
+* Milestone 5 PR1 backend compliance cleanup with query clarification, scope-aware query history, department-history alias, deterministic self-correction, and hardened safe query metadata
 
 Current milestone status:
 
 ```txt
 Milestone 4 — Query Engine Backend is complete.
-Milestone 5 is planned but not active.
+Milestone 5 PR1 — M4 Query Backend Compliance is complete and pending review/merge.
 ```
 
-Milestone 4 delivered backend-only Query Engine foundation work. It does not include dashboards UI, dashboard cards behavior, CSV export, actions behavior, approvals behavior, notifications behavior, real external LLM calls, Supabase Auth, frontend Ask Data UI, Full ABAC, ReBAC, policy builder UI, dynamic policy engine, masking, or tenant/project/region governance. Milestone 5 or later will handle dashboards, UI, actions, and approvals unless explicitly requested.
+Milestone 5 PR1 delivered backend/API compliance work only. It does not include frontend Ask Data UI, dashboards UI, dashboard cards behavior, CSV export, actions behavior, approvals behavior, notifications behavior, real external LLM calls, Supabase Auth, full domain pack expansion, Full ABAC, ReBAC, policy builder UI, dynamic policy engine, masking, or tenant/project/region governance. Milestone 5 Ask Data UI work can start after this backend compliance PR is reviewed and merged.
 
 ## License
 

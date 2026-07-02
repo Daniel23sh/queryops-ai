@@ -16,7 +16,7 @@ from app.auth.access_context import UserAccessContext, build_user_access_context
 from app.auth.permissions import require_authenticated_user
 from app.auth.session import csrf_is_valid, session_from_request
 from app.db.session import get_db
-from app.models.product import AppUser, QueryRun
+from app.models.product import AppUser, QueryRun, UserAccessScope
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.service import QueryEngineRequest, QueryEngineService
 
@@ -24,6 +24,10 @@ from app.query_engine.service import QueryEngineRequest, QueryEngineService
 router = APIRouter(prefix="/api/v1")
 
 ALLOWED_QUERY_RUN_FIELDS = frozenset({"question", "template_id", "parameters"})
+ALLOWED_QUERY_CLARIFY_FIELDS = frozenset({"question"})
+SCOPE_HISTORY_PERMISSIONS = frozenset(
+    {"can_view_query_history_scope", "can_view_query_history_department"}
+)
 MAX_HISTORY_LIMIT = 100
 DEFAULT_HISTORY_LIMIT = 25
 
@@ -82,6 +86,51 @@ def run_query(
     )
 
 
+@router.post("/queries/{query_run_id}/clarify")
+def clarify_query(
+    query_run_id: UUID,
+    request: Request,
+    payload: Any = Body(default=None),
+    current_user: AppUser = Depends(require_authenticated_user),
+    db: Session = Depends(get_db),
+    service: QueryEngineService = Depends(get_query_engine_service),
+):
+    csrf_error = _csrf_error_response(request)
+    if csrf_error is not None:
+        return csrf_error
+
+    request_payload_or_error = _parse_query_clarify_payload(payload)
+    if not isinstance(request_payload_or_error, dict):
+        return request_payload_or_error
+
+    original_query_run = db.get(QueryRun, query_run_id)
+    if original_query_run is None or original_query_run.user_id != current_user.id:
+        return _query_run_not_found_response()
+
+    access_context = build_user_access_context(current_user, db)
+    if not access_context.has_permission("can_run_free_query"):
+        return _forbidden_response()
+
+    result = service.run(
+        db,
+        current_user,
+        QueryEngineRequest(
+            question=request_payload_or_error["question"],
+            metadata={"clarified_from_query_run_id": str(original_query_run.id)},
+        ),
+    )
+    query_run = _query_run_for_result(db, result.query_run_id)
+    return success_response(
+        _safe_json(
+            _serialize_query_result(
+                result,
+                query_run,
+                can_view_sql=access_context.has_permission("can_view_sql"),
+            )
+        )
+    )
+
+
 @router.get("/queries/history")
 def query_history(
     current_user: AppUser = Depends(require_authenticated_user),
@@ -113,6 +162,26 @@ def query_history(
     )
 
 
+@router.get("/queries/scope-history")
+def query_scope_history(
+    current_user: AppUser = Depends(require_authenticated_user),
+    db: Session = Depends(get_db),
+    limit: int = DEFAULT_HISTORY_LIMIT,
+    offset: int = 0,
+):
+    return _scope_history_response(current_user, db, limit=limit, offset=offset)
+
+
+@router.get("/queries/department-history")
+def query_department_history(
+    current_user: AppUser = Depends(require_authenticated_user),
+    db: Session = Depends(get_db),
+    limit: int = DEFAULT_HISTORY_LIMIT,
+    offset: int = 0,
+):
+    return _scope_history_response(current_user, db, limit=limit, offset=offset)
+
+
 @router.get("/queries/{query_run_id}")
 def get_query_run(
     query_run_id: UUID,
@@ -132,6 +201,67 @@ def get_query_run(
             )
         )
     )
+
+
+def _scope_history_response(
+    current_user: AppUser,
+    db: Session,
+    *,
+    limit: int,
+    offset: int,
+):
+    access_context = build_user_access_context(current_user, db)
+    if not _can_view_scope_history(access_context):
+        return _forbidden_response()
+
+    safe_limit = max(1, min(int(limit), MAX_HISTORY_LIMIT))
+    safe_offset = max(0, int(offset))
+    query_runs = _scope_history_query_runs(
+        db,
+        access_context,
+        limit=safe_limit,
+        offset=safe_offset,
+    )
+
+    return success_response(
+        _safe_json(
+            [
+                _serialize_query_run(
+                    query_run,
+                    can_view_sql=access_context.has_permission("can_view_sql"),
+                )
+                for query_run in query_runs
+            ]
+        )
+    )
+
+
+def _can_view_scope_history(access_context: UserAccessContext) -> bool:
+    return access_context.has_global_scope or any(
+        access_context.has_permission(permission)
+        for permission in SCOPE_HISTORY_PERMISSIONS
+    )
+
+
+def _scope_history_query_runs(
+    db: Session,
+    access_context: UserAccessContext,
+    *,
+    limit: int,
+    offset: int,
+) -> list[QueryRun]:
+    query = select(QueryRun).order_by(QueryRun.created_at.desc(), QueryRun.id.desc())
+
+    if not access_context.has_global_scope:
+        scope_ids = [scope.id for scope in access_context.scopes]
+        if not scope_ids:
+            return []
+        visible_user_ids = select(UserAccessScope.user_id).where(
+            UserAccessScope.scope_id.in_(scope_ids)
+        )
+        query = query.where(QueryRun.user_id.in_(visible_user_ids))
+
+    return list(db.scalars(query.limit(limit).offset(offset)).all())
 
 
 def _csrf_error_response(request: Request):
@@ -174,6 +304,21 @@ def _parse_query_run_payload(payload: Any):
         parsed["parameters"] = parameters
 
     return parsed
+
+
+def _parse_query_clarify_payload(payload: Any):
+    if not isinstance(payload, dict):
+        return _invalid_query_request_response()
+
+    unknown_fields = sorted(set(payload) - ALLOWED_QUERY_CLARIFY_FIELDS)
+    if unknown_fields:
+        return _invalid_query_request_response()
+
+    question = payload.get("question")
+    if not isinstance(question, str) or not question.strip():
+        return _invalid_query_request_response()
+
+    return {"question": question.strip()}
 
 
 def _template_request_error(
@@ -251,35 +396,108 @@ def _serialize_query_run(
 
 def _safe_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
     safe: dict[str, Any] = {}
+    if not isinstance(metadata, dict):
+        return safe
+
     for key in (
         "provider",
         "model",
         "template_id",
-        "referenced_tables",
         "scope_type",
-        "clarification_required",
+        "clarified_from_query_run_id",
     ):
-        if key in metadata:
-            safe[key] = metadata[key]
+        _copy_optional_string_metadata(safe, metadata, key)
+
+    if "referenced_tables" in metadata:
+        referenced_tables = _safe_string_list(metadata["referenced_tables"])
+        if referenced_tables is not None:
+            safe["referenced_tables"] = referenced_tables
+
+    if isinstance(metadata.get("clarification_required"), bool):
+        safe["clarification_required"] = metadata["clarification_required"]
 
     validation = metadata.get("validation")
     if isinstance(validation, dict):
         safe["validation"] = {
-            "valid": validation.get("valid"),
-            "error_code": validation.get("error_code"),
+            "valid": _safe_optional_bool(validation.get("valid")),
+            "error_code": _safe_optional_string(validation.get("error_code")),
         }
 
     execution = metadata.get("execution")
     if isinstance(execution, dict):
         safe["execution"] = {
-            "status": execution.get("status"),
-            "error_code": execution.get("error_code"),
-            "row_count": execution.get("row_count"),
-            "duration_ms": execution.get("duration_ms"),
-            "truncated": execution.get("truncated"),
+            "status": _safe_optional_string(execution.get("status")),
+            "error_code": _safe_optional_string(execution.get("error_code")),
+            "row_count": _safe_optional_int(execution.get("row_count")),
+            "duration_ms": _safe_optional_number(execution.get("duration_ms")),
+            "truncated": _safe_optional_bool(execution.get("truncated")),
         }
 
+    self_correction = metadata.get("self_correction")
+    if isinstance(self_correction, dict):
+        safe["self_correction"] = {
+            "attempted": _safe_optional_bool(self_correction.get("attempted")),
+            "succeeded": _safe_optional_bool(self_correction.get("succeeded")),
+            "original_error_code": _safe_optional_string(
+                self_correction.get("original_error_code")
+            ),
+        }
+        if "final_error_code" in self_correction:
+            safe["self_correction"]["final_error_code"] = _safe_optional_string(
+                self_correction.get("final_error_code")
+            )
+
     return safe
+
+
+def _copy_optional_string_metadata(
+    safe: dict[str, Any],
+    metadata: dict[str, Any],
+    key: str,
+) -> None:
+    if key not in metadata:
+        return
+    value = metadata[key]
+    if value is None or isinstance(value, str):
+        safe[key] = value
+
+
+def _safe_optional_string(value: Any) -> str | None:
+    if value is None or isinstance(value, str):
+        return value
+    return None
+
+
+def _safe_optional_bool(value: Any) -> bool | None:
+    if value is None or isinstance(value, bool):
+        return value
+    return None
+
+
+def _safe_optional_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    return None
+
+
+def _safe_optional_number(value: Any) -> int | float | None:
+    if value is None:
+        return None
+    if isinstance(value, int | float) and not isinstance(value, bool):
+        return value
+    return None
+
+
+def _safe_string_list(value: Any) -> list[str] | None:
+    if not isinstance(value, list | tuple | set):
+        return None
+
+    items = [item for item in value if isinstance(item, str)]
+    if isinstance(value, set):
+        return sorted(items)
+    return items
 
 
 def _safe_json(data: Any) -> Any:
