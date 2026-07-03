@@ -290,7 +290,7 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: "Ask Data" })
     ).toBeInTheDocument();
-    expect(screen.getByText("Query integration")).toBeInTheDocument();
+    expect(screen.getByText("Governed analytics")).toBeInTheDocument();
     expect((await screen.findAllByText("Unused paid licenses")).length).toBeGreaterThan(0);
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
@@ -499,6 +499,7 @@ describe("App", () => {
     const insightRegion = screen.getByRole("region", {
       name: "Ask Data insights"
     });
+    openInsightsPanel(insightRegion);
     expect(
       within(insightRegion).getByRole("button", { name: "Save as Card" })
     ).toBeDisabled();
@@ -1869,8 +1870,8 @@ describe("App", () => {
     });
     fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
 
-    expect(await screen.findByText("Admin global shell")).toBeInTheDocument();
-    expect(screen.getByText(/Global scope indicator only/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Admin global scope indicator/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/backend authorization/i).length).toBeGreaterThan(0);
     const workspaceRegion = screen.getByRole("region", {
       name: "Ask Data workspace"
     });
@@ -1898,7 +1899,7 @@ describe("App", () => {
       name: "Ask Data templates"
     });
     expect(
-      within(templateRegion).getByRole("heading", { name: "Templates" })
+      within(templateRegion).getByRole("heading", { name: "Approved questions" })
     ).toBeInTheDocument();
     expect(
       within(templateRegion).getByRole("button", { name: /Unused paid licenses/i })
@@ -1911,22 +1912,23 @@ describe("App", () => {
       name: "Ask Data workspace"
     });
     expect(
-      within(workspaceRegion).getByRole("heading", { name: "Question composer" })
+      within(workspaceRegion).getByRole("heading", { name: "Query workspace" })
     ).toBeInTheDocument();
-    expect(within(workspaceRegion).getByText("Result placeholder")).toBeInTheDocument();
+    expect(within(workspaceRegion).getByText("Results and context")).toBeInTheDocument();
     expect(
-      within(workspaceRegion).getAllByText(/History endpoints remain idle here/i)
+      within(workspaceRegion).getAllByText(/Run a selected template or ask a free-form question/i)
         .length
     ).toBeGreaterThan(0);
 
     const insightRegion = screen.getByRole("region", {
       name: "Ask Data insights"
     });
+    expect(within(insightRegion).getByText("Insights & next steps")).toBeInTheDocument();
+    openInsightsPanel(insightRegion);
     expect(
-      within(insightRegion).getByRole("heading", { name: "Explanation" })
+      within(insightRegion).getByRole("heading", { name: "Insights" })
     ).toBeInTheDocument();
     expect(within(insightRegion).getByText("Suggested Action")).toBeInTheDocument();
-    expect(within(insightRegion).getByText("Future status")).toBeInTheDocument();
     expect(
       within(insightRegion).getByRole("button", { name: "Save as Card" })
     ).toBeDisabled();
@@ -2653,6 +2655,7 @@ function expectFutureControlsDisabled() {
   const insightRegion = screen.getByRole("region", {
     name: "Ask Data insights"
   });
+  openInsightsPanel(insightRegion);
   expect(
     within(insightRegion).getByRole("button", { name: "Save as Card" })
   ).toBeDisabled();
@@ -2662,6 +2665,14 @@ function expectFutureControlsDisabled() {
   expect(
     within(insightRegion).getByRole("button", { name: "Preview Action" })
   ).toBeDisabled();
+}
+
+function openInsightsPanel(insightRegion: HTMLElement) {
+  if (within(insightRegion).queryByRole("button", { name: "Save as Card" })) {
+    return;
+  }
+
+  fireEvent.click(within(insightRegion).getByText("Insights & next steps"));
 }
 
 function expectSensitiveTechnicalFieldsHidden(role: string) {

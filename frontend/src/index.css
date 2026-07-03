@@ -4,7 +4,7 @@
 
 @layer base {
   :root {
-    --qops-color-background: #eef3f7;
+    --qops-color-background: #eaf0f6;
     --qops-color-surface: #ffffff;
     --qops-color-muted-surface: #f6f9fc;
     --qops-color-border: #d7e0eb;
@@ -110,7 +110,8 @@ button:focus-visible {
 
 .app-header {
   border-bottom: 1px solid #d7e0eb;
-  background: #ffffff;
+  background: rgb(255 255 255 / 0.88);
+  backdrop-filter: blur(14px);
 }
 
 .app-header__inner,
@@ -149,8 +150,8 @@ button:focus-visible {
 }
 
 .app-main--workspace {
-  width: min(1280px, calc(100% - 40px));
-  padding: 32px 0 48px;
+  width: min(1440px, calc(100% - 40px));
+  padding: 28px 0 56px;
 }
 
 .app-main--centered {
@@ -292,8 +293,8 @@ h1 {
 
 .workspace-layout {
   display: grid;
-  grid-template-columns: 248px minmax(0, 1fr);
-  gap: 24px;
+  grid-template-columns: 232px minmax(0, 1fr);
+  gap: 22px;
   align-items: start;
 }
 
@@ -302,8 +303,9 @@ h1 {
   top: 24px;
   border: 1px solid #d7e0eb;
   border-radius: 8px;
-  background: #ffffff;
-  padding: 10px;
+  background: rgb(255 255 255 / 0.84);
+  box-shadow: 0 16px 36px rgb(15 23 42 / 0.08);
+  padding: 8px;
 }
 
 .workspace-nav {
@@ -320,26 +322,28 @@ h1 {
   color: #40516a;
   padding: 0 12px;
   text-align: left;
-  font-size: 0.9375rem;
+  font-size: 0.875rem;
   font-weight: 700;
   transition:
     background-color 160ms ease,
-    color 160ms ease;
+    color 160ms ease,
+    box-shadow 160ms ease;
 }
 
 .workspace-nav__item:hover {
-  background: #eef3f7;
+  background: #f5f8fb;
   color: #0f172a;
 }
 
 .workspace-nav__item[data-active="true"] {
   background: #172033;
   color: #ffffff;
+  box-shadow: 0 10px 22px rgb(15 23 42 / 0.16);
 }
 
 .workspace-content {
   display: grid;
-  gap: 18px;
+  gap: 16px;
   min-width: 0;
 }
 

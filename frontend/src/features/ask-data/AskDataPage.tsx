@@ -68,15 +68,15 @@ const FUTURE_OPERATION_PLACEHOLDERS = [
 
 const EYEBROW_CLASS = "m-0 text-xs font-bold uppercase tracking-normal text-brand-accent";
 const PANEL_CLASS =
-  "grid gap-4 rounded-panel border border-app-border bg-app-surface p-5 shadow-sm ring-1 ring-white/70";
-const PANEL_HEADER_CLASS = "grid gap-1.5";
+  "grid gap-4 rounded-card border border-app-border bg-app-surface p-5 shadow-sm ring-1 ring-white/70";
+const PANEL_HEADER_CLASS = "grid gap-1";
 const PANEL_TITLE_CLASS = "m-0 text-lg font-bold tracking-normal text-slate-950";
 const SMALL_PANEL_TITLE_CLASS = "m-0 text-base font-bold tracking-normal text-slate-950";
 const BODY_TEXT_CLASS = "m-0 text-sm leading-6 text-app-subtle";
 const MUTED_CARD_CLASS =
   "grid gap-2 rounded-card border border-app-border bg-app-muted p-4 text-sm leading-6 text-app-subtle";
 const INFO_CARD_CLASS =
-  "grid gap-2 rounded-card border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-app-subtle";
+  "grid gap-2 rounded-card border border-blue-200 bg-blue-50/80 p-4 text-sm leading-6 text-app-subtle";
 const WARNING_CARD_CLASS =
   "rounded-card border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900";
 const ERROR_CARD_CLASS =
@@ -84,13 +84,13 @@ const ERROR_CARD_CLASS =
 const SESSION_MESSAGE_CLASS = "m-0 text-sm leading-5 text-amber-700";
 const INPUT_LABEL_CLASS = "grid gap-2 text-sm font-bold text-slate-700";
 const TEXTAREA_CLASS =
-  "min-h-32 w-full resize-y rounded-control border border-slate-300 bg-app-muted px-3.5 py-3 text-sm leading-6 text-app-text outline-none transition placeholder:text-app-faint hover:border-slate-400 focus:border-brand-primary focus:shadow-focus disabled:cursor-not-allowed disabled:opacity-60";
+  "min-h-28 w-full resize-y rounded-control border border-slate-300 bg-app-surface px-3.5 py-3 text-sm leading-6 text-app-text outline-none transition placeholder:text-app-faint hover:border-slate-400 focus:border-brand-primary focus:shadow-focus disabled:cursor-not-allowed disabled:opacity-60";
 const PRIMARY_BUTTON_CLASS =
   "qops-button-primary qops-focus-ring transition hover:shadow-card active:translate-y-px";
 const SECONDARY_BUTTON_CLASS =
   "qops-button-secondary qops-focus-ring transition hover:shadow-sm active:translate-y-px disabled:hover:border-app-border disabled:hover:text-app-text disabled:hover:shadow-none disabled:active:translate-y-0";
 const STATUS_TILE_CLASS =
-  "rounded-card border border-app-border bg-app-surface p-3.5 shadow-sm";
+  "inline-flex min-h-9 items-center gap-1.5 rounded-control border border-app-border bg-white/80 px-3 text-xs font-bold text-app-text shadow-sm";
 
 export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
   const canRunFreeQuery = user.permissions.includes("can_run_free_query");
@@ -114,10 +114,10 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
     templates.find((template) => template.id === selectedTemplateId) ?? null;
   const scopeLabel =
     isAdmin ? "Global admin scope" : user.department?.name ?? "No scope";
-  const modeLabel = canRunFreeQuery ? "Free-query shell" : "Template-only mode";
+  const modeLabel = canRunFreeQuery ? "Free query enabled" : "Template-only mode";
   const modeDescription = canRunFreeQuery
-    ? "Free-query composer is available for this role and still uses backend authorization."
-    : "Selected templates can be used here; free-query access is not enabled for this role.";
+    ? "Ask governed questions with backend authorization applied to every run."
+    : "Use approved templates only; free-query access is not enabled for this role.";
 
   useEffect(() => {
     let isCurrent = true;
@@ -283,28 +283,35 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
 
   return (
     <article
-      className="grid min-h-[420px] gap-6"
+      className="grid min-h-[420px] gap-5"
       aria-labelledby="workspace-title"
     >
-      <div className="max-w-3xl overflow-hidden rounded-panel border border-app-border bg-app-surface p-6 shadow-card ring-1 ring-white/70 sm:p-7">
-        <p className={EYEBROW_CLASS}>Query integration</p>
-        <h1
-          id="workspace-title"
-          className="mt-3 text-[clamp(2rem,5vw,3.25rem)] font-bold leading-tight tracking-normal text-slate-950"
-        >
-          Ask Data
-        </h1>
-        <p className="mt-4 max-w-2xl text-base leading-7 text-app-subtle">
-          Prepare governed data questions in a dedicated workspace. Templates,
-          questions, result tables, and clarification states use the Query API.
-        </p>
-        <div
-          className="mt-5 h-1.5 w-28 rounded-full bg-brand-primary"
-          aria-hidden="true"
-        />
-      </div>
+      <header className="overflow-hidden rounded-card border border-app-border bg-app-surface/95 p-5 shadow-card ring-1 ring-white/80 sm:p-6">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-3xl">
+            <p className={EYEBROW_CLASS}>Governed analytics</p>
+            <h1
+              id="workspace-title"
+              className="mt-2 text-[clamp(2rem,4vw,3rem)] font-bold leading-tight tracking-normal text-slate-950"
+            >
+              Ask Data
+            </h1>
+            <p className="mt-3 max-w-2xl text-base leading-7 text-app-subtle">
+              Ask approved operational questions, inspect results, and keep
+              technical detail safely scoped to the right roles.
+            </p>
+          </div>
+          <ContextChips
+            modeDescription={modeDescription}
+            modeLabel={modeLabel}
+            roleLabel={formatRole(user.role)}
+            scopeLabel={scopeLabel}
+            showAdminGlobalIndicator={isAdmin}
+          />
+        </div>
+      </header>
 
-      <div className="grid items-start gap-4 lg:grid-cols-[minmax(220px,0.78fr)_minmax(0,1.35fr)] xl:grid-cols-[minmax(220px,0.82fr)_minmax(360px,1.35fr)_minmax(220px,0.9fr)] 2xl:gap-5">
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(250px,0.42fr)_minmax(0,1fr)] 2xl:grid-cols-[minmax(280px,0.38fr)_minmax(0,1fr)]">
         <TemplatePanel
           categories={templateCategories}
           error={templateLoadError}
@@ -324,14 +331,8 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
           className="grid min-w-0 gap-4"
           aria-label="Ask Data workspace"
         >
-          <RoleScopeNotice
-            modeLabel={modeLabel}
-            modeDescription={modeDescription}
-            roleLabel={formatRole(user.role)}
-            scopeLabel={scopeLabel}
-            showAdminGlobalIndicator={isAdmin}
-          />
-          <QuestionComposer
+          <section className={`${PANEL_CLASS} gap-5`} aria-labelledby="question-composer-title">
+            <QuestionComposer
             canRunFreeQuery={canRunFreeQuery}
             freeQuestion={freeQuestion}
             onFreeQuestionChange={setFreeQuestion}
@@ -342,8 +343,8 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
                 : null
             }
             running={queryRunState.status === "running"}
-          />
-          <ResultPlaceholder
+            />
+            <ResultPlaceholder
             canClarify={canRunFreeQuery}
             canViewTechnicalDetails={canViewTechnicalDetails}
             clarificationDisabledReason={
@@ -356,9 +357,10 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
             onClarificationQuestionChange={setClarificationQuestion}
             onSubmitClarification={() => void handleSubmitClarification()}
             queryRunState={queryRunState}
-          />
+            />
+            <InsightPanel />
+          </section>
         </section>
-        <InsightPanel />
       </div>
     </article>
   );
@@ -388,14 +390,20 @@ function TemplatePanel({
   const hasTemplates = categories.length > 0;
 
   return (
-    <section className={PANEL_CLASS} aria-label="Ask Data templates">
+    <section
+      className={`${PANEL_CLASS} gap-3 xl:sticky xl:top-6`}
+      aria-label="Ask Data templates"
+    >
       <div className={PANEL_HEADER_CLASS}>
-        <p className={EYEBROW_CLASS}>Left panel</p>
-        <h2 className={PANEL_TITLE_CLASS}>Templates</h2>
+        <p className={EYEBROW_CLASS}>Template catalog</p>
+        <h2 className={PANEL_TITLE_CLASS}>Approved questions</h2>
+        <p className={BODY_TEXT_CLASS}>
+          Start from a governed template, then run it with your current scope.
+        </p>
       </div>
 
       {status === "loading" ? (
-        <p className={INFO_CARD_CLASS} role="status">
+        <p className={`${INFO_CARD_CLASS} py-3`} role="status">
           <span className="font-bold text-app-text">Loading query templates...</span>
           <span className="block text-app-subtle">
             The approved template catalog is being prepared for this role.
@@ -420,14 +428,14 @@ function TemplatePanel({
       {status === "loaded" && hasTemplates ? (
         <>
           <div
-            className="flex flex-wrap gap-2"
+            className="flex gap-2 overflow-x-auto pb-1"
             aria-label="Query template categories"
           >
             {categories.map((group) => (
               <button
                 key={group.category}
                 type="button"
-                className="qops-focus-ring inline-flex min-h-11 items-center rounded-control border border-emerald-100 bg-emerald-50 px-3 text-xs font-bold text-emerald-800 transition hover:border-emerald-200 hover:bg-emerald-100"
+                className="qops-focus-ring inline-flex min-h-9 shrink-0 items-center rounded-control border border-emerald-100 bg-emerald-50 px-3 text-xs font-bold text-emerald-800 transition hover:border-emerald-200 hover:bg-emerald-100"
                 onClick={() => onSelectTemplate(group.templates[0].id)}
               >
                 {group.category}
@@ -436,7 +444,7 @@ function TemplatePanel({
           </div>
 
           <ul
-            className="grid list-none gap-2.5 p-0"
+            className="grid max-h-[26rem] list-none gap-2 overflow-y-auto pr-1"
             aria-label="Query templates"
           >
             {categories.flatMap((group) =>
@@ -444,9 +452,9 @@ function TemplatePanel({
                 <li key={template.id}>
                   <button
                     type="button"
-                    className={`qops-focus-ring grid min-h-24 w-full gap-1.5 rounded-card border p-4 text-left transition hover:-translate-y-0.5 hover:border-brand-primary hover:bg-blue-50 hover:shadow-sm ${
+                    className={`qops-focus-ring grid w-full gap-1 rounded-card border p-3 text-left transition hover:border-brand-primary hover:bg-blue-50 hover:shadow-sm ${
                       template.id === selectedTemplateId
-                        ? "border-brand-primary bg-blue-50 shadow-card ring-1 ring-blue-100"
+                        ? "border-brand-primary bg-blue-50 shadow-sm ring-1 ring-blue-100"
                         : "border-app-border bg-app-muted"
                     }`}
                     aria-pressed={template.id === selectedTemplateId}
@@ -462,7 +470,9 @@ function TemplatePanel({
                     >
                       {template.title}
                     </strong>
-                    <p className={BODY_TEXT_CLASS}>{template.description}</p>
+                    <p className="m-0 line-clamp-2 text-xs leading-5 text-app-subtle">
+                      {template.description}
+                    </p>
                   </button>
                 </li>
               ))
@@ -495,23 +505,34 @@ function SelectedTemplateDetails({
   const canRunTemplate = template !== null && disabledReason === null && !running;
 
   return (
-    <div className={MUTED_CARD_CLASS} aria-label="Selected query template">
-      <h3 className={SMALL_PANEL_TITLE_CLASS}>Selected template</h3>
+    <div
+      className="grid gap-3 rounded-card border border-app-border bg-app-surface p-3.5 text-sm leading-6 text-app-subtle shadow-sm"
+      aria-label="Selected query template"
+    >
+      <h3 className="m-0 text-sm font-bold tracking-normal text-slate-950">
+        Selected template
+      </h3>
       {template ? (
         <>
-          <strong className="text-app-text">{template.title}</strong>
-          <p className={BODY_TEXT_CLASS}>{template.description}</p>
-          <p className={BODY_TEXT_CLASS}>{template.natural_language_question}</p>
+          <div className="grid gap-1">
+            <strong className="text-app-text">{template.title}</strong>
+            <p className="m-0 text-xs leading-5 text-app-subtle">
+              {template.description}
+            </p>
+          </div>
+          <p className="m-0 rounded-card border border-blue-100 bg-blue-50/80 px-3 py-2 text-xs leading-5 text-app-subtle">
+            {template.natural_language_question}
+          </p>
           {template.parameters.length > 0 ? (
-            <p className="m-0 border-l-4 border-brand-primary pl-3 text-sm leading-6 text-app-subtle">
+            <p className="m-0 border-l-4 border-brand-primary pl-3 text-xs leading-5 text-app-subtle">
               Custom parameters are not supported yet; backend template defaults
               will be used.
             </p>
           ) : null}
-          <div className="mt-1 flex flex-wrap gap-2.5">
+          <div className="flex flex-wrap gap-2.5">
             <button
               type="button"
-              className={PRIMARY_BUTTON_CLASS}
+              className={`${PRIMARY_BUTTON_CLASS} w-full sm:w-auto xl:w-full`}
               disabled={!canRunTemplate}
               onClick={onRunSelectedTemplate}
             >
@@ -531,7 +552,7 @@ function SelectedTemplateDetails({
   );
 }
 
-function RoleScopeNotice({
+function ContextChips({
   modeLabel,
   modeDescription,
   roleLabel,
@@ -545,43 +566,32 @@ function RoleScopeNotice({
   showAdminGlobalIndicator: boolean;
 }) {
   return (
-    <section className={PANEL_CLASS} aria-label="Ask Data shell status">
-      <div>
-        <h2 className={PANEL_TITLE_CLASS}>Role and scope</h2>
-        <p className={BODY_TEXT_CLASS}>
-          Templates and questions use the Query API in this checkpoint. History
-          endpoints remain idle here.
-        </p>
-      </div>
+    <div className="grid gap-3 lg:max-w-[28rem]" aria-label="Ask Data access summary">
       <dl
-        className="m-0 grid gap-3 md:grid-cols-3"
-        aria-label="Ask Data access summary"
+        className="m-0 flex flex-wrap gap-2"
       >
         <div className={STATUS_TILE_CLASS}>
-          <dt className="mb-1.5 text-xs font-bold uppercase text-app-faint">Mode</dt>
-          <dd className="m-0 font-bold leading-6 text-app-text">{modeLabel}</dd>
+          <dt className="text-app-faint">Mode</dt>
+          <dd className="m-0">{modeLabel}</dd>
         </div>
         <div className={STATUS_TILE_CLASS}>
-          <dt className="mb-1.5 text-xs font-bold uppercase text-app-faint">Role</dt>
-          <dd className="m-0 font-bold leading-6 text-app-text">{roleLabel}</dd>
+          <dt className="text-app-faint">Role</dt>
+          <dd className="m-0">{roleLabel}</dd>
         </div>
         <div className={STATUS_TILE_CLASS}>
-          <dt className="mb-1.5 text-xs font-bold uppercase text-app-faint">Scope</dt>
-          <dd className="m-0 font-bold leading-6 text-app-text">{scopeLabel}</dd>
+          <dt className="text-app-faint">Scope</dt>
+          <dd className="m-0">{scopeLabel}</dd>
         </div>
       </dl>
-      <p className="m-0 border-l-4 border-brand-primary pl-3.5 text-sm leading-6 text-app-subtle">
+      <p className="m-0 max-w-md text-sm leading-6 text-app-subtle">
         {modeDescription}
       </p>
       {showAdminGlobalIndicator ? (
-        <p className={MUTED_CARD_CLASS}>
-          <strong className="text-slate-950">Admin global shell</strong>
-          <span className={BODY_TEXT_CLASS}>
-            Global scope indicator only. Template runs still use backend authorization.
-          </span>
+        <p className="m-0 rounded-control border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-bold leading-5 text-emerald-800">
+          Admin global scope indicator. Query runs still use backend authorization.
         </p>
       ) : null}
-    </section>
+    </div>
   );
 }
 
@@ -605,12 +615,18 @@ function QuestionComposer({
     trimmedFreeQuestion.length > 0 && runDisabledReason === null && !running;
 
   return (
-    <section className={PANEL_CLASS} aria-labelledby="question-composer-title">
-      <div className={PANEL_HEADER_CLASS}>
-        <p className={EYEBROW_CLASS}>Center panel</p>
+    <section
+      className="grid gap-3 border-b border-app-border pb-5"
+      aria-labelledby="question-composer-title"
+    >
+      <div className="grid gap-1">
+        <p className={EYEBROW_CLASS}>Ask a question</p>
         <h2 id="question-composer-title" className={PANEL_TITLE_CLASS}>
-          Question composer
+          Query workspace
         </h2>
+        <p className={BODY_TEXT_CLASS}>
+          Run a selected template or ask a free-form question if your role allows it.
+        </p>
       </div>
       {canRunFreeQuery ? (
         <>
@@ -645,7 +661,7 @@ function QuestionComposer({
           ) : null}
         </>
       ) : (
-        <div className={MUTED_CARD_CLASS}>
+        <div className="grid gap-2 rounded-card border border-blue-100 bg-blue-50/70 p-4 text-sm leading-6 text-app-subtle">
           <h3 className={SMALL_PANEL_TITLE_CLASS}>Template-only mode</h3>
           <p className={BODY_TEXT_CLASS}>
             Selected templates can be used here. This role does not receive a
@@ -687,12 +703,16 @@ function ResultPlaceholder({
   }, [activeTab, activeVisibleTab]);
 
   return (
-    <section className={PANEL_CLASS} aria-labelledby="result-placeholder-title">
+    <section className="grid gap-4" aria-labelledby="result-placeholder-title">
       <div className={PANEL_HEADER_CLASS}>
-        <p className={EYEBROW_CLASS}>Query result</p>
+        <p className={EYEBROW_CLASS}>Result workspace</p>
         <h2 id="result-placeholder-title" className={PANEL_TITLE_CLASS}>
-          Result placeholder
+          Results and context
         </h2>
+        <p className={BODY_TEXT_CLASS}>
+          Results stay in focus. Summary, SQL, and diagnostics are available only
+          where the active role allows them.
+        </p>
       </div>
 
       <ResultTabs
@@ -752,7 +772,7 @@ function ResultTabs({
 
   return (
     <div
-      className="grid grid-cols-2 gap-2 border-b border-app-border pb-3 sm:flex sm:flex-wrap"
+      className="grid grid-cols-2 gap-2 rounded-card bg-slate-100 p-1 sm:flex sm:flex-wrap"
       role="tablist"
       aria-label="Ask Data result views"
     >
@@ -768,8 +788,8 @@ function ResultTabs({
             aria-controls={`ask-data-tab-panel-${tab.id}`}
             className={`qops-focus-ring inline-flex min-h-11 items-center justify-center rounded-control border px-3.5 text-sm font-bold transition sm:w-auto ${
               activeTab === tab.id
-                ? "border-brand-primary bg-blue-50 text-app-text shadow-card ring-1 ring-blue-100"
-                : "border-slate-300 bg-app-surface text-app-subtle hover:border-brand-primary hover:bg-blue-50 hover:text-brand-primary"
+                ? "border-white bg-app-surface text-app-text shadow-sm"
+                : "border-transparent bg-transparent text-app-subtle hover:bg-white/80 hover:text-brand-primary"
             }`}
             onClick={() => onSelectTab(tab.id)}
           >
@@ -799,26 +819,21 @@ function ResultsTabContent({
     <>
       {queryRunState.status === "idle" ? (
         <div
-          className="grid overflow-hidden rounded-card border border-app-border bg-app-surface shadow-sm sm:grid-cols-2"
+          className="grid min-h-56 place-items-center rounded-card border border-dashed border-slate-300 bg-gradient-to-br from-white to-blue-50/50 p-6 text-center"
           aria-label="Result table placeholder"
         >
-          <div className="min-h-11 border-b border-app-border bg-blue-50 p-3 font-bold text-app-text sm:border-r">
-            Column A
-          </div>
-          <div className="min-h-11 border-b border-app-border bg-blue-50 p-3 font-bold text-app-text">
-            Column B
-          </div>
-          <div className="min-h-11 border-b border-app-border p-3 text-sm leading-6 text-app-subtle sm:border-b-0 sm:border-r">
-            Value pending
-          </div>
-          <div className="min-h-11 p-3 text-sm leading-6 text-app-subtle">
-            Run a selected template or free question to preview the query result summary.
+          <div className="max-w-md">
+            <h3 className="m-0 text-base font-bold text-app-text">Ready for a query</h3>
+            <p className="mt-2 text-sm leading-6 text-app-subtle">
+              Choose an approved template or ask a governed question. Results,
+              warnings, and clarification prompts will appear here.
+            </p>
           </div>
         </div>
       ) : null}
 
       {queryRunState.status === "running" ? (
-        <p className={`${INFO_CARD_CLASS} border-blue-200`} role="status">
+        <p className={`${INFO_CARD_CLASS} min-h-32 place-content-center border-blue-200`} role="status">
           <span className="font-bold text-app-text">
             {runningQueryMessage(queryRunState.mode)}
           </span>
@@ -1280,20 +1295,23 @@ function QueryResultSummary({
   }
 
   return (
-    <div className={MUTED_CARD_CLASS} aria-label="Query result summary">
+    <div
+      className="grid gap-4 rounded-card border border-app-border bg-app-surface p-4 text-sm leading-6 text-app-subtle shadow-sm"
+      aria-label="Query result summary"
+    >
       <h3 className={SMALL_PANEL_TITLE_CLASS}>Query result</h3>
       <p className={BODY_TEXT_CLASS}>{result.message}</p>
       <p className={BODY_TEXT_CLASS}>Question: {question}</p>
       <dl className="m-0 grid gap-2.5 md:grid-cols-3">
-        <div className="grid gap-1 rounded-card border border-app-border bg-app-surface p-3">
+        <div className="grid gap-1 rounded-card border border-app-border bg-app-muted p-3">
           <dt className="text-xs font-bold uppercase text-app-faint">Status</dt>
           <dd className="m-0 font-bold text-app-text">Status: {result.status}</dd>
         </div>
-        <div className="grid gap-1 rounded-card border border-app-border bg-app-surface p-3">
+        <div className="grid gap-1 rounded-card border border-app-border bg-app-muted p-3">
           <dt className="text-xs font-bold uppercase text-app-faint">Rows</dt>
           <dd className="m-0 font-bold text-app-text">{result.row_count}</dd>
         </div>
-        <div className="grid gap-1 rounded-card border border-app-border bg-app-surface p-3">
+        <div className="grid gap-1 rounded-card border border-app-border bg-app-muted p-3">
           <dt className="text-xs font-bold uppercase text-app-faint">Duration</dt>
           <dd className="m-0 font-bold text-app-text">{result.duration_ms} ms</dd>
         </div>
@@ -1328,7 +1346,7 @@ function QueryResultSummary({
       {hasRows ? (
         <QueryResultTable columns={columns} rows={result.rows} />
       ) : (
-        <p className={WARNING_CARD_CLASS}>No rows returned.</p>
+        <p className={`${WARNING_CARD_CLASS} m-0`}>No rows returned.</p>
       )}
     </div>
   );
@@ -1353,7 +1371,10 @@ function ClarificationPanel({
     canClarify && question.trim().length > 0 && disabledReason === null;
 
   return (
-    <div className={INFO_CARD_CLASS} aria-label="Clarification required">
+    <div
+      className={`${INFO_CARD_CLASS} border-blue-200 bg-blue-50`}
+      aria-label="Clarification required"
+    >
       <h3 className={SMALL_PANEL_TITLE_CLASS}>Clarification required</h3>
       <p className={BODY_TEXT_CLASS}>{message}</p>
       {canClarify ? (
@@ -1405,7 +1426,7 @@ function VisualizationSuggestion({
 }) {
   return (
     <div
-      className="grid gap-1.5 rounded-card border border-blue-200 bg-blue-50 px-3.5 py-3 text-sm leading-6 text-app-subtle"
+      className="grid gap-1.5 rounded-card border border-blue-200 bg-blue-50/80 px-3.5 py-3 text-sm leading-6 text-app-subtle"
       aria-label="Visualization suggestion"
     >
       <h4 className="m-0 text-sm font-bold text-app-text">
@@ -1424,7 +1445,7 @@ function QueryResultTable({
   rows: QueryResultRow[];
 }) {
   return (
-    <div className="overflow-x-auto rounded-card border border-app-border bg-app-surface">
+    <div className="overflow-x-auto rounded-card border border-app-border bg-app-surface shadow-sm">
       <table
         className="w-full min-w-[520px] border-collapse text-left text-sm tabular-nums text-app-text"
         aria-label="Query results"
@@ -1435,7 +1456,7 @@ function QueryResultTable({
               <th
                 key={column}
                 scope="col"
-                className="border-b border-app-border bg-blue-50 px-3 py-2.5 font-bold text-slate-700"
+                className="sticky top-0 border-b border-app-border bg-blue-50 px-3 py-2.5 font-bold text-slate-700"
               >
                 {column}
               </th>
@@ -1479,56 +1500,70 @@ function runningQueryMessage(mode: QueryRunMode): string {
 function InsightPanel() {
   return (
     <section
-      className={`${PANEL_CLASS} lg:col-span-2 xl:col-span-1`}
+      className="rounded-card border border-app-border bg-app-muted/80 p-1"
       aria-label="Ask Data insights"
     >
-      <div className={PANEL_HEADER_CLASS}>
-        <p className={EYEBROW_CLASS}>Right panel</p>
-        <h2 className={PANEL_TITLE_CLASS}>Explanation</h2>
-      </div>
-      <p className={BODY_TEXT_CLASS}>
-        Explanation placeholder for assumptions, scope, validation, and result
-        interpretation once live queries are connected.
-      </p>
+      <details className="group">
+        <summary className="qops-focus-ring flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 rounded-control px-3 py-2 text-sm font-bold text-app-text marker:hidden">
+          <span>Insights & next steps</span>
+          <span className="text-xs font-bold uppercase text-app-faint group-open:hidden">
+            Open
+          </span>
+          <span className="hidden text-xs font-bold uppercase text-app-faint group-open:inline">
+            Close
+          </span>
+        </summary>
 
-      <div className={MUTED_CARD_CLASS}>
-        <h3 className={SMALL_PANEL_TITLE_CLASS}>Suggested Action</h3>
-        <p className={BODY_TEXT_CLASS}>
-          Future action recommendations will appear here as disabled placeholders
-          until the actions milestone begins.
-        </p>
-      </div>
-
-      <div className={MUTED_CARD_CLASS}>
-        <h3 className={SMALL_PANEL_TITLE_CLASS}>Future status</h3>
-        <p className={BODY_TEXT_CLASS}>
-          Visualization suggestions now appear with completed results; fuller
-          charts remain unavailable until a later visualization milestone.
-        </p>
-      </div>
-
-      <div
-        className="grid gap-2.5"
-        aria-label="Future operational actions"
-      >
-        {FUTURE_OPERATION_PLACEHOLDERS.map((placeholder) => (
-          <div className={`${MUTED_CARD_CLASS} gap-2.5`} key={placeholder.label}>
-            <button
-              type="button"
-              className={SECONDARY_BUTTON_CLASS}
-              disabled
-            >
-              {placeholder.label}
-            </button>
-            <div>
-              <strong className="mb-1 block text-xs font-bold text-app-text">
-                {placeholder.milestone}
-              </strong>
-              <p className={BODY_TEXT_CLASS}>{placeholder.summary}</p>
-            </div>
+        <div className="grid gap-3 px-3 pb-3 pt-1">
+          <div className="grid gap-1 rounded-card border border-app-border bg-app-surface p-3">
+            <h3 className="m-0 text-sm font-bold tracking-normal text-slate-950">
+              Insights
+            </h3>
+            <p className={BODY_TEXT_CLASS}>
+              Result interpretation, assumptions, and visualization guidance stay
+              close to the result workspace without occupying a permanent column.
+            </p>
           </div>
-        ))}
-      </div>
+
+          <div className="grid gap-1 rounded-card border border-app-border bg-app-surface p-3">
+            <h3 className="m-0 text-sm font-bold tracking-normal text-slate-950">
+              Suggested Action
+            </h3>
+            <p className={BODY_TEXT_CLASS}>
+              Operational recommendations remain disabled until the actions
+              milestone defines preview, approval, and audit behavior.
+            </p>
+          </div>
+
+          <div
+            className="grid gap-2 sm:grid-cols-3"
+            aria-label="Future operational actions"
+          >
+            {FUTURE_OPERATION_PLACEHOLDERS.map((placeholder) => (
+              <div
+                className="grid gap-2 rounded-card border border-app-border bg-app-surface p-3"
+                key={placeholder.label}
+              >
+                <button
+                  type="button"
+                  className={`${SECONDARY_BUTTON_CLASS} w-full`}
+                  disabled
+                >
+                  {placeholder.label}
+                </button>
+                <div>
+                  <strong className="mb-1 block text-xs font-bold text-app-text">
+                    {placeholder.milestone}
+                  </strong>
+                  <p className="m-0 text-xs leading-5 text-app-subtle">
+                    {placeholder.summary}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </details>
     </section>
   );
 }
