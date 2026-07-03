@@ -156,6 +156,9 @@ const askDataTemplates = [
 
 afterEach(() => {
   clearCsrfCookie();
+  localStorage.clear();
+  document.documentElement.classList.remove("dark");
+  document.documentElement.removeAttribute("data-theme");
   vi.unstubAllGlobals();
 });
 
@@ -182,7 +185,46 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: /demo user/i })).toBeInTheDocument();
   });
 
-  it("logs in as the selected demo user and renders the authenticated placeholder", async () => {
+  it("toggles the app theme and stores the preference", async () => {
+    stubSystemTheme(false);
+    stubFetchSequence(errorResponse("UNAUTHORIZED", 401));
+
+    renderApp();
+
+    await waitFor(() => {
+      expect(document.documentElement).toHaveAttribute("data-theme", "light");
+    });
+    expect(document.documentElement).not.toHaveClass("dark");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Switch to dark mode" })
+    );
+
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    expect(document.documentElement).toHaveClass("dark");
+    expect(localStorage.getItem("queryops-theme")).toBe("dark");
+    expect(
+      screen.getByRole("button", { name: "Switch to light mode" })
+    ).toBeInTheDocument();
+  });
+
+  it("hydrates the app theme from a stored preference", async () => {
+    localStorage.setItem("queryops-theme", "dark");
+    stubSystemTheme(false);
+    stubFetchSequence(errorResponse("UNAUTHORIZED", 401));
+
+    renderApp();
+
+    await waitFor(() => {
+      expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    });
+    expect(document.documentElement).toHaveClass("dark");
+    expect(
+      screen.getByRole("button", { name: "Switch to light mode" })
+    ).toBeInTheDocument();
+  });
+
+  it("logs in as the selected demo user and renders the authenticated workspace", async () => {
     const fetchMock = stubFetchSequence(
       errorResponse("UNAUTHORIZED", 401),
       successResponse({
@@ -197,7 +239,7 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: /demo manager/i }));
 
     expect(
-      await screen.findByRole("heading", { name: "Templates placeholder" })
+      await screen.findByRole("heading", { name: "Templates" })
     ).toBeInTheDocument();
     expect(screen.getByText("demo.manager@queryops.local")).toBeInTheDocument();
     expect(screen.getByText("Manager")).toBeInTheDocument();
@@ -233,7 +275,7 @@ describe("App", () => {
     renderApp();
 
     expect(
-      await screen.findByRole("heading", { name: "Templates placeholder" })
+      await screen.findByRole("heading", { name: "Templates" })
     ).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.queryByRole("heading", { name: "Choose a demo profile" })).not.toBeInTheDocument();
@@ -274,6 +316,92 @@ describe("App", () => {
     expect(within(nav).queryByRole("button", { name: "Admin Console" })).not.toBeInTheDocument();
   });
 
+  it("renders a role-aware dashboard for demo manager without extra API calls", async () => {
+    const fetchMock = stubFetchSequence(successResponse(demoManager));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "My Dashboard" }));
+
+    const dashboard = await screen.findByRole("region", {
+      name: "My Dashboard"
+    });
+    expect(
+      within(dashboard).getByRole("heading", { name: "QueryOps Command Center" })
+    ).toBeInTheDocument();
+    expect(within(dashboard).getByText("Manager")).toBeInTheDocument();
+    expect(within(dashboard).getByText("Finance")).toBeInTheDocument();
+    expect(within(dashboard).getByText("Free-query access")).toBeInTheDocument();
+    expect(within(dashboard).getByText("SQL hidden")).toBeInTheDocument();
+    expect(within(dashboard).getByText("Diagnostics hidden")).toBeInTheDocument();
+    expect(
+      within(dashboard).getByRole("button", { name: "Open Ask Data" })
+    ).toBeEnabled();
+    expect(
+      within(dashboard).getByRole("button", { name: "Review query history" })
+    ).toBeDisabled();
+    expect(
+      within(dashboard).getByRole("button", { name: "Save dashboard card" })
+    ).toBeDisabled();
+    expect(within(dashboard).queryByText("Generated SQL")).not.toBeInTheDocument();
+    expect(within(dashboard).queryByText("Executed SQL")).not.toBeInTheDocument();
+    expect(within(dashboard).queryByText(/SELECT /i)).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders template-only dashboard access for demo user", async () => {
+    const fetchMock = stubFetchSequence(successResponse(demoUser));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "My Dashboard" }));
+
+    const dashboard = await screen.findByRole("region", {
+      name: "My Dashboard"
+    });
+    expect(within(dashboard).getByText("User")).toBeInTheDocument();
+    expect(within(dashboard).getByText("Sales")).toBeInTheDocument();
+    expect(within(dashboard).getByText("Template-only access")).toBeInTheDocument();
+    expect(within(dashboard).getByText("SQL hidden")).toBeInTheDocument();
+    expect(within(dashboard).getByText("Diagnostics hidden")).toBeInTheDocument();
+    expect(
+      within(dashboard).getByText(/Approved templates are the safe starting point/i)
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders technical dashboard access for demo analyst without exposing SQL content", async () => {
+    const fetchMock = stubFetchSequence(successResponse(demoAnalyst));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "My Dashboard" }));
+
+    const dashboard = await screen.findByRole("region", {
+      name: "My Dashboard"
+    });
+    expect(within(dashboard).getByText("Analyst")).toBeInTheDocument();
+    expect(within(dashboard).getByText("IT")).toBeInTheDocument();
+    expect(within(dashboard).getByText("Free-query access")).toBeInTheDocument();
+    expect(within(dashboard).getByText("SQL visible in Ask Data")).toBeInTheDocument();
+    expect(
+      within(dashboard).getByText("Diagnostics visible in Ask Data")
+    ).toBeInTheDocument();
+    expect(within(dashboard).queryByText("Generated SQL")).not.toBeInTheDocument();
+    expect(within(dashboard).queryByText("Executed SQL")).not.toBeInTheDocument();
+    expect(within(dashboard).queryByText(/SELECT /i)).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("renders the Ask Data page shell from workspace navigation", async () => {
     const fetchMock = stubFetchSequence(
       successResponse(demoManager),
@@ -290,7 +418,7 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: "Ask Data" })
     ).toBeInTheDocument();
-    expect(screen.getByText("Query integration")).toBeInTheDocument();
+    expect(screen.getByText("Command workspace")).toBeInTheDocument();
     expect((await screen.findAllByText("Unused paid licenses")).length).toBeGreaterThan(0);
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
@@ -339,7 +467,7 @@ describe("App", () => {
     fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
 
     const templateRegion = await screen.findByRole("region", {
-      name: "Ask Data templates"
+      name: "Template catalog"
     });
     expect(within(templateRegion).getByText("Licenses")).toBeInTheDocument();
     expect(within(templateRegion).getByText("Security")).toBeInTheDocument();
@@ -364,7 +492,7 @@ describe("App", () => {
     );
 
     const selectedTemplate = within(templateRegion).getByLabelText(
-      "Selected query template"
+      "Selected template details"
     );
     expect(within(selectedTemplate).getByText("Security events")).toBeInTheDocument();
     expect(
@@ -499,6 +627,7 @@ describe("App", () => {
     const insightRegion = screen.getByRole("region", {
       name: "Ask Data insights"
     });
+    openInsightsPanel(insightRegion);
     expect(
       within(insightRegion).getByRole("button", { name: "Save as Card" })
     ).toBeDisabled();
@@ -1814,7 +1943,7 @@ describe("App", () => {
     fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
 
     const workspaceRegion = await screen.findByRole("region", {
-      name: "Ask Data workspace"
+      name: "Ask Data command workspace"
     });
     expect(within(workspaceRegion).getByLabelText("Free question")).not.toBeDisabled();
     expect(
@@ -1844,7 +1973,7 @@ describe("App", () => {
     fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
 
     const workspaceRegion = await screen.findByRole("region", {
-      name: "Ask Data workspace"
+      name: "Ask Data command workspace"
     });
     expect(within(workspaceRegion).getByRole("tab", { name: "Results" })).toBeInTheDocument();
     expect(within(workspaceRegion).getByRole("tab", { name: "Summary" })).toBeInTheDocument();
@@ -1869,10 +1998,10 @@ describe("App", () => {
     });
     fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
 
-    expect(await screen.findByText("Admin global shell")).toBeInTheDocument();
-    expect(screen.getByText(/Global scope indicator only/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Admin global scope indicator/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/backend authorization/i).length).toBeGreaterThan(0);
     const workspaceRegion = screen.getByRole("region", {
-      name: "Ask Data workspace"
+      name: "Ask Data command workspace"
     });
     expect(within(workspaceRegion).getByRole("tab", { name: "SQL" })).toBeInTheDocument();
     expect(
@@ -1881,7 +2010,7 @@ describe("App", () => {
     expectNoQueryRun(fetchMock);
   });
 
-  it("renders the static Ask Data split workspace layout", async () => {
+  it("renders the focused Ask Data command workspace layout", async () => {
     const fetchMock = stubFetchSequence(
       successResponse(demoManager),
       successResponse(askDataTemplates)
@@ -1895,38 +2024,55 @@ describe("App", () => {
     fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
 
     const templateRegion = await screen.findByRole("region", {
-      name: "Ask Data templates"
+      name: "Template catalog"
     });
     expect(
-      within(templateRegion).getByRole("heading", { name: "Templates" })
+      within(templateRegion).getByRole("heading", { name: "Template catalog" })
     ).toBeInTheDocument();
+    expect(within(templateRegion).getByRole("button", { name: "Licenses" })).toBeInTheDocument();
+    expect(within(templateRegion).getByRole("button", { name: "Security" })).toBeInTheDocument();
     expect(
       within(templateRegion).getByRole("button", { name: /Unused paid licenses/i })
     ).toBeInTheDocument();
     expect(
       within(templateRegion).getByRole("button", { name: /Security events/i })
     ).toBeInTheDocument();
+    expect(
+      within(templateRegion).getByLabelText("Selected template details")
+    ).toBeInTheDocument();
 
     const workspaceRegion = screen.getByRole("region", {
-      name: "Ask Data workspace"
+      name: "Ask Data command workspace"
     });
     expect(
-      within(workspaceRegion).getByRole("heading", { name: "Question composer" })
+      within(workspaceRegion).getByRole("heading", { name: "Ask a question" })
     ).toBeInTheDocument();
-    expect(within(workspaceRegion).getByText("Result placeholder")).toBeInTheDocument();
     expect(
-      within(workspaceRegion).getAllByText(/History endpoints remain idle here/i)
+      within(workspaceRegion).getByRole("region", { name: "Result workspace" })
+    ).toBeInTheDocument();
+    expect(
+      within(workspaceRegion).getAllByText(/Run a selected template or ask a free-form question/i)
         .length
     ).toBeGreaterThan(0);
+    expect(within(workspaceRegion).queryByText("Query workspace")).not.toBeInTheDocument();
+    expect(within(workspaceRegion).queryByText("Results and context")).not.toBeInTheDocument();
 
     const insightRegion = screen.getByRole("region", {
       name: "Ask Data insights"
     });
+    const insightToggle = within(insightRegion).getByRole("button", {
+      name: "Insights & next steps"
+    });
+    expect(insightToggle).toHaveAttribute("aria-expanded", "false");
     expect(
-      within(insightRegion).getByRole("heading", { name: "Explanation" })
+      within(insightRegion).queryByRole("heading", { name: "Insights" })
+    ).not.toBeInTheDocument();
+    openInsightsPanel(insightRegion);
+    expect(insightToggle).toHaveAttribute("aria-expanded", "true");
+    expect(
+      within(insightRegion).getByRole("heading", { name: "Insights" })
     ).toBeInTheDocument();
     expect(within(insightRegion).getByText("Suggested Action")).toBeInTheDocument();
-    expect(within(insightRegion).getByText("Future status")).toBeInTheDocument();
     expect(
       within(insightRegion).getByRole("button", { name: "Save as Card" })
     ).toBeDisabled();
@@ -1981,8 +2127,8 @@ describe("App", () => {
     expect(within(nav).getByRole("button", { name: "Audit" })).toBeInTheDocument();
   });
 
-  it("opens placeholder sections from the sidebar without real feature behavior", async () => {
-    stubFetchSequence(successResponse(demoAnalyst));
+  it("opens planned workspace pages from the sidebar without real feature behavior", async () => {
+    const fetchMock = stubFetchSequence(successResponse(demoAnalyst));
 
     renderApp();
 
@@ -1991,13 +2137,26 @@ describe("App", () => {
     });
     fireEvent.click(within(nav).getByRole("button", { name: "SQL / Technical" }));
 
+    const workspace = await screen.findByRole("region", {
+      name: "SQL / Technical planned workspace"
+    });
     expect(
-      await screen.findByRole("heading", { name: "SQL / Technical placeholder" })
+      within(workspace).getByRole("heading", { name: "SQL / Technical" })
     ).toBeInTheDocument();
-    expect(screen.getByText("Placeholder only")).toBeInTheDocument();
+    expect(within(workspace).getByText("Planned workspace")).toBeInTheDocument();
     expect(
-      screen.getByText(/No Query Engine, SQL execution, dashboards, actions, approvals, audit UI, or backend feature is implemented here/i)
+      within(workspace).getByText(/Technical details remain role-gated and contained inside Ask Data result tabs/i)
     ).toBeInTheDocument();
+    expect(
+      within(workspace).getByRole("button", { name: "Open technical console" })
+    ).toBeDisabled();
+    expect(
+      within(workspace).getByRole("button", { name: "Export technical report" })
+    ).toBeDisabled();
+    expect(within(workspace).queryByText("Generated SQL")).not.toBeInTheDocument();
+    expect(within(workspace).queryByText("Executed SQL")).not.toBeInTheDocument();
+    expect(within(workspace).queryByText(/SELECT /i)).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("logs out with the stored CSRF token and returns to the demo login screen", async () => {
@@ -2016,7 +2175,7 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: /demo manager/i }));
 
     expect(
-      await screen.findByRole("heading", { name: "Templates placeholder" })
+      await screen.findByRole("heading", { name: "Templates" })
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Log out" }));
@@ -2047,7 +2206,7 @@ describe("App", () => {
     renderApp();
 
     expect(
-      await screen.findByRole("heading", { name: "Templates placeholder" })
+      await screen.findByRole("heading", { name: "Templates" })
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Log out" }));
@@ -2585,6 +2744,22 @@ function renderApp() {
   );
 }
 
+function stubSystemTheme(prefersDark: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockImplementation((query: string) => ({
+      matches: prefersDark,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn()
+    }))
+  );
+}
+
 function renderAskDataPageWithMutableCsrf(
   user: ReturnType<typeof backendUser>,
   initialCsrfToken: string
@@ -2634,12 +2809,12 @@ async function openAskData() {
   });
   fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
   await screen.findByRole("heading", { name: "Ask Data" });
-  await screen.findByRole("region", { name: "Ask Data templates" });
+  await screen.findByRole("region", { name: "Template catalog" });
 }
 
 function expectApprovedTemplatesVisible() {
   const templateRegion = screen.getByRole("region", {
-    name: "Ask Data templates"
+    name: "Template catalog"
   });
   expect(
     within(templateRegion).getByRole("button", { name: /Unused paid licenses/i })
@@ -2653,6 +2828,7 @@ function expectFutureControlsDisabled() {
   const insightRegion = screen.getByRole("region", {
     name: "Ask Data insights"
   });
+  openInsightsPanel(insightRegion);
   expect(
     within(insightRegion).getByRole("button", { name: "Save as Card" })
   ).toBeDisabled();
@@ -2662,6 +2838,16 @@ function expectFutureControlsDisabled() {
   expect(
     within(insightRegion).getByRole("button", { name: "Preview Action" })
   ).toBeDisabled();
+}
+
+function openInsightsPanel(insightRegion: HTMLElement) {
+  if (within(insightRegion).queryByRole("button", { name: "Save as Card" })) {
+    return;
+  }
+
+  fireEvent.click(
+    within(insightRegion).getByRole("button", { name: "Insights & next steps" })
+  );
 }
 
 function expectSensitiveTechnicalFieldsHidden(role: string) {
