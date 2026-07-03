@@ -460,6 +460,12 @@ function AuthenticatedWorkspace({
 
           {activeNavItem.id === "ask-data" ? (
             <AskDataPage user={user} csrfToken={csrfToken} />
+          ) : activeNavItem.id === "my-dashboard" ? (
+            <DashboardPage
+              user={user}
+              visibleNavItems={visibleNavItems}
+              onNavigate={setActiveNavId}
+            />
           ) : activeNavItem.id === "role-upgrade" ? (
             <RoleUpgradePanel userRole={user.role} csrfToken={csrfToken} />
           ) : activeNavItem.id === "admin-role-requests" ? (
@@ -475,6 +481,284 @@ function AuthenticatedWorkspace({
         </section>
       </div>
     </main>
+  );
+}
+
+function DashboardPage({
+  user,
+  visibleNavItems,
+  onNavigate
+}: {
+  user: AuthUser;
+  visibleNavItems: NavItem[];
+  onNavigate: (navId: string) => void;
+}) {
+  const roleLabel = formatRole(user.role);
+  const departmentLabel = user.department?.name ?? "No department assigned";
+  const hasTemplateAccess = hasPermission(user, "can_use_query_templates");
+  const hasFreeQueryAccess = hasPermission(user, "can_run_free_query");
+  const hasTechnicalVisibility = hasPermission(user, "can_view_sql");
+  const hasGlobalScope = hasPermission(user, "can_query_global_data");
+  const queryAccessLabel = hasFreeQueryAccess
+    ? "Free-query access"
+    : "Template-only access";
+  const sqlVisibilityLabel = hasTechnicalVisibility
+    ? "SQL visible in Ask Data"
+    : "SQL hidden";
+  const diagnosticsVisibilityLabel = hasTechnicalVisibility
+    ? "Diagnostics visible in Ask Data"
+    : "Diagnostics hidden";
+  const currentScopeLabel =
+    user.role === "admin" && hasGlobalScope ? "Global scope" : departmentLabel;
+  const technicalSummary = hasTechnicalVisibility
+    ? "Technical tabs visible"
+    : "Business view";
+  const roleSummary = getDashboardRoleSummary(user.role, hasFreeQueryAccess, hasTechnicalVisibility);
+
+  function canNavigateTo(navId: string): boolean {
+    return visibleNavItems.some((item) => item.id === navId);
+  }
+
+  const quickActions = [
+    {
+      label: "Open Ask Data",
+      description: "Start with approved templates or a permitted governed question.",
+      navId: "ask-data",
+      disabled: !canNavigateTo("ask-data"),
+      isPrimary: true
+    },
+    {
+      label: "Review query history",
+      description: canNavigateTo("query-history")
+        ? "Open the current query history workspace placeholder."
+        : "Available only to roles with query history visibility.",
+      navId: "query-history",
+      disabled: !canNavigateTo("query-history"),
+      isPrimary: false
+    },
+    {
+      label: "Request role upgrade",
+      description: "Use the existing role request workflow when more access is needed.",
+      navId: "role-upgrade",
+      disabled: !canNavigateTo("role-upgrade"),
+      isPrimary: false
+    },
+    {
+      label: "Save dashboard card",
+      description: "Future saved-card behavior is intentionally disabled in this PR.",
+      navId: null,
+      disabled: true,
+      isPrimary: false
+    }
+  ];
+
+  const kpiCards = [
+    {
+      label: "Approved templates",
+      value: hasTemplateAccess ? "Available" : "Hidden",
+      detail: hasTemplateAccess
+        ? "The template catalog is available from Ask Data."
+        : "The template catalog is not visible for this role.",
+      tone: "blue"
+    },
+    {
+      label: "Query access mode",
+      value: queryAccessLabel,
+      detail: hasFreeQueryAccess
+        ? "This role can ask permitted free-form questions."
+        : "This role runs approved templates only.",
+      tone: hasFreeQueryAccess ? "green" : "blue"
+    },
+    {
+      label: "Technical visibility",
+      value: technicalSummary,
+      detail: hasTechnicalVisibility
+        ? "Technical tabs stay contained in Ask Data."
+        : "Technical views remain hidden for this role.",
+      tone: hasTechnicalVisibility ? "green" : "muted"
+    },
+    {
+      label: "Current scope",
+      value: currentScopeLabel,
+      detail: hasGlobalScope
+        ? "Admin demo permissions include global query scope."
+        : "Workspace context follows the signed-in department.",
+      tone: hasGlobalScope ? "warning" : "blue"
+    }
+  ];
+
+  const governanceCards = [
+    {
+      title: "Template governance",
+      status: hasTemplateAccess ? "Approved catalog enabled" : "Catalog hidden",
+      detail: hasTemplateAccess
+        ? "Approved templates remain the safest entry point for repeat questions."
+        : "This role does not have template catalog visibility.",
+      tone: "blue"
+    },
+    {
+      title: "Free-question access",
+      status: hasFreeQueryAccess ? "Free questions enabled" : "Templates required",
+      detail: hasFreeQueryAccess
+        ? "Free questions still run through backend validation and authorization."
+        : "Approved templates are the safe starting point for this role.",
+      tone: hasFreeQueryAccess ? "green" : "muted"
+    },
+    {
+      title: "SQL visibility",
+      status: sqlVisibilityLabel,
+      detail: hasTechnicalVisibility
+        ? "SQL is available only inside the Ask Data technical tab."
+        : "SQL tabs and SQL content remain hidden for this role.",
+      tone: hasTechnicalVisibility ? "green" : "muted"
+    },
+    {
+      title: "Diagnostics visibility",
+      status: diagnosticsVisibilityLabel,
+      detail: hasTechnicalVisibility
+        ? "Safe technical diagnostics stay inside Ask Data."
+        : "Technical diagnostics remain hidden for this role.",
+      tone: hasTechnicalVisibility ? "green" : "muted"
+    },
+    {
+      title: "Scope enforcement",
+      status: "Backend enforced",
+      detail: "Frontend status mirrors permissions; backend authorization remains the source of truth.",
+      tone: "blue"
+    }
+  ];
+
+  const activityRows = [
+    {
+      title: "Demo workspace loaded",
+      meta: `${roleLabel} profile / ${departmentLabel}`,
+      status: "Preview"
+    },
+    {
+      title: "Ask Data entry point",
+      meta: hasTemplateAccess
+        ? "Approved template access is visible in navigation."
+        : "Ask Data is hidden for this role.",
+      status: hasTemplateAccess ? "Ready" : "Hidden"
+    },
+    {
+      title: "Technical controls",
+      meta: hasTechnicalVisibility
+        ? "Technical visibility is summarized here, with details kept in Ask Data."
+        : "Technical views are not exposed to this role.",
+      status: hasTechnicalVisibility ? "Role-gated" : "Restricted"
+    }
+  ];
+
+  return (
+    <article className="dashboard-page" role="region" aria-label="My Dashboard">
+      <section className="dashboard-hero" aria-labelledby="workspace-title">
+        <div className="dashboard-hero__copy">
+          <p className="eyebrow">My Dashboard</p>
+          <h1 id="workspace-title">QueryOps Command Center</h1>
+          <p className="subtitle">
+            A role-aware overview of governed analytics access for this demo
+            workspace. The dashboard summarizes current permissions without adding
+            new backend behavior.
+          </p>
+        </div>
+        <div className="dashboard-chip-row" aria-label="Workspace context">
+          <span className="dashboard-chip">
+            Role <strong>{roleLabel}</strong>
+          </span>
+          <span className="dashboard-chip">Scope: {departmentLabel}</span>
+          <span className="dashboard-chip">Demo environment</span>
+        </div>
+      </section>
+
+      <section className="dashboard-kpi-grid" aria-label="Dashboard status">
+        {kpiCards.map((card) => (
+          <div key={card.label} className="dashboard-kpi-card" data-tone={card.tone}>
+            <p className="dashboard-kpi-card__label">{card.label}</p>
+            <p className="dashboard-kpi-card__value">{card.value}</p>
+            <p className="dashboard-kpi-card__detail">{card.detail}</p>
+          </div>
+        ))}
+      </section>
+
+      <div className="dashboard-work-grid">
+        <section className="dashboard-section" aria-labelledby="dashboard-actions-title">
+          <div className="dashboard-section__header">
+            <p className="eyebrow">Recommended next steps</p>
+            <h2 id="dashboard-actions-title">Move through the workspace</h2>
+          </div>
+          <div className="dashboard-actions-grid">
+            {quickActions.map((action) => (
+              <button
+                key={action.label}
+                type="button"
+                className="dashboard-action-button"
+                aria-label={action.label}
+                data-primary={action.isPrimary ? "true" : "false"}
+                disabled={action.disabled}
+                onClick={() => {
+                  if (action.navId) {
+                    onNavigate(action.navId);
+                  }
+                }}
+              >
+                <span className="dashboard-action-button__label">{action.label}</span>
+                <span className="dashboard-action-button__description">
+                  {action.description}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        <section className="dashboard-section" aria-labelledby="dashboard-activity-title">
+          <div className="dashboard-section__header">
+            <p className="eyebrow">Workspace preview</p>
+            <h2 id="dashboard-activity-title">Demo activity preview</h2>
+          </div>
+          <ul className="dashboard-activity-list">
+            {activityRows.map((row) => (
+              <li key={row.title} className="dashboard-activity-item">
+                <div>
+                  <h3>{row.title}</h3>
+                  <p>{row.meta}</p>
+                </div>
+                <span className="dashboard-status-pill">{row.status}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </div>
+
+      <section className="dashboard-section" aria-labelledby="dashboard-governance-title">
+        <div className="dashboard-section__header">
+          <p className="eyebrow">Governance posture</p>
+          <h2 id="dashboard-governance-title">Access status</h2>
+        </div>
+        <div className="dashboard-posture-grid">
+          {governanceCards.map((card) => (
+            <article
+              key={card.title}
+              className="dashboard-status-card"
+              data-tone={card.tone}
+            >
+              <span className="dashboard-status-card__marker" aria-hidden="true" />
+              <div>
+                <h3>{card.title}</h3>
+                <p className="dashboard-status-card__status">{card.status}</p>
+                <p className="dashboard-status-card__detail">{card.detail}</p>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="dashboard-role-panel" aria-labelledby="dashboard-role-title">
+        <p className="eyebrow">What you can do from here</p>
+        <h2 id="dashboard-role-title">{roleSummary.title}</h2>
+        <p>{roleSummary.description}</p>
+      </section>
+    </article>
   );
 }
 
@@ -947,6 +1231,42 @@ function formatRole(role: AuthUser["role"]): string {
   }
 
   return role.charAt(0).toUpperCase() + role.slice(1);
+}
+
+function getDashboardRoleSummary(
+  role: AuthUser["role"],
+  hasFreeQueryAccess: boolean,
+  hasTechnicalVisibility: boolean
+): { title: string; description: string } {
+  if (role === "admin") {
+    return {
+      title: "Admin governance view",
+      description:
+        "Admins can move into Ask Data, review technical tabs there, and use the existing admin navigation without any dashboard-side execution controls."
+    };
+  }
+
+  if (hasTechnicalVisibility) {
+    return {
+      title: "Analyst technical view",
+      description:
+        "Analysts can ask governed questions and review technical tabs inside Ask Data while this dashboard stays focused on safe status and navigation."
+    };
+  }
+
+  if (hasFreeQueryAccess) {
+    return {
+      title: "Manager analytics view",
+      description:
+        "Managers can open Ask Data for approved templates or permitted free questions. SQL and diagnostics remain hidden from this dashboard and from manager views."
+    };
+  }
+
+  return {
+    title: "Template-only workspace",
+    description:
+      "Use approved templates as the safe starting point for this role. Free questions, SQL visibility, and diagnostics stay unavailable unless a role upgrade is approved."
+  };
 }
 
 function formatRequestStatus(status: RoleRequestStatus): string {

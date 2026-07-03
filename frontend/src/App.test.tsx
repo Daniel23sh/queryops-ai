@@ -316,6 +316,92 @@ describe("App", () => {
     expect(within(nav).queryByRole("button", { name: "Admin Console" })).not.toBeInTheDocument();
   });
 
+  it("renders a role-aware dashboard for demo manager without extra API calls", async () => {
+    const fetchMock = stubFetchSequence(successResponse(demoManager));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "My Dashboard" }));
+
+    const dashboard = await screen.findByRole("region", {
+      name: "My Dashboard"
+    });
+    expect(
+      within(dashboard).getByRole("heading", { name: "QueryOps Command Center" })
+    ).toBeInTheDocument();
+    expect(within(dashboard).getByText("Manager")).toBeInTheDocument();
+    expect(within(dashboard).getByText("Finance")).toBeInTheDocument();
+    expect(within(dashboard).getByText("Free-query access")).toBeInTheDocument();
+    expect(within(dashboard).getByText("SQL hidden")).toBeInTheDocument();
+    expect(within(dashboard).getByText("Diagnostics hidden")).toBeInTheDocument();
+    expect(
+      within(dashboard).getByRole("button", { name: "Open Ask Data" })
+    ).toBeEnabled();
+    expect(
+      within(dashboard).getByRole("button", { name: "Review query history" })
+    ).toBeDisabled();
+    expect(
+      within(dashboard).getByRole("button", { name: "Save dashboard card" })
+    ).toBeDisabled();
+    expect(within(dashboard).queryByText("Generated SQL")).not.toBeInTheDocument();
+    expect(within(dashboard).queryByText("Executed SQL")).not.toBeInTheDocument();
+    expect(within(dashboard).queryByText(/SELECT /i)).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders template-only dashboard access for demo user", async () => {
+    const fetchMock = stubFetchSequence(successResponse(demoUser));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "My Dashboard" }));
+
+    const dashboard = await screen.findByRole("region", {
+      name: "My Dashboard"
+    });
+    expect(within(dashboard).getByText("User")).toBeInTheDocument();
+    expect(within(dashboard).getByText("Sales")).toBeInTheDocument();
+    expect(within(dashboard).getByText("Template-only access")).toBeInTheDocument();
+    expect(within(dashboard).getByText("SQL hidden")).toBeInTheDocument();
+    expect(within(dashboard).getByText("Diagnostics hidden")).toBeInTheDocument();
+    expect(
+      within(dashboard).getByText(/Approved templates are the safe starting point/i)
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders technical dashboard access for demo analyst without exposing SQL content", async () => {
+    const fetchMock = stubFetchSequence(successResponse(demoAnalyst));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "My Dashboard" }));
+
+    const dashboard = await screen.findByRole("region", {
+      name: "My Dashboard"
+    });
+    expect(within(dashboard).getByText("Analyst")).toBeInTheDocument();
+    expect(within(dashboard).getByText("IT")).toBeInTheDocument();
+    expect(within(dashboard).getByText("Free-query access")).toBeInTheDocument();
+    expect(within(dashboard).getByText("SQL visible in Ask Data")).toBeInTheDocument();
+    expect(
+      within(dashboard).getByText("Diagnostics visible in Ask Data")
+    ).toBeInTheDocument();
+    expect(within(dashboard).queryByText("Generated SQL")).not.toBeInTheDocument();
+    expect(within(dashboard).queryByText("Executed SQL")).not.toBeInTheDocument();
+    expect(within(dashboard).queryByText(/SELECT /i)).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("renders the Ask Data page shell from workspace navigation", async () => {
     const fetchMock = stubFetchSequence(
       successResponse(demoManager),
