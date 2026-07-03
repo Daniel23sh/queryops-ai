@@ -66,6 +66,28 @@ const FUTURE_OPERATION_PLACEHOLDERS = [
   }
 ];
 
+const EYEBROW_CLASS = "m-0 text-xs font-bold uppercase tracking-normal text-brand-accent";
+const PANEL_CLASS =
+  "grid gap-4 rounded-panel border border-app-border bg-app-surface p-5 shadow-sm";
+const PANEL_HEADER_CLASS = "grid gap-1.5";
+const PANEL_TITLE_CLASS = "m-0 text-lg font-bold tracking-normal text-slate-950";
+const SMALL_PANEL_TITLE_CLASS = "m-0 text-base font-bold tracking-normal text-slate-950";
+const BODY_TEXT_CLASS = "m-0 text-sm leading-6 text-app-subtle";
+const MUTED_CARD_CLASS =
+  "grid gap-2 rounded-card border border-app-border bg-app-muted p-4";
+const INFO_CARD_CLASS =
+  "grid gap-2 rounded-card border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-app-subtle";
+const WARNING_CARD_CLASS =
+  "rounded-card border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900";
+const SESSION_MESSAGE_CLASS = "m-0 text-sm leading-5 text-amber-700";
+const INPUT_LABEL_CLASS = "grid gap-2 text-sm font-bold text-slate-700";
+const TEXTAREA_CLASS =
+  "min-h-28 w-full resize-y rounded-control border border-slate-300 bg-app-muted px-3.5 py-3 text-sm leading-6 text-app-text outline-none transition placeholder:text-app-faint focus:border-brand-primary focus:shadow-focus disabled:cursor-not-allowed disabled:opacity-60";
+const PRIMARY_BUTTON_CLASS =
+  "qops-button-primary qops-focus-ring transition hover:shadow-card";
+const SECONDARY_BUTTON_CLASS =
+  "qops-button-secondary qops-focus-ring transition";
+
 export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
   const canRunFreeQuery = user.permissions.includes("can_run_free_query");
   const canViewTechnicalDetails = user.permissions.includes("can_view_sql");
@@ -256,17 +278,25 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
   }
 
   return (
-    <article className="ask-data-page" aria-labelledby="workspace-title">
-      <div className="ask-data-page__header">
-        <p className="eyebrow">Query integration</p>
-        <h1 id="workspace-title">Ask Data</h1>
-        <p className="subtitle">
+    <article
+      className="grid min-h-[420px] gap-5"
+      aria-labelledby="workspace-title"
+    >
+      <div className="max-w-3xl rounded-panel border border-app-border bg-app-surface p-7 shadow-sm">
+        <p className={EYEBROW_CLASS}>Query integration</p>
+        <h1
+          id="workspace-title"
+          className="mt-3 text-[clamp(2rem,5vw,3.25rem)] font-bold leading-tight tracking-normal text-slate-950"
+        >
+          Ask Data
+        </h1>
+        <p className="mt-4 max-w-2xl text-base leading-7 text-app-subtle">
           Prepare governed data questions in a dedicated workspace. Templates,
           questions, result tables, and clarification states use the Query API.
         </p>
       </div>
 
-      <div className="ask-data-workspace">
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(220px,0.82fr)_minmax(360px,1.35fr)_minmax(220px,0.9fr)]">
         <TemplatePanel
           categories={templateCategories}
           error={templateLoadError}
@@ -283,7 +313,7 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
           status={templateLoadStatus}
         />
         <section
-          className="ask-data-workspace__main"
+          className="grid min-w-0 gap-4"
           aria-label="Ask Data workspace"
         >
           <RoleScopeNotice
@@ -350,37 +380,44 @@ function TemplatePanel({
   const hasTemplates = categories.length > 0;
 
   return (
-    <section className="ask-data-panel" aria-label="Ask Data templates">
-      <div className="ask-data-panel__header">
-        <p className="eyebrow">Left panel</p>
-        <h2>Templates</h2>
+    <section className={PANEL_CLASS} aria-label="Ask Data templates">
+      <div className={PANEL_HEADER_CLASS}>
+        <p className={EYEBROW_CLASS}>Left panel</p>
+        <h2 className={PANEL_TITLE_CLASS}>Templates</h2>
       </div>
 
       {status === "loading" ? (
-        <p className="ask-data-state-message" role="status">
+        <p className={MUTED_CARD_CLASS} role="status">
           Loading query templates...
         </p>
       ) : null}
 
       {status === "error" ? (
-        <p className="form-message form-message--error" role="alert">
+        <p
+          className="m-0 rounded-card border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-800"
+          role="alert"
+        >
           {error ?? "Query templates could not be loaded."}
         </p>
       ) : null}
 
       {status === "loaded" && !hasTemplates ? (
-        <p className="ask-data-state-message">
+        <p className={MUTED_CARD_CLASS}>
           No query templates are available yet.
         </p>
       ) : null}
 
       {status === "loaded" && hasTemplates ? (
         <>
-          <div className="ask-data-template-groups" aria-label="Query template categories">
+          <div
+            className="flex flex-wrap gap-2"
+            aria-label="Query template categories"
+          >
             {categories.map((group) => (
               <button
                 key={group.category}
                 type="button"
+                className="qops-focus-ring rounded-control bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100"
                 onClick={() => onSelectTemplate(group.templates[0].id)}
               >
                 {group.category}
@@ -388,19 +425,34 @@ function TemplatePanel({
             ))}
           </div>
 
-          <ul className="ask-data-template-list" aria-label="Query templates">
+          <ul
+            className="grid list-none gap-2.5 p-0"
+            aria-label="Query templates"
+          >
             {categories.flatMap((group) =>
               group.templates.map((template) => (
                 <li key={template.id}>
                   <button
                     type="button"
-                    className="ask-data-template-card"
+                    className={`qops-focus-ring grid w-full gap-1.5 rounded-card border p-4 text-left transition hover:border-brand-primary hover:bg-blue-50 ${
+                      template.id === selectedTemplateId
+                        ? "border-brand-primary bg-blue-50 shadow-sm"
+                        : "border-app-border bg-app-muted"
+                    }`}
                     aria-pressed={template.id === selectedTemplateId}
                     data-selected={template.id === selectedTemplateId ? "true" : "false"}
                     onClick={() => onSelectTemplate(template.id)}
                   >
-                    <strong>{template.title}</strong>
-                    <p>{template.description}</p>
+                    <strong
+                      className={
+                        template.id === selectedTemplateId
+                          ? "text-brand-accent-strong"
+                          : "text-app-text"
+                      }
+                    >
+                      {template.title}
+                    </strong>
+                    <p className={BODY_TEXT_CLASS}>{template.description}</p>
                   </button>
                 </li>
               ))
@@ -433,23 +485,23 @@ function SelectedTemplateDetails({
   const canRunTemplate = template !== null && disabledReason === null && !running;
 
   return (
-    <div className="ask-data-selected-template" aria-label="Selected query template">
-      <h3>Selected template</h3>
+    <div className={MUTED_CARD_CLASS} aria-label="Selected query template">
+      <h3 className={SMALL_PANEL_TITLE_CLASS}>Selected template</h3>
       {template ? (
         <>
-          <strong>{template.title}</strong>
-          <p>{template.description}</p>
-          <p>{template.natural_language_question}</p>
+          <strong className="text-app-text">{template.title}</strong>
+          <p className={BODY_TEXT_CLASS}>{template.description}</p>
+          <p className={BODY_TEXT_CLASS}>{template.natural_language_question}</p>
           {template.parameters.length > 0 ? (
-            <p className="ask-data-template-parameter-note">
+            <p className="m-0 border-l-4 border-brand-primary pl-3 text-sm leading-6 text-app-subtle">
               Custom parameters are not supported yet; backend template defaults
               will be used.
             </p>
           ) : null}
-          <div className="ask-data-template-actions">
+          <div className="mt-1 flex flex-wrap gap-2.5">
             <button
               type="button"
-              className="primary-action-button"
+              className={PRIMARY_BUTTON_CLASS}
               disabled={!canRunTemplate}
               onClick={onRunSelectedTemplate}
             >
@@ -457,11 +509,13 @@ function SelectedTemplateDetails({
             </button>
           </div>
           {disabledReason ? (
-            <p className="ask-data-session-message">{disabledReason}</p>
+            <p className={SESSION_MESSAGE_CLASS}>{disabledReason}</p>
           ) : null}
         </>
       ) : (
-        <p>Select a template to view its default question and scope.</p>
+        <p className={BODY_TEXT_CLASS}>
+          Select a template to view its default question and scope.
+        </p>
       )}
     </div>
   );
@@ -481,33 +535,40 @@ function RoleScopeNotice({
   showAdminGlobalIndicator: boolean;
 }) {
   return (
-    <section className="ask-data-status-panel" aria-label="Ask Data shell status">
+    <section className={PANEL_CLASS} aria-label="Ask Data shell status">
       <div>
-        <h2>Role and scope</h2>
-        <p>
+        <h2 className={PANEL_TITLE_CLASS}>Role and scope</h2>
+        <p className={BODY_TEXT_CLASS}>
           Templates and questions use the Query API in this checkpoint. History
           endpoints remain idle here.
         </p>
       </div>
-      <dl className="ask-data-status-grid" aria-label="Ask Data access summary">
-        <div>
-          <dt>Mode</dt>
-          <dd>{modeLabel}</dd>
+      <dl
+        className="m-0 grid gap-3 md:grid-cols-3"
+        aria-label="Ask Data access summary"
+      >
+        <div className="rounded-card border border-app-border bg-app-surface p-3.5">
+          <dt className="mb-1.5 text-xs font-bold uppercase text-app-faint">Mode</dt>
+          <dd className="m-0 font-bold leading-6 text-app-text">{modeLabel}</dd>
         </div>
-        <div>
-          <dt>Role</dt>
-          <dd>{roleLabel}</dd>
+        <div className="rounded-card border border-app-border bg-app-surface p-3.5">
+          <dt className="mb-1.5 text-xs font-bold uppercase text-app-faint">Role</dt>
+          <dd className="m-0 font-bold leading-6 text-app-text">{roleLabel}</dd>
         </div>
-        <div>
-          <dt>Scope</dt>
-          <dd>{scopeLabel}</dd>
+        <div className="rounded-card border border-app-border bg-app-surface p-3.5">
+          <dt className="mb-1.5 text-xs font-bold uppercase text-app-faint">Scope</dt>
+          <dd className="m-0 font-bold leading-6 text-app-text">{scopeLabel}</dd>
         </div>
       </dl>
-      <p className="ask-data-mode-note">{modeDescription}</p>
+      <p className="m-0 border-l-4 border-brand-primary pl-3.5 text-sm leading-6 text-app-subtle">
+        {modeDescription}
+      </p>
       {showAdminGlobalIndicator ? (
-        <p className="ask-data-admin-note">
-          <strong>Admin global shell</strong>
-          <span>Global scope indicator only. Template runs still use backend authorization.</span>
+        <p className={MUTED_CARD_CLASS}>
+          <strong className="text-slate-950">Admin global shell</strong>
+          <span className={BODY_TEXT_CLASS}>
+            Global scope indicator only. Template runs still use backend authorization.
+          </span>
         </p>
       ) : null}
     </section>
@@ -534,17 +595,20 @@ function QuestionComposer({
     trimmedFreeQuestion.length > 0 && runDisabledReason === null && !running;
 
   return (
-    <section className="ask-data-panel" aria-labelledby="question-composer-title">
-      <div className="ask-data-panel__header">
-        <p className="eyebrow">Center panel</p>
-        <h2 id="question-composer-title">Question composer</h2>
+    <section className={PANEL_CLASS} aria-labelledby="question-composer-title">
+      <div className={PANEL_HEADER_CLASS}>
+        <p className={EYEBROW_CLASS}>Center panel</p>
+        <h2 id="question-composer-title" className={PANEL_TITLE_CLASS}>
+          Question composer
+        </h2>
       </div>
       {canRunFreeQuery ? (
         <>
-          <label className="ask-data-question-shell" htmlFor="ask-data-free-question">
+          <label className={INPUT_LABEL_CLASS} htmlFor="ask-data-free-question">
             <span>Free question</span>
             <textarea
               id="ask-data-free-question"
+              className={TEXTAREA_CLASS}
               rows={4}
               placeholder="Ask a governed data question."
               value={freeQuestion}
@@ -552,28 +616,28 @@ function QuestionComposer({
               onChange={(event) => onFreeQuestionChange(event.target.value)}
             />
           </label>
-          <div className="ask-data-composer-actions">
+          <div className="flex flex-wrap gap-2.5">
             <button
               type="button"
-              className="primary-action-button"
+              className={PRIMARY_BUTTON_CLASS}
               disabled={!canRunFreeQueryNow}
               onClick={onRunFreeQuery}
             >
               {running ? "Running query..." : "Run free query"}
             </button>
           </div>
-          <p className="ask-data-mode-note">
+          <p className="m-0 border-l-4 border-brand-primary pl-3.5 text-sm leading-6 text-app-subtle">
             Free questions are sent to the Query API using your current role and
             access scope.
           </p>
           {runDisabledReason ? (
-            <p className="ask-data-session-message">{runDisabledReason}</p>
+            <p className={SESSION_MESSAGE_CLASS}>{runDisabledReason}</p>
           ) : null}
         </>
       ) : (
-        <div className="ask-data-template-only-shell">
-          <h3>Template-only mode</h3>
-          <p>
+        <div className={MUTED_CARD_CLASS}>
+          <h3 className={SMALL_PANEL_TITLE_CLASS}>Template-only mode</h3>
+          <p className={BODY_TEXT_CLASS}>
             Selected templates can be used here. This role does not receive a
             free-query input in the shell.
           </p>
@@ -613,10 +677,12 @@ function ResultPlaceholder({
   }, [activeTab, activeVisibleTab]);
 
   return (
-    <section className="ask-data-panel" aria-labelledby="result-placeholder-title">
-      <div className="ask-data-panel__header">
-        <p className="eyebrow">Query result</p>
-        <h2 id="result-placeholder-title">Result placeholder</h2>
+    <section className={PANEL_CLASS} aria-labelledby="result-placeholder-title">
+      <div className={PANEL_HEADER_CLASS}>
+        <p className={EYEBROW_CLASS}>Query result</p>
+        <h2 id="result-placeholder-title" className={PANEL_TITLE_CLASS}>
+          Result placeholder
+        </h2>
       </div>
 
       <ResultTabs
@@ -626,7 +692,7 @@ function ResultPlaceholder({
       />
 
       <div
-        className="ask-data-result-tab-panel"
+        className="grid gap-3"
         id={`ask-data-tab-panel-${activeVisibleTab}`}
         role="tabpanel"
         aria-labelledby={`ask-data-tab-${activeVisibleTab}`}
@@ -675,7 +741,11 @@ function ResultTabs({
   ];
 
   return (
-    <div className="ask-data-result-tabs" role="tablist" aria-label="Ask Data result views">
+    <div
+      className="flex flex-wrap gap-2 border-b border-app-border pb-2.5"
+      role="tablist"
+      aria-label="Ask Data result views"
+    >
       {tabs
         .filter((tab) => !tab.technicalOnly || canViewTechnicalDetails)
         .map((tab) => (
@@ -686,7 +756,11 @@ function ResultTabs({
             role="tab"
             aria-selected={activeTab === tab.id}
             aria-controls={`ask-data-tab-panel-${tab.id}`}
-            className="ask-data-result-tab"
+            className={`qops-focus-ring inline-flex min-h-11 items-center justify-center rounded-control border px-3.5 text-sm font-bold transition ${
+              activeTab === tab.id
+                ? "border-brand-primary bg-blue-50 text-app-text shadow-sm"
+                : "border-slate-300 bg-app-surface text-app-subtle hover:border-brand-primary hover:text-brand-primary"
+            }`}
             onClick={() => onSelectTab(tab.id)}
           >
             {tab.label}
@@ -714,22 +788,36 @@ function ResultsTabContent({
   return (
     <>
       {queryRunState.status === "idle" ? (
-        <div className="ask-data-result-shell" aria-label="Result table placeholder">
-          <div>Column A</div>
-          <div>Column B</div>
-          <div>Value pending</div>
-          <div>Run a selected template or free question to preview the query result summary.</div>
+        <div
+          className="grid overflow-hidden rounded-card border border-app-border sm:grid-cols-2"
+          aria-label="Result table placeholder"
+        >
+          <div className="min-h-11 border-b border-app-border bg-app-muted p-3 font-bold text-app-text sm:border-r">
+            Column A
+          </div>
+          <div className="min-h-11 border-b border-app-border bg-app-muted p-3 font-bold text-app-text">
+            Column B
+          </div>
+          <div className="min-h-11 border-b border-app-border p-3 text-sm leading-6 text-app-subtle sm:border-b-0 sm:border-r">
+            Value pending
+          </div>
+          <div className="min-h-11 p-3 text-sm leading-6 text-app-subtle">
+            Run a selected template or free question to preview the query result summary.
+          </div>
         </div>
       ) : null}
 
       {queryRunState.status === "running" ? (
-        <p className="ask-data-state-message" role="status">
+        <p className={MUTED_CARD_CLASS} role="status">
           {runningQueryMessage(queryRunState.mode)}
         </p>
       ) : null}
 
       {queryRunState.status === "error" ? (
-        <p className="form-message form-message--error" role="alert">
+        <p
+          className="m-0 rounded-card border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-800"
+          role="alert"
+        >
           {queryRunState.message}
         </p>
       ) : null}
@@ -752,36 +840,40 @@ function ResultsTabContent({
 function SummaryTabContent({ queryRunState }: { queryRunState: QueryRunState }) {
   if (queryRunState.status === "success") {
     return (
-      <div className="ask-data-result-tab-placeholder">
-        <h3>Summary</h3>
-        <p>{queryRunState.result.message}</p>
-        <p>Question: {queryRunState.question}</p>
+      <div className={MUTED_CARD_CLASS}>
+        <h3 className={SMALL_PANEL_TITLE_CLASS}>Summary</h3>
+        <p className={BODY_TEXT_CLASS}>{queryRunState.result.message}</p>
+        <p className={BODY_TEXT_CLASS}>Question: {queryRunState.question}</p>
       </div>
     );
   }
 
   if (queryRunState.status === "running") {
     return (
-      <div className="ask-data-result-tab-placeholder">
-        <h3>Summary</h3>
-        <p>{runningQueryMessage(queryRunState.mode)}</p>
+      <div className={MUTED_CARD_CLASS}>
+        <h3 className={SMALL_PANEL_TITLE_CLASS}>Summary</h3>
+        <p className={BODY_TEXT_CLASS}>{runningQueryMessage(queryRunState.mode)}</p>
       </div>
     );
   }
 
   if (queryRunState.status === "error") {
     return (
-      <div className="ask-data-result-tab-placeholder">
-        <h3>Summary</h3>
-        <p>The latest request ended with a safe error state.</p>
+      <div className={MUTED_CARD_CLASS}>
+        <h3 className={SMALL_PANEL_TITLE_CLASS}>Summary</h3>
+        <p className={BODY_TEXT_CLASS}>
+          The latest request ended with a safe error state.
+        </p>
       </div>
     );
   }
 
   return (
-    <div className="ask-data-result-tab-placeholder">
-      <h3>Summary</h3>
-      <p>Run a selected template or free question to populate the result summary.</p>
+    <div className={MUTED_CARD_CLASS}>
+      <h3 className={SMALL_PANEL_TITLE_CLASS}>Summary</h3>
+      <p className={BODY_TEXT_CLASS}>
+        Run a selected template or free question to populate the result summary.
+      </p>
     </div>
   );
 }
@@ -789,27 +881,31 @@ function SummaryTabContent({ queryRunState }: { queryRunState: QueryRunState }) 
 function SqlTabContent({ queryRunState }: { queryRunState: QueryRunState }) {
   if (queryRunState.status === "idle") {
     return (
-      <div className="ask-data-result-tab-placeholder">
-        <h3>SQL</h3>
-        <p>Run a query to inspect SQL for this role.</p>
+      <div className={MUTED_CARD_CLASS}>
+        <h3 className={SMALL_PANEL_TITLE_CLASS}>SQL</h3>
+        <p className={BODY_TEXT_CLASS}>Run a query to inspect SQL for this role.</p>
       </div>
     );
   }
 
   if (queryRunState.status === "running") {
     return (
-      <div className="ask-data-result-tab-placeholder">
-        <h3>SQL</h3>
-        <p>SQL will be available after the query finishes, if the backend returns it.</p>
+      <div className={MUTED_CARD_CLASS}>
+        <h3 className={SMALL_PANEL_TITLE_CLASS}>SQL</h3>
+        <p className={BODY_TEXT_CLASS}>
+          SQL will be available after the query finishes, if the backend returns it.
+        </p>
       </div>
     );
   }
 
   if (queryRunState.status === "error") {
     return (
-      <div className="ask-data-result-tab-placeholder">
-        <h3>SQL</h3>
-        <p>SQL is not available because the latest request ended with a safe error state.</p>
+      <div className={MUTED_CARD_CLASS}>
+        <h3 className={SMALL_PANEL_TITLE_CLASS}>SQL</h3>
+        <p className={BODY_TEXT_CLASS}>
+          SQL is not available because the latest request ended with a safe error state.
+        </p>
       </div>
     );
   }
@@ -819,17 +915,17 @@ function SqlTabContent({ queryRunState }: { queryRunState: QueryRunState }) {
 
   if (!generatedSql && !executedSql) {
     return (
-      <div className="ask-data-result-tab-placeholder">
-        <h3>SQL</h3>
-        <p>SQL is not available for this query result.</p>
+      <div className={MUTED_CARD_CLASS}>
+        <h3 className={SMALL_PANEL_TITLE_CLASS}>SQL</h3>
+        <p className={BODY_TEXT_CLASS}>SQL is not available for this query result.</p>
       </div>
     );
   }
 
   return (
-    <div className="ask-data-sql-tab-content">
-      <h3>SQL</h3>
-      <p>
+    <div className={MUTED_CARD_CLASS}>
+      <h3 className={SMALL_PANEL_TITLE_CLASS}>SQL</h3>
+      <p className={BODY_TEXT_CLASS}>
         SQL is visible only for roles with SQL access. Generated SQL is the
         provider output; executed SQL is the validated SQL sent to the query
         executor.
@@ -842,9 +938,9 @@ function SqlTabContent({ queryRunState }: { queryRunState: QueryRunState }) {
 
 function SqlBlock({ label, sql }: { label: string; sql: string }) {
   return (
-    <section className="ask-data-sql-block" aria-label={label}>
-      <h4>{label}</h4>
-      <pre className="ask-data-sql-code">
+    <section className="grid gap-2" aria-label={label}>
+      <h4 className="m-0 text-sm font-bold text-app-text">{label}</h4>
+      <pre className="m-0 overflow-x-auto whitespace-pre-wrap rounded-card border border-slate-300 bg-app-surface p-3 font-mono text-xs leading-6 text-app-text">
         <code>{sql}</code>
       </pre>
     </section>
@@ -854,27 +950,31 @@ function SqlBlock({ label, sql }: { label: string; sql: string }) {
 function DiagnosticsTabContent({ queryRunState }: { queryRunState: QueryRunState }) {
   if (queryRunState.status === "idle") {
     return (
-      <div className="ask-data-result-tab-placeholder">
-        <h3>Diagnostics</h3>
-        <p>Run a query to inspect diagnostics for this role.</p>
+      <div className={MUTED_CARD_CLASS}>
+        <h3 className={SMALL_PANEL_TITLE_CLASS}>Diagnostics</h3>
+        <p className={BODY_TEXT_CLASS}>
+          Run a query to inspect diagnostics for this role.
+        </p>
       </div>
     );
   }
 
   if (queryRunState.status === "running") {
     return (
-      <div className="ask-data-result-tab-placeholder">
-        <h3>Diagnostics</h3>
-        <p>Diagnostics will be available after the query finishes.</p>
+      <div className={MUTED_CARD_CLASS}>
+        <h3 className={SMALL_PANEL_TITLE_CLASS}>Diagnostics</h3>
+        <p className={BODY_TEXT_CLASS}>
+          Diagnostics will be available after the query finishes.
+        </p>
       </div>
     );
   }
 
   if (queryRunState.status === "error") {
     return (
-      <div className="ask-data-result-tab-placeholder">
-        <h3>Diagnostics</h3>
-        <p>
+      <div className={MUTED_CARD_CLASS}>
+        <h3 className={SMALL_PANEL_TITLE_CLASS}>Diagnostics</h3>
+        <p className={BODY_TEXT_CLASS}>
           Diagnostics are not available because the latest request ended with a
           safe error state.
         </p>
@@ -892,9 +992,9 @@ function DiagnosticsTabContent({ queryRunState }: { queryRunState: QueryRunState
     .filter((warning): warning is string => warning !== null);
 
   return (
-    <div className="ask-data-diagnostics-tab-content">
-      <h3>Diagnostics</h3>
-      <p>
+    <div className={MUTED_CARD_CLASS}>
+      <h3 className={SMALL_PANEL_TITLE_CLASS}>Diagnostics</h3>
+      <p className={BODY_TEXT_CLASS}>
         Technical diagnostics are built from safe query metadata. SQL text stays
         in the SQL tab.
       </p>
@@ -967,11 +1067,11 @@ function DiagnosticsTabContent({ queryRunState }: { queryRunState: QueryRunState
 
       {safeWarnings.length > 0 ? (
         <section
-          className="ask-data-diagnostics-section"
+          className="grid gap-2.5"
           aria-label="Diagnostic warnings"
         >
-          <h4>Warnings</h4>
-          <ul className="ask-data-diagnostics-warnings">
+          <h4 className="m-0 text-sm font-bold text-app-text">Warnings</h4>
+          <ul className="m-0 grid gap-1.5 rounded-card border border-amber-200 bg-amber-50 py-3 pl-8 pr-3.5 text-sm leading-6 text-amber-900">
             {safeWarnings.map((warning) => (
               <li key={warning}>{warning}</li>
             ))}
@@ -1001,13 +1101,20 @@ function DiagnosticSection({
   }
 
   return (
-    <section className="ask-data-diagnostics-section" aria-label={`${title} diagnostics`}>
-      <h4>{title}</h4>
-      <dl className="ask-data-diagnostics-grid">
+    <section className="grid gap-2.5" aria-label={`${title} diagnostics`}>
+      <h4 className="m-0 text-sm font-bold text-app-text">{title}</h4>
+      <dl className="m-0 grid gap-2.5 md:grid-cols-2">
         {visibleItems.map((item) => (
-          <div key={item.label}>
-            <dt>{item.label}</dt>
-            <dd>{item.value}</dd>
+          <div
+            key={item.label}
+            className="grid gap-1 rounded-card border border-app-border bg-app-surface px-3 py-2.5"
+          >
+            <dt className="text-xs font-bold uppercase text-app-faint">
+              {item.label}
+            </dt>
+            <dd className="m-0 text-sm font-bold leading-6 text-app-text [overflow-wrap:anywhere]">
+              {item.value}
+            </dd>
           </div>
         ))}
       </dl>
@@ -1160,37 +1267,40 @@ function QueryResultSummary({
   }
 
   return (
-    <div className="ask-data-result-summary" aria-label="Query result summary">
-      <h3>Query result</h3>
-      <p>{result.message}</p>
-      <p>Question: {question}</p>
-      <dl className="ask-data-result-metadata">
-        <div>
-          <dt>Status</dt>
-          <dd>Status: {result.status}</dd>
+    <div className={MUTED_CARD_CLASS} aria-label="Query result summary">
+      <h3 className={SMALL_PANEL_TITLE_CLASS}>Query result</h3>
+      <p className={BODY_TEXT_CLASS}>{result.message}</p>
+      <p className={BODY_TEXT_CLASS}>Question: {question}</p>
+      <dl className="m-0 grid gap-2.5 md:grid-cols-3">
+        <div className="grid gap-1 rounded-card border border-app-border bg-app-surface p-3">
+          <dt className="text-xs font-bold uppercase text-app-faint">Status</dt>
+          <dd className="m-0 font-bold text-app-text">Status: {result.status}</dd>
         </div>
-        <div>
-          <dt>Rows</dt>
-          <dd>{result.row_count}</dd>
+        <div className="grid gap-1 rounded-card border border-app-border bg-app-surface p-3">
+          <dt className="text-xs font-bold uppercase text-app-faint">Rows</dt>
+          <dd className="m-0 font-bold text-app-text">{result.row_count}</dd>
         </div>
-        <div>
-          <dt>Duration</dt>
-          <dd>{result.duration_ms} ms</dd>
+        <div className="grid gap-1 rounded-card border border-app-border bg-app-surface p-3">
+          <dt className="text-xs font-bold uppercase text-app-faint">Duration</dt>
+          <dd className="m-0 font-bold text-app-text">{result.duration_ms} ms</dd>
         </div>
       </dl>
 
       {result.truncated || result.warnings.length > 0 ? (
-        <div className="ask-data-result-notices">
+        <div className="grid gap-2.5">
           {result.truncated ? (
-            <p className="ask-data-truncated-notice">
-              <strong>Results truncated</strong>
+            <p className={`${WARNING_CARD_CLASS} grid gap-1`}>
+              <strong className="text-sm text-amber-950">Results truncated</strong>
               <span>Only the returned rows are shown in this preview.</span>
             </p>
           ) : null}
           {result.warnings.length > 0 ? (
-            <div className="ask-data-warning-list" aria-label="Query warnings">
-              <h4>Warnings</h4>
-              <ul>
+            <div
+              className={`${WARNING_CARD_CLASS} grid gap-2`}
+              aria-label="Query warnings"
+            >
+              <h4 className="m-0 text-sm font-bold text-amber-950">Warnings</h4>
+              <ul className="m-0 grid gap-1.5 pl-5">
                 {result.warnings.map((warning) => (
                   <li key={warning}>{warning}</li>
                 ))}
@@ -1205,7 +1315,7 @@ function QueryResultSummary({
       {hasRows ? (
         <QueryResultTable columns={columns} rows={result.rows} />
       ) : (
-        <p className="ask-data-empty-result">No rows returned.</p>
+        <p className={WARNING_CARD_CLASS}>No rows returned.</p>
       )}
     </div>
   );
@@ -1230,15 +1340,19 @@ function ClarificationPanel({
     canClarify && question.trim().length > 0 && disabledReason === null;
 
   return (
-    <div className="ask-data-clarification-panel" aria-label="Clarification required">
-      <h3>Clarification required</h3>
-      <p>{message}</p>
+    <div className={INFO_CARD_CLASS} aria-label="Clarification required">
+      <h3 className={SMALL_PANEL_TITLE_CLASS}>Clarification required</h3>
+      <p className={BODY_TEXT_CLASS}>{message}</p>
       {canClarify ? (
         <>
-          <label className="ask-data-question-shell" htmlFor="ask-data-clarification-question">
+          <label
+            className={INPUT_LABEL_CLASS}
+            htmlFor="ask-data-clarification-question"
+          >
             <span>Revised question</span>
             <textarea
               id="ask-data-clarification-question"
+              className={TEXTAREA_CLASS}
               rows={4}
               placeholder="Add the missing detail and submit again."
               value={question}
@@ -1246,12 +1360,12 @@ function ClarificationPanel({
             />
           </label>
           {disabledReason ? (
-            <p className="ask-data-session-message">{disabledReason}</p>
+            <p className={SESSION_MESSAGE_CLASS}>{disabledReason}</p>
           ) : null}
-          <div className="ask-data-composer-actions">
+          <div className="flex flex-wrap gap-2.5">
             <button
               type="button"
-              className="primary-action-button"
+              className={PRIMARY_BUTTON_CLASS}
               disabled={!canSubmit}
               onClick={onSubmit}
             >
@@ -1260,7 +1374,7 @@ function ClarificationPanel({
           </div>
         </>
       ) : (
-        <p className="ask-data-mode-note">
+        <p className="m-0 border-l-4 border-brand-primary pl-3.5 text-sm leading-6 text-app-subtle">
           This query needs refinement. Choose a different approved template or
           ask for a more specific template.
         </p>
@@ -1278,11 +1392,13 @@ function VisualizationSuggestion({
 }) {
   return (
     <div
-      className="ask-data-visualization-suggestion"
+      className="grid gap-1.5 rounded-card border border-blue-200 bg-blue-50 px-3.5 py-3 text-sm leading-6 text-app-subtle"
       aria-label="Visualization suggestion"
     >
-      <h4>Visualization suggestion</h4>
-      <p>{buildVisualizationSuggestion(columns, rows)}</p>
+      <h4 className="m-0 text-sm font-bold text-app-text">
+        Visualization suggestion
+      </h4>
+      <p className="m-0">{buildVisualizationSuggestion(columns, rows)}</p>
     </div>
   );
 }
@@ -1295,12 +1411,19 @@ function QueryResultTable({
   rows: QueryResultRow[];
 }) {
   return (
-    <div className="ask-data-result-table-wrap">
-      <table className="ask-data-result-table" aria-label="Query results">
+    <div className="overflow-x-auto rounded-card border border-app-border bg-app-surface">
+      <table
+        className="w-full min-w-[520px] border-collapse text-left text-sm text-app-text"
+        aria-label="Query results"
+      >
         <thead>
           <tr>
             {columns.map((column) => (
-              <th key={column} scope="col">
+              <th
+                key={column}
+                scope="col"
+                className="border-b border-app-border bg-blue-50 px-3 py-2.5 font-bold text-slate-700"
+              >
                 {column}
               </th>
             ))}
@@ -1308,9 +1431,14 @@ function QueryResultTable({
         </thead>
         <tbody>
           {rows.map((row, rowIndex) => (
-            <tr key={rowIndex}>
+            <tr key={rowIndex} className="[&:last-child>td]:border-b-0">
               {columns.map((column) => (
-                <td key={column}>{formatResultValue(valueForColumn(row, column))}</td>
+                <td
+                  key={column}
+                  className="whitespace-nowrap border-b border-app-border px-3 py-2.5 align-top text-app-subtle"
+                >
+                  {formatResultValue(valueForColumn(row, column))}
+                </td>
               ))}
             </tr>
           ))}
@@ -1334,41 +1462,50 @@ function runningQueryMessage(mode: QueryRunMode): string {
 
 function InsightPanel() {
   return (
-    <section className="ask-data-panel" aria-label="Ask Data insights">
-      <div className="ask-data-panel__header">
-        <p className="eyebrow">Right panel</p>
-        <h2>Explanation</h2>
+    <section className={PANEL_CLASS} aria-label="Ask Data insights">
+      <div className={PANEL_HEADER_CLASS}>
+        <p className={EYEBROW_CLASS}>Right panel</p>
+        <h2 className={PANEL_TITLE_CLASS}>Explanation</h2>
       </div>
-      <p>
+      <p className={BODY_TEXT_CLASS}>
         Explanation placeholder for assumptions, scope, validation, and result
         interpretation once live queries are connected.
       </p>
 
-      <div className="ask-data-insight-block">
-        <h3>Suggested Action</h3>
-        <p>
+      <div className={MUTED_CARD_CLASS}>
+        <h3 className={SMALL_PANEL_TITLE_CLASS}>Suggested Action</h3>
+        <p className={BODY_TEXT_CLASS}>
           Future action recommendations will appear here as disabled placeholders
           until the actions milestone begins.
         </p>
       </div>
 
-      <div className="ask-data-insight-block">
-        <h3>Future status</h3>
-        <p>
+      <div className={MUTED_CARD_CLASS}>
+        <h3 className={SMALL_PANEL_TITLE_CLASS}>Future status</h3>
+        <p className={BODY_TEXT_CLASS}>
           Visualization suggestions now appear with completed results; fuller
           charts remain unavailable until a later visualization milestone.
         </p>
       </div>
 
-      <div className="ask-data-disabled-actions" aria-label="Future operational actions">
+      <div
+        className="grid gap-2.5"
+        aria-label="Future operational actions"
+      >
         {FUTURE_OPERATION_PLACEHOLDERS.map((placeholder) => (
-          <div className="ask-data-disabled-action" key={placeholder.label}>
-            <button type="button" disabled>
+          <div className={`${MUTED_CARD_CLASS} gap-2.5`} key={placeholder.label}>
+            <button
+              type="button"
+              className={SECONDARY_BUTTON_CLASS}
+              disabled
+            >
               {placeholder.label}
             </button>
             <div>
-              <strong>{placeholder.milestone}</strong>
-              <p>{placeholder.summary}</p>
+              <strong className="mb-1 block text-xs font-bold text-app-text">
+                {placeholder.milestone}
+              </strong>
+              <p className={BODY_TEXT_CLASS}>{placeholder.summary}</p>
             </div>
           </div>
         ))}
