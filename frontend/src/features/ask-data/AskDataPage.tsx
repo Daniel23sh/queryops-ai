@@ -68,29 +68,29 @@ const FUTURE_OPERATION_PLACEHOLDERS = [
 
 const EYEBROW_CLASS = "m-0 text-xs font-bold uppercase tracking-normal text-brand-accent";
 const PANEL_CLASS =
-  "grid gap-4 rounded-card border border-app-border bg-app-surface p-5 shadow-sm ring-1 ring-white/70";
+  "grid gap-4 rounded-card border border-app-border bg-app-surface p-5 shadow-card";
 const PANEL_HEADER_CLASS = "grid gap-1";
-const PANEL_TITLE_CLASS = "m-0 text-lg font-bold tracking-normal text-slate-950";
-const SMALL_PANEL_TITLE_CLASS = "m-0 text-base font-bold tracking-normal text-slate-950";
+const PANEL_TITLE_CLASS = "m-0 text-lg font-bold tracking-normal text-app-text";
+const SMALL_PANEL_TITLE_CLASS = "m-0 text-base font-bold tracking-normal text-app-text";
 const BODY_TEXT_CLASS = "m-0 text-sm leading-6 text-app-subtle";
 const MUTED_CARD_CLASS =
   "grid gap-2 rounded-card border border-app-border bg-app-muted p-4 text-sm leading-6 text-app-subtle";
 const INFO_CARD_CLASS =
-  "grid gap-2 rounded-card border border-blue-200 bg-blue-50/80 p-4 text-sm leading-6 text-app-subtle";
+  "grid gap-2 rounded-card border border-app-border bg-app-muted p-4 text-sm leading-6 text-app-subtle";
 const WARNING_CARD_CLASS =
-  "rounded-card border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900";
+  "rounded-card border border-app-border bg-app-muted p-4 text-sm leading-6 text-app-text";
 const ERROR_CARD_CLASS =
-  "m-0 rounded-card border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-800";
-const SESSION_MESSAGE_CLASS = "m-0 text-sm leading-5 text-amber-700";
-const INPUT_LABEL_CLASS = "grid gap-2 text-sm font-bold text-slate-700";
+  "m-0 rounded-card border border-app-border bg-app-muted p-4 text-sm leading-6 text-app-text";
+const SESSION_MESSAGE_CLASS = "m-0 text-sm leading-5 text-app-subtle";
+const INPUT_LABEL_CLASS = "grid gap-2 text-sm font-bold text-app-text";
 const TEXTAREA_CLASS =
-  "min-h-28 w-full resize-y rounded-control border border-slate-300 bg-app-surface px-3.5 py-3 text-sm leading-6 text-app-text outline-none transition placeholder:text-app-faint hover:border-slate-400 focus:border-brand-primary focus:shadow-focus disabled:cursor-not-allowed disabled:opacity-60";
+  "min-h-24 w-full resize-y rounded-control border border-app-border bg-app-surface px-3.5 py-3 text-sm leading-6 text-app-text outline-none transition placeholder:text-app-faint hover:border-brand-primary focus:border-brand-primary focus:shadow-focus disabled:cursor-not-allowed disabled:opacity-60";
 const PRIMARY_BUTTON_CLASS =
   "qops-button-primary qops-focus-ring transition hover:shadow-card active:translate-y-px";
 const SECONDARY_BUTTON_CLASS =
   "qops-button-secondary qops-focus-ring transition hover:shadow-sm active:translate-y-px disabled:hover:border-app-border disabled:hover:text-app-text disabled:hover:shadow-none disabled:active:translate-y-0";
 const STATUS_TILE_CLASS =
-  "inline-flex min-h-9 items-center gap-1.5 rounded-control border border-app-border bg-white/80 px-3 text-xs font-bold text-app-text shadow-sm";
+  "inline-flex min-h-9 items-center gap-1.5 rounded-control border border-app-border bg-app-surface px-3 text-xs font-bold text-app-text shadow-sm";
 
 export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
   const canRunFreeQuery = user.permissions.includes("can_run_free_query");
@@ -286,19 +286,19 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
       className="grid min-h-[420px] gap-5"
       aria-labelledby="workspace-title"
     >
-      <header className="overflow-hidden rounded-card border border-app-border bg-app-surface/95 p-5 shadow-card ring-1 ring-white/80 sm:p-6">
-        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+      <header className="overflow-hidden rounded-card border border-app-border bg-app-surface p-5 shadow-card sm:p-6">
+        <div className="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
           <div className="max-w-3xl">
-            <p className={EYEBROW_CLASS}>Governed analytics</p>
+            <p className={EYEBROW_CLASS}>Command workspace</p>
             <h1
               id="workspace-title"
-              className="mt-2 text-[clamp(2rem,4vw,3rem)] font-bold leading-tight tracking-normal text-slate-950"
+              className="mt-2 text-[clamp(2rem,4vw,3rem)] font-bold leading-tight tracking-normal text-app-text"
             >
               Ask Data
             </h1>
             <p className="mt-3 max-w-2xl text-base leading-7 text-app-subtle">
-              Ask approved operational questions, inspect results, and keep
-              technical detail safely scoped to the right roles.
+              Choose an approved template, ask permitted questions, and inspect
+              results in a focused workspace that keeps technical detail role-gated.
             </p>
           </div>
           <ContextChips
@@ -311,7 +311,7 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
         </div>
       </header>
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(250px,0.42fr)_minmax(0,1fr)] 2xl:grid-cols-[minmax(280px,0.38fr)_minmax(0,1fr)]">
+      <div className="grid items-start gap-4 xl:grid-cols-[minmax(280px,0.34fr)_minmax(0,1fr)] 2xl:grid-cols-[minmax(300px,0.32fr)_minmax(0,1fr)]">
         <TemplatePanel
           categories={templateCategories}
           error={templateLoadError}
@@ -329,10 +329,9 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
         />
         <section
           className="grid min-w-0 gap-4"
-          aria-label="Ask Data workspace"
+          aria-label="Ask Data command workspace"
         >
-          <section className={`${PANEL_CLASS} gap-5`} aria-labelledby="question-composer-title">
-            <QuestionComposer
+          <QuestionComposer
             canRunFreeQuery={canRunFreeQuery}
             freeQuestion={freeQuestion}
             onFreeQuestionChange={setFreeQuestion}
@@ -343,8 +342,8 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
                 : null
             }
             running={queryRunState.status === "running"}
-            />
-            <ResultPlaceholder
+          />
+          <ResultPlaceholder
             canClarify={canRunFreeQuery}
             canViewTechnicalDetails={canViewTechnicalDetails}
             clarificationDisabledReason={
@@ -357,9 +356,8 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
             onClarificationQuestionChange={setClarificationQuestion}
             onSubmitClarification={() => void handleSubmitClarification()}
             queryRunState={queryRunState}
-            />
-            <InsightPanel />
-          </section>
+          />
+          <InsightPanel />
         </section>
       </div>
     </article>
@@ -392,13 +390,13 @@ function TemplatePanel({
   return (
     <section
       className={`${PANEL_CLASS} gap-3 xl:sticky xl:top-6`}
-      aria-label="Ask Data templates"
+      aria-label="Template catalog"
     >
       <div className={PANEL_HEADER_CLASS}>
-        <p className={EYEBROW_CLASS}>Template catalog</p>
-        <h2 className={PANEL_TITLE_CLASS}>Approved questions</h2>
+        <p className={EYEBROW_CLASS}>Approved templates</p>
+        <h2 className={PANEL_TITLE_CLASS}>Template catalog</h2>
         <p className={BODY_TEXT_CLASS}>
-          Start from a governed template, then run it with your current scope.
+          Pick a governed starting point. Details stay compact until you run it.
         </p>
       </div>
 
@@ -413,7 +411,7 @@ function TemplatePanel({
 
       {status === "error" ? (
         <p className={ERROR_CARD_CLASS} role="alert">
-          <strong className="block text-red-900">Template catalog unavailable</strong>
+          <strong className="block text-state-danger">Template catalog unavailable</strong>
           <span>{error ?? "Query templates could not be loaded."}</span>
         </p>
       ) : null}
@@ -435,7 +433,7 @@ function TemplatePanel({
               <button
                 key={group.category}
                 type="button"
-                className="qops-focus-ring inline-flex min-h-9 shrink-0 items-center rounded-control border border-emerald-100 bg-emerald-50 px-3 text-xs font-bold text-emerald-800 transition hover:border-emerald-200 hover:bg-emerald-100"
+                className="qops-focus-ring inline-flex min-h-9 shrink-0 items-center rounded-control border border-app-border bg-app-muted px-3 text-xs font-bold text-app-text transition hover:border-brand-primary hover:text-brand-primary"
                 onClick={() => onSelectTemplate(group.templates[0].id)}
               >
                 {group.category}
@@ -444,7 +442,7 @@ function TemplatePanel({
           </div>
 
           <ul
-            className="grid max-h-[26rem] list-none gap-2 overflow-y-auto pr-1"
+            className="m-0 grid max-h-[22rem] list-none gap-2 overflow-y-auto p-0 pr-1"
             aria-label="Query templates"
           >
             {categories.flatMap((group) =>
@@ -452,9 +450,9 @@ function TemplatePanel({
                 <li key={template.id}>
                   <button
                     type="button"
-                    className={`qops-focus-ring grid w-full gap-1 rounded-card border p-3 text-left transition hover:border-brand-primary hover:bg-blue-50 hover:shadow-sm ${
+                    className={`qops-focus-ring grid w-full gap-1 rounded-card border p-3 text-left transition hover:border-brand-primary hover:bg-app-surface hover:shadow-sm ${
                       template.id === selectedTemplateId
-                        ? "border-brand-primary bg-blue-50 shadow-sm ring-1 ring-blue-100"
+                        ? "border-brand-primary bg-app-surface shadow-sm ring-1 ring-brand-primary/20"
                         : "border-app-border bg-app-muted"
                     }`}
                     aria-pressed={template.id === selectedTemplateId}
@@ -506,11 +504,11 @@ function SelectedTemplateDetails({
 
   return (
     <div
-      className="grid gap-3 rounded-card border border-app-border bg-app-surface p-3.5 text-sm leading-6 text-app-subtle shadow-sm"
-      aria-label="Selected query template"
+      className="grid gap-3 rounded-card border border-app-border bg-app-muted p-3.5 text-sm leading-6 text-app-subtle"
+      aria-label="Selected template details"
     >
-      <h3 className="m-0 text-sm font-bold tracking-normal text-slate-950">
-        Selected template
+      <h3 className="m-0 text-sm font-bold tracking-normal text-app-text">
+        Selected template details
       </h3>
       {template ? (
         <>
@@ -520,7 +518,7 @@ function SelectedTemplateDetails({
               {template.description}
             </p>
           </div>
-          <p className="m-0 rounded-card border border-blue-100 bg-blue-50/80 px-3 py-2 text-xs leading-5 text-app-subtle">
+          <p className="m-0 rounded-card border border-app-border bg-app-surface px-3 py-2 text-xs leading-5 text-app-subtle">
             {template.natural_language_question}
           </p>
           {template.parameters.length > 0 ? (
@@ -532,7 +530,7 @@ function SelectedTemplateDetails({
           <div className="flex flex-wrap gap-2.5">
             <button
               type="button"
-              className={`${PRIMARY_BUTTON_CLASS} w-full sm:w-auto xl:w-full`}
+              className={`${PRIMARY_BUTTON_CLASS} w-full`}
               disabled={!canRunTemplate}
               onClick={onRunSelectedTemplate}
             >
@@ -587,7 +585,7 @@ function ContextChips({
         {modeDescription}
       </p>
       {showAdminGlobalIndicator ? (
-        <p className="m-0 rounded-control border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-bold leading-5 text-emerald-800">
+        <p className="m-0 rounded-control border border-app-border bg-app-muted px-3 py-2 text-xs font-bold leading-5 text-app-text">
           Admin global scope indicator. Query runs still use backend authorization.
         </p>
       ) : null}
@@ -616,13 +614,13 @@ function QuestionComposer({
 
   return (
     <section
-      className="grid gap-3 border-b border-app-border pb-5"
+      className={`${PANEL_CLASS} gap-4`}
       aria-labelledby="question-composer-title"
     >
       <div className="grid gap-1">
         <p className={EYEBROW_CLASS}>Ask a question</p>
         <h2 id="question-composer-title" className={PANEL_TITLE_CLASS}>
-          Query workspace
+          Ask a question
         </h2>
         <p className={BODY_TEXT_CLASS}>
           Run a selected template or ask a free-form question if your role allows it.
@@ -661,7 +659,7 @@ function QuestionComposer({
           ) : null}
         </>
       ) : (
-        <div className="grid gap-2 rounded-card border border-blue-100 bg-blue-50/70 p-4 text-sm leading-6 text-app-subtle">
+        <div className="grid gap-2 rounded-card border border-app-border bg-app-muted p-4 text-sm leading-6 text-app-subtle">
           <h3 className={SMALL_PANEL_TITLE_CLASS}>Template-only mode</h3>
           <p className={BODY_TEXT_CLASS}>
             Selected templates can be used here. This role does not receive a
@@ -703,11 +701,15 @@ function ResultPlaceholder({
   }, [activeTab, activeVisibleTab]);
 
   return (
-    <section className="grid gap-4" aria-labelledby="result-placeholder-title">
+    <section
+      className={`${PANEL_CLASS} gap-5`}
+      aria-label="Result workspace"
+      aria-labelledby="result-workspace-title"
+    >
       <div className={PANEL_HEADER_CLASS}>
         <p className={EYEBROW_CLASS}>Result workspace</p>
-        <h2 id="result-placeholder-title" className={PANEL_TITLE_CLASS}>
-          Results and context
+        <h2 id="result-workspace-title" className={PANEL_TITLE_CLASS}>
+          Result workspace
         </h2>
         <p className={BODY_TEXT_CLASS}>
           Results stay in focus. Summary, SQL, and diagnostics are available only
@@ -772,7 +774,7 @@ function ResultTabs({
 
   return (
     <div
-      className="grid grid-cols-2 gap-2 rounded-card bg-slate-100 p-1 sm:flex sm:flex-wrap"
+      className="grid grid-cols-2 gap-2 rounded-card border border-app-border bg-app-muted p-1 sm:flex sm:flex-wrap"
       role="tablist"
       aria-label="Ask Data result views"
     >
@@ -788,8 +790,8 @@ function ResultTabs({
             aria-controls={`ask-data-tab-panel-${tab.id}`}
             className={`qops-focus-ring inline-flex min-h-11 items-center justify-center rounded-control border px-3.5 text-sm font-bold transition sm:w-auto ${
               activeTab === tab.id
-                ? "border-white bg-app-surface text-app-text shadow-sm"
-                : "border-transparent bg-transparent text-app-subtle hover:bg-white/80 hover:text-brand-primary"
+                ? "border-app-border bg-app-surface text-app-text shadow-sm"
+                : "border-transparent bg-transparent text-app-subtle hover:bg-app-surface hover:text-brand-primary"
             }`}
             onClick={() => onSelectTab(tab.id)}
           >
@@ -819,8 +821,8 @@ function ResultsTabContent({
     <>
       {queryRunState.status === "idle" ? (
         <div
-          className="grid min-h-56 place-items-center rounded-card border border-dashed border-slate-300 bg-gradient-to-br from-white to-blue-50/50 p-6 text-center"
-          aria-label="Result table placeholder"
+          className="grid min-h-64 place-items-center rounded-card border border-dashed border-app-border bg-app-muted p-6 text-center"
+          aria-label="Empty result workspace"
         >
           <div className="max-w-md">
             <h3 className="m-0 text-base font-bold text-app-text">Ready for a query</h3>
@@ -833,7 +835,7 @@ function ResultsTabContent({
       ) : null}
 
       {queryRunState.status === "running" ? (
-        <p className={`${INFO_CARD_CLASS} min-h-32 place-content-center border-blue-200`} role="status">
+        <p className={`${INFO_CARD_CLASS} min-h-32 place-content-center`} role="status">
           <span className="font-bold text-app-text">
             {runningQueryMessage(queryRunState.mode)}
           </span>
@@ -845,7 +847,7 @@ function ResultsTabContent({
 
       {queryRunState.status === "error" ? (
         <p className={ERROR_CARD_CLASS} role="alert">
-          <strong className="block text-red-900">Request failed</strong>
+          <strong className="block text-state-danger">Request failed</strong>
           <span>{queryRunState.message}</span>
         </p>
       ) : null}
@@ -951,7 +953,7 @@ function SqlTabContent({ queryRunState }: { queryRunState: QueryRunState }) {
   }
 
   return (
-    <div className={MUTED_CARD_CLASS}>
+    <div className={`${MUTED_CARD_CLASS} font-mono`}>
       <h3 className={SMALL_PANEL_TITLE_CLASS}>SQL</h3>
       <p className={BODY_TEXT_CLASS}>
         SQL is visible only for roles with SQL access. Generated SQL is the
@@ -968,7 +970,7 @@ function SqlBlock({ label, sql }: { label: string; sql: string }) {
   return (
     <section className="grid gap-2" aria-label={label}>
       <h4 className="m-0 text-sm font-bold text-app-text">{label}</h4>
-      <pre className="m-0 overflow-x-auto whitespace-pre-wrap rounded-card border border-slate-300 bg-app-surface p-3 font-mono text-xs leading-6 text-app-text">
+      <pre className="m-0 overflow-x-auto whitespace-pre-wrap rounded-card border border-app-border bg-app-surface p-3 font-mono text-xs leading-6 text-app-text">
         <code>{sql}</code>
       </pre>
     </section>
@@ -1020,7 +1022,7 @@ function DiagnosticsTabContent({ queryRunState }: { queryRunState: QueryRunState
     .filter((warning): warning is string => warning !== null);
 
   return (
-    <div className={MUTED_CARD_CLASS}>
+    <div className={`${MUTED_CARD_CLASS} gap-4`}>
       <h3 className={SMALL_PANEL_TITLE_CLASS}>Diagnostics</h3>
       <p className={BODY_TEXT_CLASS}>
         Technical diagnostics are built from safe query metadata. SQL text stays
@@ -1099,7 +1101,7 @@ function DiagnosticsTabContent({ queryRunState }: { queryRunState: QueryRunState
           aria-label="Diagnostic warnings"
         >
           <h4 className="m-0 text-sm font-bold text-app-text">Warnings</h4>
-          <ul className="m-0 grid gap-1.5 rounded-card border border-amber-200 bg-amber-50 py-3 pl-8 pr-3.5 text-sm leading-6 text-amber-900">
+          <ul className="m-0 grid gap-1.5 rounded-card border border-app-border bg-app-surface py-3 pl-8 pr-3.5 text-sm leading-6 text-app-text">
             {safeWarnings.map((warning) => (
               <li key={warning}>{warning}</li>
             ))}
@@ -1321,7 +1323,7 @@ function QueryResultSummary({
         <div className="grid gap-2.5">
           {result.truncated ? (
             <p className={`${WARNING_CARD_CLASS} grid gap-1`}>
-              <strong className="text-sm text-amber-950">Results truncated</strong>
+              <strong className="text-sm text-app-text">Results truncated</strong>
               <span>Only the returned rows are shown in this preview.</span>
             </p>
           ) : null}
@@ -1330,7 +1332,7 @@ function QueryResultSummary({
               className={`${WARNING_CARD_CLASS} grid gap-2`}
               aria-label="Query warnings"
             >
-              <h4 className="m-0 text-sm font-bold text-amber-950">Warnings</h4>
+              <h4 className="m-0 text-sm font-bold text-app-text">Warnings</h4>
               <ul className="m-0 grid gap-1.5 pl-5">
                 {result.warnings.map((warning) => (
                   <li key={warning}>{warning}</li>
@@ -1372,7 +1374,7 @@ function ClarificationPanel({
 
   return (
     <div
-      className={`${INFO_CARD_CLASS} border-blue-200 bg-blue-50`}
+      className={INFO_CARD_CLASS}
       aria-label="Clarification required"
     >
       <h3 className={SMALL_PANEL_TITLE_CLASS}>Clarification required</h3>
@@ -1426,7 +1428,7 @@ function VisualizationSuggestion({
 }) {
   return (
     <div
-      className="grid gap-1.5 rounded-card border border-blue-200 bg-blue-50/80 px-3.5 py-3 text-sm leading-6 text-app-subtle"
+      className="grid gap-1.5 rounded-card border border-app-border bg-app-muted px-3.5 py-3 text-sm leading-6 text-app-subtle"
       aria-label="Visualization suggestion"
     >
       <h4 className="m-0 text-sm font-bold text-app-text">
@@ -1456,7 +1458,7 @@ function QueryResultTable({
               <th
                 key={column}
                 scope="col"
-                className="sticky top-0 border-b border-app-border bg-blue-50 px-3 py-2.5 font-bold text-slate-700"
+                className="sticky top-0 border-b border-app-border bg-app-muted px-3 py-2.5 font-bold text-app-text"
               >
                 {column}
               </th>
@@ -1467,7 +1469,7 @@ function QueryResultTable({
           {rows.map((row, rowIndex) => (
             <tr
               key={rowIndex}
-              className="even:bg-slate-50/70 hover:bg-blue-50/70 [&:last-child>td]:border-b-0"
+              className="even:bg-app-muted hover:bg-app-muted [&:last-child>td]:border-b-0"
             >
               {columns.map((column) => (
                 <td
@@ -1498,25 +1500,30 @@ function runningQueryMessage(mode: QueryRunMode): string {
 }
 
 function InsightPanel() {
+  const [isOpen, setIsOpen] = useState(false);
+
   return (
     <section
-      className="rounded-card border border-app-border bg-app-muted/80 p-1"
+      className="rounded-card border border-app-border bg-app-muted p-1"
       aria-label="Ask Data insights"
     >
-      <details className="group">
-        <summary className="qops-focus-ring flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 rounded-control px-3 py-2 text-sm font-bold text-app-text marker:hidden">
-          <span>Insights & next steps</span>
-          <span className="text-xs font-bold uppercase text-app-faint group-open:hidden">
-            Open
-          </span>
-          <span className="hidden text-xs font-bold uppercase text-app-faint group-open:inline">
-            Close
-          </span>
-        </summary>
+      <button
+        type="button"
+        className="qops-focus-ring flex min-h-12 w-full items-center justify-between gap-3 rounded-control border border-transparent bg-transparent px-3 py-2 text-left text-sm font-bold text-app-text transition hover:border-app-border hover:bg-app-surface"
+        aria-expanded={isOpen}
+        aria-label="Insights & next steps"
+        onClick={() => setIsOpen((currentValue) => !currentValue)}
+      >
+        <span>Insights & next steps</span>
+        <span className="text-xs font-bold uppercase text-app-faint" aria-hidden="true">
+          {isOpen ? "Close" : "Open"}
+        </span>
+      </button>
 
+      {isOpen ? (
         <div className="grid gap-3 px-3 pb-3 pt-1">
           <div className="grid gap-1 rounded-card border border-app-border bg-app-surface p-3">
-            <h3 className="m-0 text-sm font-bold tracking-normal text-slate-950">
+            <h3 className="m-0 text-sm font-bold tracking-normal text-app-text">
               Insights
             </h3>
             <p className={BODY_TEXT_CLASS}>
@@ -1526,7 +1533,7 @@ function InsightPanel() {
           </div>
 
           <div className="grid gap-1 rounded-card border border-app-border bg-app-surface p-3">
-            <h3 className="m-0 text-sm font-bold tracking-normal text-slate-950">
+            <h3 className="m-0 text-sm font-bold tracking-normal text-app-text">
               Suggested Action
             </h3>
             <p className={BODY_TEXT_CLASS}>
@@ -1537,7 +1544,7 @@ function InsightPanel() {
 
           <div
             className="grid gap-2 sm:grid-cols-3"
-            aria-label="Future operational actions"
+            aria-label="Future operational controls"
           >
             {FUTURE_OPERATION_PLACEHOLDERS.map((placeholder) => (
               <div
@@ -1563,7 +1570,7 @@ function InsightPanel() {
             ))}
           </div>
         </div>
-      </details>
+      ) : null}
     </section>
   );
 }

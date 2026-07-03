@@ -418,7 +418,7 @@ describe("App", () => {
     expect(
       await screen.findByRole("heading", { name: "Ask Data" })
     ).toBeInTheDocument();
-    expect(screen.getByText("Governed analytics")).toBeInTheDocument();
+    expect(screen.getByText("Command workspace")).toBeInTheDocument();
     expect((await screen.findAllByText("Unused paid licenses")).length).toBeGreaterThan(0);
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
@@ -467,7 +467,7 @@ describe("App", () => {
     fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
 
     const templateRegion = await screen.findByRole("region", {
-      name: "Ask Data templates"
+      name: "Template catalog"
     });
     expect(within(templateRegion).getByText("Licenses")).toBeInTheDocument();
     expect(within(templateRegion).getByText("Security")).toBeInTheDocument();
@@ -492,7 +492,7 @@ describe("App", () => {
     );
 
     const selectedTemplate = within(templateRegion).getByLabelText(
-      "Selected query template"
+      "Selected template details"
     );
     expect(within(selectedTemplate).getByText("Security events")).toBeInTheDocument();
     expect(
@@ -1943,7 +1943,7 @@ describe("App", () => {
     fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
 
     const workspaceRegion = await screen.findByRole("region", {
-      name: "Ask Data workspace"
+      name: "Ask Data command workspace"
     });
     expect(within(workspaceRegion).getByLabelText("Free question")).not.toBeDisabled();
     expect(
@@ -1973,7 +1973,7 @@ describe("App", () => {
     fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
 
     const workspaceRegion = await screen.findByRole("region", {
-      name: "Ask Data workspace"
+      name: "Ask Data command workspace"
     });
     expect(within(workspaceRegion).getByRole("tab", { name: "Results" })).toBeInTheDocument();
     expect(within(workspaceRegion).getByRole("tab", { name: "Summary" })).toBeInTheDocument();
@@ -2001,7 +2001,7 @@ describe("App", () => {
     expect(await screen.findByText(/Admin global scope indicator/i)).toBeInTheDocument();
     expect(screen.getAllByText(/backend authorization/i).length).toBeGreaterThan(0);
     const workspaceRegion = screen.getByRole("region", {
-      name: "Ask Data workspace"
+      name: "Ask Data command workspace"
     });
     expect(within(workspaceRegion).getByRole("tab", { name: "SQL" })).toBeInTheDocument();
     expect(
@@ -2010,7 +2010,7 @@ describe("App", () => {
     expectNoQueryRun(fetchMock);
   });
 
-  it("renders the static Ask Data split workspace layout", async () => {
+  it("renders the focused Ask Data command workspace layout", async () => {
     const fetchMock = stubFetchSequence(
       successResponse(demoManager),
       successResponse(askDataTemplates)
@@ -2024,35 +2024,51 @@ describe("App", () => {
     fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
 
     const templateRegion = await screen.findByRole("region", {
-      name: "Ask Data templates"
+      name: "Template catalog"
     });
     expect(
-      within(templateRegion).getByRole("heading", { name: "Approved questions" })
+      within(templateRegion).getByRole("heading", { name: "Template catalog" })
     ).toBeInTheDocument();
+    expect(within(templateRegion).getByRole("button", { name: "Licenses" })).toBeInTheDocument();
+    expect(within(templateRegion).getByRole("button", { name: "Security" })).toBeInTheDocument();
     expect(
       within(templateRegion).getByRole("button", { name: /Unused paid licenses/i })
     ).toBeInTheDocument();
     expect(
       within(templateRegion).getByRole("button", { name: /Security events/i })
     ).toBeInTheDocument();
+    expect(
+      within(templateRegion).getByLabelText("Selected template details")
+    ).toBeInTheDocument();
 
     const workspaceRegion = screen.getByRole("region", {
-      name: "Ask Data workspace"
+      name: "Ask Data command workspace"
     });
     expect(
-      within(workspaceRegion).getByRole("heading", { name: "Query workspace" })
+      within(workspaceRegion).getByRole("heading", { name: "Ask a question" })
     ).toBeInTheDocument();
-    expect(within(workspaceRegion).getByText("Results and context")).toBeInTheDocument();
+    expect(
+      within(workspaceRegion).getByRole("region", { name: "Result workspace" })
+    ).toBeInTheDocument();
     expect(
       within(workspaceRegion).getAllByText(/Run a selected template or ask a free-form question/i)
         .length
     ).toBeGreaterThan(0);
+    expect(within(workspaceRegion).queryByText("Query workspace")).not.toBeInTheDocument();
+    expect(within(workspaceRegion).queryByText("Results and context")).not.toBeInTheDocument();
 
     const insightRegion = screen.getByRole("region", {
       name: "Ask Data insights"
     });
-    expect(within(insightRegion).getByText("Insights & next steps")).toBeInTheDocument();
+    const insightToggle = within(insightRegion).getByRole("button", {
+      name: "Insights & next steps"
+    });
+    expect(insightToggle).toHaveAttribute("aria-expanded", "false");
+    expect(
+      within(insightRegion).queryByRole("heading", { name: "Insights" })
+    ).not.toBeInTheDocument();
     openInsightsPanel(insightRegion);
+    expect(insightToggle).toHaveAttribute("aria-expanded", "true");
     expect(
       within(insightRegion).getByRole("heading", { name: "Insights" })
     ).toBeInTheDocument();
@@ -2780,12 +2796,12 @@ async function openAskData() {
   });
   fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
   await screen.findByRole("heading", { name: "Ask Data" });
-  await screen.findByRole("region", { name: "Ask Data templates" });
+  await screen.findByRole("region", { name: "Template catalog" });
 }
 
 function expectApprovedTemplatesVisible() {
   const templateRegion = screen.getByRole("region", {
-    name: "Ask Data templates"
+    name: "Template catalog"
   });
   expect(
     within(templateRegion).getByRole("button", { name: /Unused paid licenses/i })
@@ -2816,7 +2832,9 @@ function openInsightsPanel(insightRegion: HTMLElement) {
     return;
   }
 
-  fireEvent.click(within(insightRegion).getByText("Insights & next steps"));
+  fireEvent.click(
+    within(insightRegion).getByRole("button", { name: "Insights & next steps" })
+  );
 }
 
 function expectSensitiveTechnicalFieldsHidden(role: string) {
