@@ -1,6 +1,69 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --qops-color-background: #eef3f7;
+    --qops-color-surface: #ffffff;
+    --qops-color-muted-surface: #f6f9fc;
+    --qops-color-border: #d7e0eb;
+    --qops-color-text: #152033;
+    --qops-color-text-strong: #0f172a;
+    --qops-color-text-subtle: #40516a;
+    --qops-color-text-faint: #5c6b82;
+    --qops-color-primary: #2c7be5;
+    --qops-color-primary-strong: #172033;
+    --qops-color-accent: #0f766e;
+    --qops-color-accent-strong: #17643a;
+    --qops-color-success: #17643a;
+    --qops-color-warning: #a16207;
+    --qops-color-danger: #b42318;
+    --qops-focus-ring: 0 0 0 3px rgb(44 123 229 / 0.32);
+  }
+}
+
+@layer components {
+  .qops-app-background {
+    @apply bg-app-bg text-app-text;
+  }
+
+  .qops-surface {
+    @apply border border-app-border bg-app-surface text-app-text shadow-card;
+  }
+
+  .qops-muted-surface {
+    @apply border border-app-border bg-app-muted text-app-text;
+  }
+
+  .qops-focus-ring {
+    @apply focus-visible:outline-none focus-visible:shadow-focus;
+  }
+
+  .qops-button {
+    @apply inline-flex min-h-11 items-center justify-center rounded-control px-4 text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60;
+  }
+
+  .qops-button-primary {
+    @apply qops-button bg-brand-primary-strong text-white hover:bg-brand-primary;
+  }
+
+  .qops-button-secondary {
+    @apply qops-button border border-app-border bg-app-surface text-app-text hover:border-brand-primary hover:text-brand-primary;
+  }
+
+  .qops-tab {
+    @apply inline-flex min-h-11 items-center justify-center rounded-control px-3 text-sm font-bold text-app-subtle transition;
+  }
+
+  .qops-tab-active {
+    @apply bg-app-surface text-app-text shadow-card;
+  }
+}
+
 :root {
-  color: #152033;
-  background: #eef3f7;
+  color: var(--qops-color-text);
+  background: var(--qops-color-background);
   font-family:
     Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   font-synthesis: none;
