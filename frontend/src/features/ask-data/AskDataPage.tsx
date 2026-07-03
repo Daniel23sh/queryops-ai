@@ -68,25 +68,29 @@ const FUTURE_OPERATION_PLACEHOLDERS = [
 
 const EYEBROW_CLASS = "m-0 text-xs font-bold uppercase tracking-normal text-brand-accent";
 const PANEL_CLASS =
-  "grid gap-4 rounded-panel border border-app-border bg-app-surface p-5 shadow-sm";
+  "grid gap-4 rounded-panel border border-app-border bg-app-surface p-5 shadow-sm ring-1 ring-white/70";
 const PANEL_HEADER_CLASS = "grid gap-1.5";
 const PANEL_TITLE_CLASS = "m-0 text-lg font-bold tracking-normal text-slate-950";
 const SMALL_PANEL_TITLE_CLASS = "m-0 text-base font-bold tracking-normal text-slate-950";
 const BODY_TEXT_CLASS = "m-0 text-sm leading-6 text-app-subtle";
 const MUTED_CARD_CLASS =
-  "grid gap-2 rounded-card border border-app-border bg-app-muted p-4";
+  "grid gap-2 rounded-card border border-app-border bg-app-muted p-4 text-sm leading-6 text-app-subtle";
 const INFO_CARD_CLASS =
   "grid gap-2 rounded-card border border-blue-200 bg-blue-50 p-4 text-sm leading-6 text-app-subtle";
 const WARNING_CARD_CLASS =
   "rounded-card border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900";
+const ERROR_CARD_CLASS =
+  "m-0 rounded-card border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-800";
 const SESSION_MESSAGE_CLASS = "m-0 text-sm leading-5 text-amber-700";
 const INPUT_LABEL_CLASS = "grid gap-2 text-sm font-bold text-slate-700";
 const TEXTAREA_CLASS =
-  "min-h-28 w-full resize-y rounded-control border border-slate-300 bg-app-muted px-3.5 py-3 text-sm leading-6 text-app-text outline-none transition placeholder:text-app-faint focus:border-brand-primary focus:shadow-focus disabled:cursor-not-allowed disabled:opacity-60";
+  "min-h-32 w-full resize-y rounded-control border border-slate-300 bg-app-muted px-3.5 py-3 text-sm leading-6 text-app-text outline-none transition placeholder:text-app-faint hover:border-slate-400 focus:border-brand-primary focus:shadow-focus disabled:cursor-not-allowed disabled:opacity-60";
 const PRIMARY_BUTTON_CLASS =
-  "qops-button-primary qops-focus-ring transition hover:shadow-card";
+  "qops-button-primary qops-focus-ring transition hover:shadow-card active:translate-y-px";
 const SECONDARY_BUTTON_CLASS =
-  "qops-button-secondary qops-focus-ring transition";
+  "qops-button-secondary qops-focus-ring transition hover:shadow-sm active:translate-y-px disabled:hover:border-app-border disabled:hover:text-app-text disabled:hover:shadow-none disabled:active:translate-y-0";
+const STATUS_TILE_CLASS =
+  "rounded-card border border-app-border bg-app-surface p-3.5 shadow-sm";
 
 export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
   const canRunFreeQuery = user.permissions.includes("can_run_free_query");
@@ -279,10 +283,10 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
 
   return (
     <article
-      className="grid min-h-[420px] gap-5"
+      className="grid min-h-[420px] gap-6"
       aria-labelledby="workspace-title"
     >
-      <div className="max-w-3xl rounded-panel border border-app-border bg-app-surface p-7 shadow-sm">
+      <div className="max-w-3xl overflow-hidden rounded-panel border border-app-border bg-app-surface p-6 shadow-card ring-1 ring-white/70 sm:p-7">
         <p className={EYEBROW_CLASS}>Query integration</p>
         <h1
           id="workspace-title"
@@ -294,9 +298,13 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
           Prepare governed data questions in a dedicated workspace. Templates,
           questions, result tables, and clarification states use the Query API.
         </p>
+        <div
+          className="mt-5 h-1.5 w-28 rounded-full bg-brand-primary"
+          aria-hidden="true"
+        />
       </div>
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(220px,0.82fr)_minmax(360px,1.35fr)_minmax(220px,0.9fr)]">
+      <div className="grid items-start gap-4 lg:grid-cols-[minmax(220px,0.78fr)_minmax(0,1.35fr)] xl:grid-cols-[minmax(220px,0.82fr)_minmax(360px,1.35fr)_minmax(220px,0.9fr)] 2xl:gap-5">
         <TemplatePanel
           categories={templateCategories}
           error={templateLoadError}
@@ -387,23 +395,25 @@ function TemplatePanel({
       </div>
 
       {status === "loading" ? (
-        <p className={MUTED_CARD_CLASS} role="status">
-          Loading query templates...
+        <p className={INFO_CARD_CLASS} role="status">
+          <span className="font-bold text-app-text">Loading query templates...</span>
+          <span className="block text-app-subtle">
+            The approved template catalog is being prepared for this role.
+          </span>
         </p>
       ) : null}
 
       {status === "error" ? (
-        <p
-          className="m-0 rounded-card border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-800"
-          role="alert"
-        >
-          {error ?? "Query templates could not be loaded."}
+        <p className={ERROR_CARD_CLASS} role="alert">
+          <strong className="block text-red-900">Template catalog unavailable</strong>
+          <span>{error ?? "Query templates could not be loaded."}</span>
         </p>
       ) : null}
 
       {status === "loaded" && !hasTemplates ? (
         <p className={MUTED_CARD_CLASS}>
-          No query templates are available yet.
+          <strong className="text-app-text">No query templates are available yet.</strong>
+          <span>Approved templates will appear here when they are published.</span>
         </p>
       ) : null}
 
@@ -417,7 +427,7 @@ function TemplatePanel({
               <button
                 key={group.category}
                 type="button"
-                className="qops-focus-ring rounded-control bg-emerald-50 px-3 py-1.5 text-xs font-bold text-emerald-800 transition hover:bg-emerald-100"
+                className="qops-focus-ring inline-flex min-h-11 items-center rounded-control border border-emerald-100 bg-emerald-50 px-3 text-xs font-bold text-emerald-800 transition hover:border-emerald-200 hover:bg-emerald-100"
                 onClick={() => onSelectTemplate(group.templates[0].id)}
               >
                 {group.category}
@@ -434,9 +444,9 @@ function TemplatePanel({
                 <li key={template.id}>
                   <button
                     type="button"
-                    className={`qops-focus-ring grid w-full gap-1.5 rounded-card border p-4 text-left transition hover:border-brand-primary hover:bg-blue-50 ${
+                    className={`qops-focus-ring grid min-h-24 w-full gap-1.5 rounded-card border p-4 text-left transition hover:-translate-y-0.5 hover:border-brand-primary hover:bg-blue-50 hover:shadow-sm ${
                       template.id === selectedTemplateId
-                        ? "border-brand-primary bg-blue-50 shadow-sm"
+                        ? "border-brand-primary bg-blue-50 shadow-card ring-1 ring-blue-100"
                         : "border-app-border bg-app-muted"
                     }`}
                     aria-pressed={template.id === selectedTemplateId}
@@ -547,15 +557,15 @@ function RoleScopeNotice({
         className="m-0 grid gap-3 md:grid-cols-3"
         aria-label="Ask Data access summary"
       >
-        <div className="rounded-card border border-app-border bg-app-surface p-3.5">
+        <div className={STATUS_TILE_CLASS}>
           <dt className="mb-1.5 text-xs font-bold uppercase text-app-faint">Mode</dt>
           <dd className="m-0 font-bold leading-6 text-app-text">{modeLabel}</dd>
         </div>
-        <div className="rounded-card border border-app-border bg-app-surface p-3.5">
+        <div className={STATUS_TILE_CLASS}>
           <dt className="mb-1.5 text-xs font-bold uppercase text-app-faint">Role</dt>
           <dd className="m-0 font-bold leading-6 text-app-text">{roleLabel}</dd>
         </div>
-        <div className="rounded-card border border-app-border bg-app-surface p-3.5">
+        <div className={STATUS_TILE_CLASS}>
           <dt className="mb-1.5 text-xs font-bold uppercase text-app-faint">Scope</dt>
           <dd className="m-0 font-bold leading-6 text-app-text">{scopeLabel}</dd>
         </div>
@@ -742,7 +752,7 @@ function ResultTabs({
 
   return (
     <div
-      className="flex flex-wrap gap-2 border-b border-app-border pb-2.5"
+      className="grid grid-cols-2 gap-2 border-b border-app-border pb-3 sm:flex sm:flex-wrap"
       role="tablist"
       aria-label="Ask Data result views"
     >
@@ -756,10 +766,10 @@ function ResultTabs({
             role="tab"
             aria-selected={activeTab === tab.id}
             aria-controls={`ask-data-tab-panel-${tab.id}`}
-            className={`qops-focus-ring inline-flex min-h-11 items-center justify-center rounded-control border px-3.5 text-sm font-bold transition ${
+            className={`qops-focus-ring inline-flex min-h-11 items-center justify-center rounded-control border px-3.5 text-sm font-bold transition sm:w-auto ${
               activeTab === tab.id
-                ? "border-brand-primary bg-blue-50 text-app-text shadow-sm"
-                : "border-slate-300 bg-app-surface text-app-subtle hover:border-brand-primary hover:text-brand-primary"
+                ? "border-brand-primary bg-blue-50 text-app-text shadow-card ring-1 ring-blue-100"
+                : "border-slate-300 bg-app-surface text-app-subtle hover:border-brand-primary hover:bg-blue-50 hover:text-brand-primary"
             }`}
             onClick={() => onSelectTab(tab.id)}
           >
@@ -789,13 +799,13 @@ function ResultsTabContent({
     <>
       {queryRunState.status === "idle" ? (
         <div
-          className="grid overflow-hidden rounded-card border border-app-border sm:grid-cols-2"
+          className="grid overflow-hidden rounded-card border border-app-border bg-app-surface shadow-sm sm:grid-cols-2"
           aria-label="Result table placeholder"
         >
-          <div className="min-h-11 border-b border-app-border bg-app-muted p-3 font-bold text-app-text sm:border-r">
+          <div className="min-h-11 border-b border-app-border bg-blue-50 p-3 font-bold text-app-text sm:border-r">
             Column A
           </div>
-          <div className="min-h-11 border-b border-app-border bg-app-muted p-3 font-bold text-app-text">
+          <div className="min-h-11 border-b border-app-border bg-blue-50 p-3 font-bold text-app-text">
             Column B
           </div>
           <div className="min-h-11 border-b border-app-border p-3 text-sm leading-6 text-app-subtle sm:border-b-0 sm:border-r">
@@ -808,17 +818,20 @@ function ResultsTabContent({
       ) : null}
 
       {queryRunState.status === "running" ? (
-        <p className={MUTED_CARD_CLASS} role="status">
-          {runningQueryMessage(queryRunState.mode)}
+        <p className={`${INFO_CARD_CLASS} border-blue-200`} role="status">
+          <span className="font-bold text-app-text">
+            {runningQueryMessage(queryRunState.mode)}
+          </span>
+          <span className="block text-app-subtle">
+            Results will appear here when the query finishes.
+          </span>
         </p>
       ) : null}
 
       {queryRunState.status === "error" ? (
-        <p
-          className="m-0 rounded-card border border-red-200 bg-red-50 p-4 text-sm leading-6 text-red-800"
-          role="alert"
-        >
-          {queryRunState.message}
+        <p className={ERROR_CARD_CLASS} role="alert">
+          <strong className="block text-red-900">Request failed</strong>
+          <span>{queryRunState.message}</span>
         </p>
       ) : null}
 
@@ -1413,7 +1426,7 @@ function QueryResultTable({
   return (
     <div className="overflow-x-auto rounded-card border border-app-border bg-app-surface">
       <table
-        className="w-full min-w-[520px] border-collapse text-left text-sm text-app-text"
+        className="w-full min-w-[520px] border-collapse text-left text-sm tabular-nums text-app-text"
         aria-label="Query results"
       >
         <thead>
@@ -1431,7 +1444,10 @@ function QueryResultTable({
         </thead>
         <tbody>
           {rows.map((row, rowIndex) => (
-            <tr key={rowIndex} className="[&:last-child>td]:border-b-0">
+            <tr
+              key={rowIndex}
+              className="even:bg-slate-50/70 hover:bg-blue-50/70 [&:last-child>td]:border-b-0"
+            >
               {columns.map((column) => (
                 <td
                   key={column}
@@ -1462,7 +1478,10 @@ function runningQueryMessage(mode: QueryRunMode): string {
 
 function InsightPanel() {
   return (
-    <section className={PANEL_CLASS} aria-label="Ask Data insights">
+    <section
+      className={`${PANEL_CLASS} lg:col-span-2 xl:col-span-1`}
+      aria-label="Ask Data insights"
+    >
       <div className={PANEL_HEADER_CLASS}>
         <p className={EYEBROW_CLASS}>Right panel</p>
         <h2 className={PANEL_TITLE_CLASS}>Explanation</h2>
