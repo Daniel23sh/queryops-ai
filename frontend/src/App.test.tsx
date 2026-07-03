@@ -224,7 +224,7 @@ describe("App", () => {
     ).toBeInTheDocument();
   });
 
-  it("logs in as the selected demo user and renders the authenticated placeholder", async () => {
+  it("logs in as the selected demo user and renders the authenticated workspace", async () => {
     const fetchMock = stubFetchSequence(
       errorResponse("UNAUTHORIZED", 401),
       successResponse({
@@ -239,7 +239,7 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: /demo manager/i }));
 
     expect(
-      await screen.findByRole("heading", { name: "Templates placeholder" })
+      await screen.findByRole("heading", { name: "Templates" })
     ).toBeInTheDocument();
     expect(screen.getByText("demo.manager@queryops.local")).toBeInTheDocument();
     expect(screen.getByText("Manager")).toBeInTheDocument();
@@ -275,7 +275,7 @@ describe("App", () => {
     renderApp();
 
     expect(
-      await screen.findByRole("heading", { name: "Templates placeholder" })
+      await screen.findByRole("heading", { name: "Templates" })
     ).toBeInTheDocument();
     await waitFor(() => {
       expect(screen.queryByRole("heading", { name: "Choose a demo profile" })).not.toBeInTheDocument();
@@ -2127,8 +2127,8 @@ describe("App", () => {
     expect(within(nav).getByRole("button", { name: "Audit" })).toBeInTheDocument();
   });
 
-  it("opens placeholder sections from the sidebar without real feature behavior", async () => {
-    stubFetchSequence(successResponse(demoAnalyst));
+  it("opens planned workspace pages from the sidebar without real feature behavior", async () => {
+    const fetchMock = stubFetchSequence(successResponse(demoAnalyst));
 
     renderApp();
 
@@ -2137,13 +2137,26 @@ describe("App", () => {
     });
     fireEvent.click(within(nav).getByRole("button", { name: "SQL / Technical" }));
 
+    const workspace = await screen.findByRole("region", {
+      name: "SQL / Technical planned workspace"
+    });
     expect(
-      await screen.findByRole("heading", { name: "SQL / Technical placeholder" })
+      within(workspace).getByRole("heading", { name: "SQL / Technical" })
     ).toBeInTheDocument();
-    expect(screen.getByText("Placeholder only")).toBeInTheDocument();
+    expect(within(workspace).getByText("Planned workspace")).toBeInTheDocument();
     expect(
-      screen.getByText(/No Query Engine, SQL execution, dashboards, actions, approvals, audit UI, or backend feature is implemented here/i)
+      within(workspace).getByText(/Technical details remain role-gated and contained inside Ask Data result tabs/i)
     ).toBeInTheDocument();
+    expect(
+      within(workspace).getByRole("button", { name: "Open technical console" })
+    ).toBeDisabled();
+    expect(
+      within(workspace).getByRole("button", { name: "Export technical report" })
+    ).toBeDisabled();
+    expect(within(workspace).queryByText("Generated SQL")).not.toBeInTheDocument();
+    expect(within(workspace).queryByText("Executed SQL")).not.toBeInTheDocument();
+    expect(within(workspace).queryByText(/SELECT /i)).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("logs out with the stored CSRF token and returns to the demo login screen", async () => {
@@ -2162,7 +2175,7 @@ describe("App", () => {
     fireEvent.click(await screen.findByRole("button", { name: /demo manager/i }));
 
     expect(
-      await screen.findByRole("heading", { name: "Templates placeholder" })
+      await screen.findByRole("heading", { name: "Templates" })
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Log out" }));
@@ -2193,7 +2206,7 @@ describe("App", () => {
     renderApp();
 
     expect(
-      await screen.findByRole("heading", { name: "Templates placeholder" })
+      await screen.findByRole("heading", { name: "Templates" })
     ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Log out" }));

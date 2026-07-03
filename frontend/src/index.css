@@ -630,18 +630,54 @@ h1 {
 }
 
 .placeholder-panel {
+  display: grid;
+  gap: 22px;
   min-height: 420px;
+}
+
+.placeholder-panel__hero,
+.placeholder-status-card,
+.placeholder-panel__notice,
+.placeholder-panel__actions {
   border: 1px solid var(--qops-color-border);
   border-radius: 8px;
   background: var(--qops-color-elevated-surface);
-  padding: 32px;
   box-shadow: var(--qops-shadow-card);
+}
+
+.placeholder-panel__hero {
+  position: relative;
+  overflow: hidden;
+  display: grid;
+  gap: 24px;
+  padding: 32px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--qops-color-elevated-surface) 92%, var(--qops-color-accent)), var(--qops-color-elevated-surface)),
+    var(--qops-color-elevated-surface);
+}
+
+.placeholder-panel__hero::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: color-mix(in srgb, var(--qops-color-accent) 70%, var(--qops-color-primary));
+}
+
+.placeholder-panel__copy {
+  position: relative;
+  max-width: 790px;
+}
+
+.placeholder-panel h1 {
+  font-size: clamp(2rem, 4vw, 2.85rem);
 }
 
 .placeholder-panel__badge {
   width: fit-content;
   margin: 0 0 18px;
   border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--qops-color-primary) 24%, var(--qops-color-border));
   background: var(--qops-color-soft-blue);
   color: var(--qops-color-primary);
   padding: 6px 10px;
@@ -649,12 +685,146 @@ h1 {
   font-weight: 700;
 }
 
-.placeholder-panel__scope {
-  margin: 24px 0 0;
-  border-left: 4px solid var(--qops-color-border);
+.placeholder-panel__chips {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.placeholder-panel__chips span {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--qops-color-border);
+  border-radius: 8px;
+  background: var(--qops-color-muted-surface);
   color: var(--qops-color-text-subtle);
-  padding-left: 14px;
-  line-height: 1.6;
+  padding: 0 10px;
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+
+.placeholder-panel__card-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.placeholder-status-card {
+  position: relative;
+  overflow: hidden;
+  min-height: 168px;
+  padding: 18px;
+}
+
+.placeholder-status-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: var(--qops-color-primary);
+}
+
+.placeholder-status-card[data-tone="green"]::before {
+  background: var(--qops-color-accent);
+}
+
+.placeholder-status-card[data-tone="warning"]::before {
+  background: var(--qops-color-warning);
+}
+
+.placeholder-status-card[data-tone="muted"]::before {
+  background: var(--qops-color-border);
+}
+
+.placeholder-status-card__label {
+  margin: 0;
+  color: var(--qops-color-text-faint);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.placeholder-status-card h2 {
+  margin: 14px 0 0;
+  color: var(--qops-color-text-strong);
+  font-size: 1.2rem;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.placeholder-status-card p:last-child {
+  margin: 10px 0 0;
+  color: var(--qops-color-text-subtle);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.placeholder-panel__work-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(320px, 0.9fr);
+  gap: 22px;
+  align-items: start;
+}
+
+.placeholder-panel__notice,
+.placeholder-panel__actions {
+  padding: 22px;
+}
+
+.placeholder-panel__notice h2,
+.placeholder-panel__actions h2 {
+  margin: 0;
+  color: var(--qops-color-text-strong);
+  font-size: 1.2rem;
+  line-height: 1.3;
+  letter-spacing: 0;
+}
+
+.placeholder-panel__notice p:last-child {
+  margin: 12px 0 0;
+  color: var(--qops-color-text-subtle);
+  line-height: 1.65;
+}
+
+.placeholder-panel__actions {
+  display: grid;
+  gap: 14px;
+}
+
+.placeholder-action-list {
+  display: grid;
+  gap: 10px;
+}
+
+.placeholder-action-button {
+  min-height: 84px;
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  border: 1px solid var(--qops-color-border);
+  border-radius: 8px;
+  background: var(--qops-color-muted-surface);
+  color: var(--qops-color-text-subtle);
+  padding: 14px;
+  text-align: left;
+}
+
+.placeholder-action-button:disabled {
+  opacity: 1;
+}
+
+.placeholder-action-button span {
+  color: var(--qops-color-text);
+  font-size: 0.9375rem;
+  font-weight: 800;
+}
+
+.placeholder-action-button small {
+  color: var(--qops-color-text-faint);
+  font-size: 0.8125rem;
+  line-height: 1.45;
 }
 
 .dashboard-page {
@@ -979,23 +1149,64 @@ h1 {
 
 .role-upgrade-panel {
   display: grid;
-  gap: 28px;
+  gap: 22px;
   min-height: 420px;
-  border: 1px solid var(--qops-color-border);
-  border-radius: 8px;
-  background: var(--qops-color-elevated-surface);
-  padding: 32px;
-  box-shadow: var(--qops-shadow-card);
 }
 
 .role-upgrade-panel__header {
-  max-width: 760px;
+  position: relative;
+  overflow: hidden;
+  max-width: none;
+  border: 1px solid var(--qops-color-border);
+  border-radius: 8px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--qops-color-elevated-surface) 92%, var(--qops-color-primary)), var(--qops-color-elevated-surface)),
+    var(--qops-color-elevated-surface);
+  padding: 28px;
+  box-shadow: var(--qops-shadow-card);
+}
+
+.role-upgrade-panel__header::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: color-mix(in srgb, var(--qops-color-primary) 72%, var(--qops-color-accent));
+}
+
+.role-upgrade-panel__header > * {
+  position: relative;
+}
+
+.role-upgrade-panel__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 22px;
+}
+
+.role-upgrade-panel__chips span {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--qops-color-border);
+  border-radius: 8px;
+  background: var(--qops-color-muted-surface);
+  color: var(--qops-color-text-subtle);
+  padding: 0 10px;
+  font-size: 0.8125rem;
+  font-weight: 700;
 }
 
 .role-request-form {
   display: grid;
   gap: 18px;
   max-width: 720px;
+  border: 1px solid var(--qops-color-border);
+  border-radius: 8px;
+  background: var(--qops-color-elevated-surface);
+  padding: 22px;
+  box-shadow: var(--qops-shadow-card);
 }
 
 .form-field {
@@ -1087,6 +1298,11 @@ h1 {
 .role-request-status {
   display: grid;
   gap: 14px;
+  border: 1px solid var(--qops-color-border);
+  border-radius: 8px;
+  background: var(--qops-color-elevated-surface);
+  padding: 22px;
+  box-shadow: var(--qops-shadow-card);
 }
 
 .role-request-status__header h2 {
@@ -1262,7 +1478,8 @@ h1 {
 
 @media (max-width: 1180px) {
   .dashboard-kpi-grid,
-  .dashboard-posture-grid {
+  .dashboard-posture-grid,
+  .placeholder-panel__card-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -1302,6 +1519,10 @@ h1 {
   }
 
   .dashboard-work-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .placeholder-panel__work-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -1351,17 +1572,23 @@ h1 {
 
   .placeholder-panel {
     min-height: 320px;
-    padding: 24px;
   }
 
   .dashboard-hero,
-  .dashboard-role-panel {
+  .dashboard-role-panel,
+  .placeholder-panel__hero,
+  .placeholder-panel__notice,
+  .placeholder-panel__actions,
+  .role-upgrade-panel__header,
+  .role-request-form,
+  .role-request-status {
     padding: 24px;
   }
 
   .dashboard-kpi-grid,
   .dashboard-actions-grid,
-  .dashboard-posture-grid {
+  .dashboard-posture-grid,
+  .placeholder-panel__card-grid {
     grid-template-columns: 1fr;
   }
 
@@ -1375,7 +1602,6 @@ h1 {
 
   .role-upgrade-panel {
     min-height: 320px;
-    padding: 24px;
   }
 
   .role-request-list__item {
