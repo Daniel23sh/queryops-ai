@@ -60,10 +60,26 @@ type NavItem = {
   label: string;
   title: string;
   summary: string;
+  icon: NavIconName;
   canView: (user: AuthUser) => boolean;
 };
 
 type AdminDecisionAction = "approve" | "reject";
+type ThemeMode = "light" | "dark";
+type NavIconName =
+  | "templates"
+  | "dashboard"
+  | "upgrade"
+  | "requests"
+  | "ask"
+  | "history"
+  | "sql"
+  | "department"
+  | "admin"
+  | "users"
+  | "audit";
+
+const THEME_STORAGE_KEY = "queryops-theme";
 
 const PLACEHOLDER_SCOPE_NOTICE =
   "No Query Engine, SQL execution, dashboards, actions, approvals, audit UI, or backend feature is implemented here.";
@@ -82,6 +98,7 @@ const WORKSPACE_NAV_ITEMS: NavItem[] = [
     label: "Templates",
     title: "Templates placeholder",
     summary: "Future approved query templates will appear here.",
+    icon: "templates",
     canView: () => true
   },
   {
@@ -89,6 +106,7 @@ const WORKSPACE_NAV_ITEMS: NavItem[] = [
     label: "My Dashboard",
     title: "My Dashboard placeholder",
     summary: "Future personal dashboard cards will appear here.",
+    icon: "dashboard",
     canView: () => true
   },
   {
@@ -96,6 +114,7 @@ const WORKSPACE_NAV_ITEMS: NavItem[] = [
     label: "Role Upgrade",
     title: "Request Role Upgrade",
     summary: "Request a role change and track admin approval status.",
+    icon: "upgrade",
     canView: () => true
   },
   {
@@ -103,6 +122,7 @@ const WORKSPACE_NAV_ITEMS: NavItem[] = [
     label: "Role Requests",
     title: "Admin Role Requests",
     summary: "Review role upgrade requests and record role-only decisions.",
+    icon: "requests",
     canView: (user) => hasPermission(user, "can_approve_role_requests")
   },
   {
@@ -110,6 +130,7 @@ const WORKSPACE_NAV_ITEMS: NavItem[] = [
     label: "Ask Data",
     title: "Ask Data placeholder",
     summary: "Future governed data questions will start here.",
+    icon: "ask",
     canView: (user) => hasPermission(user, "can_use_query_templates")
   },
   {
@@ -117,6 +138,7 @@ const WORKSPACE_NAV_ITEMS: NavItem[] = [
     label: "Query History",
     title: "Query History placeholder",
     summary: "Future department query history will appear here.",
+    icon: "history",
     canView: (user) => hasPermission(user, "can_view_query_history_department")
   },
   {
@@ -124,6 +146,7 @@ const WORKSPACE_NAV_ITEMS: NavItem[] = [
     label: "SQL / Technical",
     title: "SQL / Technical placeholder",
     summary: "Future SQL-visible technical tools will appear here.",
+    icon: "sql",
     canView: (user) => hasPermission(user, "can_view_sql")
   },
   {
@@ -131,6 +154,7 @@ const WORKSPACE_NAV_ITEMS: NavItem[] = [
     label: "Department Dashboards",
     title: "Department Dashboards placeholder",
     summary: "Future department dashboard management will appear here.",
+    icon: "department",
     canView: (user) =>
       hasAnyPermission(user, [
         "can_create_department_dashboard",
@@ -142,6 +166,7 @@ const WORKSPACE_NAV_ITEMS: NavItem[] = [
     label: "Admin Console",
     title: "Admin Console placeholder",
     summary: "Future admin controls will appear here.",
+    icon: "admin",
     canView: (user) =>
       hasAnyPermission(user, ["can_manage_users", "can_approve_role_requests"])
   },
@@ -150,6 +175,7 @@ const WORKSPACE_NAV_ITEMS: NavItem[] = [
     label: "Users",
     title: "Users placeholder",
     summary: "Future user management will appear here.",
+    icon: "users",
     canView: (user) => hasPermission(user, "can_manage_users")
   },
   {
@@ -157,6 +183,7 @@ const WORKSPACE_NAV_ITEMS: NavItem[] = [
     label: "Audit",
     title: "Audit placeholder",
     summary: "Future global audit review will appear here.",
+    icon: "audit",
     canView: (user) => hasPermission(user, "can_view_global_audit")
   }
 ];
@@ -200,19 +227,66 @@ export default function App() {
 }
 
 function AppShell({ children }: { children: ReactNode }) {
+  const [theme, setTheme] = useState<ThemeMode>(() => getInitialTheme());
+
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
+
   return (
     <div className="app-shell">
       <header className="app-header">
         <div className="app-header__inner">
           <div className="brand" aria-label="QueryOps AI">
-            <span className="brand__name">QueryOps AI</span>
-            <span className="brand__phase">Milestone 2 demo auth</span>
+            <span className="brand__mark" aria-hidden="true">
+              Q
+            </span>
+            <span className="brand__copy">
+              <span className="brand__name">QueryOps AI</span>
+              <span className="brand__phase">Governed data workspace</span>
+            </span>
+          </div>
+          <div className="app-header__actions" aria-label="Application controls">
+            <span className="app-status-pill">Demo environment</span>
+            <ThemeToggle
+              theme={theme}
+              onToggle={() =>
+                setTheme((currentTheme) =>
+                  currentTheme === "dark" ? "light" : "dark"
+                )
+              }
+            />
           </div>
         </div>
       </header>
 
       {children}
     </div>
+  );
+}
+
+function ThemeToggle({
+  theme,
+  onToggle
+}: {
+  theme: ThemeMode;
+  onToggle: () => void;
+}) {
+  const isDark = theme === "dark";
+
+  return (
+    <button
+      type="button"
+      className="theme-toggle"
+      aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+      aria-pressed={isDark}
+      onClick={onToggle}
+    >
+      <span className="theme-toggle__track" aria-hidden="true">
+        <span className="theme-toggle__thumb" />
+      </span>
+      <span className="theme-toggle__label">{isDark ? "Dark" : "Light"}</span>
+    </button>
   );
 }
 
@@ -333,7 +407,12 @@ function AuthenticatedWorkspace({
                   data-active={isActive ? "true" : "false"}
                   onClick={() => setActiveNavId(item.id)}
                 >
-                  {item.label}
+                  <span
+                    className="workspace-nav__icon"
+                    data-icon={item.icon}
+                    aria-hidden="true"
+                  />
+                  <span className="workspace-nav__label">{item.label}</span>
                 </button>
               );
             })}
@@ -872,4 +951,49 @@ function formatRole(role: AuthUser["role"]): string {
 
 function formatRequestStatus(status: RoleRequestStatus): string {
   return status.charAt(0).toUpperCase() + status.slice(1);
+}
+
+function getInitialTheme(): ThemeMode {
+  const storedTheme = getStoredTheme();
+  if (storedTheme) {
+    return storedTheme;
+  }
+
+  if (
+    typeof window !== "undefined" &&
+    typeof window.matchMedia === "function" &&
+    window.matchMedia("(prefers-color-scheme: dark)").matches
+  ) {
+    return "dark";
+  }
+
+  return "light";
+}
+
+function getStoredTheme(): ThemeMode | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const storedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    return storedTheme === "light" || storedTheme === "dark" ? storedTheme : null;
+  } catch {
+    return null;
+  }
+}
+
+function applyTheme(theme: ThemeMode) {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  document.documentElement.classList.toggle("dark", theme === "dark");
+  document.documentElement.dataset.theme = theme;
+
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  } catch {
+    // Theme persistence is a convenience; the visual theme still applies.
+  }
 }

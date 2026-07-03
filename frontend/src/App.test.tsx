@@ -156,6 +156,9 @@ const askDataTemplates = [
 
 afterEach(() => {
   clearCsrfCookie();
+  localStorage.clear();
+  document.documentElement.classList.remove("dark");
+  document.documentElement.removeAttribute("data-theme");
   vi.unstubAllGlobals();
 });
 
@@ -180,6 +183,45 @@ describe("App", () => {
     expect(screen.getByRole("button", { name: /demo analyst/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /demo manager/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /demo user/i })).toBeInTheDocument();
+  });
+
+  it("toggles the app theme and stores the preference", async () => {
+    stubSystemTheme(false);
+    stubFetchSequence(errorResponse("UNAUTHORIZED", 401));
+
+    renderApp();
+
+    await waitFor(() => {
+      expect(document.documentElement).toHaveAttribute("data-theme", "light");
+    });
+    expect(document.documentElement).not.toHaveClass("dark");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Switch to dark mode" })
+    );
+
+    expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    expect(document.documentElement).toHaveClass("dark");
+    expect(localStorage.getItem("queryops-theme")).toBe("dark");
+    expect(
+      screen.getByRole("button", { name: "Switch to light mode" })
+    ).toBeInTheDocument();
+  });
+
+  it("hydrates the app theme from a stored preference", async () => {
+    localStorage.setItem("queryops-theme", "dark");
+    stubSystemTheme(false);
+    stubFetchSequence(errorResponse("UNAUTHORIZED", 401));
+
+    renderApp();
+
+    await waitFor(() => {
+      expect(document.documentElement).toHaveAttribute("data-theme", "dark");
+    });
+    expect(document.documentElement).toHaveClass("dark");
+    expect(
+      screen.getByRole("button", { name: "Switch to light mode" })
+    ).toBeInTheDocument();
   });
 
   it("logs in as the selected demo user and renders the authenticated placeholder", async () => {
@@ -2584,6 +2626,22 @@ function renderApp() {
     <AuthProvider>
       <App />
     </AuthProvider>
+  );
+}
+
+function stubSystemTheme(prefersDark: boolean) {
+  vi.stubGlobal(
+    "matchMedia",
+    vi.fn().mockImplementation((query: string) => ({
+      matches: prefersDark,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn()
+    }))
   );
 }
 
