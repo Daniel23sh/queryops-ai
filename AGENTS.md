@@ -69,10 +69,10 @@ The milestone status is defined in `PROJECT_PLAN.md`.
 At the time this file was updated, the latest completed target is:
 
 ```txt
-Milestone 5 PR5 — Ask Data Role Tabs, SQL, Corrections & Final Role Tests
+Milestone 5 PR6 — Tailwind UI Foundation & Ask Data Styling Polish
 ```
 
-Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, Milestone 3, and Milestone 4 are complete under the previous scopes. Milestone 5 PR1 through PR4 have been reviewed and merged. Milestone 5 PR5 is complete on branch `feature/m5-ask-data-role-tabs-tests` and pending review. Milestone 5 PR6 remains reserved for Tailwind/style foundation and final UI polish.
+Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, Milestone 3, and Milestone 4 are complete under the previous scopes. Milestone 5 PR1 through PR5 have been reviewed and merged. Milestone 5 PR6 is complete on branch `feature/m5-tailwind-ui-foundation` and pending review. M5 Ask Data is functionally complete and visually polished pending PR6 review.
 
 Milestone 2.5 introduced `access_scopes`, `user_access_scopes`, `data_resources`, `UserAccessContext`, `AccessDecision`, and `evaluate_access(subject, action, resource, context)`.
 
@@ -91,6 +91,8 @@ Milestone 5 PR1 closed the remaining Milestone 4 backend Query Engine compliance
 * hardened safe query metadata for the future Ask Data UI
 
 Milestone 5 PR5 added Ask Data role-gated SQL and Diagnostics tabs. Analyst/Admin can view generated/executed SQL in the SQL tab and safe technical diagnostics in the Diagnostics tab. User/Manager cannot view SQL tabs, Diagnostics tabs, generated SQL, executed SQL, or technical diagnostics. PR5 also added final Ask Data role matrix tests for User, Manager, Analyst, and Admin.
+
+Milestone 5 PR6 added the Tailwind UI foundation, migrated and polished Ask Data styling, improved responsive/accessibility polish, and removed unused legacy Ask Data CSS. PR6 did not change backend behavior, query execution behavior, auth/roles/RLS, dashboards/cards behavior, CSV export behavior, action preview behavior, approvals, notifications, real LLM providers, API keys, Supabase Auth, Redis/background jobs, domain pack expansion, UI component libraries, or charting libraries.
 
 Milestone 4 delivered:
 
@@ -132,7 +134,7 @@ Out of scope unless explicitly requested in a future milestone:
 * notifications behavior
 * real external LLM calls
 * Supabase Auth
-* Ask Data work outside the approved Milestone 5 PR sequence
+* new Ask Data behavior outside the approved Milestone 5 scope
 * full domain pack expansion to 36 templates / 40 evaluation cases
 * Full ABAC
 * ReBAC
@@ -144,7 +146,7 @@ Out of scope unless explicitly requested in a future milestone:
 * Redis
 * API rate limiter
 
-Milestone 5 PR6 will handle Tailwind/style foundation and final UI polish unless explicitly changed. Later milestones will handle dashboards, actions, approvals, and exports unless explicitly requested. Do not add dashboard behavior, action execution, approval behavior, CSV export, real LLM providers, API keys, Supabase Auth, or new Ask Data behavior outside the active approved PR scope.
+Later milestones will handle dashboards, actions, approvals, exports, notifications, real LLM/API-key support, and Supabase Auth unless explicitly requested. Do not add dashboard behavior, action execution, approval behavior, CSV export, real LLM providers, API keys, Supabase Auth, or new Ask Data behavior outside the active approved PR scope.
 
 ## 6. Product Direction
 
