@@ -137,3 +137,33 @@ export type QueryHistoryParams = {
 };
 
 export type ScopeQueryHistoryParams = QueryHistoryParams;
+
+export type TemplateLoadStatus = "loading" | "loaded" | "error";
+
+export type QueryRunMode = "template" | "free" | "clarification";
+
+export type AskDataResultTab = "results" | "summary" | "sql" | "diagnostics";
+
+export type DiagnosticItem = {
+  label: string;
+  value: boolean | number | string | null | undefined;
+};
+
+export type QueryRunState =
+  | {
+      status: "idle";
+    }
+  | {
+      status: "running";
+      mode: QueryRunMode;
+      question: string;
+    }
+  | {
+      status: "success";
+      question: string;
+      result: QueryRunResult;
+    }
+  | {
+      status: "error";
+      message: string;
+    };
