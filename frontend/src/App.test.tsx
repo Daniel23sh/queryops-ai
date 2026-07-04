@@ -316,8 +316,11 @@ describe("App", () => {
     expect(within(nav).queryByRole("button", { name: "Admin Console" })).not.toBeInTheDocument();
   });
 
-  it("renders a role-aware dashboard for demo manager without extra API calls", async () => {
-    const fetchMock = stubFetchSequence(successResponse(demoManager));
+  it("renders a role-aware dashboard for demo manager and loads My Dashboard cards", async () => {
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse([])
+    );
 
     renderApp();
 
@@ -349,11 +352,24 @@ describe("App", () => {
     expect(within(dashboard).queryByText("Generated SQL")).not.toBeInTheDocument();
     expect(within(dashboard).queryByText("Executed SQL")).not.toBeInTheDocument();
     expect(within(dashboard).queryByText(/SELECT /i)).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(
+      await within(dashboard).findByText(
+        "No saved dashboard cards yet. Run a query in Ask Data and save it as a card once Save as Card is enabled."
+      )
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/api/v1/dashboards/my",
+      expect.objectContaining({
+        method: "GET",
+        credentials: "include"
+      })
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("renders template-only dashboard access for demo user", async () => {
-    const fetchMock = stubFetchSequence(successResponse(demoUser));
+    const fetchMock = stubFetchSequence(successResponse(demoUser), successResponse([]));
 
     renderApp();
 
@@ -373,11 +389,16 @@ describe("App", () => {
     expect(
       within(dashboard).getByText(/Approved templates are the safe starting point/i)
     ).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(
+      await within(dashboard).findByText(
+        "No saved dashboard cards yet. Run a query in Ask Data and save it as a card once Save as Card is enabled."
+      )
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("renders technical dashboard access for demo analyst without exposing SQL content", async () => {
-    const fetchMock = stubFetchSequence(successResponse(demoAnalyst));
+    const fetchMock = stubFetchSequence(successResponse(demoAnalyst), successResponse([]));
 
     renderApp();
 
@@ -399,7 +420,166 @@ describe("App", () => {
     expect(within(dashboard).queryByText("Generated SQL")).not.toBeInTheDocument();
     expect(within(dashboard).queryByText("Executed SQL")).not.toBeInTheDocument();
     expect(within(dashboard).queryByText(/SELECT /i)).not.toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(
+      await within(dashboard).findByText(
+        "No saved dashboard cards yet. Run a query in Ask Data and save it as a card once Save as Card is enabled."
+      )
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders a safe loading and empty state for My Dashboard cards", async () => {
+    let resolveDashboards: (response: ReturnType<typeof jsonResponse>) => void = () => {};
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(successResponse(demoManager))
+      .mockReturnValueOnce(
+        new Promise<ReturnType<typeof jsonResponse>>((resolve) => {
+          resolveDashboards = resolve;
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "My Dashboard" }));
+
+    const dashboard = await screen.findByRole("region", {
+      name: "My Dashboard"
+    });
+    expect(
+      within(dashboard).getByText("Loading your saved dashboard cards...")
+    ).toBeInTheDocument();
+
+    resolveDashboards(successResponse([]));
+
+    expect(
+      await within(dashboard).findByText(
+        "No saved dashboard cards yet. Run a query in Ask Data and save it as a card once Save as Card is enabled."
+      )
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders saved My Dashboard cards without exposing SQL fields", async () => {
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse([
+        {
+          id: "dashboard-id",
+          title: "Finance operations",
+          description: "Saved views for weekly support review.",
+          visibility_scope: "personal",
+          department_id: null,
+          is_archived: false,
+          created_at: "2026-07-04T10:00:00Z",
+          updated_at: "2026-07-04T10:00:00Z",
+          generated_sql: "SELECT leaked_dashboard_sql",
+          executed_sql: "SELECT leaked_dashboard_executed_sql",
+          cards: [
+            {
+              id: "card-id",
+              dashboard_id: "dashboard-id",
+              saved_query_id: "saved-query-id",
+              title: "Open tickets by priority",
+              description: "Weekly operational view.",
+              card_type: "table",
+              position: 2,
+              layout: null,
+              config: {
+                generated_sql: "SELECT leaked_config_sql",
+                rows: [{ secret: "row-secret" }]
+              },
+              created_at: "2026-07-04T10:01:00Z",
+              updated_at: "2026-07-04T10:01:00Z",
+              generated_sql: "SELECT leaked_card_sql",
+              executed_sql: "SELECT leaked_card_executed_sql"
+            }
+          ]
+        }
+      ])
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "My Dashboard" }));
+
+    const savedCards = await screen.findByRole("region", {
+      name: "Saved dashboard cards"
+    });
+    expect(within(savedCards).getByText("Finance operations")).toBeInTheDocument();
+    expect(
+      within(savedCards).getByText("Saved views for weekly support review.")
+    ).toBeInTheDocument();
+    expect(within(savedCards).getByText("Personal")).toBeInTheDocument();
+    expect(within(savedCards).getByText("Open tickets by priority")).toBeInTheDocument();
+    expect(within(savedCards).getByText("Weekly operational view.")).toBeInTheDocument();
+    expect(within(savedCards).getByText("Table")).toBeInTheDocument();
+    expect(within(savedCards).getByText("Position 2")).toBeInTheDocument();
+    expect(screen.queryByText(/SELECT leaked_/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("row-secret")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders a safe My Dashboard error state when cards cannot load", async () => {
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      errorResponse(
+        "DASHBOARDS_FAILED",
+        500,
+        "generated_sql SELECT private_backend_detail"
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "My Dashboard" }));
+
+    const dashboard = await screen.findByRole("region", {
+      name: "My Dashboard"
+    });
+    expect(
+      await within(dashboard).findByRole("alert")
+    ).toHaveTextContent("Dashboard cards could not be loaded.");
+    expect(screen.queryByText("DASHBOARDS_FAILED")).not.toBeInTheDocument();
+    expect(screen.queryByText(/generated_sql SELECT/i)).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ["User", demoUser],
+    ["Manager", demoManager],
+    ["Analyst", demoAnalyst],
+    ["Admin", demoAdmin]
+  ] as const)("renders My Dashboard for demo %s", async (roleLabel, user) => {
+    const fetchMock = stubFetchSequence(successResponse(user), successResponse([]));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "My Dashboard" }));
+
+    const dashboard = await screen.findByRole("region", {
+      name: "My Dashboard"
+    });
+    expect(within(dashboard).getByText(roleLabel)).toBeInTheDocument();
+    expect(
+      await within(dashboard).findByText(
+        "No saved dashboard cards yet. Run a query in Ask Data and save it as a card once Save as Card is enabled."
+      )
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it("renders the Ask Data page shell from workspace navigation", async () => {

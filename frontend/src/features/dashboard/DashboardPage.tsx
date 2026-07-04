@@ -4,8 +4,10 @@ import { DashboardHero } from "./components/DashboardHero";
 import { DashboardKpiGrid } from "./components/DashboardKpiGrid";
 import { DemoActivityPreview } from "./components/DemoActivityPreview";
 import { GovernancePosture } from "./components/GovernancePosture";
+import { MyDashboardsPanel } from "./components/MyDashboardsPanel";
 import { QuickActions } from "./components/QuickActions";
 import { buildDashboardModel } from "./dashboardModel";
+import { useMyDashboards } from "./hooks/useMyDashboards";
 
 export function DashboardPage({
   user,
@@ -17,6 +19,7 @@ export function DashboardPage({
   onNavigate: (navId: string) => void;
 }) {
   const model = buildDashboardModel(user, visibleNavItems);
+  const myDashboards = useMyDashboards();
 
   return (
     <article className="dashboard-page" role="region" aria-label="My Dashboard">
@@ -25,6 +28,11 @@ export function DashboardPage({
         roleLabel={model.roleLabel}
       />
       <DashboardKpiGrid cards={model.kpiCards} />
+      <MyDashboardsPanel
+        dashboards={myDashboards.dashboards}
+        errorMessage={myDashboards.errorMessage}
+        status={myDashboards.status}
+      />
 
       <div className="dashboard-work-grid">
         <QuickActions actions={model.quickActions} onNavigate={onNavigate} />

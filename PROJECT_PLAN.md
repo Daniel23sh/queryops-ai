@@ -77,12 +77,14 @@ Milestone 5 PR6 is merged into `main`. This branch added the Tailwind UI foundat
 
 Milestone 6 PR1 includes the dashboard catalog backend endpoint, my dashboard backend endpoint, dashboard creation backend endpoint, saving successful owned query runs as dashboard cards, safe metadata-only serializers, auth, CSRF, strict payload validation, dashboard visibility/manageability checks, and backend tests. Responses remain metadata-only and do not execute cards or expose SQL beyond the existing role-based SQL visibility rules.
 
-Milestone 6 PR2 is active on branch `feature/m6-dashboard-ui`. The first PR2 checkpoint is frontend dashboard/card API clients and types only.
+Milestone 6 PR2 is active on branch `feature/m6-dashboard-ui`. Checkpoint 1 frontend dashboard/card API clients and types is complete. The current checkpoint adds a read-only My Dashboard UI slice that loads owned personal dashboards/cards from `GET /api/v1/dashboards/my` and renders safe metadata only.
 
-Explicitly out of scope for the first M6 PR2 checkpoint:
+Explicitly out of scope for the current M6 PR2 checkpoint:
 
-- dashboard UI implementation
+- Dashboard Catalog UI
+- Create Dashboard UI
 - Save as Card modal
+- Ask Data save-card integration
 - CSV export
 - card refresh execution
 - drag-and-drop UI
@@ -476,7 +478,7 @@ Prepare and implement the frontend dashboard/card experience in small checkpoint
 
 Status:
 
-Active. Checkpoint 1 is frontend dashboard/card API clients and types only.
+Active. Checkpoint 1 frontend dashboard/card API clients and types is complete. Checkpoint 2 adds the first read-only My Dashboard UI slice on top of `GET /api/v1/dashboards/my`.
 
 Checkpoint 1 in scope:
 
@@ -492,6 +494,30 @@ Out of scope for Checkpoint 1:
 - dashboard UI implementation
 - Save as Card modal
 - card grid UI
+- drag-and-drop UI
+- CSV export
+- card refresh execution
+- actions
+- approvals
+- notifications
+- real LLM/API-key support
+- Supabase Auth
+- Redis/background jobs
+- domain pack expansion
+
+Checkpoint 2 in scope:
+
+- load `GET /api/v1/dashboards/my` from the existing Dashboard page
+- render owned personal dashboards and cards as safe read-only metadata
+- loading, empty, and error states
+- frontend tests for loading, empty, rendering, error, role coverage, and SQL non-exposure
+
+Out of scope for Checkpoint 2:
+
+- Dashboard Catalog UI
+- Create Dashboard UI
+- Save as Card modal
+- Ask Data save-card integration
 - drag-and-drop UI
 - CSV export
 - card refresh execution
