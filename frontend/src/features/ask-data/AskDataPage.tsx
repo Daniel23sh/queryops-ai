@@ -4,6 +4,7 @@ import { AskDataHeader } from "./components/AskDataHeader";
 import { InsightsPanel } from "./components/InsightsPanel";
 import { QuestionComposer } from "./components/QuestionComposer";
 import { ResultWorkspace } from "./components/ResultWorkspace";
+import { SaveAsCardPanel } from "./components/SaveAsCardPanel";
 import { TemplateCatalog } from "./components/TemplateCatalog";
 import { useAskDataRun } from "./hooks/useAskDataRun";
 import { useQueryTemplates } from "./hooks/useQueryTemplates";
@@ -101,6 +102,11 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
             onClarificationQuestionChange={setClarificationQuestion}
             onSubmitClarification={() => void handleSubmitClarification()}
             queryRunState={queryRunState}
+          />
+          <SaveAsCardPanel
+            csrfToken={csrfToken}
+            queryRunState={queryRunState}
+            user={user}
           />
           <InsightsPanel />
         </section>

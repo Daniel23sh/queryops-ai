@@ -8,11 +8,11 @@ The current milestone status is:
 
 Active PR scope:
 
-`M6 PR1 — Dashboards/Cards Backend Foundation` is complete on branch `feature/m6-dashboards-cards-backend` and pending review.
+`M6 PR2 — Dashboard/Card UI` is active on branch `feature/m6-dashboard-ui`.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
-Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete. Milestone 6 is now active. M6 PR1 is limited to dashboards/cards backend foundation work on the existing product schema.
+Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete. Milestone 6 is now active. M6 PR1 dashboards/cards backend foundation is complete and merged into `main`.
 
 Milestone 2.5 delivered:
 
@@ -77,14 +77,18 @@ Milestone 5 PR6 is merged into `main`. This branch added the Tailwind UI foundat
 
 Milestone 6 PR1 includes the dashboard catalog backend endpoint, my dashboard backend endpoint, dashboard creation backend endpoint, saving successful owned query runs as dashboard cards, safe metadata-only serializers, auth, CSRF, strict payload validation, dashboard visibility/manageability checks, and backend tests. Responses remain metadata-only and do not execute cards or expose SQL beyond the existing role-based SQL visibility rules.
 
-Explicitly out of scope for M6 PR1:
+Milestone 6 PR2 is active on branch `feature/m6-dashboard-ui`. Checkpoints 1 through 4 are complete. The current checkpoint adds a safe, read-only Dashboard Catalog UI using `GET /api/v1/dashboards/catalog`.
 
+Explicitly out of scope for the current M6 PR2 checkpoint:
+
+- department/global dashboard creation UI
+- catalog starring
+- dashboard cloning
+- Save as Card modal
 - CSV export
 - card refresh execution
-- dashboard/card frontend UI
 - drag-and-drop UI
-- action previews
-- action requests
+- actions
 - approvals
 - notifications
 - real LLM/API-key support
@@ -406,7 +410,7 @@ The active product milestone is:
 
 The current PR is:
 
-`M6 PR1 — Dashboards/Cards Backend Foundation`, complete on branch `feature/m6-dashboards-cards-backend` and pending review.
+`M6 PR2 — Dashboard/Card UI`, active on branch `feature/m6-dashboard-ui`.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -426,7 +430,7 @@ Add the first small backend foundation for dashboards and cards using the existi
 
 Status:
 
-Complete on branch `feature/m6-dashboards-cards-backend` and pending review.
+Complete and merged into `main`.
 
 In scope for PR1:
 
@@ -459,3 +463,143 @@ Checkpoints:
 3. Checkpoint 3 — Add catalog, my dashboard, create dashboard behavior, and permission/visibility tests.
 4. Checkpoint 4 — Add save-card endpoint, persistence tests, and SQL leakage regression tests.
 5. Checkpoint 5 — Final cleanup, full backend test run, `git diff --check`, and final status report.
+
+### PR2: Dashboard/Card UI
+
+Branch:
+
+```text
+feature/m6-dashboard-ui
+```
+
+Goal:
+
+Prepare and implement the frontend dashboard/card experience in small checkpoints on top of the M6 PR1 backend foundation.
+
+Status:
+
+Active. Checkpoint 1 frontend dashboard/card API clients and types is complete. Checkpoint 2 read-only My Dashboard loading is complete. Checkpoint 3 personal dashboard creation is complete. Checkpoint 4 Ask Data Save as Card UI is complete. Checkpoint 5 adds a safe, read-only Dashboard Catalog UI using the existing Department Dashboards navigation slot.
+
+Checkpoint 1 in scope:
+
+- frontend dashboard/card API response and request types
+- `GET /api/v1/dashboards/catalog` client
+- `GET /api/v1/dashboards/my` client
+- `POST /api/v1/dashboards` client
+- `POST /api/v1/query-runs/{query_run_id}/save-card` client
+- focused frontend API client tests
+
+Out of scope for Checkpoint 1:
+
+- dashboard UI implementation
+- Save as Card modal
+- card grid UI
+- drag-and-drop UI
+- CSV export
+- card refresh execution
+- actions
+- approvals
+- notifications
+- real LLM/API-key support
+- Supabase Auth
+- Redis/background jobs
+- domain pack expansion
+
+Checkpoint 2 in scope:
+
+- load `GET /api/v1/dashboards/my` from the existing Dashboard page
+- render owned personal dashboards and cards as safe read-only metadata
+- loading, empty, and error states
+- frontend tests for loading, empty, rendering, error, role coverage, and SQL non-exposure
+
+Out of scope for Checkpoint 2:
+
+- Dashboard Catalog UI
+- Create Dashboard UI
+- Save as Card modal
+- Ask Data save-card integration
+- drag-and-drop UI
+- CSV export
+- card refresh execution
+- actions
+- approvals
+- notifications
+- real LLM/API-key support
+- Supabase Auth
+- Redis/background jobs
+- domain pack expansion
+
+Checkpoint 3 in scope:
+
+- inline Dashboard page UI for creating personal dashboards
+- `POST /api/v1/dashboards` with `visibility_scope: "personal"`
+- permission guardrail for users without `can_create_personal_dashboard`
+- CSRF-backed submit, client-side empty-title validation, safe success/error states
+- refresh `GET /api/v1/dashboards/my` after successful creation
+- frontend tests for permission behavior, request body/header, refetch, rendering, and SQL non-exposure
+
+Out of scope for Checkpoint 3:
+
+- Dashboard Catalog UI
+- department/global dashboard creation UI
+- Save as Card modal
+- Ask Data save-card integration
+- drag-and-drop UI
+- CSV export
+- card refresh execution
+- actions
+- approvals
+- notifications
+- real LLM/API-key support
+- Supabase Auth
+- Redis/background jobs
+- domain pack expansion
+
+Checkpoint 4 in scope:
+
+- render inline Save as Card UI in Ask Data after a successful query result
+- require `can_create_card` before showing the active save UI
+- load existing personal dashboards from `GET /api/v1/dashboards/my`
+- submit `POST /api/v1/query-runs/{query_run_id}/save-card` with `card_type: "table"`
+- safe loading, empty, success, and generic error states
+- frontend tests for role gating, saveability gating, request body/header behavior, URL encoding, and SQL non-exposure
+
+Out of scope for Checkpoint 4:
+
+- Dashboard Catalog UI
+- department/global dashboard selection UI
+- Save as Card modal
+- drag-and-drop UI
+- CSV export
+- card refresh execution
+- actions
+- approvals
+- notifications
+- real LLM/API-key support
+- Supabase Auth
+- Redis/background jobs
+- domain pack expansion
+
+Checkpoint 5 in scope:
+
+- load `GET /api/v1/dashboards/catalog` from the existing Department Dashboards navigation item
+- render dashboards visible to the current user according to backend catalog results
+- safe metadata-only dashboard and card previews
+- loading, empty, and generic error states
+- frontend tests for endpoint loading, empty/rendered/error states, and SQL/result-row non-exposure
+
+Out of scope for Checkpoint 5:
+
+- department/global dashboard creation UI
+- catalog starring
+- dashboard cloning
+- drag-and-drop UI
+- CSV export
+- card refresh execution
+- actions
+- approvals
+- notifications
+- real LLM/API-key support
+- Supabase Auth
+- Redis/background jobs
+- domain pack expansion
