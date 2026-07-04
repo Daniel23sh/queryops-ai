@@ -5,7 +5,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, Request
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.responses import error_response, success_response
@@ -13,7 +13,15 @@ from app.auth.access_context import UserAccessContext, build_user_access_context
 from app.auth.permissions import require_authenticated_user
 from app.auth.session import csrf_is_valid, session_from_request
 from app.db.session import get_db
-from app.models.product import AppUser, Dashboard, DashboardCard, VisibilityScope
+from app.models.product import (
+    AppUser,
+    Dashboard,
+    DashboardCard,
+    QueryRun,
+    RunStatus,
+    SavedQuery,
+    VisibilityScope,
+)
 
 
 router = APIRouter(prefix="/api/v1")
@@ -25,6 +33,7 @@ ALLOWED_SAVE_CARD_FIELDS = frozenset(
     {"dashboard_id", "title", "description", "card_type"}
 )
 ALLOWED_VISIBILITY_SCOPES = frozenset({"personal", "department", "global"})
+ALLOWED_CARD_TYPES = frozenset({"table"})
 
 
 @router.get("/dashboards/catalog")
@@ -112,7 +121,8 @@ def save_query_run_as_card(
     query_run_id: UUID,
     request: Request,
     payload: Any = Body(default=None),
-    _current_user: AppUser = Depends(require_authenticated_user),
+    current_user: AppUser = Depends(require_authenticated_user),
+    db: Session = Depends(get_db),
 ):
     csrf_error = _csrf_error_response(request)
     if csrf_error is not None:
@@ -122,15 +132,57 @@ def save_query_run_as_card(
     if not isinstance(parsed_payload, dict):
         return parsed_payload
 
-    return success_response(
-        {
-            "status": "not_persisted",
-            "message": "Save-card persistence is not implemented in this checkpoint.",
-            "query_run_id": str(query_run_id),
-            "card": parsed_payload,
-        },
-        status_code=202,
+    access_context = build_user_access_context(current_user, db)
+    if not access_context.has_permission("can_create_card"):
+        return _forbidden_response()
+
+    query_run = db.get(QueryRun, query_run_id)
+    if query_run is None or query_run.user_id != current_user.id:
+        return _query_run_not_found_response()
+    if not _query_run_can_be_saved(query_run):
+        return _query_run_not_saveable_response()
+
+    dashboard = db.get(Dashboard, UUID(parsed_payload["dashboard_id"]))
+    if dashboard is None or dashboard.is_archived:
+        return _dashboard_not_found_response()
+    if not _can_save_card_to_dashboard(dashboard, current_user, access_context):
+        return _forbidden_response()
+
+    title = _title_for_saved_card(parsed_payload, query_run)
+    description = parsed_payload.get("description")
+    saved_query = SavedQuery(
+        owner_user_id=current_user.id,
+        name=title,
+        description=description,
+        natural_language_question=_natural_language_question_for_saved_query(
+            query_run,
+            fallback=title,
+        ),
+        generated_sql=query_run.generated_sql,
+        visibility_scope=dashboard.visibility_scope,
+        department_id=dashboard.department_id,
+        parameters={},
+        result_schema=None,
     )
+    db.add(saved_query)
+    db.flush()
+
+    query_run.saved_query_id = saved_query.id
+    card = DashboardCard(
+        dashboard_id=dashboard.id,
+        saved_query_id=saved_query.id,
+        title=title,
+        description=description,
+        card_type=parsed_payload["card_type"],
+        position=_next_card_position(db, dashboard.id),
+        layout=None,
+        config=None,
+    )
+    db.add(card)
+    db.commit()
+    db.refresh(card)
+
+    return success_response(_serialize_dashboard_card(card), status_code=201)
 
 
 def _csrf_error_response(request: Request):
@@ -244,6 +296,83 @@ def _has_any_permission(
     return any(access_context.has_permission(permission) for permission in permission_keys)
 
 
+def _can_save_card_to_dashboard(
+    dashboard: Dashboard,
+    current_user: AppUser,
+    access_context: UserAccessContext,
+) -> bool:
+    if dashboard.visibility_scope == VisibilityScope.PERSONAL.value:
+        return dashboard.owner_user_id == current_user.id
+
+    if dashboard.visibility_scope == VisibilityScope.DEPARTMENT.value:
+        if dashboard.department_id is None:
+            return False
+        if not _has_any_permission(
+            access_context,
+            {"can_create_department_dashboard", "can_manage_department_dashboard"},
+        ):
+            return False
+        return _department_allowed_for_user(
+            dashboard.department_id,
+            current_user,
+            access_context,
+        )
+
+    if dashboard.visibility_scope == VisibilityScope.GLOBAL.value:
+        return access_context.has_global_scope and _has_any_permission(
+            access_context,
+            {"can_create_global_dashboard", "can_manage_global_dashboard"},
+        )
+
+    return False
+
+
+def _query_run_can_be_saved(query_run: QueryRun) -> bool:
+    if query_run.status != RunStatus.SUCCEEDED.value:
+        return False
+
+    metadata = query_run.query_metadata or {}
+    if not isinstance(metadata, dict):
+        return True
+    if metadata.get("clarification_required") is True:
+        return False
+    if metadata.get("unsupported_reason") is not None:
+        return False
+    return True
+
+
+def _title_for_saved_card(
+    payload: dict[str, Any],
+    query_run: QueryRun,
+) -> str:
+    title = payload.get("title")
+    if isinstance(title, str) and title:
+        return title
+    return _natural_language_question_for_saved_query(query_run, fallback="Saved query")
+
+
+def _natural_language_question_for_saved_query(
+    query_run: QueryRun,
+    *,
+    fallback: str,
+) -> str:
+    question = query_run.natural_language_question
+    if isinstance(question, str) and question.strip():
+        return question.strip()
+    return fallback
+
+
+def _next_card_position(db: Session, dashboard_id: UUID) -> int:
+    max_position = db.scalar(
+        select(func.max(DashboardCard.position)).where(
+            DashboardCard.dashboard_id == dashboard_id
+        )
+    )
+    if max_position is None:
+        return 0
+    return int(max_position) + 1
+
+
 def _parse_dashboard_payload(payload: Any):
     if not isinstance(payload, dict):
         return _invalid_dashboard_request_response()
@@ -285,18 +414,17 @@ def _parse_save_card_payload(payload: Any):
     if set(payload) - ALLOWED_SAVE_CARD_FIELDS:
         return _invalid_save_card_request_response()
 
-    parsed: dict[str, Any] = {}
+    parsed: dict[str, Any] = {"card_type": "table"}
 
     dashboard_id_or_error = _optional_uuid_string(payload, "dashboard_id")
-    if dashboard_id_or_error is _INVALID:
+    if dashboard_id_or_error is _INVALID or dashboard_id_or_error is None:
         return _invalid_save_card_request_response()
-    if "dashboard_id" in payload:
-        parsed["dashboard_id"] = dashboard_id_or_error
+    parsed["dashboard_id"] = dashboard_id_or_error
 
-    title_or_error = _optional_non_empty_string(payload, "title")
-    if title_or_error is _INVALID:
-        return _invalid_save_card_request_response()
     if "title" in payload:
+        title_or_error = _optional_non_empty_string(payload, "title")
+        if title_or_error is _INVALID or title_or_error is None:
+            return _invalid_save_card_request_response()
         parsed["title"] = title_or_error
 
     description_or_error = _optional_string(payload, "description")
@@ -305,11 +433,14 @@ def _parse_save_card_payload(payload: Any):
     if "description" in payload:
         parsed["description"] = description_or_error
 
-    card_type_or_error = _optional_non_empty_string(payload, "card_type")
-    if card_type_or_error is _INVALID:
-        return _invalid_save_card_request_response()
     if "card_type" in payload:
-        parsed["card_type"] = card_type_or_error
+        card_type_or_error = _optional_non_empty_string(payload, "card_type")
+        if card_type_or_error is _INVALID or card_type_or_error is None:
+            return _invalid_save_card_request_response()
+        safe_card_type = card_type_or_error.lower()
+        if safe_card_type not in ALLOWED_CARD_TYPES:
+            return _invalid_save_card_request_response()
+        parsed["card_type"] = safe_card_type
 
     return parsed
 
@@ -391,6 +522,30 @@ def _forbidden_response():
         code="FORBIDDEN",
         message="You are not authorized to perform this action.",
         status_code=403,
+    )
+
+
+def _query_run_not_found_response():
+    return error_response(
+        code="QUERY_RUN_NOT_FOUND",
+        message="Query run was not found.",
+        status_code=404,
+    )
+
+
+def _query_run_not_saveable_response():
+    return error_response(
+        code="QUERY_RUN_NOT_SAVEABLE",
+        message="Only successful owned query runs can be saved as dashboard cards.",
+        status_code=400,
+    )
+
+
+def _dashboard_not_found_response():
+    return error_response(
+        code="DASHBOARD_NOT_FOUND",
+        message="Dashboard was not found.",
+        status_code=404,
     )
 
 
