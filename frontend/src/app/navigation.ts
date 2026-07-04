@@ -88,7 +88,7 @@ export const WORKSPACE_NAV_ITEMS: NavItem[] = [
     label: "Department Dashboards",
     title: "Department Dashboards",
     summary:
-      "Department dashboard management is planned for a later milestone without card persistence in this PR.",
+      "Browse visible shared dashboards returned by backend catalog visibility rules.",
     icon: "department",
     canView: (user) =>
       hasAnyPermission(user, [

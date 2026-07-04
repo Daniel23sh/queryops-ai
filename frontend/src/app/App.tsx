@@ -4,6 +4,7 @@ import { ApiError } from "../api/client";
 import { useAuth } from "../auth/AuthProvider";
 import type { AuthUser } from "../auth/types";
 import { AskDataPage } from "../features/ask-data";
+import { DashboardCatalogPage } from "../features/dashboard/components/DashboardCatalogPage";
 import { DashboardPage } from "../features/dashboard/DashboardPage";
 import { RoleRequestsPage } from "../features/role-requests/RoleRequestsPage";
 import { RoleUpgradePage } from "../features/role-upgrade/RoleUpgradePage";
@@ -137,6 +138,8 @@ function AuthenticatedWorkspace({
               visibleNavItems={visibleNavItems}
               onNavigate={setActiveNavId}
             />
+          ) : activeNavItem.id === "department-dashboards" ? (
+            <DashboardCatalogPage />
           ) : activeNavItem.id === "role-upgrade" ? (
             <RoleUpgradePage userRole={user.role} csrfToken={csrfToken} />
           ) : activeNavItem.id === "admin-role-requests" ? (

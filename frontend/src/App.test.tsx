@@ -555,6 +555,163 @@ describe("App", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("loads the dashboard catalog from Department Dashboards navigation", async () => {
+    const fetchMock = stubFetchSequence(successResponse(demoAnalyst), successResponse([]));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Department Dashboards" }));
+
+    const catalog = await screen.findByRole("region", {
+      name: "Dashboard Catalog"
+    });
+    expect(
+      within(catalog).getByRole("heading", { name: "Dashboard Catalog" })
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/api/v1/dashboards/catalog",
+      expect.objectContaining({
+        method: "GET",
+        credentials: "include"
+      })
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders safe loading and empty states for the dashboard catalog", async () => {
+    let resolveCatalog: (response: ReturnType<typeof jsonResponse>) => void = () => {};
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(successResponse(demoAnalyst))
+      .mockReturnValueOnce(
+        new Promise<ReturnType<typeof jsonResponse>>((resolve) => {
+          resolveCatalog = resolve;
+        })
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Department Dashboards" }));
+
+    const catalog = await screen.findByRole("region", {
+      name: "Dashboard Catalog"
+    });
+    expect(
+      within(catalog).getByText("Loading visible dashboards...")
+    ).toBeInTheDocument();
+
+    resolveCatalog(successResponse([]));
+
+    expect(
+      await within(catalog).findByText("No shared dashboards are visible yet.")
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders catalog dashboards and card metadata without exposing SQL or rows", async () => {
+    const fetchMock = stubFetchSequence(
+      successResponse(demoAnalyst),
+      successResponse([
+        backendDashboard({
+          id: "department-dashboard-id",
+          title: "IT operations review",
+          description: "Department-level dashboard for weekly service reviews.",
+          visibilityScope: "department",
+          departmentId: "it-id",
+          cards: [
+            backendDashboardCard({
+              id: "catalog-card-id",
+              dashboardId: "department-dashboard-id",
+              title: "Open incidents by priority",
+              description: "Metadata-only saved card preview.",
+              position: 4,
+              extraFields: {
+                generated_sql: "SELECT leaked_catalog_card_sql",
+                executed_sql: "SELECT leaked_catalog_card_executed_sql",
+                config: {
+                  rows: [{ secret: "row-secret" }]
+                }
+              }
+            })
+          ],
+          extraFields: {
+            generated_sql: "SELECT leaked_catalog_sql",
+            executed_sql: "SELECT leaked_catalog_executed_sql"
+          }
+        })
+      ])
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Department Dashboards" }));
+
+    const catalog = await screen.findByRole("region", {
+      name: "Dashboard Catalog"
+    });
+    expect(within(catalog).getByText("IT operations review")).toBeInTheDocument();
+    expect(
+      within(catalog).getByText("Department-level dashboard for weekly service reviews.")
+    ).toBeInTheDocument();
+    expect(within(catalog).getAllByText("Department").length).toBeGreaterThan(0);
+    expect(within(catalog).getByText("Department: it-id")).toBeInTheDocument();
+    expect(within(catalog).getByText("1 card")).toBeInTheDocument();
+    expect(within(catalog).getByText("Open incidents by priority")).toBeInTheDocument();
+    expect(
+      within(catalog).getByText("Metadata-only saved card preview.")
+    ).toBeInTheDocument();
+    expect(within(catalog).getByText("Table")).toBeInTheDocument();
+    expect(within(catalog).getByText("Position 4")).toBeInTheDocument();
+    expect(screen.queryByText(/SELECT leaked_catalog/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("row-secret")).not.toBeInTheDocument();
+    expect(
+      within(catalog).queryByRole("button", { name: /refresh/i })
+    ).not.toBeInTheDocument();
+    expect(
+      within(catalog).queryByRole("button", { name: /export/i })
+    ).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("renders a generic dashboard catalog error state", async () => {
+    const fetchMock = stubFetchSequence(
+      successResponse(demoAnalyst),
+      errorResponse(
+        "DASHBOARD_CATALOG_FAILED",
+        500,
+        "generated_sql SELECT private_backend_detail"
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Department Dashboards" }));
+
+    const catalog = await screen.findByRole("region", {
+      name: "Dashboard Catalog"
+    });
+    expect(
+      await within(catalog).findByRole("alert")
+    ).toHaveTextContent("Dashboard catalog could not be loaded.");
+    expect(screen.queryByText("DASHBOARD_CATALOG_FAILED")).not.toBeInTheDocument();
+    expect(screen.queryByText(/generated_sql SELECT/i)).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it.each([
     ["User", demoUser],
     ["Manager", demoManager],
@@ -3757,23 +3914,30 @@ function backendDashboard({
   id,
   title,
   description = null,
-  cards = []
+  cards = [],
+  departmentId = null,
+  extraFields = {},
+  visibilityScope = "personal"
 }: {
   id: string;
   title: string;
   description?: string | null;
   cards?: Array<Record<string, unknown>>;
+  departmentId?: string | null;
+  extraFields?: Record<string, unknown>;
+  visibilityScope?: "personal" | "department" | "global";
 }) {
   return {
     id,
     title,
     description,
-    visibility_scope: "personal",
-    department_id: null,
+    visibility_scope: visibilityScope,
+    department_id: departmentId,
     is_archived: false,
     created_at: "2026-07-04T12:00:00Z",
     updated_at: "2026-07-04T12:00:00Z",
-    cards
+    cards,
+    ...extraFields
   };
 }
 
@@ -3781,12 +3945,16 @@ function backendDashboardCard({
   id,
   dashboardId,
   title,
-  description = null
+  description = null,
+  extraFields = {},
+  position = 0
 }: {
   id: string;
   dashboardId: string;
   title: string;
   description?: string | null;
+  extraFields?: Record<string, unknown>;
+  position?: number;
 }) {
   return {
     id,
@@ -3795,11 +3963,12 @@ function backendDashboardCard({
     title,
     description,
     card_type: "table",
-    position: 0,
+    position,
     layout: null,
     config: null,
     created_at: "2026-07-04T12:00:00Z",
-    updated_at: "2026-07-04T12:00:00Z"
+    updated_at: "2026-07-04T12:00:00Z",
+    ...extraFields
   };
 }
 
