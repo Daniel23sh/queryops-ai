@@ -582,6 +582,212 @@ describe("App", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it("shows a guardrail instead of an active personal dashboard create form without permission", async () => {
+    const fetchMock = stubFetchSequence(successResponse(demoUser), successResponse([]));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "My Dashboard" }));
+
+    const createPanel = await screen.findByRole("region", {
+      name: "Create personal dashboard"
+    });
+    expect(
+      within(createPanel).getByText(
+        "Personal dashboard creation is not available for your role."
+      )
+    ).toBeInTheDocument();
+    expect(
+      within(createPanel).queryByLabelText("Dashboard title")
+    ).not.toBeInTheDocument();
+    expect(
+      within(createPanel).queryByRole("button", { name: "Create dashboard" })
+    ).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ["manager", demoManager],
+    ["analyst", demoAnalyst],
+    ["admin", demoAdmin]
+  ] as const)("shows the personal dashboard create form for demo %s", async (_label, user) => {
+    const fetchMock = stubFetchSequence(successResponse(user), successResponse([]));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "My Dashboard" }));
+
+    const createPanel = await screen.findByRole("region", {
+      name: "Create personal dashboard"
+    });
+    expect(within(createPanel).getByLabelText("Dashboard title")).toBeInTheDocument();
+    expect(within(createPanel).getByLabelText("Description")).toBeInTheDocument();
+    expect(
+      within(createPanel).getByRole("button", { name: "Create dashboard" })
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("blocks empty personal dashboard titles before sending a request", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(successResponse(demoManager), successResponse([]));
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "My Dashboard" }));
+
+    const createPanel = await screen.findByRole("region", {
+      name: "Create personal dashboard"
+    });
+    fireEvent.click(
+      within(createPanel).getByRole("button", { name: "Create dashboard" })
+    );
+
+    expect(await within(createPanel).findByRole("alert")).toHaveTextContent(
+      "Enter a dashboard title."
+    );
+    expect(
+      fetchMock.mock.calls.some(([url]) =>
+        String(url).includes("/api/v1/dashboards") &&
+        !String(url).includes("/api/v1/dashboards/my")
+      )
+    ).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("creates a personal dashboard with CSRF and refreshes My Dashboard", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const createdDashboard = backendDashboard({
+      id: "created-dashboard-id",
+      title: "Finance weekly dashboard",
+      description: "Weekly support review.",
+      cards: []
+    });
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse([]),
+      successResponse({
+        ...createdDashboard,
+        generated_sql: "SELECT leaked_create_sql",
+        executed_sql: "SELECT leaked_create_executed_sql"
+      }),
+      successResponse([
+        {
+          ...createdDashboard,
+          generated_sql: "SELECT leaked_reload_sql",
+          executed_sql: "SELECT leaked_reload_executed_sql"
+        }
+      ])
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "My Dashboard" }));
+
+    const createPanel = await screen.findByRole("region", {
+      name: "Create personal dashboard"
+    });
+    fireEvent.change(within(createPanel).getByLabelText("Dashboard title"), {
+      target: { value: "  Finance weekly dashboard  " }
+    });
+    fireEvent.change(within(createPanel).getByLabelText("Description"), {
+      target: { value: "Weekly support review." }
+    });
+    fireEvent.click(
+      within(createPanel).getByRole("button", { name: "Create dashboard" })
+    );
+
+    expect(await within(createPanel).findByRole("status")).toHaveTextContent(
+      "Personal dashboard created."
+    );
+    const savedCards = await screen.findByRole("region", {
+      name: "Saved dashboard cards"
+    });
+    expect(within(savedCards).getByText("Finance weekly dashboard")).toBeInTheDocument();
+    expect(within(savedCards).getByText("Weekly support review.")).toBeInTheDocument();
+    expect(within(savedCards).getByText("0 cards")).toBeInTheDocument();
+    expect(
+      within(savedCards).getByText("No cards saved in this dashboard yet.")
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/SELECT leaked_/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("generated_sql")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      3,
+      "http://localhost:8000/api/v1/dashboards",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        headers: expect.objectContaining({
+          "Content-Type": "application/json",
+          "X-CSRF-Token": "csrf-from-cookie"
+        }),
+        body: JSON.stringify({
+          title: "Finance weekly dashboard",
+          description: "Weekly support review.",
+          visibility_scope: "personal"
+        })
+      })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "http://localhost:8000/api/v1/dashboards/my",
+      expect.objectContaining({
+        method: "GET",
+        credentials: "include"
+      })
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("shows generic personal dashboard creation errors", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoManager),
+      successResponse([]),
+      errorResponse(
+        "DASHBOARD_CREATE_FAILED",
+        500,
+        "generated_sql SELECT private_backend_detail"
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "My Dashboard" }));
+
+    const createPanel = await screen.findByRole("region", {
+      name: "Create personal dashboard"
+    });
+    fireEvent.change(within(createPanel).getByLabelText("Dashboard title"), {
+      target: { value: "Manager dashboard" }
+    });
+    fireEvent.click(
+      within(createPanel).getByRole("button", { name: "Create dashboard" })
+    );
+
+    expect(await within(createPanel).findByRole("alert")).toHaveTextContent(
+      "Dashboard could not be created."
+    );
+    expect(screen.queryByText("DASHBOARD_CREATE_FAILED")).not.toBeInTheDocument();
+    expect(screen.queryByText(/generated_sql SELECT/i)).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it("renders the Ask Data page shell from workspace navigation", async () => {
     const fetchMock = stubFetchSequence(
       successResponse(demoManager),
@@ -3233,6 +3439,30 @@ function backendQueryTemplate({
     parameters,
     scope_type: "department",
     required_permission: "can_use_query_templates"
+  };
+}
+
+function backendDashboard({
+  id,
+  title,
+  description = null,
+  cards = []
+}: {
+  id: string;
+  title: string;
+  description?: string | null;
+  cards?: Array<Record<string, unknown>>;
+}) {
+  return {
+    id,
+    title,
+    description,
+    visibility_scope: "personal",
+    department_id: null,
+    is_archived: false,
+    created_at: "2026-07-04T12:00:00Z",
+    updated_at: "2026-07-04T12:00:00Z",
+    cards
   };
 }
 

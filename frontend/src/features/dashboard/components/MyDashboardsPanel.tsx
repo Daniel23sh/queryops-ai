@@ -14,8 +14,6 @@ export function MyDashboardsPanel({
   errorMessage: string | null;
   status: MyDashboardsStatus;
 }) {
-  const dashboardsWithCards = dashboards.filter((dashboard) => dashboard.cards.length > 0);
-
   return (
     <section
       className="dashboard-saved-panel"
@@ -38,13 +36,13 @@ export function MyDashboardsPanel({
         </p>
       ) : null}
 
-      {status === "success" && dashboardsWithCards.length === 0 ? (
+      {status === "success" && dashboards.length === 0 ? (
         <p className="dashboard-saved-panel__state">{EMPTY_DASHBOARD_MESSAGE}</p>
       ) : null}
 
-      {status === "success" && dashboardsWithCards.length > 0 ? (
+      {status === "success" && dashboards.length > 0 ? (
         <div className="dashboard-saved-list">
-          {dashboardsWithCards.map((dashboard) => (
+          {dashboards.map((dashboard) => (
             <DashboardCardGrid key={dashboard.id} dashboard={dashboard} />
           ))}
         </div>

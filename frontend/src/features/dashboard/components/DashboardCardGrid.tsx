@@ -19,11 +19,17 @@ export function DashboardCardGrid({ dashboard }: { dashboard: Dashboard }) {
         </span>
       </header>
 
-      <div className="dashboard-card-grid">
-        {dashboard.cards.map((card) => (
-          <DashboardCardPreview key={card.id} card={card} />
-        ))}
-      </div>
+      {dashboard.cards.length > 0 ? (
+        <div className="dashboard-card-grid">
+          {dashboard.cards.map((card) => (
+            <DashboardCardPreview key={card.id} card={card} />
+          ))}
+        </div>
+      ) : (
+        <p className="dashboard-saved-panel__state">
+          No cards saved in this dashboard yet.
+        </p>
+      )}
     </article>
   );
 }

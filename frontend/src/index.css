@@ -1119,6 +1119,39 @@ h1 {
   font-weight: 800;
 }
 
+.dashboard-create-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.dashboard-create-form,
+.dashboard-create-guardrail {
+  border: 1px solid var(--qops-color-border);
+  border-radius: 8px;
+  background: var(--qops-color-elevated-surface);
+  box-shadow: var(--qops-shadow-card);
+}
+
+.dashboard-create-form {
+  display: grid;
+  gap: 16px;
+  max-width: 720px;
+  padding: 22px;
+}
+
+.dashboard-create-guardrail {
+  margin: 0;
+  color: var(--qops-color-text-subtle);
+  padding: 18px;
+  line-height: 1.6;
+}
+
+.dashboard-create-note {
+  margin: 0;
+  color: var(--qops-color-text-subtle);
+  line-height: 1.6;
+}
+
 .dashboard-actions-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1350,6 +1383,7 @@ h1 {
   font-weight: 700;
 }
 
+.form-field input,
 .form-field select,
 .form-field textarea {
   width: 100%;
@@ -1361,6 +1395,7 @@ h1 {
   line-height: 1.5;
 }
 
+.form-field input,
 .form-field select {
   min-height: 44px;
 }
@@ -1370,6 +1405,7 @@ h1 {
   resize: vertical;
 }
 
+.form-field input:focus,
 .form-field select:focus,
 .form-field textarea:focus {
   border-color: var(--qops-color-primary);
@@ -1707,6 +1743,7 @@ h1 {
 
   .dashboard-hero,
   .dashboard-role-panel,
+  .dashboard-create-form,
   .placeholder-panel__hero,
   .placeholder-panel__notice,
   .placeholder-panel__actions,

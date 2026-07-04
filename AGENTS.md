@@ -98,7 +98,7 @@ Milestone 5 PR6 added the Tailwind UI foundation, class-based light/dark mode, r
 
 Milestone 6 PR1 includes the dashboard catalog backend endpoint, my dashboard backend endpoint, dashboard creation backend endpoint, saving successful owned query runs as dashboard cards, safe metadata-only serializers, auth, CSRF, strict payload validation, dashboard visibility/manageability checks, and backend tests. It uses existing backend auth, CSRF, permission, and response conventions. Responses are metadata-only, do not execute saved cards, and do not expose SQL beyond existing `can_view_sql` API rules.
 
-Milestone 6 PR2 Checkpoint 1 frontend dashboard/card API clients and types is complete. The current PR2 checkpoint adds the first read-only My Dashboard UI slice: it may load `GET /api/v1/dashboards/my`, render owned personal dashboards/cards as safe metadata, and add frontend tests for loading, empty, error, role coverage, and SQL non-exposure.
+Milestone 6 PR2 Checkpoint 1 frontend dashboard/card API clients and types is complete. Checkpoint 2 read-only My Dashboard loading is complete. The current PR2 checkpoint adds personal dashboard creation from the Dashboard page: it may submit `POST /api/v1/dashboards` with `visibility_scope: "personal"`, show permission guardrails, refresh `GET /api/v1/dashboards/my`, and add frontend tests for validation, CSRF-backed request behavior, refetching, role coverage, and SQL non-exposure.
 
 Milestone 4 delivered:
 
@@ -133,7 +133,7 @@ Query Engine security rules:
 Out of scope for the current M6 PR2 checkpoint unless explicitly requested:
 
 * Dashboard Catalog UI
-* Create Dashboard UI
+* department/global dashboard creation UI
 * Save as Card modal
 * Ask Data save-card integration
 * drag-and-drop UI

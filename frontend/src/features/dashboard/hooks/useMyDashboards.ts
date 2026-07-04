@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { getMyDashboards } from "../../../api/dashboards";
 import type { Dashboard } from "../types";
@@ -10,39 +10,47 @@ export function useMyDashboards() {
   const [status, setStatus] = useState<MyDashboardsStatus>("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    let isCurrent = true;
-
+  const loadDashboards = useCallback(async (isCurrent: () => boolean) => {
     setStatus("loading");
     setErrorMessage(null);
 
-    getMyDashboards()
-      .then((loadedDashboards) => {
-        if (!isCurrent) {
-          return;
-        }
+    try {
+      const loadedDashboards = await getMyDashboards();
+      if (!isCurrent()) {
+        return;
+      }
 
-        setDashboards(loadedDashboards);
-        setStatus("success");
-      })
-      .catch(() => {
-        if (!isCurrent) {
-          return;
-        }
+      setDashboards(loadedDashboards);
+      setStatus("success");
+    } catch {
+      if (!isCurrent()) {
+        return;
+      }
 
-        setDashboards([]);
-        setErrorMessage("Dashboard cards could not be loaded.");
-        setStatus("error");
-      });
+      setDashboards([]);
+      setErrorMessage("Dashboard cards could not be loaded.");
+      setStatus("error");
+    }
+  }, []);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    void loadDashboards(() => isCurrent);
 
     return () => {
       isCurrent = false;
     };
-  }, []);
+  }, [loadDashboards]);
+
+  async function reload() {
+    await loadDashboards(() => true);
+  }
 
   return {
     dashboards,
     errorMessage,
+    reload,
     status
   };
 }

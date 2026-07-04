@@ -1,5 +1,6 @@
 import type { AuthUser } from "../../auth/types";
 import type { NavItem } from "../../app/navigation";
+import { CreateDashboardPanel } from "./components/CreateDashboardPanel";
 import { DashboardHero } from "./components/DashboardHero";
 import { DashboardKpiGrid } from "./components/DashboardKpiGrid";
 import { DemoActivityPreview } from "./components/DemoActivityPreview";
@@ -10,10 +11,12 @@ import { buildDashboardModel } from "./dashboardModel";
 import { useMyDashboards } from "./hooks/useMyDashboards";
 
 export function DashboardPage({
+  csrfToken,
   user,
   visibleNavItems,
   onNavigate
 }: {
+  csrfToken: string | null;
   user: AuthUser;
   visibleNavItems: NavItem[];
   onNavigate: (navId: string) => void;
@@ -32,6 +35,11 @@ export function DashboardPage({
         dashboards={myDashboards.dashboards}
         errorMessage={myDashboards.errorMessage}
         status={myDashboards.status}
+      />
+      <CreateDashboardPanel
+        csrfToken={csrfToken}
+        onCreated={myDashboards.reload}
+        user={user}
       />
 
       <div className="dashboard-work-grid">

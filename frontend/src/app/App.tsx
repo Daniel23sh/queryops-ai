@@ -132,6 +132,7 @@ function AuthenticatedWorkspace({
             <AskDataPage user={user} csrfToken={csrfToken} />
           ) : activeNavItem.id === "my-dashboard" ? (
             <DashboardPage
+              csrfToken={csrfToken}
               user={user}
               visibleNavItems={visibleNavItems}
               onNavigate={setActiveNavId}
