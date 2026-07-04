@@ -8,11 +8,11 @@ The current milestone status is:
 
 Active PR scope:
 
-`M6 PR1 — Dashboards/Cards Backend Foundation` is complete on branch `feature/m6-dashboards-cards-backend` and pending review.
+`M6 PR2 — Dashboard/Card UI` is active on branch `feature/m6-dashboard-ui`.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
-Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete. Milestone 6 is now active. M6 PR1 is limited to dashboards/cards backend foundation work on the existing product schema.
+Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete. Milestone 6 is now active. M6 PR1 dashboards/cards backend foundation is complete and merged into `main`.
 
 Milestone 2.5 delivered:
 
@@ -77,14 +77,16 @@ Milestone 5 PR6 is merged into `main`. This branch added the Tailwind UI foundat
 
 Milestone 6 PR1 includes the dashboard catalog backend endpoint, my dashboard backend endpoint, dashboard creation backend endpoint, saving successful owned query runs as dashboard cards, safe metadata-only serializers, auth, CSRF, strict payload validation, dashboard visibility/manageability checks, and backend tests. Responses remain metadata-only and do not execute cards or expose SQL beyond the existing role-based SQL visibility rules.
 
-Explicitly out of scope for M6 PR1:
+Milestone 6 PR2 is active on branch `feature/m6-dashboard-ui`. The first PR2 checkpoint is frontend dashboard/card API clients and types only.
 
+Explicitly out of scope for the first M6 PR2 checkpoint:
+
+- dashboard UI implementation
+- Save as Card modal
 - CSV export
 - card refresh execution
-- dashboard/card frontend UI
 - drag-and-drop UI
-- action previews
-- action requests
+- actions
 - approvals
 - notifications
 - real LLM/API-key support
@@ -406,7 +408,7 @@ The active product milestone is:
 
 The current PR is:
 
-`M6 PR1 — Dashboards/Cards Backend Foundation`, complete on branch `feature/m6-dashboards-cards-backend` and pending review.
+`M6 PR2 — Dashboard/Card UI`, active on branch `feature/m6-dashboard-ui`.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -426,7 +428,7 @@ Add the first small backend foundation for dashboards and cards using the existi
 
 Status:
 
-Complete on branch `feature/m6-dashboards-cards-backend` and pending review.
+Complete and merged into `main`.
 
 In scope for PR1:
 
@@ -459,3 +461,44 @@ Checkpoints:
 3. Checkpoint 3 — Add catalog, my dashboard, create dashboard behavior, and permission/visibility tests.
 4. Checkpoint 4 — Add save-card endpoint, persistence tests, and SQL leakage regression tests.
 5. Checkpoint 5 — Final cleanup, full backend test run, `git diff --check`, and final status report.
+
+### PR2: Dashboard/Card UI
+
+Branch:
+
+```text
+feature/m6-dashboard-ui
+```
+
+Goal:
+
+Prepare and implement the frontend dashboard/card experience in small checkpoints on top of the M6 PR1 backend foundation.
+
+Status:
+
+Active. Checkpoint 1 is frontend dashboard/card API clients and types only.
+
+Checkpoint 1 in scope:
+
+- frontend dashboard/card API response and request types
+- `GET /api/v1/dashboards/catalog` client
+- `GET /api/v1/dashboards/my` client
+- `POST /api/v1/dashboards` client
+- `POST /api/v1/query-runs/{query_run_id}/save-card` client
+- focused frontend API client tests
+
+Out of scope for Checkpoint 1:
+
+- dashboard UI implementation
+- Save as Card modal
+- card grid UI
+- drag-and-drop UI
+- CSV export
+- card refresh execution
+- actions
+- approvals
+- notifications
+- real LLM/API-key support
+- Supabase Auth
+- Redis/background jobs
+- domain pack expansion
