@@ -8,7 +8,7 @@ The current milestone status is:
 
 Active PR scope:
 
-`M6 PR1 — Dashboards/Cards Backend Foundation` on branch `feature/m6-dashboards-cards-backend`.
+`M6 PR1 — Dashboards/Cards Backend Foundation` is complete on branch `feature/m6-dashboards-cards-backend` and pending review.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
@@ -75,7 +75,7 @@ Milestone 5 PR5 is complete on branch `feature/m5-ask-data-role-tabs-tests`. Thi
 
 Milestone 5 PR6 is merged into `main`. This branch added the Tailwind UI foundation, class-based light/dark mode, redesigned app shell/sidebar, redesigned Dashboard, focused Ask Data command workspace, lightly polished remaining frontend pages, and final CSS/docs cleanup. PR6 did not change backend behavior, auth/roles/RLS, query execution, dashboard card persistence behavior, CSV export behavior, action preview behavior, approvals, notifications, real LLM providers, API keys, Supabase Auth, Redis/background jobs, domain pack expansion, UI component libraries, or charting libraries.
 
-Milestone 6 PR1 may add only the backend API foundation for listing/creating dashboards and saving successful owned query runs as dashboard cards. Responses must remain metadata-only and must not execute cards or expose SQL beyond the existing role-based SQL visibility rules.
+Milestone 6 PR1 includes the dashboard catalog backend endpoint, my dashboard backend endpoint, dashboard creation backend endpoint, saving successful owned query runs as dashboard cards, safe metadata-only serializers, auth, CSRF, strict payload validation, dashboard visibility/manageability checks, and backend tests. Responses remain metadata-only and do not execute cards or expose SQL beyond the existing role-based SQL visibility rules.
 
 Explicitly out of scope for M6 PR1:
 
@@ -89,6 +89,7 @@ Explicitly out of scope for M6 PR1:
 - notifications
 - real LLM/API-key support
 - Supabase Auth
+- Redis/background jobs
 - domain pack expansion
 - Full ABAC
 - ReBAC
@@ -403,9 +404,9 @@ The active product milestone is:
 
 `Milestone 6 — Dashboards, Cards & CSV Export`
 
-The active PR is:
+The current PR is:
 
-`M6 PR1 — Dashboards/Cards Backend Foundation`
+`M6 PR1 — Dashboards/Cards Backend Foundation`, complete on branch `feature/m6-dashboards-cards-backend` and pending review.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -422,6 +423,10 @@ feature/m6-dashboards-cards-backend
 Goal:
 
 Add the first small backend foundation for dashboards and cards using the existing `dashboards`, `saved_queries`, `dashboard_cards`, and `query_runs` schema.
+
+Status:
+
+Complete on branch `feature/m6-dashboards-cards-backend` and pending review.
 
 In scope for PR1:
 
@@ -444,6 +449,7 @@ Out of scope for PR1:
 - notifications
 - real LLM/API-key support
 - Supabase Auth
+- Redis/background jobs
 - domain pack expansion
 
 Checkpoints:

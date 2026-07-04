@@ -69,12 +69,12 @@ The milestone status is defined in `PROJECT_PLAN.md`.
 At the time this file was updated, the latest completed target is:
 
 ```txt
-Milestone 5 PR6 — Tailwind UI Foundation & Full Frontend Redesign
+Milestone 6 PR1 — Dashboards/Cards Backend Foundation (implementation complete; pending review)
 ```
 
 Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, Milestone 3, Milestone 4, and Milestone 5 are complete under the previous scopes. Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete.
 
-Milestone 6 is now active. The active PR is `M6 PR1 — Dashboards/Cards Backend Foundation` on branch `feature/m6-dashboards-cards-backend`.
+Milestone 6 is active. `M6 PR1 — Dashboards/Cards Backend Foundation` is complete on branch `feature/m6-dashboards-cards-backend` and pending review.
 
 Milestone 2.5 introduced `access_scopes`, `user_access_scopes`, `data_resources`, `UserAccessContext`, `AccessDecision`, and `evaluate_access(subject, action, resource, context)`.
 
@@ -96,7 +96,7 @@ Milestone 5 PR5 added Ask Data role-gated SQL and Diagnostics tabs. Analyst/Admi
 
 Milestone 5 PR6 added the Tailwind UI foundation, class-based light/dark mode, redesigned app shell/sidebar, redesigned Dashboard, focused Ask Data command workspace, light polish for remaining frontend pages, and final CSS/docs cleanup. PR6 did not change backend behavior, query execution behavior, auth/roles/RLS, dashboard card persistence behavior, CSV export behavior, action preview behavior, approvals, notifications, real LLM providers, API keys, Supabase Auth, Redis/background jobs, domain pack expansion, UI component libraries, or charting libraries.
 
-Milestone 6 PR1 may add only the backend API foundation for listing/creating dashboards and saving successful owned query runs as dashboard cards. It must use existing backend auth, CSRF, permission, and response conventions. Responses must be metadata-only, must not execute saved cards, and must not expose SQL beyond existing `can_view_sql` API rules.
+Milestone 6 PR1 includes the dashboard catalog backend endpoint, my dashboard backend endpoint, dashboard creation backend endpoint, saving successful owned query runs as dashboard cards, safe metadata-only serializers, auth, CSRF, strict payload validation, dashboard visibility/manageability checks, and backend tests. It uses existing backend auth, CSRF, permission, and response conventions. Responses are metadata-only, do not execute saved cards, and do not expose SQL beyond existing `can_view_sql` API rules.
 
 Milestone 4 delivered:
 
