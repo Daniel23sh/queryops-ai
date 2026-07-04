@@ -1,8 +1,9 @@
 export const FUTURE_OPERATION_PLACEHOLDERS = [
   {
     label: "Save as Card",
-    milestone: "Later dashboards/cards milestone",
-    summary: "Saving query results as dashboard cards is intentionally unavailable in this shell."
+    milestone: "Later Save as Card modal",
+    summary:
+      "Modal and cross-dashboard save flows stay disabled; authorized users can use the inline personal-dashboard save panel after a successful result."
   },
   {
     label: "CSV Export",

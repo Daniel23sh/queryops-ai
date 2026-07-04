@@ -1276,6 +1276,317 @@ describe("App", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
+  it.each([
+    ["demo user", demoUser, null],
+    ["demo manager", demoManager, "Show open support tickets by priority."]
+  ] as const)(
+    "does not show active Save as Card for %s after successful results",
+    async (_label, user, question) => {
+      document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+      const fetchMock = stubFetchSequence(
+        successResponse(user),
+        successResponse(askDataTemplates),
+        successResponse(
+          backendQueryRunResult({
+            message: `${user.role} result completed.`,
+            generatedSql: `SELECT ${user.role}_hidden_save_sql`,
+            executedSql: `SELECT ${user.role}_hidden_save_sql`
+          })
+        )
+      );
+
+      renderApp();
+
+      const nav = await screen.findByRole("navigation", {
+        name: "Workspace navigation"
+      });
+      fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+
+      if (question === null) {
+        fireEvent.click(await screen.findByRole("button", { name: "Run selected template" }));
+      } else {
+        fireEvent.change(await screen.findByLabelText("Free question"), {
+          target: { value: question }
+        });
+        fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
+      }
+
+      expect(await screen.findByText(`${user.role} result completed.`)).toBeInTheDocument();
+      expect(screen.queryByRole("region", { name: "Save as Card" })).not.toBeInTheDocument();
+      expect(screen.queryByText(`SELECT ${user.role}_hidden_save_sql`)).not.toBeInTheDocument();
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    }
+  );
+
+  it.each([
+    ["demo analyst", demoAnalyst],
+    ["demo admin", demoAdmin]
+  ] as const)("shows Save as Card for %s after a successful query result", async (_label, user) => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(user),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          queryRunId: "query-run-id",
+          message: `${user.role} result ready for saving.`,
+          generatedSql: `SELECT ${user.role}_panel_hidden_sql`,
+          executedSql: `SELECT ${user.role}_panel_hidden_sql`
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+    fireEvent.change(await screen.findByLabelText("Free question"), {
+      target: { value: "Show inactive privileged accounts." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
+
+    const savePanel = await screen.findByRole("region", { name: "Save as Card" });
+    expect(within(savePanel).getByRole("heading", { name: "Save as Card" })).toBeInTheDocument();
+    expect(
+      within(savePanel).getByRole("button", { name: "Choose dashboard" })
+    ).toBeEnabled();
+    expect(within(savePanel).queryByText(`SELECT ${user.role}_panel_hidden_sql`)).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not show Save as Card for failed query results", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoAnalyst),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          status: "failed",
+          message: "Query finished in a failed state.",
+          columns: [],
+          rows: [],
+          rowCount: 0
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+    fireEvent.change(await screen.findByLabelText("Free question"), {
+      target: { value: "Show inactive privileged accounts." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
+
+    expect(await screen.findByText("Query finished in a failed state.")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Save as Card" })).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("does not show Save as Card when clarification is required", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoAnalyst),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          status: "clarification_required",
+          message: "Which asset type should QueryOps use?",
+          columns: [],
+          rows: [],
+          rowCount: 0,
+          clarificationRequired: true
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+    fireEvent.change(await screen.findByLabelText("Free question"), {
+      target: { value: "Show inactive privileged accounts." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
+
+    expect(await screen.findByLabelText("Clarification required")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Save as Card" })).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("loads My Dashboard targets and shows an empty state for Save as Card", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const fetchMock = stubFetchSequence(
+      successResponse(demoAnalyst),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          message: "Analyst result can be saved."
+        })
+      ),
+      successResponse([])
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+    fireEvent.change(await screen.findByLabelText("Free question"), {
+      target: { value: "Show inactive privileged accounts." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
+
+    const savePanel = await screen.findByRole("region", { name: "Save as Card" });
+    fireEvent.click(within(savePanel).getByRole("button", { name: "Choose dashboard" }));
+
+    expect(
+      await within(savePanel).findByText(
+        "Create a personal dashboard from My Dashboard before saving cards."
+      )
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      4,
+      "http://localhost:8000/api/v1/dashboards/my",
+      expect.objectContaining({
+        method: "GET",
+        credentials: "include"
+      })
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("saves a successful query run as a card with CSRF and an encoded query run id", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const targetDashboard = backendDashboard({
+      id: "dashboard-id",
+      title: "Analyst personal dashboard"
+    });
+    const fetchMock = stubFetchSequence(
+      successResponse(demoAnalyst),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          queryRunId: "query run/id",
+          message: "Analyst save-card result completed.",
+          generatedSql: "SELECT save_card_hidden_sql",
+          executedSql: "SELECT save_card_hidden_sql"
+        })
+      ),
+      successResponse([targetDashboard]),
+      successResponse(
+        backendDashboardCard({
+          id: "saved-card-id",
+          dashboardId: "dashboard-id",
+          title: "Inactive privileged accounts"
+        })
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+    fireEvent.change(await screen.findByLabelText("Free question"), {
+      target: { value: "Show inactive privileged accounts." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
+
+    const savePanel = await screen.findByRole("region", { name: "Save as Card" });
+    fireEvent.click(within(savePanel).getByRole("button", { name: "Choose dashboard" }));
+    expect(
+      await within(savePanel).findByRole("combobox", { name: "Target dashboard" })
+    ).toBeInTheDocument();
+    fireEvent.change(within(savePanel).getByLabelText("Card title"), {
+      target: { value: "Inactive privileged accounts" }
+    });
+    fireEvent.change(within(savePanel).getByLabelText("Description"), {
+      target: { value: "Follow up in the weekly review." }
+    });
+    fireEvent.click(within(savePanel).getByRole("button", { name: "Save card" }));
+
+    expect(await within(savePanel).findByRole("status")).toHaveTextContent(
+      "Dashboard card saved."
+    );
+    expect(screen.queryByText("SELECT save_card_hidden_sql")).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      5,
+      "http://localhost:8000/api/v1/query-runs/query%20run%2Fid/save-card",
+      expect.objectContaining({
+        method: "POST",
+        credentials: "include",
+        headers: expect.objectContaining({
+          "Content-Type": "application/json",
+          "X-CSRF-Token": "csrf-from-cookie"
+        }),
+        body: JSON.stringify({
+          dashboard_id: "dashboard-id",
+          title: "Inactive privileged accounts",
+          description: "Follow up in the weekly review.",
+          card_type: "table"
+        })
+      })
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+  });
+
+  it("shows generic Save as Card API errors", async () => {
+    document.cookie = "qo_csrf=csrf-from-cookie; path=/";
+    const targetDashboard = backendDashboard({
+      id: "dashboard-id",
+      title: "Analyst personal dashboard"
+    });
+    const fetchMock = stubFetchSequence(
+      successResponse(demoAnalyst),
+      successResponse(askDataTemplates),
+      successResponse(
+        backendQueryRunResult({
+          queryRunId: "query-run-id",
+          message: "Analyst result failed to save."
+        })
+      ),
+      successResponse([targetDashboard]),
+      errorResponse(
+        "SAVE_CARD_FAILED",
+        500,
+        "generated_sql SELECT private_backend_detail"
+      )
+    );
+
+    renderApp();
+
+    const nav = await screen.findByRole("navigation", {
+      name: "Workspace navigation"
+    });
+    fireEvent.click(within(nav).getByRole("button", { name: "Ask Data" }));
+    fireEvent.change(await screen.findByLabelText("Free question"), {
+      target: { value: "Show inactive privileged accounts." }
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Run free query" }));
+
+    const savePanel = await screen.findByRole("region", { name: "Save as Card" });
+    fireEvent.click(within(savePanel).getByRole("button", { name: "Choose dashboard" }));
+    expect(await within(savePanel).findByLabelText("Card title")).toBeInTheDocument();
+    fireEvent.click(within(savePanel).getByRole("button", { name: "Save card" }));
+
+    expect(await within(savePanel).findByRole("alert")).toHaveTextContent(
+      "Dashboard card could not be saved."
+    );
+    expect(screen.queryByText("SAVE_CARD_FAILED")).not.toBeInTheDocument();
+    expect(screen.queryByText(/generated_sql SELECT/i)).not.toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+  });
+
   it("renders generated and executed SQL for demo analyst only in the SQL tab", async () => {
     document.cookie = "qo_csrf=csrf-from-cookie; path=/";
     const fetchMock = stubFetchSequence(
@@ -2463,7 +2774,7 @@ describe("App", () => {
       within(insightRegion).getByRole("button", { name: "Save as Card" })
     ).toBeDisabled();
     expect(
-      within(insightRegion).getByText(/later dashboards\/cards milestone/i)
+      within(insightRegion).getByText(/later save as card modal/i)
     ).toBeInTheDocument();
     expect(
       within(insightRegion).getByRole("button", { name: "CSV Export" })
@@ -3463,6 +3774,32 @@ function backendDashboard({
     created_at: "2026-07-04T12:00:00Z",
     updated_at: "2026-07-04T12:00:00Z",
     cards
+  };
+}
+
+function backendDashboardCard({
+  id,
+  dashboardId,
+  title,
+  description = null
+}: {
+  id: string;
+  dashboardId: string;
+  title: string;
+  description?: string | null;
+}) {
+  return {
+    id,
+    dashboard_id: dashboardId,
+    saved_query_id: "saved-query-id",
+    title,
+    description,
+    card_type: "table",
+    position: 0,
+    layout: null,
+    config: null,
+    created_at: "2026-07-04T12:00:00Z",
+    updated_at: "2026-07-04T12:00:00Z"
   };
 }
 

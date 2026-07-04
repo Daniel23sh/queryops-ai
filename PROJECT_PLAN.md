@@ -77,14 +77,13 @@ Milestone 5 PR6 is merged into `main`. This branch added the Tailwind UI foundat
 
 Milestone 6 PR1 includes the dashboard catalog backend endpoint, my dashboard backend endpoint, dashboard creation backend endpoint, saving successful owned query runs as dashboard cards, safe metadata-only serializers, auth, CSRF, strict payload validation, dashboard visibility/manageability checks, and backend tests. Responses remain metadata-only and do not execute cards or expose SQL beyond the existing role-based SQL visibility rules.
 
-Milestone 6 PR2 is active on branch `feature/m6-dashboard-ui`. Checkpoints 1 and 2 are complete. The current checkpoint adds a small personal dashboard creation UI on the Dashboard page using `POST /api/v1/dashboards` for `visibility_scope: "personal"` only.
+Milestone 6 PR2 is active on branch `feature/m6-dashboard-ui`. Checkpoints 1 through 3 are complete. The current checkpoint adds inline Ask Data Save as Card UI for successful query results, saving into existing personal dashboards returned by `GET /api/v1/dashboards/my`.
 
 Explicitly out of scope for the current M6 PR2 checkpoint:
 
 - Dashboard Catalog UI
 - department/global dashboard creation UI
 - Save as Card modal
-- Ask Data save-card integration
 - CSV export
 - card refresh execution
 - drag-and-drop UI
@@ -478,7 +477,7 @@ Prepare and implement the frontend dashboard/card experience in small checkpoint
 
 Status:
 
-Active. Checkpoint 1 frontend dashboard/card API clients and types is complete. Checkpoint 2 read-only My Dashboard loading is complete. Checkpoint 3 adds personal dashboard creation from the Dashboard page.
+Active. Checkpoint 1 frontend dashboard/card API clients and types is complete. Checkpoint 2 read-only My Dashboard loading is complete. Checkpoint 3 personal dashboard creation is complete. Checkpoint 4 adds inline Ask Data Save as Card UI for successful query results and existing personal dashboards only.
 
 Checkpoint 1 in scope:
 
@@ -544,6 +543,31 @@ Out of scope for Checkpoint 3:
 - department/global dashboard creation UI
 - Save as Card modal
 - Ask Data save-card integration
+- drag-and-drop UI
+- CSV export
+- card refresh execution
+- actions
+- approvals
+- notifications
+- real LLM/API-key support
+- Supabase Auth
+- Redis/background jobs
+- domain pack expansion
+
+Checkpoint 4 in scope:
+
+- render inline Save as Card UI in Ask Data after a successful query result
+- require `can_create_card` before showing the active save UI
+- load existing personal dashboards from `GET /api/v1/dashboards/my`
+- submit `POST /api/v1/query-runs/{query_run_id}/save-card` with `card_type: "table"`
+- safe loading, empty, success, and generic error states
+- frontend tests for role gating, saveability gating, request body/header behavior, URL encoding, and SQL non-exposure
+
+Out of scope for Checkpoint 4:
+
+- Dashboard Catalog UI
+- department/global dashboard selection UI
+- Save as Card modal
 - drag-and-drop UI
 - CSV export
 - card refresh execution
