@@ -4,11 +4,15 @@
 
 The current milestone status is:
 
-`Milestone 5 PR6 — Tailwind UI Foundation & Full Frontend Redesign` is complete on branch `feature/m5-tailwind-ui-foundation` and pending review.
+`Milestone 6 — Dashboards, Cards & CSV Export` is active.
 
-Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, and Milestone 4 Query Engine Backend are complete.
+Active PR scope:
 
-Milestone 5 Ask Data and the Milestone 5 frontend redesign are complete pending PR6 review. PR1 backend compliance, PR2 frontend API clients, PR3 Ask Data shell/layout, PR4 browser query integration, and PR5 role tabs/tests have been reviewed and merged. PR6 adds the Tailwind foundation, light/dark mode, redesigned app shell/sidebar, redesigned Dashboard, focused Ask Data command workspace, light polish for remaining frontend pages, and final CSS/docs cleanup. Do not start dashboard card persistence, CSV export, actions, approvals, or notifications until those later PRs are explicitly started.
+`M6 PR1 — Dashboards/Cards Backend Foundation` on branch `feature/m6-dashboards-cards-backend`.
+
+Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
+
+Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete. Milestone 6 is now active. M6 PR1 is limited to dashboards/cards backend foundation work on the existing product schema.
 
 Milestone 2.5 delivered:
 
@@ -69,21 +73,23 @@ Milestone 5 PR4 is complete on branch `feature/m5-ask-data-query-integration`. T
 
 Milestone 5 PR5 is complete on branch `feature/m5-ask-data-role-tabs-tests`. This branch adds Ask Data role-gated SQL and Diagnostics tabs. Analyst/Admin can view generated/executed SQL in the SQL tab and safe technical diagnostics in the Diagnostics tab. User/Manager cannot view SQL tabs, Diagnostics tabs, generated SQL, executed SQL, or technical diagnostics. PR5 also adds final Ask Data role matrix tests for User, Manager, Analyst, and Admin. PR5 does not add Tailwind, dashboard card persistence behavior, CSV export behavior, action preview behavior, approvals, notifications, real LLM providers, API keys, Supabase Auth, Redis/background jobs, or domain pack expansion.
 
-Milestone 5 PR6 is complete on branch `feature/m5-tailwind-ui-foundation`. This branch adds the Tailwind UI foundation, class-based light/dark mode, redesigned app shell/sidebar, redesigned Dashboard, focused Ask Data command workspace, lightly polished remaining frontend pages, and final CSS/docs cleanup. M5 Ask Data and the M5 frontend redesign are complete pending PR6 review. PR6 does not change backend behavior, auth/roles/RLS, query execution, dashboard card persistence behavior, CSV export behavior, action preview behavior, approvals, notifications, real LLM providers, API keys, Supabase Auth, Redis/background jobs, domain pack expansion, UI component libraries, or charting libraries.
+Milestone 5 PR6 is merged into `main`. This branch added the Tailwind UI foundation, class-based light/dark mode, redesigned app shell/sidebar, redesigned Dashboard, focused Ask Data command workspace, lightly polished remaining frontend pages, and final CSS/docs cleanup. PR6 did not change backend behavior, auth/roles/RLS, query execution, dashboard card persistence behavior, CSV export behavior, action preview behavior, approvals, notifications, real LLM providers, API keys, Supabase Auth, Redis/background jobs, domain pack expansion, UI component libraries, or charting libraries.
 
-Real LLM/API-key support remains future work beyond Milestone 5 unless explicitly started.
+Milestone 6 PR1 may add only the backend API foundation for listing/creating dashboards and saving successful owned query runs as dashboard cards. Responses must remain metadata-only and must not execute cards or expose SQL beyond the existing role-based SQL visibility rules.
 
-Items still out of scope and reserved for future milestones:
+Explicitly out of scope for M6 PR1:
 
-- dashboard card persistence and real dashboard management behavior
 - CSV export
-- actions behavior
-- approvals behavior
-- notifications behavior
-- real external LLM calls
+- card refresh execution
+- dashboard/card frontend UI
+- drag-and-drop UI
+- action previews
+- action requests
+- approvals
+- notifications
+- real LLM/API-key support
 - Supabase Auth
-- new Ask Data behavior outside the approved M5 scope
-- full domain pack expansion to 36 templates / 40 evaluation cases
+- domain pack expansion
 - Full ABAC
 - ReBAC
 - policy builder UI
@@ -91,7 +97,7 @@ Items still out of scope and reserved for future milestones:
 - masking
 - tenant/project/region governance
 
-Later milestones will handle dashboard card persistence, real dashboard management behavior, exports, actions, approvals, and notifications unless explicitly requested.
+Later Milestone 6 PRs may handle dashboard/card frontend behavior, card refresh, reordering, and CSV export. Later milestones will handle actions, approvals, notifications, real LLM/API-key support, and Supabase Auth unless explicitly requested.
 
 ## 2. Product Summary
 
@@ -389,169 +395,61 @@ The latest completed product milestone is:
 
 `Milestone 5 PR6 — Tailwind UI Foundation & Full Frontend Redesign`
 
-Milestone 5 PR6 is complete and pending review. It adds the Tailwind foundation, light/dark mode, redesigned app shell/sidebar, redesigned Dashboard, focused Ask Data command workspace, light polish for remaining frontend pages, and final CSS/docs cleanup.
+Milestone 5 PR6 is merged into `main`. It added the Tailwind foundation, light/dark mode, redesigned app shell/sidebar, redesigned Dashboard, focused Ask Data command workspace, light polish for remaining frontend pages, and final CSS/docs cleanup.
 
-Milestone 5 PR1 through PR5 are merged. Milestone 5 Ask Data and the Milestone 5 frontend redesign are complete pending PR6 review. Milestone 5 does not include dashboard card persistence, CSV export, actions, approvals, notification behavior, real LLM providers, API keys, Supabase Auth, or full domain pack expansion.
+Milestone 5 Ask Data and the Milestone 5 frontend redesign are complete.
 
-## 15. Milestone 5 Implementation Plan
+The active product milestone is:
 
-Milestone 5 PR6 is complete in this branch and pending review. Use one branch per PR, do not include PR numbers in branch names, split every PR into checkpoints, and end each checkpoint with its own commit. Do not create one large commit for an entire PR.
+`Milestone 6 — Dashboards, Cards & CSV Export`
 
-The first Milestone 5 PR closed the remaining Milestone 4 backend compliance gaps and made the Query API ready for frontend Ask Data work. The second PR added the frontend API client layer only. The third PR added the static Ask Data shell/layout only. Browser query execution was added in PR4, SQL/technical role tabs were completed in PR5, and the Tailwind foundation plus full frontend redesign is complete in PR6 pending review.
+The active PR is:
 
-### PR1: M4 Query Backend Compliance
+`M6 PR1 — Dashboards/Cards Backend Foundation`
+
+## 15. Milestone 6 Implementation Plan
+
+Use one branch per PR, do not include PR numbers in branch names, split every PR into checkpoints, and end each checkpoint with its own commit. Do not create one large commit for an entire PR.
+
+### PR1: Dashboards/Cards Backend Foundation
 
 Branch:
 
 ```text
-feature/m5-fix-m4-query-backend-compliance
+feature/m6-dashboards-cards-backend
 ```
 
 Goal:
 
-Closed Milestone 4 backend compliance gaps and made the Query API ready for Milestone 5 UI.
+Add the first small backend foundation for dashboards and cards using the existing `dashboards`, `saved_queries`, `dashboard_cards`, and `query_runs` schema.
 
-Completed PR1 behavior:
+In scope for PR1:
 
-- Added `POST /api/v1/queries/{query_run_id}/clarify`.
-- Added `GET /api/v1/queries/scope-history`.
-- Added `GET /api/v1/queries/department-history` as a V1 compatibility alias.
-- Added deterministic self-correction in `QueryEngineService`.
-- Hardened safe query metadata for future Ask Data UI technical states.
-- Kept frontend Ask Data UI, real LLM providers, dashboards/cards, CSV export, actions, approvals, notifications, Supabase Auth, and full domain pack expansion out of scope.
+- `GET /api/v1/dashboards/catalog`
+- `GET /api/v1/dashboards/my`
+- `POST /api/v1/dashboards`
+- `POST /api/v1/query-runs/{query_run_id}/save-card`
+- metadata-only dashboard/card serialization
+- backend permission, ownership, visibility, CSRF, and SQL-leakage tests
+
+Out of scope for PR1:
+
+- CSV export
+- card refresh execution
+- dashboard/card frontend UI
+- drag-and-drop UI
+- action previews
+- action requests
+- approvals
+- notifications
+- real LLM/API-key support
+- Supabase Auth
+- domain pack expansion
 
 Checkpoints:
 
-1. Checkpoint 1.1 — Document the M4 backend compliance scope in `PROJECT_PLAN.md` or `AGENTS.md`.
-   - Commit: `docs: document m4 backend compliance scope for m5`
-
-2. Checkpoint 1.2 — Add `POST /api/v1/queries/{query_run_id}/clarify`.
-   - Verify ownership of the original query run.
-   - Reject invalid payloads.
-   - Create a new `QueryRun`.
-   - Store safe metadata linking it to the original query.
-   - Commit: `feat(api): add query clarification endpoint`
-
-3. Checkpoint 1.3 — Add `GET /api/v1/queries/scope-history` and `GET /api/v1/queries/department-history` as a V1 compatibility alias.
-   - Use `UserAccessContext` and access scopes, not direct department authorization.
-   - Hide SQL unless the viewer has `can_view_sql`.
-   - Commit: `feat(api): add scope-aware query history endpoints`
-
-4. Checkpoint 1.4 — Add deterministic self-correction support in `QueryEngineService`.
-   - If generated SQL fails validation, allow one safe correction attempt using only safe validation metadata.
-   - Do not add real LLM providers, external provider integrations, API keys, or API-key requirements.
-   - Commit: `feat(query-engine): add deterministic self-correction flow`
-
-5. Checkpoint 1.5 — Expose safe query metadata needed by Ask Data UI.
-   - Include self-correction metadata when present.
-   - Do not expose unsafe provider internals.
-   - Commit: `fix(api): expose safe query metadata for ask data ui`
-
-6. Checkpoint 1.6 — Add or update backend tests and documentation.
-   - Run backend tests and PostgreSQL query/RLS tests where available.
-   - Commit: `docs: mark m4 query backend cleanup complete`
-
-### PR2: Ask Data API Clients
-
-Branch:
-
-```text
-feature/m5-ask-data-api-clients
-```
-
-Goal:
-
-Build frontend API clients and types for query templates and query runs.
-
-Completed PR2 behavior:
-
-- Added frontend-safe Ask Data query/template/result/history metadata types.
-- Added query template list/detail API clients under `/api/v1`.
-- Added query run, clarify, own-history, scope-history, and department-history API clients under `/api/v1`.
-- Added focused frontend API client tests for paths, CSRF headers, URL encoding, pagination, unsupported parameters, shared API errors, and pass-through response data.
-- Kept Ask Data UI, backend behavior, dashboards/cards, CSV export, actions, approvals, notifications, real LLM providers, Supabase Auth, Redis/background jobs, and full domain pack expansion out of scope.
-
-### PR3: Ask Data Shell
-
-Branch:
-
-```text
-feature/m5-ask-data-shell
-```
-
-Goal:
-
-Replace the Ask Data placeholder with a real split workspace layout.
-
-Completed PR3 behavior:
-
-- Rendered the Ask Data page from the workspace navigation.
-- Made Ask Data visible to User, Manager, Analyst, and Admin demo roles.
-- Added User template-only mode and role-aware static composer states.
-- Added a static split workspace with template, composer/result, and insight panels.
-- Added disabled Save as Card, CSV Export, and Preview Action placeholders for later milestones.
-- Kept backend/API integration, browser query execution, dashboards/cards, CSV export behavior, actions, approvals, notifications, real LLM providers, Supabase Auth, Tailwind, Redis/background jobs, and full domain pack expansion out of scope.
-
-### PR4: Ask Data Query Integration
-
-Branch:
-
-```text
-feature/m5-ask-data-query-integration
-```
-
-Goal:
-
-Load templates, run template queries, run free queries by role, and render the result table, clarification, loading, error, and no-row states.
-
-Start only after PR3 is merged.
-
-### PR5: Ask Data Role Tabs and Tests
-
-Branch:
-
-```text
-feature/m5-ask-data-role-tabs-tests
-```
-
-Goal:
-
-Add the SQL tab for Analyst/Admin only, technical/corrections tab, role-based tests, query state tests, and final docs polish.
-
-Start only after PR4 is merged.
-
-### PR6: Tailwind UI Foundation and Full Frontend Redesign
-
-Branch:
-
-```text
-feature/m5-tailwind-ui-foundation
-```
-
-Goal:
-
-Add the final Milestone 5 Tailwind foundation and full frontend redesign after Ask Data integration and role tabs are complete.
-
-Completed PR6 behavior:
-
-- Added Tailwind foundation and QueryOps design tokens.
-- Added class-based light/dark mode.
-- Redesigned the app shell/sidebar.
-- Redesigned Dashboard as QueryOps Command Center.
-- Redesigned Ask Data as a focused command workspace.
-- Lightly polished remaining frontend pages.
-- Completed final CSS/docs cleanup after verifying selectors.
-- Kept backend behavior, query execution behavior, auth/roles/RLS, dashboard card persistence, CSV export, actions, approvals, notifications, real LLM providers, API keys, Supabase Auth, Redis/background jobs, new UI component libraries, charting libraries, and domain pack expansion out of scope.
-
-### Milestone 5 Out of Scope
-
-Do not include the following in Milestone 5 unless explicitly approved in a later scope update:
-
-- dashboard card persistence and real dashboard management behavior
-- CSV export
-- action preview
-- approvals
-- notifications
-- real LLM providers
-- Supabase Auth
-- full expansion to 36 templates / 40 evaluation cases unless handled in a separate Domain Pack PR
+1. Checkpoint 1 — Verify updated `main`, create branch, and update `PROJECT_PLAN.md` / `AGENTS.md` status only.
+2. Checkpoint 2 — Add dashboards route skeleton, serializers/helpers, route registration, and basic auth/CSRF tests.
+3. Checkpoint 3 — Add catalog, my dashboard, create dashboard behavior, and permission/visibility tests.
+4. Checkpoint 4 — Add save-card endpoint, persistence tests, and SQL leakage regression tests.
+5. Checkpoint 5 — Final cleanup, full backend test run, `git diff --check`, and final status report.

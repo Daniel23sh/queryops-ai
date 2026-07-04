@@ -72,7 +72,9 @@ At the time this file was updated, the latest completed target is:
 Milestone 5 PR6 — Tailwind UI Foundation & Full Frontend Redesign
 ```
 
-Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, Milestone 3, and Milestone 4 are complete under the previous scopes. Milestone 5 PR1 through PR5 have been reviewed and merged. Milestone 5 PR6 is complete on branch `feature/m5-tailwind-ui-foundation` and pending review. M5 Ask Data and the M5 frontend redesign are complete pending PR6 review.
+Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, Milestone 3, Milestone 4, and Milestone 5 are complete under the previous scopes. Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete.
+
+Milestone 6 is now active. The active PR is `M6 PR1 — Dashboards/Cards Backend Foundation` on branch `feature/m6-dashboards-cards-backend`.
 
 Milestone 2.5 introduced `access_scopes`, `user_access_scopes`, `data_resources`, `UserAccessContext`, `AccessDecision`, and `evaluate_access(subject, action, resource, context)`.
 
@@ -93,6 +95,8 @@ Milestone 5 PR1 closed the remaining Milestone 4 backend Query Engine compliance
 Milestone 5 PR5 added Ask Data role-gated SQL and Diagnostics tabs. Analyst/Admin can view generated/executed SQL in the SQL tab and safe technical diagnostics in the Diagnostics tab. User/Manager cannot view SQL tabs, Diagnostics tabs, generated SQL, executed SQL, or technical diagnostics. PR5 also added final Ask Data role matrix tests for User, Manager, Analyst, and Admin.
 
 Milestone 5 PR6 added the Tailwind UI foundation, class-based light/dark mode, redesigned app shell/sidebar, redesigned Dashboard, focused Ask Data command workspace, light polish for remaining frontend pages, and final CSS/docs cleanup. PR6 did not change backend behavior, query execution behavior, auth/roles/RLS, dashboard card persistence behavior, CSV export behavior, action preview behavior, approvals, notifications, real LLM providers, API keys, Supabase Auth, Redis/background jobs, domain pack expansion, UI component libraries, or charting libraries.
+
+Milestone 6 PR1 may add only the backend API foundation for listing/creating dashboards and saving successful owned query runs as dashboard cards. It must use existing backend auth, CSRF, permission, and response conventions. Responses must be metadata-only, must not execute saved cards, and must not expose SQL beyond existing `can_view_sql` API rules.
 
 Milestone 4 delivered:
 
@@ -124,17 +128,19 @@ Query Engine security rules:
 * Query Engine code must continue to use `UserAccessContext`, `DataResource`, `AccessDecision`, `evaluate_access(...)`, `authorize_resource_access(...)`, `RLSContext`, `build_rls_context(...)`, `set_rls_context(...)`, PostgreSQL RLS policies from `0005_scope_aware_rls.py`, and the existing `QueryRun` model.
 * No real LLM calls, external provider integrations, or API-key requirements are allowed in Milestone 4.
 
-Out of scope unless explicitly requested in a future milestone:
+Out of scope for M6 PR1 unless explicitly requested:
 
-* dashboard card persistence and real dashboard management behavior
 * CSV export
-* actions behavior
-* approvals behavior
-* notifications behavior
-* real external LLM calls
+* card refresh execution
+* dashboard/card frontend UI
+* drag-and-drop UI
+* action previews
+* action requests
+* approvals
+* notifications
+* real LLM/API-key support
 * Supabase Auth
-* new Ask Data behavior outside the approved Milestone 5 scope
-* full domain pack expansion to 36 templates / 40 evaluation cases
+* domain pack expansion
 * Full ABAC
 * ReBAC
 * masking
@@ -145,7 +151,7 @@ Out of scope unless explicitly requested in a future milestone:
 * Redis
 * API rate limiter
 
-Later milestones will handle dashboard card persistence, real dashboard management behavior, actions, approvals, exports, notifications, real LLM/API-key support, and Supabase Auth unless explicitly requested. Do not add dashboard persistence/management behavior, action execution, approval behavior, CSV export, real LLM providers, API keys, Supabase Auth, or new Ask Data behavior outside the active approved PR scope.
+Later Milestone 6 PRs may handle dashboard/card frontend behavior, card refresh, reordering, and CSV export. Later milestones will handle actions, approvals, notifications, real LLM/API-key support, and Supabase Auth unless explicitly requested. Do not add card refresh execution, dashboard/card frontend behavior, action execution, approval behavior, CSV export, real LLM providers, API keys, Supabase Auth, or new Ask Data behavior outside the active approved PR scope.
 
 ## 6. Product Direction
 
