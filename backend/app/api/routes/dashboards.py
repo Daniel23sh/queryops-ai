@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, Request
+from sqlalchemy import select
+from sqlalchemy.orm import Session, selectinload
 
 from app.api.responses import error_response, success_response
+from app.auth.access_context import UserAccessContext, build_user_access_context
 from app.auth.permissions import require_authenticated_user
 from app.auth.session import csrf_is_valid, session_from_request
-from app.models.product import AppUser
+from app.db.session import get_db
+from app.models.product import AppUser, Dashboard, DashboardCard, VisibilityScope
 
 
 router = APIRouter(prefix="/api/v1")
@@ -24,23 +29,52 @@ ALLOWED_VISIBILITY_SCOPES = frozenset({"personal", "department", "global"})
 
 @router.get("/dashboards/catalog")
 def dashboard_catalog(
-    _current_user: AppUser = Depends(require_authenticated_user),
+    current_user: AppUser = Depends(require_authenticated_user),
+    db: Session = Depends(get_db),
 ):
-    return success_response([])
+    access_context = build_user_access_context(current_user, db)
+    dashboards = db.scalars(
+        select(Dashboard)
+        .options(selectinload(Dashboard.cards))
+        .where(Dashboard.is_archived.is_(False))
+        .order_by(Dashboard.created_at, Dashboard.id)
+    ).all()
+    visible_dashboards = [
+        dashboard
+        for dashboard in dashboards
+        if _dashboard_visible_in_catalog(dashboard, current_user, access_context)
+    ]
+
+    return success_response(
+        [_serialize_dashboard(dashboard) for dashboard in visible_dashboards]
+    )
 
 
 @router.get("/dashboards/my")
 def my_dashboard(
-    _current_user: AppUser = Depends(require_authenticated_user),
+    current_user: AppUser = Depends(require_authenticated_user),
+    db: Session = Depends(get_db),
 ):
-    return success_response([])
+    dashboards = db.scalars(
+        select(Dashboard)
+        .options(selectinload(Dashboard.cards))
+        .where(
+            Dashboard.owner_user_id == current_user.id,
+            Dashboard.visibility_scope == VisibilityScope.PERSONAL.value,
+            Dashboard.is_archived.is_(False),
+        )
+        .order_by(Dashboard.created_at, Dashboard.id)
+    ).all()
+
+    return success_response([_serialize_dashboard(dashboard) for dashboard in dashboards])
 
 
 @router.post("/dashboards")
 def create_dashboard(
     request: Request,
     payload: Any = Body(default=None),
-    _current_user: AppUser = Depends(require_authenticated_user),
+    current_user: AppUser = Depends(require_authenticated_user),
+    db: Session = Depends(get_db),
 ):
     csrf_error = _csrf_error_response(request)
     if csrf_error is not None:
@@ -50,14 +84,27 @@ def create_dashboard(
     if not isinstance(parsed_payload, dict):
         return parsed_payload
 
-    return success_response(
-        {
-            "status": "not_persisted",
-            "message": "Dashboard persistence is not implemented in this checkpoint.",
-            "dashboard": parsed_payload,
-        },
-        status_code=202,
+    access_context = build_user_access_context(current_user, db)
+    dashboard_values_or_error = _dashboard_create_values(
+        parsed_payload,
+        current_user,
+        access_context,
     )
+    if not isinstance(dashboard_values_or_error, dict):
+        return dashboard_values_or_error
+
+    dashboard = Dashboard(
+        owner_user_id=current_user.id,
+        title=dashboard_values_or_error["title"],
+        description=dashboard_values_or_error.get("description"),
+        visibility_scope=dashboard_values_or_error["visibility_scope"],
+        department_id=dashboard_values_or_error.get("department_id"),
+    )
+    db.add(dashboard)
+    db.commit()
+    db.refresh(dashboard)
+
+    return success_response(_serialize_dashboard(dashboard), status_code=201)
 
 
 @router.post("/query-runs/{query_run_id}/save-card")
@@ -95,6 +142,106 @@ def _csrf_error_response(request: Request):
             status_code=403,
         )
     return None
+
+
+def _dashboard_visible_in_catalog(
+    dashboard: Dashboard,
+    current_user: AppUser,
+    access_context: UserAccessContext,
+) -> bool:
+    if dashboard.visibility_scope == VisibilityScope.PERSONAL.value:
+        return dashboard.owner_user_id == current_user.id
+
+    if dashboard.visibility_scope == VisibilityScope.GLOBAL.value:
+        return access_context.has_global_scope
+
+    if dashboard.visibility_scope == VisibilityScope.DEPARTMENT.value:
+        if access_context.has_global_scope:
+            return True
+        if dashboard.department_id is None:
+            return False
+        if current_user.department_id == dashboard.department_id:
+            return True
+        return any(
+            scope.type == "department" and scope.department_id == dashboard.department_id
+            for scope in access_context.scopes
+        )
+
+    return False
+
+
+def _dashboard_create_values(
+    payload: dict[str, Any],
+    current_user: AppUser,
+    access_context: UserAccessContext,
+):
+    visibility_scope = payload.get("visibility_scope") or VisibilityScope.PERSONAL.value
+    department_id = _department_uuid_from_payload(payload)
+
+    if visibility_scope == VisibilityScope.PERSONAL.value:
+        if not access_context.has_permission("can_create_personal_dashboard"):
+            return _forbidden_response()
+        department_id = None
+
+    elif visibility_scope == VisibilityScope.DEPARTMENT.value:
+        if not _has_any_permission(
+            access_context,
+            {"can_create_department_dashboard", "can_manage_department_dashboard"},
+        ):
+            return _forbidden_response()
+        if department_id is None:
+            department_id = current_user.department_id
+        if department_id is None:
+            return _invalid_dashboard_request_response()
+        if not _department_allowed_for_user(department_id, current_user, access_context):
+            return _forbidden_response()
+
+    elif visibility_scope == VisibilityScope.GLOBAL.value:
+        if not access_context.has_global_scope or not _has_any_permission(
+            access_context,
+            {"can_create_global_dashboard", "can_manage_global_dashboard"},
+        ):
+            return _forbidden_response()
+        department_id = None
+
+    else:
+        return _invalid_dashboard_request_response()
+
+    return {
+        "title": payload["title"],
+        "description": payload.get("description"),
+        "visibility_scope": visibility_scope,
+        "department_id": department_id,
+    }
+
+
+def _department_uuid_from_payload(payload: dict[str, Any]) -> UUID | None:
+    department_id = payload.get("department_id")
+    if department_id is None:
+        return None
+    return UUID(str(department_id))
+
+
+def _department_allowed_for_user(
+    department_id: UUID,
+    current_user: AppUser,
+    access_context: UserAccessContext,
+) -> bool:
+    if access_context.has_global_scope:
+        return True
+    if current_user.department_id == department_id:
+        return True
+    return any(
+        scope.type == "department" and scope.department_id == department_id
+        for scope in access_context.scopes
+    )
+
+
+def _has_any_permission(
+    access_context: UserAccessContext,
+    permission_keys: set[str],
+) -> bool:
+    return any(access_context.has_permission(permission) for permission in permission_keys)
 
 
 def _parse_dashboard_payload(payload: Any):
@@ -237,6 +384,60 @@ def _invalid_save_card_request_response():
         message="Save-card request is invalid or unsupported.",
         status_code=400,
     )
+
+
+def _forbidden_response():
+    return error_response(
+        code="FORBIDDEN",
+        message="You are not authorized to perform this action.",
+        status_code=403,
+    )
+
+
+def _serialize_dashboard(dashboard: Dashboard) -> dict[str, Any]:
+    return {
+        "id": str(dashboard.id),
+        "title": dashboard.title,
+        "description": dashboard.description,
+        "visibility_scope": dashboard.visibility_scope,
+        "department_id": str(dashboard.department_id)
+        if dashboard.department_id is not None
+        else None,
+        "is_archived": dashboard.is_archived,
+        "created_at": _serialize_datetime(dashboard.created_at),
+        "updated_at": _serialize_datetime(dashboard.updated_at),
+        "cards": [
+            _serialize_dashboard_card(card)
+            for card in sorted(
+                dashboard.cards,
+                key=lambda card: (card.position, card.created_at, str(card.id)),
+            )
+        ],
+    }
+
+
+def _serialize_dashboard_card(card: DashboardCard) -> dict[str, Any]:
+    return {
+        "id": str(card.id),
+        "dashboard_id": str(card.dashboard_id),
+        "saved_query_id": str(card.saved_query_id)
+        if card.saved_query_id is not None
+        else None,
+        "title": card.title,
+        "description": card.description,
+        "card_type": card.card_type,
+        "position": card.position,
+        "layout": card.layout,
+        "config": card.config,
+        "created_at": _serialize_datetime(card.created_at),
+        "updated_at": _serialize_datetime(card.updated_at),
+    }
+
+
+def _serialize_datetime(value: datetime) -> str:
+    if value.tzinfo is not None:
+        return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+    return value.isoformat()
 
 
 class _Invalid:
