@@ -643,7 +643,51 @@ def test_card_export_rejects_card_on_non_visible_dashboard(
     assert_no_sql_payload(response.json())
 
 
-def test_card_export_returns_controlled_placeholder_without_sql(
+def test_card_export_rejects_missing_card(
+    client: TestClient,
+) -> None:
+    csrf_token = _login(client, "demo.analyst@queryops.local")
+
+    response = client.post(
+        f"/api/v1/cards/{uuid.uuid4()}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "CARD_NOT_FOUND"
+    assert_no_sql_payload(response.json())
+
+
+def test_card_export_rejects_archived_dashboard(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    dashboard = _add_dashboard(
+        db_session,
+        owner=analyst,
+        title="Archived Analyst Personal",
+        visibility_scope="personal",
+        is_archived=True,
+    )
+    saved_query = _add_saved_query(db_session, owner=analyst)
+    card = _add_card(db_session, dashboard=dashboard, saved_query=saved_query)
+    _add_query_run(db_session, user=analyst, saved_query=saved_query)
+    csrf_token = _login(client, analyst.email)
+
+    response = client.post(
+        f"/api/v1/cards/{card.id}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "CARD_NOT_FOUND"
+    assert_no_sql_payload(response.json())
+
+
+def test_card_export_rejects_card_without_saved_query(
     client: TestClient,
     db_session: Session,
 ) -> None:
@@ -654,10 +698,38 @@ def test_card_export_returns_controlled_placeholder_without_sql(
         title="Analyst Personal",
         visibility_scope="personal",
     )
-    card = _add_card(
+    card = _add_card(db_session, dashboard=dashboard, saved_query=None)
+    csrf_token = _login(client, analyst.email)
+
+    response = client.post(
+        f"/api/v1/cards/{card.id}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "CARD_NOT_EXPORTABLE"
+    assert_no_sql_payload(response.json())
+
+
+def test_card_export_rejects_saved_query_without_successful_query_run(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    dashboard = _add_dashboard(
         db_session,
-        dashboard=dashboard,
-        saved_query=_add_saved_query(db_session, owner=analyst),
+        owner=analyst,
+        title="Analyst Personal",
+        visibility_scope="personal",
+    )
+    saved_query = _add_saved_query(db_session, owner=analyst)
+    card = _add_card(db_session, dashboard=dashboard, saved_query=saved_query)
+    _add_query_run(
+        db_session,
+        user=analyst,
+        saved_query=saved_query,
+        status=RunStatus.FAILED.value,
     )
     csrf_token = _login(client, analyst.email)
 
@@ -667,16 +739,425 @@ def test_card_export_returns_controlled_placeholder_without_sql(
         json={},
     )
 
-    assert response.status_code == 501
-    body = response.json()
-    assert body["error"]["code"] == "CSV_EXPORT_NOT_IMPLEMENTED"
-    assert body["error"]["details"] == {
-        "resource_type": "dashboard_card",
-        "resource_id": str(card.id),
-        "filename": None,
-        "include_headers": True,
-    }
-    assert_no_sql_payload(body)
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "CARD_NOT_EXPORTABLE"
+    assert_no_sql_payload(response.json())
+
+
+def test_card_export_rejects_latest_successful_query_run_without_executed_sql(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    dashboard = _add_dashboard(
+        db_session,
+        owner=analyst,
+        title="Analyst Personal",
+        visibility_scope="personal",
+    )
+    saved_query = _add_saved_query(db_session, owner=analyst)
+    card = _add_card(db_session, dashboard=dashboard, saved_query=saved_query)
+    _add_query_run(
+        db_session,
+        user=analyst,
+        saved_query=saved_query,
+        completed_at=datetime(2026, 7, 5, 12, 1, tzinfo=UTC),
+    )
+    _add_query_run(
+        db_session,
+        user=analyst,
+        saved_query=saved_query,
+        executed_sql=None,
+        completed_at=datetime(2026, 7, 5, 12, 2, tzinfo=UTC),
+    )
+    csrf_token = _login(client, analyst.email)
+
+    response = client.post(
+        f"/api/v1/cards/{card.id}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "CARD_NOT_EXPORTABLE"
+    assert_no_sql_payload(response.json())
+
+
+def test_card_export_rejects_another_users_personal_dashboard_card(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    admin = _user_by_email(db_session, "demo.admin@queryops.local")
+    dashboard = _add_dashboard(
+        db_session,
+        owner=admin,
+        title="Admin Personal",
+        visibility_scope="personal",
+    )
+    saved_query = _add_saved_query(db_session, owner=admin)
+    card = _add_card(db_session, dashboard=dashboard, saved_query=saved_query)
+    _add_query_run(
+        db_session,
+        user=admin,
+        saved_query=saved_query,
+        executed_sql="SELECT name FROM departments",
+        referenced_tables=["departments"],
+    )
+    csrf_token = _login(client, analyst.email)
+
+    response = client.post(
+        f"/api/v1/cards/{card.id}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "FORBIDDEN"
+    assert_no_sql_payload(response.json())
+
+
+def test_card_export_rejects_non_global_user_for_global_dashboard_card(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    admin = _user_by_email(db_session, "demo.admin@queryops.local")
+    dashboard = _add_dashboard(
+        db_session,
+        owner=admin,
+        title="Global Operations",
+        visibility_scope="global",
+    )
+    saved_query = _add_saved_query(db_session, owner=admin)
+    card = _add_card(db_session, dashboard=dashboard, saved_query=saved_query)
+    _add_query_run(db_session, user=admin, saved_query=saved_query)
+    csrf_token = _login(client, analyst.email)
+
+    response = client.post(
+        f"/api/v1/cards/{card.id}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "FORBIDDEN"
+    assert_no_sql_payload(response.json())
+
+
+def test_card_export_blocks_non_exportable_data_resource(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    dashboard = _add_dashboard(
+        db_session,
+        owner=analyst,
+        title="Analyst Personal",
+        visibility_scope="personal",
+    )
+    saved_query = _add_saved_query(db_session, owner=analyst)
+    card = _add_card(db_session, dashboard=dashboard, saved_query=saved_query)
+    _add_query_run(
+        db_session,
+        user=analyst,
+        saved_query=saved_query,
+        executed_sql="SELECT email FROM directory_users",
+        referenced_tables=["directory_users"],
+    )
+    csrf_token = _login(client, analyst.email)
+
+    response = client.post(
+        f"/api/v1/cards/{card.id}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "CSV_EXPORT_NOT_ALLOWED"
+    assert_no_sql_payload(response.json())
+
+
+def test_card_export_allows_owner_exporting_personal_dashboard_card(
+    client: TestClient,
+    db_session: Session,
+    export_executor_override: Any,
+) -> None:
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    dashboard = _add_dashboard(
+        db_session,
+        owner=analyst,
+        title="Analyst Personal",
+        visibility_scope="personal",
+    )
+    saved_query = _add_saved_query(db_session, owner=analyst)
+    card = _add_card(
+        db_session,
+        dashboard=dashboard,
+        saved_query=saved_query,
+    )
+    _add_query_run(db_session, user=analyst, saved_query=saved_query)
+    executor = export_executor_override(
+        FakeExportExecutor(
+            SQLExecutionResult(
+                status="succeeded",
+                columns=["product_name", "monthly_cost_usd"],
+                rows=[{"product_name": "Jira", "monthly_cost_usd": Decimal("8.50")}],
+                row_count=1,
+                duration_ms=2.1,
+                truncated=False,
+                referenced_tables=["licenses"],
+            )
+        )
+    )
+    csrf_token = _login(client, analyst.email)
+
+    response = client.post(
+        f"/api/v1/cards/{card.id}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert response.headers["content-disposition"] == (
+        f'attachment; filename="card-{card.id}.csv"'
+    )
+    assert response.text == "product_name,monthly_cost_usd\nJira,8.50\n"
+    assert executor.calls
+    assert_no_sql_payload(response.text)
+
+
+def test_card_export_allows_matching_department_dashboard_card(
+    client: TestClient,
+    db_session: Session,
+    export_executor_override: Any,
+) -> None:
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    it = _department_by_name(db_session, "IT")
+    dashboard = _add_dashboard(
+        db_session,
+        owner=analyst,
+        title="IT Department",
+        visibility_scope="department",
+        department=it,
+    )
+    saved_query = _add_saved_query(db_session, owner=analyst)
+    card = _add_card(db_session, dashboard=dashboard, saved_query=saved_query)
+    _add_query_run(db_session, user=analyst, saved_query=saved_query)
+    export_executor_override(
+        FakeExportExecutor(
+            SQLExecutionResult(
+                status="succeeded",
+                columns=["product_name"],
+                rows=[{"product_name": "Slack"}],
+                row_count=1,
+                duration_ms=2.1,
+                truncated=False,
+                referenced_tables=["licenses"],
+            )
+        )
+    )
+    csrf_token = _login(client, analyst.email)
+
+    response = client.post(
+        f"/api/v1/cards/{card.id}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={},
+    )
+
+    assert response.status_code == 200
+    assert response.text == "product_name\nSlack\n"
+    assert_no_sql_payload(response.text)
+
+
+def test_card_export_allows_admin_exporting_global_dashboard_card(
+    client: TestClient,
+    db_session: Session,
+    export_executor_override: Any,
+) -> None:
+    admin = _user_by_email(db_session, "demo.admin@queryops.local")
+    dashboard = _add_dashboard(
+        db_session,
+        owner=admin,
+        title="Global Operations",
+        visibility_scope="global",
+    )
+    saved_query = _add_saved_query(db_session, owner=admin)
+    card = _add_card(db_session, dashboard=dashboard, saved_query=saved_query)
+    _add_query_run(
+        db_session,
+        user=admin,
+        saved_query=saved_query,
+        executed_sql="SELECT name FROM departments",
+        referenced_tables=["departments"],
+    )
+    export_executor_override(
+        FakeExportExecutor(
+            SQLExecutionResult(
+                status="succeeded",
+                columns=["name"],
+                rows=[{"name": "IT"}],
+                row_count=1,
+                duration_ms=2.1,
+                truncated=False,
+                referenced_tables=["departments"],
+            )
+        )
+    )
+    csrf_token = _login(client, admin.email)
+
+    response = client.post(
+        f"/api/v1/cards/{card.id}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"filename": " global-departments.csv "},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-disposition"] == (
+        'attachment; filename="global-departments.csv"'
+    )
+    assert response.text == "name\nIT\n"
+    assert_no_sql_payload(response.text)
+
+
+def test_card_export_omits_header_when_requested(
+    client: TestClient,
+    db_session: Session,
+    export_executor_override: Any,
+) -> None:
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    dashboard = _add_dashboard(
+        db_session,
+        owner=analyst,
+        title="Analyst Personal",
+        visibility_scope="personal",
+    )
+    saved_query = _add_saved_query(db_session, owner=analyst)
+    card = _add_card(db_session, dashboard=dashboard, saved_query=saved_query)
+    _add_query_run(db_session, user=analyst, saved_query=saved_query)
+    export_executor_override(
+        FakeExportExecutor(
+            SQLExecutionResult(
+                status="succeeded",
+                columns=["product_name", "monthly_cost_usd"],
+                rows=[{"product_name": "Zoom", "monthly_cost_usd": Decimal("15.99")}],
+                row_count=1,
+                duration_ms=2.1,
+                truncated=False,
+                referenced_tables=["licenses"],
+            )
+        )
+    )
+    csrf_token = _login(client, analyst.email)
+
+    response = client.post(
+        f"/api/v1/cards/{card.id}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"include_headers": False},
+    )
+
+    assert response.status_code == 200
+    assert response.text == "Zoom,15.99\n"
+    assert_no_sql_payload(response.text)
+
+
+def test_card_export_sanitizes_csv_injection_values(
+    client: TestClient,
+    db_session: Session,
+    export_executor_override: Any,
+) -> None:
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    dashboard = _add_dashboard(
+        db_session,
+        owner=analyst,
+        title="Analyst Personal",
+        visibility_scope="personal",
+    )
+    saved_query = _add_saved_query(db_session, owner=analyst)
+    card = _add_card(db_session, dashboard=dashboard, saved_query=saved_query)
+    _add_query_run(db_session, user=analyst, saved_query=saved_query)
+    export_executor_override(
+        FakeExportExecutor(
+            SQLExecutionResult(
+                status="succeeded",
+                columns=["product_name"],
+                rows=[{"product_name": "=cmd"}],
+                row_count=1,
+                duration_ms=2.1,
+                truncated=False,
+                referenced_tables=["licenses"],
+            )
+        )
+    )
+    csrf_token = _login(client, analyst.email)
+
+    response = client.post(
+        f"/api/v1/cards/{card.id}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={},
+    )
+
+    assert response.status_code == 200
+    assert response.text == "product_name\n'=cmd\n"
+    assert_no_sql_payload(response.text)
+
+
+def test_card_export_uses_latest_successful_query_run(
+    client: TestClient,
+    db_session: Session,
+    export_executor_override: Any,
+) -> None:
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    dashboard = _add_dashboard(
+        db_session,
+        owner=analyst,
+        title="Analyst Personal",
+        visibility_scope="personal",
+    )
+    saved_query = _add_saved_query(db_session, owner=analyst)
+    card = _add_card(db_session, dashboard=dashboard, saved_query=saved_query)
+    _add_query_run(
+        db_session,
+        user=analyst,
+        saved_query=saved_query,
+        executed_sql="SELECT name FROM departments",
+        referenced_tables=["departments"],
+        completed_at=datetime(2026, 7, 5, 12, 1, tzinfo=UTC),
+    )
+    _add_query_run(
+        db_session,
+        user=analyst,
+        saved_query=saved_query,
+        executed_sql="SELECT product_name FROM licenses",
+        referenced_tables=["licenses"],
+        completed_at=datetime(2026, 7, 5, 12, 2, tzinfo=UTC),
+    )
+    executor = export_executor_override(
+        FakeExportExecutor(
+            SQLExecutionResult(
+                status="succeeded",
+                columns=["product_name"],
+                rows=[{"product_name": "GitHub Enterprise"}],
+                row_count=1,
+                duration_ms=2.1,
+                truncated=False,
+                referenced_tables=["licenses"],
+            )
+        )
+    )
+    csrf_token = _login(client, analyst.email)
+
+    response = client.post(
+        f"/api/v1/cards/{card.id}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={},
+    )
+
+    assert response.status_code == 200
+    assert executor.calls[0]["validation_result"].referenced_tables == ["licenses"]
+    assert response.text == "product_name\nGitHub Enterprise\n"
+    assert_no_sql_payload(response.text)
 
 
 def assert_no_sql_payload(payload: Any) -> None:
@@ -762,11 +1243,11 @@ def _add_card(
     db_session: Session,
     *,
     dashboard: Dashboard,
-    saved_query: SavedQuery,
+    saved_query: SavedQuery | None,
 ) -> DashboardCard:
     card = DashboardCard(
         dashboard_id=dashboard.id,
-        saved_query_id=saved_query.id,
+        saved_query_id=saved_query.id if saved_query is not None else None,
         title="Saved licenses",
         description="Card description",
         card_type="table",
@@ -787,7 +1268,10 @@ def _add_query_run(
     status: str = RunStatus.SUCCEEDED.value,
     executed_sql: str | None = "SELECT product_name, monthly_cost_usd FROM licenses",
     referenced_tables: Any = ("licenses",),
+    saved_query: SavedQuery | None = None,
+    completed_at: datetime | None = None,
 ) -> QueryRun:
+    finished_at = completed_at or datetime(2026, 7, 5, 12, 0, tzinfo=UTC)
     query_metadata: dict[str, Any] = {
         "provider": "mock",
         "validation": {"valid": status == RunStatus.SUCCEEDED.value},
@@ -798,6 +1282,7 @@ def _add_query_run(
 
     query_run = QueryRun(
         user_id=user.id,
+        saved_query_id=saved_query.id if saved_query is not None else None,
         status=status,
         natural_language_question="Show unused licenses.",
         generated_sql="SELECT generated_sql_secret FROM licenses",
@@ -806,6 +1291,8 @@ def _add_query_run(
         duration_ms=12 if status == RunStatus.SUCCEEDED.value else None,
         error_message=None if status == RunStatus.SUCCEEDED.value else "Query failed.",
         query_metadata=query_metadata,
+        started_at=finished_at,
+        completed_at=finished_at,
     )
     db_session.add(query_run)
     db_session.commit()

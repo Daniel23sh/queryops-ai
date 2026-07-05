@@ -83,10 +83,120 @@ def export_query_run_csv(
     query_run = db.get(QueryRun, query_run_id)
     if query_run is None or query_run.user_id != current_user.id:
         return _query_run_not_found_response()
-    if query_run.status != RunStatus.SUCCEEDED.value:
-        return _query_run_not_exportable_response()
+
+    return _export_query_run_as_csv(
+        db,
+        access_context,
+        query_run,
+        parsed_payload,
+        sql_executor,
+        filename=_query_run_csv_filename(query_run.id, parsed_payload["filename"]),
+        not_exportable_response=_query_run_not_exportable_response,
+    )
+
+
+@router.post("/cards/{card_id}/export-csv")
+def export_card_csv(
+    card_id: UUID,
+    request: Request,
+    payload: Any = Body(default=None),
+    current_user: AppUser = Depends(require_authenticated_user),
+    db: Session = Depends(get_db),
+    sql_executor: ExportSQLExecutor = Depends(get_export_sql_executor),
+):
+    csrf_error = _csrf_error_response(request)
+    if csrf_error is not None:
+        return csrf_error
+
+    parsed_payload = _parse_export_payload(payload)
+    if not isinstance(parsed_payload, dict):
+        return parsed_payload
+
+    access_context = build_user_access_context(current_user, db)
+    if not access_context.has_permission(EXPORT_PERMISSION):
+        return _forbidden_response()
+
+    card = db.scalar(
+        select(DashboardCard)
+        .options(
+            selectinload(DashboardCard.dashboard),
+            selectinload(DashboardCard.saved_query),
+        )
+        .where(DashboardCard.id == card_id)
+    )
+    if card is None or card.dashboard is None or card.dashboard.is_archived:
+        return _card_not_found_response()
+    if not _dashboard_visible(card.dashboard, current_user, access_context):
+        return _forbidden_response()
+    if card.saved_query_id is None or card.saved_query is None:
+        return _card_not_exportable_response()
+
+    query_run = _query_run_for_card_export(db, card)
+    if query_run is None:
+        return _card_not_exportable_response()
     if not isinstance(query_run.executed_sql, str) or not query_run.executed_sql.strip():
-        return _query_run_not_exportable_response()
+        return _card_not_exportable_response()
+
+    return _export_query_run_as_csv(
+        db,
+        access_context,
+        query_run,
+        parsed_payload,
+        sql_executor,
+        filename=_card_csv_filename(card.id, parsed_payload["filename"]),
+        not_exportable_response=_card_not_exportable_response,
+    )
+
+
+def _csrf_error_response(request: Request):
+    session_data = session_from_request(request)
+    if session_data is None or not csrf_is_valid(request, session_data):
+        return error_response(
+            code="CSRF_TOKEN_MISSING",
+            message="A valid CSRF token is required for this request.",
+            status_code=403,
+        )
+    return None
+
+
+def _parse_export_payload(payload: Any):
+    if not isinstance(payload, dict):
+        return _invalid_export_request_response()
+
+    if set(payload) - ALLOWED_EXPORT_FIELDS:
+        return _invalid_export_request_response()
+
+    parsed: dict[str, Any] = {"filename": None, "include_headers": True}
+
+    if "filename" in payload:
+        filename_or_error = _export_filename(payload["filename"])
+        if filename_or_error is _INVALID:
+            return _invalid_export_request_response()
+        parsed["filename"] = filename_or_error
+
+    if "include_headers" in payload:
+        include_headers = payload["include_headers"]
+        if not isinstance(include_headers, bool):
+            return _invalid_export_request_response()
+        parsed["include_headers"] = include_headers
+
+    return parsed
+
+
+def _export_query_run_as_csv(
+    db: Session,
+    access_context: UserAccessContext,
+    query_run: QueryRun,
+    parsed_payload: dict[str, Any],
+    sql_executor: ExportSQLExecutor,
+    *,
+    filename: str,
+    not_exportable_response,
+):
+    if query_run.status != RunStatus.SUCCEEDED.value:
+        return not_exportable_response()
+    if not isinstance(query_run.executed_sql, str) or not query_run.executed_sql.strip():
+        return not_exportable_response()
 
     referenced_tables_or_error = _referenced_tables_for_export(query_run)
     if not isinstance(referenced_tables_or_error, list):
@@ -124,83 +234,26 @@ def export_query_run_csv(
         execution_result.rows,
         include_headers=parsed_payload["include_headers"],
     )
-    return _csv_response(
-        csv_body,
-        filename=_query_run_csv_filename(query_run.id, parsed_payload["filename"]),
-    )
+    return _csv_response(csv_body, filename=filename)
 
 
-@router.post("/cards/{card_id}/export-csv")
-def export_card_csv(
-    card_id: UUID,
-    request: Request,
-    payload: Any = Body(default=None),
-    current_user: AppUser = Depends(require_authenticated_user),
-    db: Session = Depends(get_db),
-):
-    csrf_error = _csrf_error_response(request)
-    if csrf_error is not None:
-        return csrf_error
+def _query_run_for_card_export(db: Session, card: DashboardCard) -> QueryRun | None:
+    if card.saved_query_id is None:
+        return None
 
-    parsed_payload = _parse_export_payload(payload)
-    if not isinstance(parsed_payload, dict):
-        return parsed_payload
-
-    access_context = build_user_access_context(current_user, db)
-    if not access_context.has_permission(EXPORT_PERMISSION):
-        return _forbidden_response()
-
-    card = db.scalar(
-        select(DashboardCard)
-        .options(selectinload(DashboardCard.dashboard))
-        .where(DashboardCard.id == card_id)
-    )
-    if card is None or card.dashboard is None or card.dashboard.is_archived:
-        return _card_not_found_response()
-    if not _dashboard_visible(card.dashboard, current_user, access_context):
-        return _forbidden_response()
-
-    return _export_not_implemented_response(
-        resource_type="dashboard_card",
-        resource_id=card.id,
-        filename=parsed_payload["filename"],
-        include_headers=parsed_payload["include_headers"],
-    )
-
-
-def _csrf_error_response(request: Request):
-    session_data = session_from_request(request)
-    if session_data is None or not csrf_is_valid(request, session_data):
-        return error_response(
-            code="CSRF_TOKEN_MISSING",
-            message="A valid CSRF token is required for this request.",
-            status_code=403,
+    return db.scalar(
+        select(QueryRun)
+        .where(
+            QueryRun.saved_query_id == card.saved_query_id,
+            QueryRun.status == RunStatus.SUCCEEDED.value,
         )
-    return None
-
-
-def _parse_export_payload(payload: Any):
-    if not isinstance(payload, dict):
-        return _invalid_export_request_response()
-
-    if set(payload) - ALLOWED_EXPORT_FIELDS:
-        return _invalid_export_request_response()
-
-    parsed: dict[str, Any] = {"filename": None, "include_headers": True}
-
-    if "filename" in payload:
-        filename_or_error = _export_filename(payload["filename"])
-        if filename_or_error is _INVALID:
-            return _invalid_export_request_response()
-        parsed["filename"] = filename_or_error
-
-    if "include_headers" in payload:
-        include_headers = payload["include_headers"]
-        if not isinstance(include_headers, bool):
-            return _invalid_export_request_response()
-        parsed["include_headers"] = include_headers
-
-    return parsed
+        .order_by(
+            QueryRun.completed_at.desc(),
+            QueryRun.created_at.desc(),
+            QueryRun.id.desc(),
+        )
+        .limit(1)
+    )
 
 
 def _referenced_tables_for_export(query_run: QueryRun):
@@ -279,6 +332,13 @@ def _csv_response(csv_body: str, *, filename: str) -> Response:
 
 def _query_run_csv_filename(query_run_id: UUID, filename: str | None) -> str:
     base_filename = filename or f"query-run-{query_run_id}"
+    if base_filename.lower().endswith(".csv"):
+        return base_filename
+    return f"{base_filename}.csv"
+
+
+def _card_csv_filename(card_id: UUID, filename: str | None) -> str:
+    base_filename = filename or f"card-{card_id}"
     if base_filename.lower().endswith(".csv"):
         return base_filename
     return f"{base_filename}.csv"
@@ -372,10 +432,18 @@ def _card_not_found_response():
     )
 
 
+def _card_not_exportable_response():
+    return error_response(
+        code="CARD_NOT_EXPORTABLE",
+        message="Dashboard card cannot be exported as CSV.",
+        status_code=400,
+    )
+
+
 def _csv_export_not_allowed_response():
     return error_response(
         code="CSV_EXPORT_NOT_ALLOWED",
-        message="CSV export is not allowed for this query run.",
+        message="CSV export is not allowed for this resource.",
         status_code=403,
     )
 
@@ -395,26 +463,6 @@ def _csv_export_execution_error_response(execution_result: SQLExecutionResult):
         code="CSV_EXPORT_FAILED",
         message="CSV export failed safely.",
         status_code=500,
-    )
-
-
-def _export_not_implemented_response(
-    *,
-    resource_type: str,
-    resource_id: UUID,
-    filename: str | None,
-    include_headers: bool,
-):
-    return error_response(
-        code="CSV_EXPORT_NOT_IMPLEMENTED",
-        message="CSV export execution is not implemented in this checkpoint.",
-        status_code=501,
-        details={
-            "resource_type": resource_type,
-            "resource_id": str(resource_id),
-            "filename": filename,
-            "include_headers": include_headers,
-        },
     )
 
 
