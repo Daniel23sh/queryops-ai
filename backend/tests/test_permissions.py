@@ -44,6 +44,7 @@ EXPECTED_ANALYST_PERMISSIONS = EXPECTED_MANAGER_PERMISSIONS | {
     "can_create_card",
     "can_create_department_dashboard",
     "can_create_scope_dashboard",
+    "can_export_results",
     "can_manage_department_dashboard",
     "can_manage_scope_dashboard",
     "can_view_department_audit",
@@ -64,6 +65,7 @@ EXPECTED_ADMIN_PERMISSIONS = {
     "can_create_global_dashboard",
     "can_create_personal_dashboard",
     "can_create_scope_dashboard",
+    "can_export_results",
     "can_disable_app_user",
     "can_downgrade_user_role",
     "can_manage_department_dashboard",
@@ -171,6 +173,30 @@ def test_analyst_permissions_exclude_global_and_admin_permissions(
     assert "can_query_global_data" not in permissions
     assert "can_approve_global_action" not in permissions
     assert "can_manage_users" not in permissions
+
+
+def test_export_permission_is_limited_to_analyst_and_admin(
+    db_session: Session,
+) -> None:
+    permissions_by_email = {
+        email: set(
+            resolve_effective_permission_keys(
+                _user_by_email(db_session, email),
+                db_session,
+            )
+        )
+        for email in (
+            "demo.user@queryops.local",
+            "demo.manager@queryops.local",
+            "demo.analyst@queryops.local",
+            "demo.admin@queryops.local",
+        )
+    }
+
+    assert "can_export_results" not in permissions_by_email["demo.user@queryops.local"]
+    assert "can_export_results" not in permissions_by_email["demo.manager@queryops.local"]
+    assert "can_export_results" in permissions_by_email["demo.analyst@queryops.local"]
+    assert "can_export_results" in permissions_by_email["demo.admin@queryops.local"]
 
 
 def test_resolver_returns_stable_sorted_permission_keys(db_session: Session) -> None:

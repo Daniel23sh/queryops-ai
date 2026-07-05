@@ -8,11 +8,11 @@ The current milestone status is:
 
 Active PR scope:
 
-`M6 PR2 — Dashboard/Card UI` is active on branch `feature/m6-dashboard-ui`.
+`M6 PR3 — CSV Export Backend` is active on branch `feature/m6-csv-export-backend`.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
-Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete. Milestone 6 is now active. M6 PR1 dashboards/cards backend foundation is complete and merged into `main`.
+Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete. Milestone 6 is now active. M6 PR1 dashboards/cards backend foundation is complete and merged into `main`. M6 PR2 dashboard/card frontend UI is complete and merged into `main`.
 
 Milestone 2.5 delivered:
 
@@ -77,17 +77,22 @@ Milestone 5 PR6 is merged into `main`. This branch added the Tailwind UI foundat
 
 Milestone 6 PR1 includes the dashboard catalog backend endpoint, my dashboard backend endpoint, dashboard creation backend endpoint, saving successful owned query runs as dashboard cards, safe metadata-only serializers, auth, CSRF, strict payload validation, dashboard visibility/manageability checks, and backend tests. Responses remain metadata-only and do not execute cards or expose SQL beyond the existing role-based SQL visibility rules.
 
-Milestone 6 PR2 is active on branch `feature/m6-dashboard-ui`. Checkpoints 1 through 4 are complete. The current checkpoint adds a safe, read-only Dashboard Catalog UI using `GET /api/v1/dashboards/catalog`.
+Milestone 6 PR2 is complete and merged into `main`. It added frontend dashboard/card API clients and types, read-only My Dashboard loading, personal dashboard creation UI, inline Ask Data Save as Card UI, and a safe read-only Dashboard Catalog UI.
 
-Explicitly out of scope for the current M6 PR2 checkpoint:
+Milestone 6 PR3 is active on branch `feature/m6-csv-export-backend`. The current checkpoint is CSV export backend foundation only: backend API skeleton, request validation, auth/CSRF protection, permission seed alignment, focused backend tests, and documentation status.
 
+Explicitly out of scope for the current M6 PR3 checkpoint:
+
+- actual CSV file generation
+- full export execution
+- export audit persistence
+- frontend export UI
+- card refresh execution
+- drag-and-drop
 - department/global dashboard creation UI
 - catalog starring
 - dashboard cloning
 - Save as Card modal
-- CSV export
-- card refresh execution
-- drag-and-drop UI
 - actions
 - approvals
 - notifications
@@ -102,7 +107,7 @@ Explicitly out of scope for the current M6 PR2 checkpoint:
 - masking
 - tenant/project/region governance
 
-Later Milestone 6 PRs may handle dashboard/card frontend behavior, card refresh, reordering, and CSV export. Later milestones will handle actions, approvals, notifications, real LLM/API-key support, and Supabase Auth unless explicitly requested.
+Later Milestone 6 PRs may handle full CSV generation/execution, export audit persistence, frontend export UI, card refresh, and reordering. Later milestones will handle actions, approvals, notifications, real LLM/API-key support, and Supabase Auth unless explicitly requested.
 
 ## 2. Product Summary
 
@@ -410,7 +415,7 @@ The active product milestone is:
 
 The current PR is:
 
-`M6 PR2 — Dashboard/Card UI`, active on branch `feature/m6-dashboard-ui`.
+`M6 PR3 — CSV Export Backend`, active on branch `feature/m6-csv-export-backend`.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -478,7 +483,7 @@ Prepare and implement the frontend dashboard/card experience in small checkpoint
 
 Status:
 
-Active. Checkpoint 1 frontend dashboard/card API clients and types is complete. Checkpoint 2 read-only My Dashboard loading is complete. Checkpoint 3 personal dashboard creation is complete. Checkpoint 4 Ask Data Save as Card UI is complete. Checkpoint 5 adds a safe, read-only Dashboard Catalog UI using the existing Department Dashboards navigation slot.
+Complete and merged into `main`. Checkpoint 1 frontend dashboard/card API clients and types is complete. Checkpoint 2 read-only My Dashboard loading is complete. Checkpoint 3 personal dashboard creation is complete. Checkpoint 4 Ask Data Save as Card UI is complete. Checkpoint 5 added a safe, read-only Dashboard Catalog UI using the existing Department Dashboards navigation slot.
 
 Checkpoint 1 in scope:
 
@@ -603,3 +608,49 @@ Out of scope for Checkpoint 5:
 - Supabase Auth
 - Redis/background jobs
 - domain pack expansion
+
+### PR3: CSV Export Backend
+
+Branch:
+
+```text
+feature/m6-csv-export-backend
+```
+
+Goal:
+
+Prepare the first backend CSV export surface for query runs and saved cards without executing exports yet.
+
+Status:
+
+Active. The current checkpoint is CSV export backend foundation only.
+
+Current checkpoint in scope:
+
+- backend CSV export API skeleton
+- strict request validation for export payloads
+- authentication and CSRF protection
+- minimal `can_export_results` permission seed alignment
+- query-run ownership and succeeded-status checks
+- card/dashboard visibility checks
+- controlled not-implemented placeholder responses
+- backend tests for auth, CSRF, payload validation, permission, ownership/status, visibility, and SQL non-exposure
+- `PROJECT_PLAN.md` and `AGENTS.md` status updates
+
+Out of scope for the current checkpoint:
+
+- actual CSV file generation
+- full export execution
+- export audit persistence
+- frontend export UI
+- card refresh execution
+- drag-and-drop
+- actions
+- approvals
+- notifications
+- real LLM/API-key support
+- Supabase Auth
+- Redis/background jobs
+- domain pack expansion
+
+Later M6 PR3 checkpoints may implement CSV generation, export-time policy/RLS enforcement, CSV injection sanitization, row limits, and export audit persistence.
