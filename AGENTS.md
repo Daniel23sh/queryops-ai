@@ -100,7 +100,7 @@ Milestone 6 PR1 includes the dashboard catalog backend endpoint, my dashboard ba
 
 Milestone 6 PR2 added frontend dashboard/card API clients and types, read-only My Dashboard loading, personal dashboard creation UI, inline Ask Data Save as Card UI, and a safe read-only Dashboard Catalog UI. PR2 is complete and merged into `main`.
 
-Milestone 6 PR3 is active. The current PR3 checkpoint adds CSV export backend foundation only: backend API skeleton, strict request validation, auth/CSRF protection, minimal export permission seed alignment, ownership/status/visibility checks, controlled placeholder responses, focused backend tests, and documentation status.
+Milestone 6 PR3 is active. Checkpoint 1 added CSV export backend foundation. The current PR3 checkpoint adds real query-run CSV export execution for successful owned query runs using existing auth, CSRF, export permission, SQL validation, query execution, and RLS patterns. It adds conservative exportability checks using `referenced_tables` metadata and `DataResource.is_exportable`, CSV serialization, CSV injection protection, and focused backend tests. Dashboard card export remains a controlled placeholder.
 
 Milestone 4 delivered:
 
@@ -134,8 +134,7 @@ Query Engine security rules:
 
 Out of scope for the current M6 PR3 checkpoint unless explicitly requested:
 
-* actual CSV file generation
-* full export execution
+* dashboard card CSV export execution
 * export audit persistence
 * frontend export UI
 * card refresh execution
@@ -160,7 +159,7 @@ Out of scope for the current M6 PR3 checkpoint unless explicitly requested:
 * Redis
 * API rate limiter
 
-Later Milestone 6 PRs may handle full CSV generation/execution, export audit persistence, frontend export UI, department/global dashboard creation flows, catalog starring, dashboard cloning, card refresh, and reordering. Later milestones will handle actions, approvals, notifications, real LLM/API-key support, and Supabase Auth unless explicitly requested. Do not add CSV file generation, full export execution, export audit persistence, frontend export UI, card refresh execution, catalog mutation behavior, department/global dashboard creation behavior, action execution, approval behavior, real LLM providers, API keys, Supabase Auth, or new Ask Data behavior outside the active approved PR scope.
+Later Milestone 6 PRs may handle dashboard card CSV export execution, export audit persistence, frontend export UI, department/global dashboard creation flows, catalog starring, dashboard cloning, card refresh, and reordering. Later milestones will handle actions, approvals, notifications, real LLM/API-key support, and Supabase Auth unless explicitly requested. Do not add dashboard card CSV export execution, export audit persistence, frontend export UI, card refresh execution, catalog mutation behavior, department/global dashboard creation behavior, action execution, approval behavior, real LLM providers, API keys, Supabase Auth, or new Ask Data behavior outside the active approved PR scope.
 
 ## 6. Product Direction
 

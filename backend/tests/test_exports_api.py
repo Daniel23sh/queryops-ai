@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import csv
 import json
 import uuid
 from collections.abc import Generator
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from decimal import Decimal
+from io import StringIO
 from typing import Any
 
 import pytest
@@ -12,6 +15,7 @@ from sqlalchemy import create_engine, event, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from app.api.routes import exports as exports_routes
 from app.db.base import Base
 from app.db.session import get_db
 from app.domains.it_operations.models import Department
@@ -25,6 +29,10 @@ from app.models.product import (
     RunStatus,
     SavedQuery,
 )
+from app.query_engine.sql_executor import SQLExecutionResult
+
+
+_OMIT_REFERENCED_TABLES = object()
 
 
 @pytest.fixture
@@ -61,6 +69,101 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
             yield test_client
     finally:
         app.dependency_overrides.pop(get_db, None)
+
+
+@pytest.fixture
+def export_executor_override() -> Generator[Any, None, None]:
+    def apply(executor: FakeExportExecutor) -> FakeExportExecutor:
+        dependency = exports_routes.get_export_sql_executor
+        app.dependency_overrides[dependency] = lambda: executor
+        return executor
+
+    try:
+        yield apply
+    finally:
+        dependency = getattr(exports_routes, "get_export_sql_executor", None)
+        if dependency is not None:
+            app.dependency_overrides.pop(dependency, None)
+
+
+def test_csv_exporter_serializes_safe_deterministic_values() -> None:
+    from app.exports.csv_exporter import rows_to_csv
+
+    exported = rows_to_csv(
+        [
+            "name",
+            "empty",
+            "amount",
+            "day",
+            "timestamp",
+            "identifier",
+            "payload",
+            "items",
+        ],
+        [
+            {
+                "name": "Acme, Inc.",
+                "empty": None,
+                "amount": Decimal("12.30"),
+                "day": date(2026, 7, 5),
+                "timestamp": datetime(2026, 7, 5, 12, 30, tzinfo=UTC),
+                "identifier": uuid.UUID("00000000-0000-4000-8000-000000000123"),
+                "payload": {"b": 2, "a": 1},
+                "items": ["x", {"z": 1}],
+            }
+        ],
+        include_headers=True,
+    )
+
+    assert exported.startswith("name,empty,amount,day,timestamp,identifier,payload,items\n")
+    parsed = list(csv.reader(StringIO(exported)))
+    assert parsed == [
+        [
+            "name",
+            "empty",
+            "amount",
+            "day",
+            "timestamp",
+            "identifier",
+            "payload",
+            "items",
+        ],
+        [
+            "Acme, Inc.",
+            "",
+            "12.30",
+            "2026-07-05",
+            "2026-07-05T12:30:00+00:00",
+            "00000000-0000-4000-8000-000000000123",
+            '{"a":1,"b":2}',
+            '["x",{"z":1}]',
+        ],
+    ]
+
+
+def test_csv_exporter_quotes_values_when_needed() -> None:
+    from app.exports.csv_exporter import rows_to_csv
+
+    exported = rows_to_csv(
+        ["plain", "comma", "quote"],
+        [{"plain": "alpha", "comma": "beta,gamma", "quote": 'say "hi"'}],
+        include_headers=False,
+    )
+
+    assert exported == 'alpha,"beta,gamma","say ""hi"""\n'
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["=cmd", "+cmd", "-cmd", "@cmd", "\tcmd", "\rcmd", "\ncmd"],
+)
+def test_csv_exporter_sanitizes_formula_like_cells(value: str) -> None:
+    from app.exports.csv_exporter import rows_to_csv
+
+    exported = rows_to_csv(["value"], [{"value": value}], include_headers=False)
+
+    parsed = list(csv.reader(StringIO(exported)))
+    assert parsed == [[f"'{value}"]]
 
 
 def test_query_run_export_requires_authentication(client: TestClient) -> None:
@@ -212,30 +315,203 @@ def test_query_run_export_rejects_non_succeeded_query_runs(
     assert_no_sql_payload(response.json())
 
 
-def test_query_run_export_returns_controlled_placeholder_without_sql(
+def test_query_run_export_returns_csv_response_with_attachment(
+    client: TestClient,
+    db_session: Session,
+    export_executor_override: Any,
+) -> None:
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    query_run = _add_query_run(db_session, user=analyst)
+    csrf_token = _login(client, analyst.email)
+    executor = export_executor_override(
+        FakeExportExecutor(
+            SQLExecutionResult(
+                status="succeeded",
+                columns=["product_name", "monthly_cost_usd"],
+                rows=[
+                    {
+                        "product_name": "Microsoft 365 E3",
+                        "monthly_cost_usd": Decimal("32.00"),
+                    }
+                ],
+                row_count=1,
+                duration_ms=4.2,
+                truncated=False,
+                referenced_tables=["licenses"],
+            )
+        )
+    )
+
+    response = client.post(
+        f"/api/v1/query-runs/{query_run.id}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"filename": " analyst-export ", "include_headers": True},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert response.headers["content-disposition"] == (
+        'attachment; filename="analyst-export.csv"'
+    )
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.text == "product_name,monthly_cost_usd\nMicrosoft 365 E3,32.00\n"
+    assert executor.calls
+    assert executor.calls[0]["validation_result"].sanitized_sql is not None
+    assert "generated_sql_secret" not in response.text
+    assert_no_sql_payload(response.text)
+
+
+def test_query_run_export_uses_default_filename(
+    client: TestClient,
+    db_session: Session,
+    export_executor_override: Any,
+) -> None:
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    query_run = _add_query_run(db_session, user=analyst)
+    csrf_token = _login(client, analyst.email)
+    export_executor_override(
+        FakeExportExecutor(
+            SQLExecutionResult(
+                status="succeeded",
+                columns=["product_name"],
+                rows=[{"product_name": "Jira"}],
+                row_count=1,
+                duration_ms=3.4,
+                truncated=False,
+                referenced_tables=["licenses"],
+            )
+        )
+    )
+
+    response = client.post(
+        f"/api/v1/query-runs/{query_run.id}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-disposition"] == (
+        f'attachment; filename="query-run-{query_run.id}.csv"'
+    )
+    assert response.text == "product_name\nJira\n"
+
+
+def test_query_run_export_omits_header_when_requested(
+    client: TestClient,
+    db_session: Session,
+    export_executor_override: Any,
+) -> None:
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    query_run = _add_query_run(db_session, user=analyst)
+    csrf_token = _login(client, analyst.email)
+    export_executor_override(
+        FakeExportExecutor(
+            SQLExecutionResult(
+                status="succeeded",
+                columns=["product_name", "monthly_cost_usd"],
+                rows=[{"product_name": "Zoom", "monthly_cost_usd": Decimal("15.99")}],
+                row_count=1,
+                duration_ms=3.4,
+                truncated=False,
+                referenced_tables=["licenses"],
+            )
+        )
+    )
+
+    response = client.post(
+        f"/api/v1/query-runs/{query_run.id}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"include_headers": False},
+    )
+
+    assert response.status_code == 200
+    assert response.text == "Zoom,15.99\n"
+    assert_no_sql_payload(response.text)
+
+
+def test_query_run_export_blocks_missing_referenced_tables_metadata(
     client: TestClient,
     db_session: Session,
 ) -> None:
     analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
-    query_run = _add_query_run(db_session, user=analyst)
+    query_run = _add_query_run(
+        db_session,
+        user=analyst,
+        referenced_tables=_OMIT_REFERENCED_TABLES,
+    )
     csrf_token = _login(client, analyst.email)
 
     response = client.post(
         f"/api/v1/query-runs/{query_run.id}/export-csv",
         headers={"X-CSRF-Token": csrf_token},
-        json={"filename": " analyst-export.csv ", "include_headers": False},
+        json={},
     )
 
-    assert response.status_code == 501
-    body = response.json()
-    assert body["error"]["code"] == "CSV_EXPORT_NOT_IMPLEMENTED"
-    assert body["error"]["details"] == {
-        "resource_type": "query_run",
-        "resource_id": str(query_run.id),
-        "filename": "analyst-export.csv",
-        "include_headers": False,
-    }
-    assert_no_sql_payload(body)
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "CSV_EXPORT_NOT_ALLOWED"
+    assert_no_sql_payload(response.json())
+
+
+def test_query_run_export_blocks_invalid_referenced_tables_metadata(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    query_run = _add_query_run(db_session, user=analyst, referenced_tables="licenses")
+    csrf_token = _login(client, analyst.email)
+
+    response = client.post(
+        f"/api/v1/query-runs/{query_run.id}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "CSV_EXPORT_NOT_ALLOWED"
+    assert_no_sql_payload(response.json())
+
+
+def test_query_run_export_blocks_non_exportable_data_resource(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    query_run = _add_query_run(
+        db_session,
+        user=analyst,
+        executed_sql="SELECT email FROM directory_users",
+        referenced_tables=["directory_users"],
+    )
+    csrf_token = _login(client, analyst.email)
+
+    response = client.post(
+        f"/api/v1/query-runs/{query_run.id}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "CSV_EXPORT_NOT_ALLOWED"
+    assert_no_sql_payload(response.json())
+
+
+def test_query_run_export_blocks_missing_executed_sql(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    query_run = _add_query_run(db_session, user=analyst, executed_sql=None)
+    csrf_token = _login(client, analyst.email)
+
+    response = client.post(
+        f"/api/v1/query-runs/{query_run.id}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "QUERY_RUN_NOT_EXPORTABLE"
+    assert_no_sql_payload(response.json())
 
 
 def test_card_export_requires_authentication(client: TestClient) -> None:
@@ -509,23 +785,53 @@ def _add_query_run(
     *,
     user: AppUser,
     status: str = RunStatus.SUCCEEDED.value,
+    executed_sql: str | None = "SELECT product_name, monthly_cost_usd FROM licenses",
+    referenced_tables: Any = ("licenses",),
 ) -> QueryRun:
+    query_metadata: dict[str, Any] = {
+        "provider": "mock",
+        "validation": {"valid": status == RunStatus.SUCCEEDED.value},
+        "execution": {"status": status},
+    }
+    if referenced_tables is not _OMIT_REFERENCED_TABLES:
+        query_metadata["referenced_tables"] = referenced_tables
+
     query_run = QueryRun(
         user_id=user.id,
         status=status,
         natural_language_question="Show unused licenses.",
-        generated_sql="SELECT should_not_leak FROM licenses",
-        executed_sql="SELECT should_not_leak FROM licenses WHERE department_id = :id",
+        generated_sql="SELECT generated_sql_secret FROM licenses",
+        executed_sql=executed_sql,
         row_count=1 if status == RunStatus.SUCCEEDED.value else None,
         duration_ms=12 if status == RunStatus.SUCCEEDED.value else None,
         error_message=None if status == RunStatus.SUCCEEDED.value else "Query failed.",
-        query_metadata={
-            "provider": "mock",
-            "validation": {"valid": status == RunStatus.SUCCEEDED.value},
-            "execution": {"status": status},
-        },
+        query_metadata=query_metadata,
     )
     db_session.add(query_run)
     db_session.commit()
     db_session.refresh(query_run)
     return query_run
+
+
+class FakeExportExecutor:
+    def __init__(self, result: SQLExecutionResult) -> None:
+        self.result = result
+        self.calls: list[dict[str, Any]] = []
+
+    def __call__(
+        self,
+        db: Session,
+        access_context: Any,
+        validation_result: Any,
+        *,
+        options: Any = None,
+    ) -> SQLExecutionResult:
+        self.calls.append(
+            {
+                "db": db,
+                "access_context": access_context,
+                "validation_result": validation_result,
+                "options": options,
+            }
+        )
+        return self.result

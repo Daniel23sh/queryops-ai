@@ -188,7 +188,7 @@ DATA_RESOURCE_SPECS = [
         None,
         None,
         True,
-        False,
+        True,
         "schema_only",
     ),
     (
@@ -218,7 +218,7 @@ DATA_RESOURCE_SPECS = [
         None,
         None,
         True,
-        False,
+        True,
         "result_safe",
     ),
     (

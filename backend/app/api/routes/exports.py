@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-from typing import Any
+import re
+from typing import Any, Protocol
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, Request
+from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
@@ -12,20 +14,49 @@ from app.auth.access_context import UserAccessContext, build_user_access_context
 from app.auth.permissions import require_authenticated_user
 from app.auth.session import csrf_is_valid, session_from_request
 from app.db.session import get_db
+from app.exports.csv_exporter import rows_to_csv
 from app.models.product import (
     AppUser,
     Dashboard,
     DashboardCard,
+    DataResource,
     QueryRun,
     RunStatus,
     VisibilityScope,
 )
+from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
+from app.query_engine.schema_context import SchemaContextOptions, build_schema_context
+from app.query_engine.sql_executor import (
+    SQLExecutionOptions,
+    SQLExecutionResult,
+    execute_validated_sql,
+)
+from app.query_engine.sql_validator import SQLValidationResult, validate_sql
 
 
 router = APIRouter(prefix="/api/v1")
 
 EXPORT_PERMISSION = "can_export_results"
 ALLOWED_EXPORT_FIELDS = frozenset({"filename", "include_headers"})
+EXPORT_QUERY_ACTION = "query:scoped_data"
+EXPORT_ROW_LIMIT = 1_000
+SAFE_TABLE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+class ExportSQLExecutor(Protocol):
+    def __call__(
+        self,
+        db: Session,
+        access_context: UserAccessContext,
+        validation_result: SQLValidationResult,
+        *,
+        options: SQLExecutionOptions | None = None,
+    ) -> SQLExecutionResult:
+        raise NotImplementedError
+
+
+def get_export_sql_executor() -> ExportSQLExecutor:
+    return execute_validated_sql
 
 
 @router.post("/query-runs/{query_run_id}/export-csv")
@@ -35,6 +66,7 @@ def export_query_run_csv(
     payload: Any = Body(default=None),
     current_user: AppUser = Depends(require_authenticated_user),
     db: Session = Depends(get_db),
+    sql_executor: ExportSQLExecutor = Depends(get_export_sql_executor),
 ):
     csrf_error = _csrf_error_response(request)
     if csrf_error is not None:
@@ -53,12 +85,48 @@ def export_query_run_csv(
         return _query_run_not_found_response()
     if query_run.status != RunStatus.SUCCEEDED.value:
         return _query_run_not_exportable_response()
+    if not isinstance(query_run.executed_sql, str) or not query_run.executed_sql.strip():
+        return _query_run_not_exportable_response()
 
-    return _export_not_implemented_response(
-        resource_type="query_run",
-        resource_id=query_run.id,
-        filename=parsed_payload["filename"],
+    referenced_tables_or_error = _referenced_tables_for_export(query_run)
+    if not isinstance(referenced_tables_or_error, list):
+        return referenced_tables_or_error
+    referenced_tables = referenced_tables_or_error
+
+    resource_error = _export_resource_policy_error(db, referenced_tables)
+    if resource_error is not None:
+        return resource_error
+
+    validation_result = _validate_export_sql(
+        db,
+        access_context,
+        query_run.executed_sql,
+    )
+    if not validation_result.valid or validation_result.sanitized_sql is None:
+        return _csv_export_not_allowed_response()
+    if sorted(validation_result.referenced_tables) != referenced_tables:
+        return _csv_export_not_allowed_response()
+
+    execution_result = sql_executor(
+        db,
+        access_context,
+        validation_result,
+        options=SQLExecutionOptions(
+            row_limit=EXPORT_ROW_LIMIT,
+            query_action=EXPORT_QUERY_ACTION,
+        ),
+    )
+    if execution_result.status != "succeeded":
+        return _csv_export_execution_error_response(execution_result)
+
+    csv_body = rows_to_csv(
+        execution_result.columns,
+        execution_result.rows,
         include_headers=parsed_payload["include_headers"],
+    )
+    return _csv_response(
+        csv_body,
+        filename=_query_run_csv_filename(query_run.id, parsed_payload["filename"]),
     )
 
 
@@ -135,6 +203,87 @@ def _parse_export_payload(payload: Any):
     return parsed
 
 
+def _referenced_tables_for_export(query_run: QueryRun):
+    metadata = query_run.query_metadata
+    if not isinstance(metadata, dict):
+        return _csv_export_not_allowed_response()
+
+    raw_tables = metadata.get("referenced_tables")
+    if not isinstance(raw_tables, list | tuple):
+        return _csv_export_not_allowed_response()
+    if not raw_tables:
+        return _csv_export_not_allowed_response()
+
+    tables: set[str] = set()
+    for raw_table in raw_tables:
+        if not isinstance(raw_table, str):
+            return _csv_export_not_allowed_response()
+        table_name = raw_table.strip().lower()
+        if not table_name or SAFE_TABLE_NAME_RE.fullmatch(table_name) is None:
+            return _csv_export_not_allowed_response()
+        tables.add(table_name)
+
+    if not tables:
+        return _csv_export_not_allowed_response()
+    return sorted(tables)
+
+
+def _export_resource_policy_error(db: Session, referenced_tables: list[str]):
+    resources = db.scalars(
+        select(DataResource)
+        .where(
+            DataResource.domain == "it_operations",
+            DataResource.resource_type == "table",
+            DataResource.table_name.in_(referenced_tables),
+        )
+        .order_by(DataResource.table_name)
+    ).all()
+    resources_by_table = {resource.table_name: resource for resource in resources}
+
+    for table_name in referenced_tables:
+        resource = resources_by_table.get(table_name)
+        if resource is None:
+            return _csv_export_not_allowed_response()
+        if resource.is_queryable is not True:
+            return _csv_export_not_allowed_response()
+        if resource.is_exportable is not True:
+            return _csv_export_not_allowed_response()
+
+    return None
+
+
+def _validate_export_sql(
+    db: Session,
+    access_context: UserAccessContext,
+    executed_sql: str,
+) -> SQLValidationResult:
+    schema_context = build_schema_context(
+        db,
+        access_context,
+        domain_pack=load_it_operations_domain_pack(),
+        options=SchemaContextOptions(query_action=EXPORT_QUERY_ACTION),
+    )
+    return validate_sql(executed_sql, schema_context)
+
+
+def _csv_response(csv_body: str, *, filename: str) -> Response:
+    return Response(
+        content=csv_body,
+        media_type="text/csv; charset=utf-8",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
+
+
+def _query_run_csv_filename(query_run_id: UUID, filename: str | None) -> str:
+    base_filename = filename or f"query-run-{query_run_id}"
+    if base_filename.lower().endswith(".csv"):
+        return base_filename
+    return f"{base_filename}.csv"
+
+
 def _export_filename(value: Any):
     if not isinstance(value, str):
         return _INVALID
@@ -143,6 +292,8 @@ def _export_filename(value: Any):
     if not filename or filename in {".", ".."}:
         return _INVALID
     if "/" in filename or "\\" in filename or "\x00" in filename:
+        return _INVALID
+    if '"' in filename or ";" in filename:
         return _INVALID
     if any(ord(character) < 32 for character in filename):
         return _INVALID
@@ -208,7 +359,7 @@ def _query_run_not_found_response():
 def _query_run_not_exportable_response():
     return error_response(
         code="QUERY_RUN_NOT_EXPORTABLE",
-        message="Only successful owned query runs can be prepared for CSV export.",
+        message="Only successful owned query runs with safe executed SQL can be exported.",
         status_code=400,
     )
 
@@ -218,6 +369,32 @@ def _card_not_found_response():
         code="CARD_NOT_FOUND",
         message="Dashboard card was not found.",
         status_code=404,
+    )
+
+
+def _csv_export_not_allowed_response():
+    return error_response(
+        code="CSV_EXPORT_NOT_ALLOWED",
+        message="CSV export is not allowed for this query run.",
+        status_code=403,
+    )
+
+
+def _csv_export_execution_error_response(execution_result: SQLExecutionResult):
+    if execution_result.error_code in {
+        "access_denied",
+        "invalid_sql",
+        "missing_referenced_tables",
+        "resource_not_found",
+        "resource_not_queryable",
+        "unsafe_sql",
+    }:
+        return _csv_export_not_allowed_response()
+
+    return error_response(
+        code="CSV_EXPORT_FAILED",
+        message="CSV export failed safely.",
+        status_code=500,
     )
 
 
