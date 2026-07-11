@@ -3,6 +3,7 @@ import type {
   CreateDashboardRequest,
   Dashboard,
   DashboardCard,
+  DashboardCardRefreshResult,
   SaveCardRequest
 } from "../features/dashboard/types";
 
@@ -46,6 +47,23 @@ export function saveQueryRunAsCard(
         "X-CSRF-Token": csrfToken
       },
       body: JSON.stringify(saveCardRequestBody(payload))
+    }
+  );
+}
+
+export function refreshDashboardCard(
+  cardId: string,
+  csrfToken: string
+): Promise<DashboardCardRefreshResult> {
+  return apiRequest<DashboardCardRefreshResult>(
+    `/api/v1/cards/${encodeURIComponent(cardId)}/refresh`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-CSRF-Token": csrfToken
+      },
+      body: "{}"
     }
   );
 }
