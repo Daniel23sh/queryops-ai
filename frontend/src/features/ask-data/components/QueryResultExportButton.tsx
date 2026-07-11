@@ -43,6 +43,13 @@ export function QueryResultExportButton({
     Boolean(queryRunId) &&
     result?.clarification_required === false;
   const canExport = hasPermission(user, "can_export_results");
+  const requestContext = useRef({ queryRunId, generation: 0 });
+  if (requestContext.current.queryRunId !== queryRunId) {
+    requestContext.current = {
+      queryRunId,
+      generation: requestContext.current.generation + 1
+    };
+  }
 
   useEffect(() => {
     requestInFlight.current = false;
@@ -61,21 +68,34 @@ export function QueryResultExportButton({
     }
 
     requestInFlight.current = true;
+    const requestGeneration = requestContext.current.generation;
     setStatus("loading");
     setMessage(null);
+
+    const requestIsCurrent = () =>
+      requestContext.current.queryRunId === exportQueryRunId &&
+      requestContext.current.generation === requestGeneration;
 
     try {
       const download = await exportQueryRunCsv(exportQueryRunId, csrfToken, {
         include_headers: true
       });
+      if (!requestIsCurrent()) {
+        return;
+      }
       downloadBlob(download);
       setStatus("success");
       setMessage("CSV export downloaded.");
     } catch (error: unknown) {
+      if (!requestIsCurrent()) {
+        return;
+      }
       setStatus("error");
       setMessage(exportErrorMessage(error));
     } finally {
-      requestInFlight.current = false;
+      if (requestIsCurrent()) {
+        requestInFlight.current = false;
+      }
     }
   }
 

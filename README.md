@@ -454,7 +454,6 @@ Current Query Engine limitations:
 * User-supplied template parameters are not supported through the public API.
 * Raw SQL input is not supported.
 * Real LLM providers are not implemented.
-* Frontend Ask Data UI is not implemented.
 * Query detail endpoints return only the authenticated user's own runs.
 * Scope-aware query history requires assigned access scopes and the appropriate history permission.
 * Full domain pack expansion to 36 templates / 40 evaluation cases is not implemented.

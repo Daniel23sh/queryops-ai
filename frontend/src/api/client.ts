@@ -87,13 +87,15 @@ export async function apiDownload(
   init: RequestInit = {},
   fallbackFilename = "queryops-export.csv"
 ): Promise<ApiDownloadResult> {
+  const headers = new Headers(init.headers);
+  if (!headers.has("Accept")) {
+    headers.set("Accept", "text/csv, application/json");
+  }
+
   const response = await fetch(apiUrl(path), {
     ...init,
     credentials: "include",
-    headers: {
-      Accept: "text/csv, application/json",
-      ...init.headers
-    }
+    headers
   });
 
   if (!response.ok) {

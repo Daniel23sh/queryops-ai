@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError, downloadBlob } from "../../../api/client";
@@ -165,6 +165,42 @@ describe("QueryResultExportButton", () => {
       "CSV export could not be prepared. Try again."
     );
     expect(screen.queryByText("private network detail")).not.toBeInTheDocument();
+  });
+
+  it("ignores an in-flight export after the query result changes", async () => {
+    let resolveExport: (value: {
+      blob: Blob;
+      filename: string;
+      contentType: string;
+    }) => void = () => undefined;
+    exportQueryRunCsvMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveExport = resolve;
+      })
+    );
+    const view = renderExport();
+
+    fireEvent.click(screen.getByRole("button", { name: "Export CSV" }));
+    view.rerender(
+      <QueryResultExportButton
+        csrfToken="csrf-token"
+        queryRunState={successState({ query_run_id: "new-query-run-id" })}
+        user={authUser("analyst", ["can_export_results"])}
+      />
+    );
+
+    await act(async () => {
+      resolveExport({
+        blob: new Blob(["count\n2\n"]),
+        filename: "stale-query-run.csv",
+        contentType: "text/csv"
+      });
+      await Promise.resolve();
+    });
+
+    expect(downloadBlobMock).not.toHaveBeenCalled();
+    expect(screen.queryByText("CSV export downloaded.")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Export CSV" })).toBeEnabled();
   });
 });
 

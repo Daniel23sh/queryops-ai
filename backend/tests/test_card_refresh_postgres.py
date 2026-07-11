@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -12,7 +13,7 @@ from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, func, select, text
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
@@ -95,10 +96,13 @@ def test_card_refresh_uses_runtime_role_read_only_rls_and_preview_limit(
 ) -> None:
     with Session(postgres_engine) as session:
         admin = user_by_email(session, "demo.admin@queryops.local")
+        manager = user_by_email(session, "demo.manager@queryops.local")
+        finance = department_by_name(session, "Finance")
         card, _ = add_refresh_card(
             session,
             owner=admin,
-            visibility_scope="global",
+            visibility_scope="department",
+            department=finance,
             table_name="login_events",
             executed_sql=(
                 "SELECT id, department_id, occurred_at FROM login_events "
@@ -106,13 +110,15 @@ def test_card_refresh_uses_runtime_role_read_only_rls_and_preview_limit(
             ),
         )
         card_id = card.id
+        manager_id = manager.id
+        finance_id = finance.id
 
     executor = CapturingRealExecutor()
     app.dependency_overrides[
         dashboards_routes.get_card_refresh_sql_executor
     ] = lambda: executor
     try:
-        csrf_token = login(client, "demo.admin@queryops.local")
+        csrf_token = login(client, "demo.manager@queryops.local")
         response = refresh(client, card_id, csrf_token)
     finally:
         app.dependency_overrides.pop(
@@ -125,9 +131,11 @@ def test_card_refresh_uses_runtime_role_read_only_rls_and_preview_limit(
     assert len(data["rows"]) == 100
     assert data["row_count"] == 100
     assert data["truncated"] is True
+    assert {row["department_id"] for row in data["rows"]} == {str(finance_id)}
     assert len(executor.calls) == 1
     call = executor.calls[0]
-    assert call["access_context"].has_global_scope is True
+    assert call["access_context"].user_id == manager_id
+    assert call["access_context"].has_global_scope is False
     assert call["options"].row_limit == 100
     assert call["options"].query_action == "query:scoped_data"
     assert call["execution_metadata"]["runtime_role"] == QUERY_RUNTIME_ROLE
@@ -208,6 +216,11 @@ def test_card_refresh_respects_current_direct_permission_deny(
                 "ORDER BY email LIMIT 200"
             ),
         )
+        prior_override = permission_override_snapshot(
+            session,
+            analyst,
+            "can_query_scoped_data",
+        )
         set_permission_deny(session, analyst, "can_query_scoped_data")
         card_id = card.id
         saved_query_id = card.saved_query_id
@@ -230,6 +243,13 @@ def test_card_refresh_respects_current_direct_permission_deny(
             dashboards_routes.get_card_refresh_sql_executor,
             None,
         )
+        with Session(postgres_engine) as session:
+            restore_permission_override(
+                session,
+                user_id=analyst_id,
+                key="can_query_scoped_data",
+                snapshot=prior_override,
+            )
 
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "CARD_REFRESH_NOT_ALLOWED"
@@ -321,6 +341,48 @@ def set_permission_deny(session: Session, user: AppUser, key: str) -> None:
     session.commit()
 
 
+def permission_override_snapshot(
+    session: Session,
+    user: AppUser,
+    key: str,
+) -> tuple[str, str | None] | None:
+    permission = session.scalar(select(Permission).where(Permission.key == key))
+    assert permission is not None
+    existing = session.scalar(
+        select(UserPermission).where(
+            UserPermission.user_id == user.id,
+            UserPermission.permission_id == permission.id,
+        )
+    )
+    if existing is None:
+        return None
+    return existing.effect, existing.reason
+
+
+def restore_permission_override(
+    session: Session,
+    *,
+    user_id: Any,
+    key: str,
+    snapshot: tuple[str, str | None] | None,
+) -> None:
+    permission = session.scalar(select(Permission).where(Permission.key == key))
+    assert permission is not None
+    existing = session.scalar(
+        select(UserPermission).where(
+            UserPermission.user_id == user_id,
+            UserPermission.permission_id == permission.id,
+        )
+    )
+    if snapshot is None:
+        if existing is not None:
+            session.delete(existing)
+    else:
+        assert existing is not None
+        existing.effect, existing.reason = snapshot
+    session.commit()
+
+
 def successful_refresh_count(
     session: Session,
     *,
@@ -367,9 +429,22 @@ def department_by_name(session: Session, name: str) -> Department:
 
 def assert_no_sql_payload(payload: Any) -> None:
     serialized = json.dumps(payload)
-    assert "SELECT " not in serialized
+    normalized = serialized.lower()
+    for sql_syntax in (
+        r"\bselect\s+[a-z_\"*(]",
+        r"\bwith\s+[a-z_][a-z0-9_]*\s+as\s*\(",
+        r"\bupdate\s+[a-z_\"]+\s+set\b",
+        r"\bdelete\s+from\b",
+    ):
+        assert re.search(sql_syntax, normalized) is None
+    for source_fragment in (
+        "provider_output_that_must_not_leak",
+        "directory_users",
+        "login_events",
+    ):
+        assert source_fragment not in normalized
     for forbidden_key in ("generated_sql", "executed_sql", "sanitized_sql"):
-        assert forbidden_key not in serialized
+        assert forbidden_key not in normalized
 
 
 class CapturingRealExecutor:
@@ -451,11 +526,22 @@ def postgres_engine() -> Generator[Engine, None, None]:
 
 
 def postgres_database_url() -> str:
-    return (
-        os.environ.get("POSTGRES_TEST_DATABASE_URL")
-        or os.environ.get("DATABASE_URL")
-        or LOCAL_POSTGRES_URL
-    )
+    explicit_test_url = os.environ.get("POSTGRES_TEST_DATABASE_URL")
+    if explicit_test_url:
+        return explicit_test_url
+
+    database_url = os.environ.get("DATABASE_URL") or LOCAL_POSTGRES_URL
+    parsed_url = make_url(database_url)
+    if (
+        not parsed_url.drivername.startswith("postgresql")
+        or parsed_url.host not in {"localhost", "127.0.0.1", "::1"}
+        or parsed_url.database != "queryops"
+    ):
+        raise pytest.UsageError(
+            "Destructive card refresh tests require POSTGRES_TEST_DATABASE_URL "
+            "or the local queryops PostgreSQL database."
+        )
+    return database_url
 
 
 def run_alembic_upgrade(database_url: str) -> None:

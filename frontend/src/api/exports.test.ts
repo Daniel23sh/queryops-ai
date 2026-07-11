@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { ApiError, downloadBlob } from "./client";
+import { ApiError, apiDownload, downloadBlob } from "./client";
 import {
   exportDashboardCardCsv,
   exportQueryRunCsv
@@ -30,17 +30,16 @@ describe("CSV export API client", () => {
 
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/api/v1/query-runs/folder%2Fquery%20run/export-csv",
-      {
+      expect.objectContaining({
         method: "POST",
         credentials: "include",
-        headers: {
-          Accept: "text/csv, application/json",
-          "Content-Type": "application/json",
-          "X-CSRF-Token": "csrf-token"
-        },
         body: JSON.stringify({ include_headers: true })
-      }
+      })
     );
+    const requestHeaders = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(requestHeaders.get("Accept")).toBe("text/csv, application/json");
+    expect(requestHeaders.get("Content-Type")).toBe("application/json");
+    expect(requestHeaders.get("X-CSRF-Token")).toBe("csrf-token");
     expect(result).toEqual({
       blob: csvBlob,
       filename: "query-run.csv",
@@ -61,13 +60,12 @@ describe("CSV export API client", () => {
       "http://localhost:8000/api/v1/cards/folder%2Fcard%20id/export-csv",
       expect.objectContaining({
         body: "{}",
-        credentials: "include",
-        headers: expect.objectContaining({
-          "Content-Type": "application/json",
-          "X-CSRF-Token": "csrf-token"
-        })
+        credentials: "include"
       })
     );
+    const requestHeaders = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(requestHeaders.get("Content-Type")).toBe("application/json");
+    expect(requestHeaders.get("X-CSRF-Token")).toBe("csrf-token");
     expect(result.filename).toBe("dashboard-card.csv");
     expect(result.contentType).toBe("application/octet-stream");
   });
@@ -122,6 +120,21 @@ describe("CSV export API client", () => {
       });
       expect(String(error)).not.toContain("private backend details");
     }
+  });
+
+  it("preserves Headers instances and caller-provided Accept values", async () => {
+    const fetchMock = stubDownloadResponse(new Blob(["count\n2\n"]), {});
+
+    await apiDownload("/api/v1/download", {
+      headers: new Headers({
+        Accept: "application/vnd.queryops.csv",
+        "X-Test": "value"
+      })
+    });
+
+    const requestHeaders = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(requestHeaders.get("Accept")).toBe("application/vnd.queryops.csv");
+    expect(requestHeaders.get("X-Test")).toBe("value");
   });
 });
 
