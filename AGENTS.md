@@ -69,12 +69,12 @@ The milestone status is defined in `PROJECT_PLAN.md`.
 At the time this file was updated, the latest completed target is:
 
 ```txt
-Milestone 6 PR2 — Dashboard/Card UI
+Milestone 6 PR3 — CSV Export Backend
 ```
 
 Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, Milestone 3, Milestone 4, and Milestone 5 are complete under the previous scopes. Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete.
 
-Milestone 6 is active. `M6 PR1 — Dashboards/Cards Backend Foundation` is complete and merged into `main`. `M6 PR2 — Dashboard/Card UI` is complete and merged into `main`. `M6 PR3 — CSV Export Backend` is active on branch `feature/m6-csv-export-backend`.
+Milestone 6 is active. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, and `M6 PR3 — CSV Export Backend` are complete and merged into `main`. `M6 PR4 — Card Refresh & CSV Export UI` is active on branch `feature/m6-card-refresh-export-ui`.
 
 Milestone 2.5 introduced `access_scopes`, `user_access_scopes`, `data_resources`, `UserAccessContext`, `AccessDecision`, and `evaluate_access(subject, action, resource, context)`.
 
@@ -100,7 +100,9 @@ Milestone 6 PR1 includes the dashboard catalog backend endpoint, my dashboard ba
 
 Milestone 6 PR2 added frontend dashboard/card API clients and types, read-only My Dashboard loading, personal dashboard creation UI, inline Ask Data Save as Card UI, and a safe read-only Dashboard Catalog UI. PR2 is complete and merged into `main`.
 
-Milestone 6 PR3 is active. Checkpoints 1 through 4 added the CSV export foundation, query-run export, dashboard-card export, and successful safe metadata-only `AppAuditLog` persistence. The current final pre-PR hardening checkpoint strengthens string/header CSV injection protection, preserves trusted numeric values, enforces printable-ASCII filenames capped at 255 characters, constructs responses before audit persistence, and adds PostgreSQL-backed tests for runtime-role, read-only, and current-viewer RLS behavior.
+Milestone 6 PR3 — CSV Export Backend is complete and merged into `main`. It added controlled query-run and dashboard-card CSV export, export-time SQL validation, current-viewer PostgreSQL RLS, the dedicated read-only runtime role, CSV injection protection, safe filenames, successful export audit persistence, and PostgreSQL-backed export tests.
+
+Milestone 6 PR4 — Card Refresh & CSV Export UI is active on branch `feature/m6-card-refresh-export-ui`. It adds frontend CSV downloads for successful Ask Data results and dashboard cards, secure dashboard-card refresh under the current viewer's `UserAccessContext`, automatic/manual refresh UI, safe table previews, and viewer-owned refresh `QueryRun` persistence without raw row snapshots.
 
 Milestone 4 delivered:
 
@@ -132,11 +134,13 @@ Query Engine security rules:
 * Query Engine code must continue to use `UserAccessContext`, `DataResource`, `AccessDecision`, `evaluate_access(...)`, `authorize_resource_access(...)`, `RLSContext`, `build_rls_context(...)`, `set_rls_context(...)`, PostgreSQL RLS policies from `0005_scope_aware_rls.py`, and the existing `QueryRun` model.
 * No real LLM calls, external provider integrations, or API-key requirements are allowed in Milestone 4.
 
-Out of scope for the current M6 PR3 checkpoint unless explicitly requested:
+Out of scope for M6 PR4 unless explicitly requested:
 
-* frontend export UI
-* card refresh execution
 * drag-and-drop
+* layout persistence
+* card resizing
+* persistent raw result snapshots
+* scheduled refresh
 * department/global dashboard creation UI
 * catalog starring
 * dashboard cloning
@@ -157,7 +161,7 @@ Out of scope for the current M6 PR3 checkpoint unless explicitly requested:
 * Redis
 * API rate limiter
 
-Later Milestone 6 PRs may handle frontend export UI, department/global dashboard creation flows, catalog starring, dashboard cloning, card refresh, and reordering. Later milestones will handle actions, approvals, notifications, real LLM/API-key support, and Supabase Auth unless explicitly requested. Do not add frontend export UI, card refresh execution, catalog mutation behavior, department/global dashboard creation behavior, action execution, approval behavior, real LLM providers, API keys, Supabase Auth, or new Ask Data behavior outside the active approved PR scope.
+Later Milestone 6 work will handle card reordering and layout persistence. Later milestones will handle actions, approvals, notifications, real LLM/API-key support, and Supabase Auth unless explicitly requested. Do not add drag-and-drop, layout persistence, catalog mutation behavior, department/global dashboard creation behavior, action execution, approval behavior, real LLM providers, API keys, Supabase Auth, or unrelated Ask Data behavior in PR4.
 
 ## 6. Product Direction
 

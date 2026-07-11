@@ -48,6 +48,12 @@ export class ApiError extends Error {
   }
 }
 
+export type ApiDownloadResult = {
+  blob: Blob;
+  filename: string;
+  contentType: string;
+};
+
 export async function apiRequest<T>(
   path: string,
   init: RequestInit = {}
@@ -74,6 +80,118 @@ export async function apiRequest<T>(
   }
 
   return payload.data;
+}
+
+export async function apiDownload(
+  path: string,
+  init: RequestInit = {},
+  fallbackFilename = "queryops-export.csv"
+): Promise<ApiDownloadResult> {
+  const response = await fetch(apiUrl(path), {
+    ...init,
+    credentials: "include",
+    headers: {
+      Accept: "text/csv, application/json",
+      ...init.headers
+    }
+  });
+
+  if (!response.ok) {
+    throw await downloadError(response);
+  }
+
+  const contentType =
+    response.headers.get("Content-Type") ?? "application/octet-stream";
+  return {
+    blob: await response.blob(),
+    filename: downloadFilename(
+      response.headers.get("Content-Disposition"),
+      fallbackFilename
+    ),
+    contentType
+  };
+}
+
+export function downloadBlob(result: ApiDownloadResult): void {
+  const objectUrl = URL.createObjectURL(result.blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = result.filename;
+  anchor.hidden = true;
+  document.body.appendChild(anchor);
+
+  try {
+    anchor.click();
+  } finally {
+    anchor.remove();
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+async function downloadError(response: Response): Promise<ApiError> {
+  const contentType = response.headers.get("Content-Type")?.toLowerCase() ?? "";
+  let payload: ApiErrorResponse = {};
+
+  if (contentType.includes("application/json")) {
+    try {
+      payload = (await response.json()) as ApiErrorResponse;
+    } catch {
+      payload = {};
+    }
+  }
+
+  const error = payload.error;
+  return new ApiError({
+    code: error?.code ?? "API_ERROR",
+    message: error?.message ?? "Download request failed.",
+    status: response.status,
+    details: error?.details,
+    requestId: error?.request_id
+  });
+}
+
+function downloadFilename(
+  contentDisposition: string | null,
+  fallbackFilename: string
+): string {
+  if (!contentDisposition) {
+    return fallbackFilename;
+  }
+
+  const encodedMatch = contentDisposition.match(
+    /filename\*\s*=\s*(?:UTF-8'')?([^;]+)/i
+  );
+  const plainMatch = contentDisposition.match(
+    /filename\s*=\s*(?:"([^"]+)"|([^;]+))/i
+  );
+  const rawFilename = encodedMatch?.[1] ?? plainMatch?.[1] ?? plainMatch?.[2];
+  if (!rawFilename) {
+    return fallbackFilename;
+  }
+
+  let decodedFilename = rawFilename.trim().replace(/^"|"$/g, "");
+  if (encodedMatch) {
+    try {
+      decodedFilename = decodeURIComponent(decodedFilename);
+    } catch {
+      return fallbackFilename;
+    }
+  }
+
+  const safeFilename = decodedFilename
+    .split(/[\\/]/)
+    .pop()
+    ?.replace(/[\u0000-\u001f\u007f]/g, "")
+    .trim();
+  if (
+    !safeFilename ||
+    safeFilename === "." ||
+    safeFilename === ".." ||
+    safeFilename.length > 255
+  ) {
+    return fallbackFilename;
+  }
+  return safeFilename;
 }
 
 function apiUrl(path: string): string {
