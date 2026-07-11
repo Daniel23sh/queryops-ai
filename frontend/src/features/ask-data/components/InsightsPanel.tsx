@@ -50,7 +50,7 @@ export function InsightsPanel() {
           </div>
 
           <div
-            className="grid gap-2 sm:grid-cols-3"
+            className="grid gap-2 sm:grid-cols-2"
             aria-label="Future operational controls"
           >
             {FUTURE_OPERATION_PLACEHOLDERS.map((placeholder) => (

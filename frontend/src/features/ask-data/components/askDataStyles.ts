@@ -6,11 +6,6 @@ export const FUTURE_OPERATION_PLACEHOLDERS = [
       "Modal and cross-dashboard save flows stay disabled; authorized users can use the inline personal-dashboard save panel after a successful result."
   },
   {
-    label: "CSV Export",
-    milestone: "Later export milestone",
-    summary: "Export controls stay disabled until a dedicated export milestone defines the behavior."
-  },
-  {
     label: "Preview Action",
     milestone: "Later actions milestone",
     summary: "Action previews require future deterministic action and approval flows before activation."
