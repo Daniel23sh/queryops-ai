@@ -79,11 +79,10 @@ Milestone 6 PR1 includes the dashboard catalog backend endpoint, my dashboard ba
 
 Milestone 6 PR2 is complete and merged into `main`. It added frontend dashboard/card API clients and types, read-only My Dashboard loading, personal dashboard creation UI, inline Ask Data Save as Card UI, and a safe read-only Dashboard Catalog UI.
 
-Milestone 6 PR3 is active on branch `feature/m6-csv-export-backend`. Checkpoint 1 added the CSV export backend foundation. Checkpoint 2 added real query-run CSV export execution for successful owned query runs. The current checkpoint adds real dashboard card CSV export execution by locating the latest successful linked `QueryRun` for a saved card and reusing the existing export-time SQL validation, `DataResource.is_exportable` policy checks, RLS-safe query execution boundary, CSV serialization, and CSV injection protection.
+Milestone 6 PR3 is active on branch `feature/m6-csv-export-backend`. Checkpoint 1 added the CSV export backend foundation. Checkpoint 2 added real query-run CSV export execution for successful owned query runs. Checkpoint 3 added real dashboard card CSV export execution by locating the latest successful linked `QueryRun` for a saved card and reusing the existing export-time SQL validation, `DataResource.is_exportable` policy checks, RLS-safe query execution boundary, CSV serialization, and CSV injection protection. The current checkpoint adds successful CSV export audit persistence for query-run and dashboard-card exports using safe metadata-only `AppAuditLog` rows.
 
 Explicitly out of scope for the current M6 PR3 checkpoint:
 
-- export audit persistence
 - frontend export UI
 - card refresh execution
 - drag-and-drop
@@ -105,7 +104,7 @@ Explicitly out of scope for the current M6 PR3 checkpoint:
 - masking
 - tenant/project/region governance
 
-Later Milestone 6 PRs may handle export audit persistence, frontend export UI, card refresh, and reordering. Later milestones will handle actions, approvals, notifications, real LLM/API-key support, and Supabase Auth unless explicitly requested.
+Later Milestone 6 PRs may handle frontend export UI, card refresh, and reordering. Later milestones will handle actions, approvals, notifications, real LLM/API-key support, and Supabase Auth unless explicitly requested.
 
 ## 2. Product Summary
 
@@ -617,29 +616,26 @@ feature/m6-csv-export-backend
 
 Goal:
 
-Build the backend CSV export surface in small checkpoints, starting with safe API foundation, then query-run CSV execution, then dashboard card CSV execution while deferring audit persistence and frontend UI.
+Build the backend CSV export surface in small checkpoints, starting with safe API foundation, then query-run CSV execution, dashboard card CSV execution, and successful export audit persistence while deferring frontend UI.
 
 Status:
 
-Active. Checkpoint 1 CSV export backend foundation is complete. Checkpoint 2 query-run CSV export execution is complete. The current checkpoint adds real dashboard card CSV export execution.
+Active. Checkpoint 1 CSV export backend foundation is complete. Checkpoint 2 query-run CSV export execution is complete. Checkpoint 3 dashboard card CSV export execution is complete. The current checkpoint adds successful CSV export audit persistence.
 
 Current checkpoint in scope:
 
+- real CSV response for `POST /api/v1/query-runs/{query_run_id}/export-csv`
 - real CSV response for `POST /api/v1/cards/{card_id}/export-csv`
-- authentication, CSRF, strict payload validation, export permission, and dashboard visibility checks
-- reject missing cards, archived dashboards, cards without saved queries, and cards without a successful linked `QueryRun`
-- choose the latest successful linked `QueryRun` deterministically by `completed_at`, `created_at`, and `id`
-- use the linked query run `executed_sql`, not frontend data or `SavedQuery.generated_sql`
-- reuse query-run export SQL validation, export policy checks, existing validated SQL executor boundary, CSV serialization, and CSV injection sanitization
-- keep export audit persistence and frontend export UI deferred
-- focused backend tests for card auth, CSRF, payload validation, permission, visibility, linked query-run eligibility, export policy, CSV response behavior, and SQL non-exposure
+- authentication, CSRF, strict payload validation, export permission, dashboard visibility checks, export-time SQL validation, `DataResource.is_exportable` policy checks, existing validated SQL executor boundary, CSV serialization, and CSV injection sanitization
+- successful export audit persistence for query-run and dashboard-card CSV exports using safe metadata-only `AppAuditLog` rows
+- focused backend tests for auth, CSRF, payload validation, permission, visibility, linked query-run eligibility, export policy, CSV response behavior, SQL non-exposure, CSV injection protection, and successful audit persistence
 
 Out of scope for the current checkpoint:
 
-- export audit persistence
 - frontend export UI
 - card refresh execution
 - drag-and-drop
+- M6 PR4 work
 - actions
 - approvals
 - notifications
@@ -648,4 +644,4 @@ Out of scope for the current checkpoint:
 - Redis/background jobs
 - domain pack expansion
 
-Later M6 PR3 checkpoints may implement export audit persistence and any additional export policy refinements.
+Later Milestone 6 work may implement frontend export UI, card refresh execution, drag-and-drop, and M6 PR4 scope.

@@ -22,6 +22,7 @@ from app.domains.it_operations.models import Department
 from app.domains.it_operations.seed import seed_database
 from app.main import app
 from app.models.product import (
+    AppAuditLog,
     AppUser,
     Dashboard,
     DashboardCard,
@@ -166,17 +167,22 @@ def test_csv_exporter_sanitizes_formula_like_cells(value: str) -> None:
     assert parsed == [[f"'{value}"]]
 
 
-def test_query_run_export_requires_authentication(client: TestClient) -> None:
+def test_query_run_export_requires_authentication(
+    client: TestClient,
+    db_session: Session,
+) -> None:
     response = client.post(f"/api/v1/query-runs/{uuid.uuid4()}/export-csv", json={})
 
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "UNAUTHORIZED"
     assert_no_sql_payload(response.json())
+    assert_no_successful_export_audit_log(db_session)
 
 
 @pytest.mark.parametrize("csrf_header", [None, "wrong-csrf-token"])
 def test_query_run_export_requires_valid_csrf(
     client: TestClient,
+    db_session: Session,
     csrf_header: str | None,
 ) -> None:
     _login(client, "demo.analyst@queryops.local")
@@ -191,6 +197,7 @@ def test_query_run_export_requires_valid_csrf(
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "CSRF_TOKEN_MISSING"
     assert_no_sql_payload(response.json())
+    assert_no_successful_export_audit_log(db_session)
 
 
 def test_query_run_export_rejects_non_object_payload(client: TestClient) -> None:
@@ -264,6 +271,7 @@ def test_query_run_export_rejects_user_without_export_permission(
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "FORBIDDEN"
     assert_no_sql_payload(response.json())
+    assert_no_successful_export_audit_log(db_session)
 
 
 def test_query_run_export_rejects_another_users_query_run(
@@ -359,6 +367,63 @@ def test_query_run_export_returns_csv_response_with_attachment(
     assert executor.calls[0]["validation_result"].sanitized_sql is not None
     assert "generated_sql_secret" not in response.text
     assert_no_sql_payload(response.text)
+
+
+def test_query_run_export_creates_successful_audit_log(
+    client: TestClient,
+    db_session: Session,
+    export_executor_override: Any,
+) -> None:
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    query_run = _add_query_run(db_session, user=analyst)
+    csrf_token = _login(client, analyst.email)
+    export_executor_override(
+        FakeExportExecutor(
+            SQLExecutionResult(
+                status="succeeded",
+                columns=["product_name"],
+                rows=[
+                    {"product_name": "Jira"},
+                    {"product_name": "Slack"},
+                ],
+                row_count=2,
+                duration_ms=4.2,
+                truncated=False,
+                referenced_tables=["licenses"],
+            )
+        )
+    )
+
+    response = client.post(
+        f"/api/v1/query-runs/{query_run.id}/export-csv",
+        headers={
+            "X-CSRF-Token": csrf_token,
+            "User-Agent": "QueryOps export test",
+        },
+        json={"filename": "analyst-export.csv", "include_headers": False},
+    )
+
+    assert response.status_code == 200
+    audit_log = _single_csv_export_audit_log(db_session)
+    assert audit_log.actor_user_id == analyst.id
+    assert audit_log.event_type == "csv_export"
+    assert audit_log.action == "export_csv"
+    assert audit_log.status == "succeeded"
+    assert audit_log.entity_type == "query_run_export"
+    assert audit_log.entity_id == query_run.id
+    assert audit_log.ip_address == "testclient"
+    assert audit_log.user_agent == "QueryOps export test"
+    assert audit_log.summary == f"CSV export completed for query run {query_run.id}."
+    assert audit_log.audit_metadata == {
+        "export_source": "query_run",
+        "format": "csv",
+        "filename": "analyst-export.csv",
+        "include_headers": False,
+        "row_count": 2,
+        "referenced_tables": ["licenses"],
+        "query_run_id": str(query_run.id),
+    }
+    assert_no_forbidden_audit_metadata(audit_log.audit_metadata)
 
 
 def test_query_run_export_uses_default_filename(
@@ -493,6 +558,43 @@ def test_query_run_export_blocks_non_exportable_data_resource(
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "CSV_EXPORT_NOT_ALLOWED"
     assert_no_sql_payload(response.json())
+    assert_no_successful_export_audit_log(db_session)
+
+
+def test_query_run_export_does_not_audit_execution_failure(
+    client: TestClient,
+    db_session: Session,
+    export_executor_override: Any,
+) -> None:
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    query_run = _add_query_run(db_session, user=analyst)
+    csrf_token = _login(client, analyst.email)
+    export_executor_override(
+        FakeExportExecutor(
+            SQLExecutionResult(
+                status="failed",
+                columns=[],
+                rows=[],
+                row_count=0,
+                duration_ms=1.1,
+                truncated=False,
+                referenced_tables=["licenses"],
+                error_code="runtime_error",
+                public_error="Execution failed safely.",
+            )
+        )
+    )
+
+    response = client.post(
+        f"/api/v1/query-runs/{query_run.id}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={},
+    )
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "CSV_EXPORT_FAILED"
+    assert_no_sql_payload(response.json())
+    assert_no_successful_export_audit_log(db_session)
 
 
 def test_query_run_export_blocks_missing_executed_sql(
@@ -928,6 +1030,91 @@ def test_card_export_allows_owner_exporting_personal_dashboard_card(
     assert_no_sql_payload(response.text)
 
 
+def test_card_export_creates_successful_audit_log(
+    client: TestClient,
+    db_session: Session,
+    export_executor_override: Any,
+) -> None:
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    dashboard = _add_dashboard(
+        db_session,
+        owner=analyst,
+        title="Analyst Personal",
+        visibility_scope="personal",
+    )
+    saved_query = _add_saved_query(db_session, owner=analyst)
+    card = _add_card(
+        db_session,
+        dashboard=dashboard,
+        saved_query=saved_query,
+    )
+    older_query_run = _add_query_run(
+        db_session,
+        user=analyst,
+        saved_query=saved_query,
+        executed_sql="SELECT name FROM departments",
+        referenced_tables=["departments"],
+        completed_at=datetime(2026, 7, 5, 12, 1, tzinfo=UTC),
+    )
+    query_run = _add_query_run(
+        db_session,
+        user=analyst,
+        saved_query=saved_query,
+        executed_sql="SELECT product_name FROM licenses",
+        referenced_tables=["licenses"],
+        completed_at=datetime(2026, 7, 5, 12, 2, tzinfo=UTC),
+    )
+    export_executor_override(
+        FakeExportExecutor(
+            SQLExecutionResult(
+                status="succeeded",
+                columns=["product_name"],
+                rows=[{"product_name": "GitHub Enterprise"}],
+                row_count=1,
+                duration_ms=2.1,
+                truncated=False,
+                referenced_tables=["licenses"],
+            )
+        )
+    )
+    csrf_token = _login(client, analyst.email)
+
+    response = client.post(
+        f"/api/v1/cards/{card.id}/export-csv",
+        headers={
+            "X-CSRF-Token": csrf_token,
+            "User-Agent": "QueryOps card export test",
+        },
+        json={"filename": "card-export", "include_headers": True},
+    )
+
+    assert response.status_code == 200
+    audit_log = _single_csv_export_audit_log(db_session)
+    assert audit_log.actor_user_id == analyst.id
+    assert audit_log.event_type == "csv_export"
+    assert audit_log.action == "export_csv"
+    assert audit_log.status == "succeeded"
+    assert audit_log.entity_type == "dashboard_card_export"
+    assert audit_log.entity_id == card.id
+    assert audit_log.ip_address == "testclient"
+    assert audit_log.user_agent == "QueryOps card export test"
+    assert audit_log.summary == f"CSV export completed for dashboard card {card.id}."
+    assert audit_log.audit_metadata == {
+        "export_source": "dashboard_card",
+        "format": "csv",
+        "filename": "card-export.csv",
+        "include_headers": True,
+        "row_count": 1,
+        "referenced_tables": ["licenses"],
+        "card_id": str(card.id),
+        "dashboard_id": str(dashboard.id),
+        "saved_query_id": str(saved_query.id),
+        "query_run_id": str(query_run.id),
+    }
+    assert audit_log.audit_metadata["query_run_id"] != str(older_query_run.id)
+    assert_no_forbidden_audit_metadata(audit_log.audit_metadata)
+
+
 def test_card_export_allows_matching_department_dashboard_card(
     client: TestClient,
     db_session: Session,
@@ -1166,6 +1353,18 @@ def assert_no_sql_payload(payload: Any) -> None:
     _assert_no_forbidden_keys(payload)
 
 
+def assert_no_forbidden_audit_metadata(metadata: dict[str, Any]) -> None:
+    serialized = json.dumps(metadata)
+    assert "generated_sql" not in metadata
+    assert "executed_sql" not in metadata
+    assert "csv_body" not in metadata
+    assert "rows" not in metadata
+    assert "raw_csv" not in metadata
+    assert "Jira" not in serialized
+    assert "Slack" not in serialized
+    assert "GitHub Enterprise" not in serialized
+
+
 def _assert_no_forbidden_keys(value: Any) -> None:
     if isinstance(value, dict):
         assert "generated_sql" not in value
@@ -1193,6 +1392,28 @@ def _department_by_name(db_session: Session, name: str) -> Department:
     department = db_session.scalar(select(Department).where(Department.name == name))
     assert department is not None
     return department
+
+
+def _single_csv_export_audit_log(db_session: Session) -> AppAuditLog:
+    audit_logs = list(db_session.scalars(_csv_export_audit_log_query()))
+    assert len(audit_logs) == 1
+    return audit_logs[0]
+
+
+def assert_no_successful_export_audit_log(db_session: Session) -> None:
+    assert list(db_session.scalars(_csv_export_audit_log_query())) == []
+
+
+def _csv_export_audit_log_query():
+    return (
+        select(AppAuditLog)
+        .where(
+            AppAuditLog.event_type == "csv_export",
+            AppAuditLog.action == "export_csv",
+            AppAuditLog.status == "succeeded",
+        )
+        .order_by(AppAuditLog.created_at, AppAuditLog.id)
+    )
 
 
 def _add_dashboard(

@@ -16,6 +16,7 @@ from app.auth.session import csrf_is_valid, session_from_request
 from app.db.session import get_db
 from app.exports.csv_exporter import rows_to_csv
 from app.models.product import (
+    AppAuditLog,
     AppUser,
     Dashboard,
     DashboardCard,
@@ -90,7 +91,16 @@ def export_query_run_csv(
         query_run,
         parsed_payload,
         sql_executor,
+        request=request,
+        current_user=current_user,
         filename=_query_run_csv_filename(query_run.id, parsed_payload["filename"]),
+        audit_entity_type="query_run_export",
+        audit_entity_id=query_run.id,
+        audit_summary=f"CSV export completed for query run {query_run.id}.",
+        audit_metadata={
+            "export_source": "query_run",
+            "query_run_id": str(query_run.id),
+        },
         not_exportable_response=_query_run_not_exportable_response,
     )
 
@@ -143,7 +153,19 @@ def export_card_csv(
         query_run,
         parsed_payload,
         sql_executor,
+        request=request,
+        current_user=current_user,
         filename=_card_csv_filename(card.id, parsed_payload["filename"]),
+        audit_entity_type="dashboard_card_export",
+        audit_entity_id=card.id,
+        audit_summary=f"CSV export completed for dashboard card {card.id}.",
+        audit_metadata={
+            "export_source": "dashboard_card",
+            "card_id": str(card.id),
+            "dashboard_id": str(card.dashboard_id),
+            "saved_query_id": str(card.saved_query_id),
+            "query_run_id": str(query_run.id),
+        },
         not_exportable_response=_card_not_exportable_response,
     )
 
@@ -190,7 +212,13 @@ def _export_query_run_as_csv(
     parsed_payload: dict[str, Any],
     sql_executor: ExportSQLExecutor,
     *,
+    request: Request,
+    current_user: AppUser,
     filename: str,
+    audit_entity_type: str,
+    audit_entity_id: UUID,
+    audit_summary: str,
+    audit_metadata: dict[str, Any],
     not_exportable_response,
 ):
     if query_run.status != RunStatus.SUCCEEDED.value:
@@ -234,7 +262,49 @@ def _export_query_run_as_csv(
         execution_result.rows,
         include_headers=parsed_payload["include_headers"],
     )
+    _record_csv_export_audit(
+        db,
+        request=request,
+        current_user=current_user,
+        entity_type=audit_entity_type,
+        entity_id=audit_entity_id,
+        summary=audit_summary,
+        metadata={
+            **audit_metadata,
+            "format": "csv",
+            "filename": filename,
+            "include_headers": parsed_payload["include_headers"],
+            "row_count": execution_result.row_count,
+            "referenced_tables": referenced_tables,
+        },
+    )
     return _csv_response(csv_body, filename=filename)
+
+
+def _record_csv_export_audit(
+    db: Session,
+    *,
+    request: Request,
+    current_user: AppUser,
+    entity_type: str,
+    entity_id: UUID,
+    summary: str,
+    metadata: dict[str, Any],
+) -> None:
+    audit_log = AppAuditLog(
+        actor_user_id=current_user.id,
+        event_type="csv_export",
+        action="export_csv",
+        status="succeeded",
+        entity_type=entity_type,
+        entity_id=entity_id,
+        summary=summary,
+        ip_address=request.client.host if request.client is not None else None,
+        user_agent=request.headers.get("user-agent"),
+        audit_metadata=metadata,
+    )
+    db.add(audit_log)
+    db.commit()
 
 
 def _query_run_for_card_export(db: Session, card: DashboardCard) -> QueryRun | None:
