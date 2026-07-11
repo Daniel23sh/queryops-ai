@@ -1,3 +1,5 @@
+import type { QueryResultRow } from "../ask-data/types";
+
 export type DashboardVisibilityScope = "personal" | "department" | "global";
 
 export type DashboardCardType = "table";
@@ -50,4 +52,20 @@ export type SaveCardRequest = {
   title?: string;
   description?: string | null;
   card_type?: DashboardCardType;
+};
+
+export type DashboardCardRefreshResult = {
+  card_id: string;
+  dashboard_id: string;
+  saved_query_id: string;
+  query_run_id: string;
+  status: "succeeded";
+  columns: string[];
+  rows: QueryResultRow[];
+  row_count: number;
+  duration_ms: number;
+  truncated: boolean;
+  refreshed_at: string;
+  message: string;
+  warnings: string[];
 };

@@ -35,7 +35,13 @@ export function DashboardCatalogItem({ dashboard }: { dashboard: Dashboard }) {
       {dashboard.cards.length > 0 ? (
         <div className="dashboard-card-grid">
           {dashboard.cards.map((card) => (
-            <DashboardCardPreview card={card} key={card.id} />
+            <DashboardCardPreview
+              canExport={false}
+              canRefresh={false}
+              card={card}
+              csrfToken={null}
+              key={card.id}
+            />
           ))}
         </div>
       ) : (

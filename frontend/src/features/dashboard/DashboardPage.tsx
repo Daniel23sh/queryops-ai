@@ -1,4 +1,5 @@
 import type { AuthUser } from "../../auth/types";
+import { hasPermission } from "../../auth/permissions";
 import type { NavItem } from "../../app/navigation";
 import { CreateDashboardPanel } from "./components/CreateDashboardPanel";
 import { DashboardHero } from "./components/DashboardHero";
@@ -23,6 +24,10 @@ export function DashboardPage({
 }) {
   const model = buildDashboardModel(user, visibleNavItems);
   const myDashboards = useMyDashboards();
+  const canRefreshCards =
+    hasPermission(user, "can_query_scoped_data") ||
+    hasPermission(user, "can_query_global_data");
+  const canExportCards = hasPermission(user, "can_export_results");
 
   return (
     <article className="dashboard-page" role="region" aria-label="My Dashboard">
@@ -32,6 +37,9 @@ export function DashboardPage({
       />
       <DashboardKpiGrid cards={model.kpiCards} />
       <MyDashboardsPanel
+        canExportCards={canExportCards}
+        canRefreshCards={canRefreshCards}
+        csrfToken={csrfToken}
         dashboards={myDashboards.dashboards}
         errorMessage={myDashboards.errorMessage}
         status={myDashboards.status}

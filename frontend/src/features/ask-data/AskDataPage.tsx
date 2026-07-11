@@ -3,6 +3,7 @@ import { formatRole } from "../../lib/format";
 import { AskDataHeader } from "./components/AskDataHeader";
 import { InsightsPanel } from "./components/InsightsPanel";
 import { QuestionComposer } from "./components/QuestionComposer";
+import { QueryResultExportButton } from "./components/QueryResultExportButton";
 import { ResultWorkspace } from "./components/ResultWorkspace";
 import { SaveAsCardPanel } from "./components/SaveAsCardPanel";
 import { TemplateCatalog } from "./components/TemplateCatalog";
@@ -102,6 +103,11 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
             onClarificationQuestionChange={setClarificationQuestion}
             onSubmitClarification={() => void handleSubmitClarification()}
             queryRunState={queryRunState}
+          />
+          <QueryResultExportButton
+            csrfToken={csrfToken}
+            queryRunState={queryRunState}
+            user={user}
           />
           <SaveAsCardPanel
             csrfToken={csrfToken}

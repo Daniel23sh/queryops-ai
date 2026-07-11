@@ -6,10 +6,16 @@ const EMPTY_DASHBOARD_MESSAGE =
   "No saved dashboard cards yet. Run a query in Ask Data and save it as a card once Save as Card is enabled.";
 
 export function MyDashboardsPanel({
+  canExportCards,
+  canRefreshCards,
+  csrfToken,
   dashboards,
   errorMessage,
   status
 }: {
+  canExportCards: boolean;
+  canRefreshCards: boolean;
+  csrfToken: string | null;
   dashboards: Dashboard[];
   errorMessage: string | null;
   status: MyDashboardsStatus;
@@ -43,7 +49,13 @@ export function MyDashboardsPanel({
       {status === "success" && dashboards.length > 0 ? (
         <div className="dashboard-saved-list">
           {dashboards.map((dashboard) => (
-            <DashboardCardGrid key={dashboard.id} dashboard={dashboard} />
+            <DashboardCardGrid
+              key={dashboard.id}
+              canExportCards={canExportCards}
+              canRefreshCards={canRefreshCards}
+              csrfToken={csrfToken}
+              dashboard={dashboard}
+            />
           ))}
         </div>
       ) : null}

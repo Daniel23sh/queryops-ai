@@ -66,6 +66,7 @@ const demoAnalyst = backendUser({
     "can_view_scope_evaluation",
     "can_view_sql",
     "can_create_card",
+    "can_export_results",
     "can_create_department_dashboard",
     "can_create_scope_dashboard",
     "can_manage_department_dashboard",
@@ -109,6 +110,7 @@ const demoAdmin = backendUser({
     "can_manage_scope_dashboard",
     "can_manage_global_dashboard",
     "can_create_card",
+    "can_export_results",
     "can_request_action",
     "can_approve_department_action",
     "can_approve_scoped_action",
@@ -1173,9 +1175,6 @@ describe("App", () => {
     openInsightsPanel(insightRegion);
     expect(
       within(insightRegion).getByRole("button", { name: "Save as Card" })
-    ).toBeDisabled();
-    expect(
-      within(insightRegion).getByRole("button", { name: "CSV Export" })
     ).toBeDisabled();
     expect(
       within(insightRegion).getByRole("button", { name: "Preview Action" })
@@ -2934,12 +2933,6 @@ describe("App", () => {
       within(insightRegion).getByText(/later save as card modal/i)
     ).toBeInTheDocument();
     expect(
-      within(insightRegion).getByRole("button", { name: "CSV Export" })
-    ).toBeDisabled();
-    expect(
-      within(insightRegion).getByText(/later export milestone/i)
-    ).toBeInTheDocument();
-    expect(
       within(insightRegion).getByRole("button", { name: "Preview Action" })
     ).toBeDisabled();
     expect(
@@ -3685,9 +3678,6 @@ function expectFutureControlsDisabled() {
   openInsightsPanel(insightRegion);
   expect(
     within(insightRegion).getByRole("button", { name: "Save as Card" })
-  ).toBeDisabled();
-  expect(
-    within(insightRegion).getByRole("button", { name: "CSV Export" })
   ).toBeDisabled();
   expect(
     within(insightRegion).getByRole("button", { name: "Preview Action" })

@@ -1,7 +1,17 @@
 import type { Dashboard, DashboardVisibilityScope } from "../types";
 import { DashboardCardPreview } from "./DashboardCardPreview";
 
-export function DashboardCardGrid({ dashboard }: { dashboard: Dashboard }) {
+export function DashboardCardGrid({
+  canExportCards,
+  canRefreshCards,
+  csrfToken,
+  dashboard
+}: {
+  canExportCards: boolean;
+  canRefreshCards: boolean;
+  csrfToken: string | null;
+  dashboard: Dashboard;
+}) {
   return (
     <article className="dashboard-saved-dashboard">
       <header className="dashboard-saved-dashboard__header">
@@ -22,7 +32,13 @@ export function DashboardCardGrid({ dashboard }: { dashboard: Dashboard }) {
       {dashboard.cards.length > 0 ? (
         <div className="dashboard-card-grid">
           {dashboard.cards.map((card) => (
-            <DashboardCardPreview key={card.id} card={card} />
+            <DashboardCardPreview
+              key={card.id}
+              canExport={canExportCards}
+              canRefresh={canRefreshCards}
+              card={card}
+              csrfToken={csrfToken}
+            />
           ))}
         </div>
       ) : (

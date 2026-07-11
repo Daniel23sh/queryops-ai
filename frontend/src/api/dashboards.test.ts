@@ -4,6 +4,7 @@ import {
   createDashboard,
   getDashboardCatalog,
   getMyDashboards,
+  refreshDashboardCard,
   saveQueryRunAsCard
 } from "./dashboards";
 import type {
@@ -230,6 +231,42 @@ describe("dashboards API client", () => {
         })
       })
     );
+  });
+
+  it("refreshes an encoded dashboard card with CSRF and an empty JSON body", async () => {
+    const refreshResult = {
+      card_id: "card-id",
+      dashboard_id: "dashboard-id",
+      saved_query_id: "saved-query-id",
+      query_run_id: "refresh-run-id",
+      status: "succeeded" as const,
+      columns: ["product_name"],
+      rows: [{ product_name: "Jira" }],
+      row_count: 1,
+      duration_ms: 8,
+      truncated: false,
+      refreshed_at: "2026-07-11T15:00:00Z",
+      message: "Dashboard card refreshed successfully.",
+      warnings: []
+    };
+    const fetchMock = stubFetch({ data: refreshResult });
+
+    const result = await refreshDashboardCard("folder/card id", "csrf-token");
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/cards/folder%2Fcard%20id/refresh",
+      {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-CSRF-Token": "csrf-token"
+        },
+        body: "{}"
+      }
+    );
+    expect(result).toEqual(refreshResult);
   });
 
   it("exports dashboard request types that compile with backend field names", () => {
