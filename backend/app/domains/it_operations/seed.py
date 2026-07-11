@@ -96,6 +96,7 @@ PERMISSIONS = [
     ("can_manage_scope_dashboard", "dashboard", "Manage assigned-scope dashboards"),
     ("can_manage_global_dashboard", "dashboard", "Manage global dashboards"),
     ("can_create_card", "dashboard", "Create dashboard cards"),
+    ("can_export_results", "export", "Export query and dashboard card results as CSV"),
     ("can_request_action", "action", "Request controlled actions"),
     ("can_approve_department_action", "action", "Approve department actions"),
     ("can_approve_scoped_action", "action", "Approve assigned-scope actions"),
@@ -161,6 +162,7 @@ ROLE_PERMISSION_KEYS = {
         "can_manage_department_dashboard",
         "can_manage_scope_dashboard",
         "can_create_card",
+        "can_export_results",
         "can_approve_department_action",
         "can_approve_scoped_action",
         "can_view_query_history_department",
@@ -186,7 +188,7 @@ DATA_RESOURCE_SPECS = [
         None,
         None,
         True,
-        False,
+        True,
         "schema_only",
     ),
     (
@@ -216,7 +218,7 @@ DATA_RESOURCE_SPECS = [
         None,
         None,
         True,
-        False,
+        True,
         "result_safe",
     ),
     (
