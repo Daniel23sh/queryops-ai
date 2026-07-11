@@ -14,16 +14,15 @@ from app.auth.access_context import UserAccessContext, build_user_access_context
 from app.auth.permissions import require_authenticated_user
 from app.auth.session import csrf_is_valid, session_from_request
 from app.db.session import get_db
+from app.dashboards.policy import dashboard_is_visible
 from app.exports.csv_exporter import rows_to_csv
 from app.models.product import (
     AppAuditLog,
     AppUser,
-    Dashboard,
     DashboardCard,
     DataResource,
     QueryRun,
     RunStatus,
-    VisibilityScope,
 )
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.schema_context import SchemaContextOptions, build_schema_context
@@ -137,7 +136,7 @@ def export_card_csv(
     )
     if card is None or card.dashboard is None or card.dashboard.is_archived:
         return _card_not_found_response()
-    if not _dashboard_visible(card.dashboard, current_user, access_context):
+    if not dashboard_is_visible(card.dashboard, current_user, access_context):
         return _forbidden_response()
     if card.saved_query_id is None or card.saved_query is None:
         return _card_not_exportable_response()
@@ -442,32 +441,6 @@ def _export_filename(value: Any):
         return _INVALID
 
     return filename
-
-
-def _dashboard_visible(
-    dashboard: Dashboard,
-    current_user: AppUser,
-    access_context: UserAccessContext,
-) -> bool:
-    if dashboard.visibility_scope == VisibilityScope.PERSONAL.value:
-        return dashboard.owner_user_id == current_user.id
-
-    if dashboard.visibility_scope == VisibilityScope.GLOBAL.value:
-        return access_context.has_global_scope
-
-    if dashboard.visibility_scope == VisibilityScope.DEPARTMENT.value:
-        if access_context.has_global_scope:
-            return True
-        if dashboard.department_id is None:
-            return False
-        if current_user.department_id == dashboard.department_id:
-            return True
-        return any(
-            scope.type == "department" and scope.department_id == dashboard.department_id
-            for scope in access_context.scopes
-        )
-
-    return False
 
 
 def _invalid_export_request_response():

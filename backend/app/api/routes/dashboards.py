@@ -5,6 +5,7 @@ from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, Request
+from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
@@ -13,6 +14,7 @@ from app.auth.access_context import UserAccessContext, build_user_access_context
 from app.auth.permissions import require_authenticated_user
 from app.auth.session import csrf_is_valid, session_from_request
 from app.db.session import get_db
+from app.dashboards.policy import dashboard_is_visible
 from app.models.product import (
     AppUser,
     Dashboard,
@@ -21,6 +23,12 @@ from app.models.product import (
     RunStatus,
     SavedQuery,
     VisibilityScope,
+)
+from app.query_engine.card_refresh import (
+    CardRefreshError,
+    CardRefreshSQLExecutor,
+    get_card_refresh_sql_executor,
+    refresh_dashboard_card,
 )
 
 
@@ -185,6 +193,54 @@ def save_query_run_as_card(
     return success_response(_serialize_dashboard_card(card), status_code=201)
 
 
+@router.post("/cards/{card_id}/refresh")
+def refresh_card(
+    card_id: UUID,
+    request: Request,
+    payload: Any = Body(default=None),
+    current_user: AppUser = Depends(require_authenticated_user),
+    db: Session = Depends(get_db),
+    sql_executor: CardRefreshSQLExecutor = Depends(get_card_refresh_sql_executor),
+):
+    csrf_error = _csrf_error_response(request)
+    if csrf_error is not None:
+        return csrf_error
+
+    if not isinstance(payload, dict) or payload:
+        return _invalid_card_refresh_request_response()
+
+    access_context = build_user_access_context(current_user, db)
+    card = db.scalar(
+        select(DashboardCard)
+        .options(
+            selectinload(DashboardCard.dashboard),
+            selectinload(DashboardCard.saved_query),
+        )
+        .where(DashboardCard.id == card_id)
+    )
+    if card is None or card.dashboard is None or card.dashboard.is_archived:
+        return _card_not_found_response()
+    if not dashboard_is_visible(card.dashboard, current_user, access_context):
+        return _card_refresh_not_allowed_response()
+
+    try:
+        result = refresh_dashboard_card(
+            db,
+            card=card,
+            current_user=current_user,
+            access_context=access_context,
+            sql_executor=sql_executor,
+        )
+    except CardRefreshError as error:
+        return error_response(
+            code=error.code,
+            message=error.message,
+            status_code=error.status_code,
+        )
+
+    return success_response(jsonable_encoder(result))
+
+
 def _csrf_error_response(request: Request):
     session_data = session_from_request(request)
     if session_data is None or not csrf_is_valid(request, session_data):
@@ -201,25 +257,7 @@ def _dashboard_visible_in_catalog(
     current_user: AppUser,
     access_context: UserAccessContext,
 ) -> bool:
-    if dashboard.visibility_scope == VisibilityScope.PERSONAL.value:
-        return dashboard.owner_user_id == current_user.id
-
-    if dashboard.visibility_scope == VisibilityScope.GLOBAL.value:
-        return access_context.has_global_scope
-
-    if dashboard.visibility_scope == VisibilityScope.DEPARTMENT.value:
-        if access_context.has_global_scope:
-            return True
-        if dashboard.department_id is None:
-            return False
-        if current_user.department_id == dashboard.department_id:
-            return True
-        return any(
-            scope.type == "department" and scope.department_id == dashboard.department_id
-            for scope in access_context.scopes
-        )
-
-    return False
+    return dashboard_is_visible(dashboard, current_user, access_context)
 
 
 def _dashboard_create_values(
@@ -514,6 +552,30 @@ def _invalid_save_card_request_response():
         code="INVALID_SAVE_CARD_REQUEST",
         message="Save-card request is invalid or unsupported.",
         status_code=400,
+    )
+
+
+def _invalid_card_refresh_request_response():
+    return error_response(
+        code="INVALID_CARD_REFRESH_REQUEST",
+        message="Card refresh request is invalid or unsupported.",
+        status_code=400,
+    )
+
+
+def _card_not_found_response():
+    return error_response(
+        code="CARD_NOT_FOUND",
+        message="Dashboard card was not found.",
+        status_code=404,
+    )
+
+
+def _card_refresh_not_allowed_response():
+    return error_response(
+        code="CARD_REFRESH_NOT_ALLOWED",
+        message="Dashboard card cannot be refreshed with your current permissions.",
+        status_code=403,
     )
 
 
