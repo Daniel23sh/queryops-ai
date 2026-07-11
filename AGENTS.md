@@ -100,7 +100,7 @@ Milestone 6 PR1 includes the dashboard catalog backend endpoint, my dashboard ba
 
 Milestone 6 PR2 added frontend dashboard/card API clients and types, read-only My Dashboard loading, personal dashboard creation UI, inline Ask Data Save as Card UI, and a safe read-only Dashboard Catalog UI. PR2 is complete and merged into `main`.
 
-Milestone 6 PR3 is active. Checkpoint 1 added CSV export backend foundation. Checkpoint 2 added real query-run CSV export execution for successful owned query runs. Checkpoint 3 added real dashboard card CSV export execution by locating the latest successful linked `QueryRun` for a saved card and reusing existing auth, CSRF, export permission, dashboard visibility, SQL validation, query execution, RLS, exportability, CSV serialization, and CSV injection protection patterns. The current PR3 checkpoint adds successful CSV export audit persistence for query-run and dashboard-card exports using safe metadata-only `AppAuditLog` rows.
+Milestone 6 PR3 is active. Checkpoints 1 through 4 added the CSV export foundation, query-run export, dashboard-card export, and successful safe metadata-only `AppAuditLog` persistence. The current final pre-PR hardening checkpoint strengthens string/header CSV injection protection, preserves trusted numeric values, enforces printable-ASCII filenames capped at 255 characters, constructs responses before audit persistence, and adds PostgreSQL-backed tests for runtime-role, read-only, and current-viewer RLS behavior.
 
 Milestone 4 delivered:
 

@@ -41,6 +41,7 @@ EXPORT_PERMISSION = "can_export_results"
 ALLOWED_EXPORT_FIELDS = frozenset({"filename", "include_headers"})
 EXPORT_QUERY_ACTION = "query:scoped_data"
 EXPORT_ROW_LIMIT = 1_000
+MAX_EXPORT_FILENAME_LENGTH = 255
 SAFE_TABLE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
@@ -262,6 +263,7 @@ def _export_query_run_as_csv(
         execution_result.rows,
         include_headers=parsed_payload["include_headers"],
     )
+    response = _csv_response(csv_body, filename=filename)
     _record_csv_export_audit(
         db,
         request=request,
@@ -278,7 +280,7 @@ def _export_query_run_as_csv(
             "referenced_tables": referenced_tables,
         },
     )
-    return _csv_response(csv_body, filename=filename)
+    return response
 
 
 def _record_csv_export_audit(
@@ -421,17 +423,23 @@ def _export_filename(value: Any):
     filename = value.strip()
     if not filename or filename in {".", ".."}:
         return _INVALID
+    if any(ord(character) < 32 or ord(character) > 126 for character in filename):
+        return _INVALID
     if "/" in filename or "\\" in filename or "\x00" in filename:
         return _INVALID
     if '"' in filename or ";" in filename:
-        return _INVALID
-    if any(ord(character) < 32 for character in filename):
         return _INVALID
 
     parts = filename.split(".")
     if len(parts) > 1:
         if len(parts) != 2 or parts[-1].lower() != "csv" or not parts[0]:
             return _INVALID
+
+    final_filename_length = (
+        len(filename) if filename.lower().endswith(".csv") else len(filename) + 4
+    )
+    if final_filename_length > MAX_EXPORT_FILENAME_LENGTH:
+        return _INVALID
 
     return filename
 

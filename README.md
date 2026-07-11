@@ -327,7 +327,7 @@ Default local URLs:
 * Backend health endpoint: `http://localhost:8000/health`
 * PostgreSQL: `localhost:5432`
 
-PostgreSQL is included for the local development environment. The current backend includes the database foundation, deterministic IT Operations seed data, local demo auth session endpoints, the Access Context Foundation, scope-aware PostgreSQL RLS policies for IT Operations domain tables, the Milestone 4 backend Query Engine foundation, and the Milestone 5 PR1 backend compliance cleanup. Dashboards, actions, approvals, CSV export, frontend Ask Data UI, dashboard card behavior, real LLM providers, Supabase Auth, and full domain pack expansion remain planned for later milestones.
+PostgreSQL is included for the local development environment. The current application includes deterministic IT Operations seed data, demo auth, scope-aware PostgreSQL RLS, the backend Query Engine, the Ask Data frontend, dashboards and saved cards, and controlled backend CSV export. Frontend export UI, card refresh, actions, approvals, notifications, real LLM providers, Supabase Auth, and domain expansion remain planned for later milestones.
 
 Stop the stack:
 
@@ -458,7 +458,20 @@ Current Query Engine limitations:
 * Query detail endpoints return only the authenticated user's own runs.
 * Scope-aware query history requires assigned access scopes and the appropriate history permission.
 * Full domain pack expansion to 36 templates / 40 evaluation cases is not implemented.
-* Dashboards, dashboard cards, CSV export, actions, approvals, and notifications are not implemented.
+* Frontend CSV export UI, card refresh, actions, approvals, and notifications are not implemented.
+
+### CSV Export Backend
+
+Milestone 6 PR3 adds controlled CSV export for successful owned query runs and visible dashboard cards:
+
+```txt
+POST /api/v1/query-runs/{query_run_id}/export-csv
+POST /api/v1/cards/{card_id}/export-csv
+```
+
+Both endpoints require authentication, valid CSRF, and `can_export_results`, which is seeded for Analyst and Admin. Exports revalidate and re-execute stored safe SQL through the read-only PostgreSQL runtime role under the current viewer's RLS context. Only exportable `DataResource` tables are allowed, exported string cells and headers are protected against spreadsheet formula injection, and each successful export writes safe metadata to `app_audit_logs`.
+
+The optional `filename` must be printable ASCII, may omit the `.csv` extension, and may produce a final filename of at most 255 characters. `include_headers` defaults to `true` and must be a boolean.
 
 Run Query Engine unit/API tests:
 
@@ -535,6 +548,8 @@ cd backend
 
 The seed script is development-only and deterministic. Supported profiles are `small` for fast local or CI-style checks and `medium` for demo-scale local data. The `--reset` flag deletes seeded rows from the product and IT Operations tables before reseeding; it does not drop tables or modify Alembic migration state.
 
+After updating an existing development database to Milestone 6 PR3, rerun the seed command with the current profile and `--reset`. Existing rows are not updated in place, so the reset is required to install `can_export_results` and the current `DataResource.is_exportable` policy.
+
 Local demo auth uses seeded users through `POST /api/v1/demo/login`, then hydrates the current user with `GET /api/v1/auth/me`. Login sets a signed, expiring httpOnly `qo_session` cookie and a readable `qo_csrf` cookie; state-changing authenticated requests such as `POST /api/v1/auth/logout` must send `X-CSRF-Token`.
 
 ### Frontend
@@ -585,6 +600,7 @@ docker compose up -d postgres
 cd backend
 DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic upgrade head
 DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic check
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/pytest tests/test_exports_postgres.py -q -rs
 DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/pytest
 ```
 
@@ -649,7 +665,7 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-Milestone 0 foundation work, Milestone 1 database/seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 PR1 M4 Query Backend Compliance are complete.
+Milestones 0 through 5 are complete. Milestone 6 is active: PR1 dashboards/cards backend and PR2 dashboard/card UI are merged, and PR3 CSV Export Backend is active on `feature/m6-csv-export-backend`.
 
 Implemented foundation functionality includes:
 
@@ -668,16 +684,18 @@ Implemented foundation functionality includes:
 * scope-aware PostgreSQL RLS policies for department-scoped IT Operations domain tables
 * RLS context helper and initial security/RLS test suite
 * backend Query Engine foundation with domain packs, templates, mock generation, schema context, SQL validation, scoped read-only execution, Query Run API, `QueryRun` persistence, and security regression tests
-* Milestone 5 PR1 backend compliance cleanup with query clarification, scope-aware query history, department-history alias, deterministic self-correction, and hardened safe query metadata
+* Ask Data frontend with role-gated SQL and diagnostics
+* dashboard catalog, personal dashboards, and saved dashboard cards
+* controlled query-run and dashboard-card CSV export with permissions, exportability policy, current-viewer RLS execution, CSV injection protection, and successful export audit persistence
 
 Current milestone status:
 
 ```txt
-Milestone 4 — Query Engine Backend is complete.
-Milestone 5 PR1 — M4 Query Backend Compliance is complete and pending review/merge.
+Milestone 6 — Dashboards, Cards & CSV Export is active.
+M6 PR3 — CSV Export Backend is in final pre-PR hardening.
 ```
 
-Milestone 5 PR1 delivered backend/API compliance work only. It does not include frontend Ask Data UI, dashboards UI, dashboard cards behavior, CSV export, actions behavior, approvals behavior, notifications behavior, real external LLM calls, Supabase Auth, full domain pack expansion, Full ABAC, ReBAC, policy builder UI, dynamic policy engine, masking, or tenant/project/region governance. Milestone 5 Ask Data UI work can start after this backend compliance PR is reviewed and merged.
+M6 PR3 does not include frontend export UI, card refresh, drag-and-drop, M6 PR4 work, actions, approvals, notifications, real external LLM calls, Supabase Auth, Redis/background jobs, or domain expansion.
 
 ## License
 

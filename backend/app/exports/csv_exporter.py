@@ -11,6 +11,7 @@ from uuid import UUID
 
 
 CSV_INJECTION_PREFIXES = ("=", "+", "-", "@", "\t", "\r", "\n")
+FORMULA_PREFIXES = ("=", "+", "-", "@")
 
 
 def rows_to_csv(
@@ -24,7 +25,7 @@ def rows_to_csv(
     writer = csv.writer(output, lineterminator="\n")
 
     if include_headers:
-        writer.writerow(ordered_columns)
+        writer.writerow([_sanitize_csv_injection(column) for column in ordered_columns])
 
     for row in rows:
         writer.writerow([_cell_to_string(row.get(column)) for column in ordered_columns])
@@ -35,26 +36,35 @@ def rows_to_csv(
 def _cell_to_string(value: Any) -> str:
     if value is None:
         return ""
+    if isinstance(value, str):
+        return _sanitize_csv_injection(value)
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, (int, float, Decimal)):
+        return str(value)
     if isinstance(value, datetime):
-        return _sanitize_csv_injection(value.isoformat())
+        return value.isoformat()
     if isinstance(value, date):
-        return _sanitize_csv_injection(value.isoformat())
-    if isinstance(value, (Decimal, UUID)):
-        return _sanitize_csv_injection(str(value))
+        return value.isoformat()
+    if isinstance(value, UUID):
+        return str(value)
     if isinstance(value, (dict, list)):
-        return _sanitize_csv_injection(
-            json.dumps(
-                value,
-                sort_keys=True,
-                separators=(",", ":"),
-                default=_json_default,
-            )
+        return json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=_json_default,
         )
     return _sanitize_csv_injection(str(value))
 
 
 def _sanitize_csv_injection(value: str) -> str:
+    if value.startswith("'"):
+        return value
     if value.startswith(CSV_INJECTION_PREFIXES):
+        return f"'{value}"
+    trimmed_value = value.lstrip()
+    if trimmed_value.startswith(FORMULA_PREFIXES):
         return f"'{value}"
     return value
 

@@ -204,6 +204,11 @@ EXPECTED_DATA_RESOURCE_QUERYABILITY = {
     "it_audit_events": False,
 }
 
+EXPECTED_DATA_RESOURCE_EXPORTABILITY = {
+    table_name: table_name in {"departments", "licenses"}
+    for table_name in CORE_DATA_RESOURCE_TABLES
+}
+
 
 def test_seed_profiles_define_expected_target_counts() -> None:
     small = get_seed_profile("small")
@@ -463,6 +468,7 @@ def test_seed_creates_core_it_operations_data_resources() -> None:
             assert resource.sensitivity_level
             assert resource.llm_exposure_level
             assert resource.is_queryable is EXPECTED_DATA_RESOURCE_QUERYABILITY[table_name]
+            assert resource.is_exportable is EXPECTED_DATA_RESOURCE_EXPORTABILITY[table_name]
             if table_name in {"departments", "licenses"}:
                 assert resource.scope_column is None
             else:
@@ -470,8 +476,10 @@ def test_seed_creates_core_it_operations_data_resources() -> None:
                 assert resource.scope_column == "department_id"
 
         assert resources["security_events"].sensitivity_level == "highly_sensitive"
+        assert resources["security_events"].is_exportable is False
         assert resources["security_events"].llm_exposure_level == "aggregate_safe"
         assert resources["it_audit_events"].is_queryable is False
+        assert resources["it_audit_events"].is_exportable is False
         assert resources["it_audit_events"].llm_exposure_level == "none"
 
 
@@ -485,6 +493,18 @@ def test_data_resource_specs_define_queryability_explicitly() -> None:
         queryability_by_table[table_name] = is_queryable
 
     assert queryability_by_table == EXPECTED_DATA_RESOURCE_QUERYABILITY
+
+
+def test_data_resource_specs_define_exportability_explicitly() -> None:
+    exportability_by_table = {}
+    for spec in DATA_RESOURCE_SPECS:
+        assert len(spec) == 8
+        table_name = spec[0]
+        is_exportable = spec[6]
+        assert isinstance(is_exportable, bool)
+        exportability_by_table[table_name] = is_exportable
+
+    assert exportability_by_table == EXPECTED_DATA_RESOURCE_EXPORTABILITY
 
 
 def test_demo_app_users_are_assigned_expected_roles() -> None:

@@ -79,7 +79,7 @@ Milestone 6 PR1 includes the dashboard catalog backend endpoint, my dashboard ba
 
 Milestone 6 PR2 is complete and merged into `main`. It added frontend dashboard/card API clients and types, read-only My Dashboard loading, personal dashboard creation UI, inline Ask Data Save as Card UI, and a safe read-only Dashboard Catalog UI.
 
-Milestone 6 PR3 is active on branch `feature/m6-csv-export-backend`. Checkpoint 1 added the CSV export backend foundation. Checkpoint 2 added real query-run CSV export execution for successful owned query runs. Checkpoint 3 added real dashboard card CSV export execution by locating the latest successful linked `QueryRun` for a saved card and reusing the existing export-time SQL validation, `DataResource.is_exportable` policy checks, RLS-safe query execution boundary, CSV serialization, and CSV injection protection. The current checkpoint adds successful CSV export audit persistence for query-run and dashboard-card exports using safe metadata-only `AppAuditLog` rows.
+Milestone 6 PR3 is active on branch `feature/m6-csv-export-backend`. Checkpoint 1 added the CSV export backend foundation. Checkpoint 2 added real query-run CSV export execution for successful owned query runs. Checkpoint 3 added real dashboard card CSV export execution. Checkpoint 4 added successful CSV export audit persistence using safe metadata-only `AppAuditLog` rows. The current final pre-PR hardening checkpoint strengthens CSV injection and filename handling, preserves numeric values, and adds PostgreSQL-backed export tests proving runtime-role, read-only, and current-viewer RLS behavior.
 
 Explicitly out of scope for the current M6 PR3 checkpoint:
 
@@ -620,7 +620,7 @@ Build the backend CSV export surface in small checkpoints, starting with safe AP
 
 Status:
 
-Active. Checkpoint 1 CSV export backend foundation is complete. Checkpoint 2 query-run CSV export execution is complete. Checkpoint 3 dashboard card CSV export execution is complete. The current checkpoint adds successful CSV export audit persistence.
+Active. Checkpoints 1 through 4 are complete. The current final pre-PR hardening checkpoint addresses review findings and adds PostgreSQL/RLS export integration coverage.
 
 Current checkpoint in scope:
 
@@ -628,7 +628,8 @@ Current checkpoint in scope:
 - real CSV response for `POST /api/v1/cards/{card_id}/export-csv`
 - authentication, CSRF, strict payload validation, export permission, dashboard visibility checks, export-time SQL validation, `DataResource.is_exportable` policy checks, existing validated SQL executor boundary, CSV serialization, and CSV injection sanitization
 - successful export audit persistence for query-run and dashboard-card CSV exports using safe metadata-only `AppAuditLog` rows
-- focused backend tests for auth, CSRF, payload validation, permission, visibility, linked query-run eligibility, export policy, CSV response behavior, SQL non-exposure, CSV injection protection, and successful audit persistence
+- hardened string/header CSV injection protection, trusted numeric preservation, printable-ASCII filenames capped at 255 characters, and response construction before audit persistence
+- focused and PostgreSQL-backed tests for auth, CSRF, payload validation, permission overrides, visibility, linked query-run eligibility, export policy, CSV response behavior, SQL non-exposure, runtime role, read-only execution, current-viewer RLS, CSV injection protection, and successful audit persistence
 
 Out of scope for the current checkpoint:
 
