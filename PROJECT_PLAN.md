@@ -6,9 +6,9 @@ The current milestone status is:
 
 `Milestone 6 — Dashboards, Cards & CSV Export` is active.
 
-Active PR scope:
+Current PR scope:
 
-`M6 PR4 — Card Refresh & CSV Export UI` is active on branch `feature/m6-card-refresh-export-ui`.
+`M6 PR4 — Card Refresh & CSV Export UI` is implemented and checkpoint-complete on branch `feature/m6-card-refresh-export-ui`. It has not yet been merged into `main`.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
@@ -81,7 +81,7 @@ Milestone 6 PR2 is complete and merged into `main`. It added frontend dashboard/
 
 Milestone 6 PR3 — CSV Export Backend is complete and merged into `main`. It added controlled query-run and dashboard-card CSV export, export-time SQL validation, current-viewer PostgreSQL RLS, the dedicated read-only runtime role, CSV injection protection, safe filenames, successful export audit persistence, and PostgreSQL-backed export tests.
 
-Milestone 6 PR4 — Card Refresh & CSV Export UI is active on branch `feature/m6-card-refresh-export-ui`. PR4 adds frontend CSV downloads for successful Ask Data query runs and dashboard cards, a secure dashboard-card refresh endpoint that revalidates and executes stored SQL under the current viewer's `UserAccessContext`, automatic and manual card refresh UI, and safe table previews. Successful refreshes create viewer-owned linked `QueryRun` records without persisting raw result rows.
+Milestone 6 PR4 — Card Refresh & CSV Export UI is implemented and checkpoint-complete on branch `feature/m6-card-refresh-export-ui`, but is not yet merged into `main`. PR4 adds frontend CSV downloads for successful Ask Data query runs and dashboard cards, a secure dashboard-card refresh endpoint that revalidates and executes stored SQL under the current viewer's `UserAccessContext`, automatic and manual card refresh UI, and safe table previews. Successful refreshes create viewer-owned linked `QueryRun` records without persisting raw result rows.
 
 Explicitly out of scope for M6 PR4:
 
@@ -415,7 +415,7 @@ The active product milestone is:
 
 The current PR is:
 
-`M6 PR4 — Card Refresh & CSV Export UI`, active on branch `feature/m6-card-refresh-export-ui`.
+`M6 PR4 — Card Refresh & CSV Export UI`, implemented and checkpoint-complete on branch `feature/m6-card-refresh-export-ui`; not yet merged into `main`.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -662,7 +662,16 @@ Add secure current-viewer dashboard-card refresh and the frontend CSV export exp
 
 Status:
 
-Active.
+All six PR4 checkpoints are complete on `feature/m6-card-refresh-export-ui`. The branch is not yet merged into `main`.
+
+Completed checkpoints:
+
+1. PR4 status and download API foundation
+2. Ask Data query-run export UI
+3. Card refresh backend
+4. PostgreSQL/RLS refresh hardening
+5. Dashboard card refresh/export UI
+6. Full verification, documentation, and cleanup
 
 In scope for PR4:
 

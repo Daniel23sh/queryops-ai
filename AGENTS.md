@@ -66,15 +66,15 @@ Prefer boring, maintainable structure over clever abstractions.
 
 The milestone status is defined in `PROJECT_PLAN.md`.
 
-At the time this file was updated, the latest completed target is:
+At the time this file was updated, the latest checkpoint-complete target is:
 
 ```txt
-Milestone 6 PR3 — CSV Export Backend
+Milestone 6 PR4 — Card Refresh & CSV Export UI
 ```
 
 Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, Milestone 3, Milestone 4, and Milestone 5 are complete under the previous scopes. Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete.
 
-Milestone 6 is active. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, and `M6 PR3 — CSV Export Backend` are complete and merged into `main`. `M6 PR4 — Card Refresh & CSV Export UI` is active on branch `feature/m6-card-refresh-export-ui`.
+Milestone 6 is active. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, and `M6 PR3 — CSV Export Backend` are complete and merged into `main`. All six checkpoints for `M6 PR4 — Card Refresh & CSV Export UI` are complete on branch `feature/m6-card-refresh-export-ui`; PR4 is not yet merged into `main`.
 
 Milestone 2.5 introduced `access_scopes`, `user_access_scopes`, `data_resources`, `UserAccessContext`, `AccessDecision`, and `evaluate_access(subject, action, resource, context)`.
 
@@ -102,7 +102,7 @@ Milestone 6 PR2 added frontend dashboard/card API clients and types, read-only M
 
 Milestone 6 PR3 — CSV Export Backend is complete and merged into `main`. It added controlled query-run and dashboard-card CSV export, export-time SQL validation, current-viewer PostgreSQL RLS, the dedicated read-only runtime role, CSV injection protection, safe filenames, successful export audit persistence, and PostgreSQL-backed export tests.
 
-Milestone 6 PR4 — Card Refresh & CSV Export UI is active on branch `feature/m6-card-refresh-export-ui`. It adds frontend CSV downloads for successful Ask Data results and dashboard cards, secure dashboard-card refresh under the current viewer's `UserAccessContext`, automatic/manual refresh UI, safe table previews, and viewer-owned refresh `QueryRun` persistence without raw row snapshots.
+Milestone 6 PR4 — Card Refresh & CSV Export UI is implemented and checkpoint-complete on branch `feature/m6-card-refresh-export-ui`, but is not yet merged into `main`. It adds frontend CSV downloads for successful Ask Data results and dashboard cards, secure dashboard-card refresh under the current viewer's `UserAccessContext`, automatic/manual refresh UI, safe table previews, and viewer-owned refresh `QueryRun` persistence without raw row snapshots.
 
 Milestone 4 delivered:
 

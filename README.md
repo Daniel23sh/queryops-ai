@@ -327,7 +327,7 @@ Default local URLs:
 * Backend health endpoint: `http://localhost:8000/health`
 * PostgreSQL: `localhost:5432`
 
-PostgreSQL is included for the local development environment. The current application includes deterministic IT Operations seed data, demo auth, scope-aware PostgreSQL RLS, the backend Query Engine, the Ask Data frontend, dashboards and saved cards, and controlled backend CSV export. Frontend export UI, card refresh, actions, approvals, notifications, real LLM providers, Supabase Auth, and domain expansion remain planned for later milestones.
+PostgreSQL is included for the local development environment. The current application includes deterministic IT Operations seed data, demo auth, scope-aware PostgreSQL RLS, the backend Query Engine, the Ask Data frontend, dashboards and saved cards, controlled query/card CSV downloads, and automatic/manual dashboard-card refresh. Actions, approvals, notifications, real LLM providers, Supabase Auth, and domain expansion remain planned for later milestones.
 
 Stop the stack:
 
@@ -458,11 +458,11 @@ Current Query Engine limitations:
 * Query detail endpoints return only the authenticated user's own runs.
 * Scope-aware query history requires assigned access scopes and the appropriate history permission.
 * Full domain pack expansion to 36 templates / 40 evaluation cases is not implemented.
-* Frontend CSV export UI, card refresh, actions, approvals, and notifications are not implemented.
+* Scheduled card refresh, actions, approvals, and notifications are not implemented.
 
-### CSV Export Backend
+### CSV Export and Dashboard Card Refresh
 
-Milestone 6 PR3 adds controlled CSV export for successful owned query runs and visible dashboard cards:
+Milestone 6 PR3 added controlled CSV export for successful owned query runs and visible dashboard cards:
 
 ```txt
 POST /api/v1/query-runs/{query_run_id}/export-csv
@@ -472,6 +472,16 @@ POST /api/v1/cards/{card_id}/export-csv
 Both endpoints require authentication, valid CSRF, and `can_export_results`, which is seeded for Analyst and Admin. Exports revalidate and re-execute stored safe SQL through the read-only PostgreSQL runtime role under the current viewer's RLS context. Only exportable `DataResource` tables are allowed, exported string cells and headers are protected against spreadsheet formula injection, and each successful export writes safe metadata to `app_audit_logs`.
 
 The optional `filename` must be printable ASCII, may omit the `.csv` extension, and may produce a final filename of at most 255 characters. `include_headers` defaults to `true` and must be a boolean.
+
+Milestone 6 PR4 adds authorized browser downloads for both export endpoints. Ask Data exposes Export CSV only for successful exportable query runs and dashboard cards expose Export CSV only when the current user has `can_export_results`. The frontend never builds CSV from visible rows; it downloads the backend response so SQL validation, current-viewer RLS, sanitization, export policy, and audit remain authoritative.
+
+PR4 also adds current-viewer card refresh:
+
+```txt
+POST /api/v1/cards/{card_id}/refresh
+```
+
+Refresh requires authentication and CSRF, checks dashboard visibility, locates the latest successful linked query run, validates stored executed SQL again, verifies trusted referenced-table metadata, and executes only validator-sanitized SQL through `queryops_query_runtime` in a read-only transaction with transaction-local RLS. The preview returns at most 100 rows and never returns SQL or runtime details. Each successful refresh creates a linked `QueryRun` owned by the current viewer without persisting raw rows. Personal dashboard cards refresh once when loaded and can be refreshed manually; a failed manual refresh keeps the previous in-memory result visible.
 
 Run Query Engine unit/API tests:
 
@@ -601,6 +611,7 @@ cd backend
 DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic upgrade head
 DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic check
 DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/pytest tests/test_exports_postgres.py -q -rs
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/pytest tests/test_card_refresh_postgres.py -q -rs
 DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/pytest
 ```
 
@@ -665,7 +676,7 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-Milestones 0 through 5 are complete. Milestone 6 is active: PR1 dashboards/cards backend and PR2 dashboard/card UI are merged, and PR3 CSV Export Backend is active on `feature/m6-csv-export-backend`.
+Milestones 0 through 5 are complete. Milestone 6 is active: PR1 dashboards/cards backend, PR2 dashboard/card UI, and PR3 CSV Export Backend are merged. All PR4 Card Refresh & CSV Export UI checkpoints are complete on `feature/m6-card-refresh-export-ui`; PR4 is not yet merged.
 
 Implemented foundation functionality includes:
 
@@ -687,15 +698,17 @@ Implemented foundation functionality includes:
 * Ask Data frontend with role-gated SQL and diagnostics
 * dashboard catalog, personal dashboards, and saved dashboard cards
 * controlled query-run and dashboard-card CSV export with permissions, exportability policy, current-viewer RLS execution, CSV injection protection, and successful export audit persistence
+* authorized Ask Data and dashboard-card CSV download controls
+* automatic/manual dashboard-card refresh under current-viewer RLS with safe table previews and viewer-owned refresh history
 
 Current milestone status:
 
 ```txt
 Milestone 6 — Dashboards, Cards & CSV Export is active.
-M6 PR3 — CSV Export Backend is in final pre-PR hardening.
+M6 PR4 — Card Refresh & CSV Export UI is checkpoint-complete on feature/m6-card-refresh-export-ui and is not yet merged.
 ```
 
-M6 PR3 does not include frontend export UI, card refresh, drag-and-drop, M6 PR4 work, actions, approvals, notifications, real external LLM calls, Supabase Auth, Redis/background jobs, or domain expansion.
+M6 PR4 does not include drag-and-drop, layout persistence, card resizing, scheduled refresh, dashboard starring/cloning, actions, approvals, notifications, real external LLM calls, Supabase Auth, Redis/background jobs, or domain expansion. Card reorder and layout persistence remain a separate Milestone 6 slice, so Milestone 6 is not complete.
 
 ## License
 
