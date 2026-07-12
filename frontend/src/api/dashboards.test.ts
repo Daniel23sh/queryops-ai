@@ -5,13 +5,15 @@ import {
   getDashboardCatalog,
   getMyDashboards,
   refreshDashboardCard,
-  saveQueryRunAsCard
+  saveQueryRunAsCard,
+  updateMyDashboardLayout
 } from "./dashboards";
 import type {
   CreateDashboardRequest,
   Dashboard,
   DashboardCard,
-  SaveCardRequest
+  SaveCardRequest,
+  UpdateDashboardLayoutRequest
 } from "../features/dashboard/types";
 
 const backendCard = {
@@ -269,6 +271,69 @@ describe("dashboards API client", () => {
     expect(result).toEqual(refreshResult);
   });
 
+  it("persists a full zero-based card order with PATCH and CSRF", async () => {
+    const updatedDashboard = {
+      ...backendDashboard,
+      cards: [
+        { ...backendCard, id: "second-card", position: 0 },
+        { ...backendCard, id: "first-card", position: 1 }
+      ]
+    };
+    const fetchMock = stubFetch({ data: updatedDashboard });
+
+    const result = await updateMyDashboardLayout(
+      {
+        items: [
+          { card_id: "second-card", position: 0 },
+          { card_id: "first-card", position: 1 }
+        ]
+      },
+      "csrf-token"
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/dashboards/my/layout",
+      {
+        method: "PATCH",
+        credentials: "include",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+          "X-CSRF-Token": "csrf-token"
+        },
+        body: JSON.stringify({
+          items: [
+            { card_id: "second-card", position: 0 },
+            { card_id: "first-card", position: 1 }
+          ]
+        })
+      }
+    );
+    expect(result).toEqual(updatedDashboard);
+  });
+
+  it("preserves the dashboard layout conflict code", async () => {
+    stubFetch(
+      {
+        error: {
+          code: "DASHBOARD_LAYOUT_CONFLICT",
+          message: "Dashboard cards changed. Reload the dashboard and try again."
+        }
+      },
+      { ok: false, status: 409 }
+    );
+
+    await expect(
+      updateMyDashboardLayout(
+        { items: [{ card_id: "card-id", position: 0 }] },
+        "csrf-token"
+      )
+    ).rejects.toMatchObject({
+      code: "DASHBOARD_LAYOUT_CONFLICT",
+      status: 409
+    });
+  });
+
   it("exports dashboard request types that compile with backend field names", () => {
     const createPayload: CreateDashboardRequest = {
       title: "Personal dashboard",
@@ -278,9 +343,13 @@ describe("dashboards API client", () => {
       dashboard_id: "dashboard-id",
       card_type: "table"
     };
+    const layoutPayload: UpdateDashboardLayoutRequest = {
+      items: [{ card_id: "card-id", position: 0 }]
+    };
 
     expect(createPayload.visibility_scope).toBe("personal");
     expect(savePayload.card_type).toBe("table");
+    expect(layoutPayload.items[0].position).toBe(0);
   });
 });
 

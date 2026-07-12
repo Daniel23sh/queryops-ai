@@ -43,9 +43,9 @@ export function useMyDashboards() {
     };
   }, [loadDashboards]);
 
-  async function reload() {
+  const reload = useCallback(async () => {
     await loadDashboards(() => true);
-  }
+  }, [loadDashboards]);
 
   return {
     dashboards,

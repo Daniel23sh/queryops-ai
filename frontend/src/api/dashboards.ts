@@ -4,7 +4,8 @@ import type {
   Dashboard,
   DashboardCard,
   DashboardCardRefreshResult,
-  SaveCardRequest
+  SaveCardRequest,
+  UpdateDashboardLayoutRequest
 } from "../features/dashboard/types";
 
 export function getDashboardCatalog(): Promise<Dashboard[]> {
@@ -68,6 +69,20 @@ export function refreshDashboardCard(
   );
 }
 
+export function updateMyDashboardLayout(
+  payload: UpdateDashboardLayoutRequest,
+  csrfToken: string
+): Promise<Dashboard> {
+  return apiRequest<Dashboard>("/api/v1/dashboards/my/layout", {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "X-CSRF-Token": csrfToken
+    },
+    body: JSON.stringify(dashboardLayoutRequestBody(payload))
+  });
+}
+
 function createDashboardRequestBody(
   payload: CreateDashboardRequest
 ): CreateDashboardRequest {
@@ -108,4 +123,15 @@ function saveCardRequestBody(payload: SaveCardRequest): SaveCardRequest {
   }
 
   return body;
+}
+
+function dashboardLayoutRequestBody(
+  payload: UpdateDashboardLayoutRequest
+): UpdateDashboardLayoutRequest {
+  return {
+    items: payload.items.map((item) => ({
+      card_id: item.card_id,
+      position: item.position
+    }))
+  };
 }

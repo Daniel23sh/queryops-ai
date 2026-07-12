@@ -54,6 +54,15 @@ export type SaveCardRequest = {
   card_type?: DashboardCardType;
 };
 
+export type DashboardLayoutItem = {
+  card_id: string;
+  position: number;
+};
+
+export type UpdateDashboardLayoutRequest = {
+  items: DashboardLayoutItem[];
+};
+
 export type DashboardCardRefreshResult = {
   card_id: string;
   dashboard_id: string;
