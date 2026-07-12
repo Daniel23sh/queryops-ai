@@ -11,6 +11,7 @@ export function MyDashboardsPanel({
   csrfToken,
   dashboards,
   errorMessage,
+  onReload,
   status
 }: {
   canExportCards: boolean;
@@ -18,6 +19,7 @@ export function MyDashboardsPanel({
   csrfToken: string | null;
   dashboards: Dashboard[];
   errorMessage: string | null;
+  onReload: () => Promise<void>;
   status: MyDashboardsStatus;
 }) {
   return (
@@ -55,6 +57,7 @@ export function MyDashboardsPanel({
               canRefreshCards={canRefreshCards}
               csrfToken={csrfToken}
               dashboard={dashboard}
+              onReload={onReload}
             />
           ))}
         </div>
