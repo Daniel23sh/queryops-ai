@@ -8,7 +8,7 @@ The current milestone status is:
 
 Current PR scope:
 
-`M6 PR4 — Card Refresh & CSV Export UI` is implemented and checkpoint-complete on branch `feature/m6-card-refresh-export-ui`. It has not yet been merged into `main`.
+`M6 PR5 — Card Reordering & Layout Persistence` is active on branch `feature/m6-card-reorder-layout`.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
@@ -81,13 +81,16 @@ Milestone 6 PR2 is complete and merged into `main`. It added frontend dashboard/
 
 Milestone 6 PR3 — CSV Export Backend is complete and merged into `main`. It added controlled query-run and dashboard-card CSV export, export-time SQL validation, current-viewer PostgreSQL RLS, the dedicated read-only runtime role, CSV injection protection, safe filenames, successful export audit persistence, and PostgreSQL-backed export tests.
 
-Milestone 6 PR4 — Card Refresh & CSV Export UI is implemented and checkpoint-complete on branch `feature/m6-card-refresh-export-ui`, but is not yet merged into `main`. PR4 adds frontend CSV downloads for successful Ask Data query runs and dashboard cards, a secure dashboard-card refresh endpoint that revalidates and executes stored SQL under the current viewer's `UserAccessContext`, automatic and manual card refresh UI, and safe table previews. Successful refreshes create viewer-owned linked `QueryRun` records without persisting raw result rows.
+Milestone 6 PR4 — Card Refresh & CSV Export UI is complete and merged into `main` as `5b4d04c`. PR4 added frontend CSV downloads for successful Ask Data query runs and dashboard cards, a secure dashboard-card refresh endpoint that revalidates and executes stored SQL under the current viewer's `UserAccessContext`, automatic and manual card refresh UI, and safe table previews. Successful refreshes create viewer-owned linked `QueryRun` records without persisting raw result rows.
 
-Explicitly out of scope for M6 PR4:
+Milestone 6 PR5 — Card Reordering & Layout Persistence is the remaining Milestone 6 slice. It adds ordered personal-dashboard cards through `DashboardCard.position`, secure full-card-set persistence with `PATCH /api/v1/dashboards/my/layout`, optimistic frontend reordering, dnd-kit pointer and keyboard support, explicit Move Up / Move Down controls, and refresh/export regressions. It does not turn `DashboardCard.layout` into a grid or resizing system.
 
-- drag-and-drop
-- layout persistence
+Explicitly out of scope for M6 PR5:
+
 - card resizing
+- x/y grid coordinates
+- width or height persistence
+- advanced `DashboardCard.layout` behavior
 - scheduled refresh
 - department/global dashboard creation UI
 - catalog starring
@@ -107,7 +110,7 @@ Explicitly out of scope for M6 PR4:
 - masking
 - tenant/project/region governance
 
-Later Milestone 6 work will handle card reordering and layout persistence. Later milestones will handle actions, approvals, notifications, real LLM/API-key support, and Supabase Auth unless explicitly requested. Milestone 6 is not complete while the reorder/layout slice remains deferred.
+Later milestones will handle actions, approvals, notifications, real LLM/API-key support, and Supabase Auth unless explicitly requested. Milestone 6 is not complete until PR5 card reordering and persistence verification succeeds.
 
 ## 2. Product Summary
 
@@ -415,7 +418,7 @@ The active product milestone is:
 
 The current PR is:
 
-`M6 PR4 — Card Refresh & CSV Export UI`, implemented and checkpoint-complete on branch `feature/m6-card-refresh-export-ui`; not yet merged into `main`.
+`M6 PR5 — Card Reordering & Layout Persistence`, active on branch `feature/m6-card-reorder-layout`.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -662,7 +665,7 @@ Add secure current-viewer dashboard-card refresh and the frontend CSV export exp
 
 Status:
 
-All six PR4 checkpoints are complete on `feature/m6-card-refresh-export-ui`. The branch is not yet merged into `main`.
+Complete and merged into `main` as `5b4d04c`.
 
 Completed checkpoints:
 
@@ -697,4 +700,34 @@ Out of scope for PR4:
 - department/global dashboard creation UI
 - actions, approvals, notifications, M7 work, or real LLM/Auth expansion
 
-Milestone 6 remains active after PR4. Card reorder and layout persistence are the next remaining Milestone 6 scope and must be implemented separately.
+### PR5: Card Reordering & Layout Persistence
+
+Branch:
+
+```text
+feature/m6-card-reorder-layout
+```
+
+Goal:
+
+Persist the order of cards in each owned personal dashboard while retaining PR4 refresh and CSV export behavior.
+
+In scope for PR5:
+
+- `PATCH /api/v1/dashboards/my/layout`
+- strict full-card-set request validation with contiguous zero-based positions
+- current-user ownership checks for one non-archived personal dashboard per request
+- atomic `DashboardCard.position` updates and stale-layout conflict handling
+- dnd-kit pointer and keyboard reordering inside one dashboard only
+- explicit accessible Move Up / Move Down controls
+- optimistic update, rollback, reload-on-conflict, and refresh/export regressions
+
+Out of scope for PR5:
+
+- cross-dashboard movement
+- department/global dashboard reordering
+- card resizing, x/y coordinates, width/height persistence, or advanced `layout` use
+- starring, cloning, scheduled refresh, Redis/background jobs
+- actions, approvals, notifications, real LLM/API-key support, Supabase Auth, domain expansion, or M7 work
+
+Milestone 6 remains active until PR5 passes backend, frontend, PostgreSQL/Alembic, browser QA, and review gates.

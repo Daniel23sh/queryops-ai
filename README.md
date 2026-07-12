@@ -472,9 +472,9 @@ Both endpoints require authentication, valid CSRF, and `can_export_results`, whi
 
 The optional `filename` must be printable ASCII, may omit the `.csv` extension, and may produce a final filename of at most 255 characters. `include_headers` defaults to `true` and must be a boolean.
 
-Milestone 6 PR4 adds authorized browser downloads for both export endpoints. Ask Data exposes Export CSV only for successful exportable query runs and dashboard cards expose Export CSV only when the current user has `can_export_results`. The frontend never builds CSV from visible rows; it downloads the backend response so SQL validation, current-viewer RLS, sanitization, export policy, and audit remain authoritative.
+Milestone 6 PR4 added authorized browser downloads for both export endpoints. Ask Data exposes Export CSV only for successful exportable query runs and dashboard cards expose Export CSV only when the current user has `can_export_results`. The frontend never builds CSV from visible rows; it downloads the backend response so SQL validation, current-viewer RLS, sanitization, export policy, and audit remain authoritative.
 
-PR4 also adds current-viewer card refresh:
+PR4 also added current-viewer card refresh:
 
 ```txt
 POST /api/v1/cards/{card_id}/refresh
@@ -675,7 +675,7 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-Milestones 0 through 5 are complete. Milestone 6 is active: PR1 dashboards/cards backend, PR2 dashboard/card UI, and PR3 CSV Export Backend are merged. All PR4 Card Refresh & CSV Export UI checkpoints are complete on `feature/m6-card-refresh-export-ui`; PR4 is not yet merged.
+Milestones 0 through 5 are complete. Milestone 6 is active: PR1 dashboards/cards backend, PR2 dashboard/card UI, PR3 CSV Export Backend, and PR4 Card Refresh & CSV Export UI are merged. PR5 Card Reordering & Layout Persistence is active on `feature/m6-card-reorder-layout`.
 
 Implemented foundation functionality includes:
 
@@ -704,10 +704,10 @@ Current milestone status:
 
 ```txt
 Milestone 6 — Dashboards, Cards & CSV Export is active.
-M6 PR4 — Card Refresh & CSV Export UI is checkpoint-complete on feature/m6-card-refresh-export-ui and is not yet merged.
+M6 PR5 — Card Reordering & Layout Persistence is active on feature/m6-card-reorder-layout.
 ```
 
-M6 PR4 does not include drag-and-drop, layout persistence, card resizing, scheduled refresh, dashboard starring/cloning, actions, approvals, notifications, real external LLM calls, Supabase Auth, Redis/background jobs, or domain expansion. Card reorder and layout persistence remain a separate Milestone 6 slice, so Milestone 6 is not complete.
+PR5 persists the order of cards in owned personal dashboards through `DashboardCard.position`. It includes accessible drag-and-drop and Move Up / Move Down controls, but does not add card resizing, x/y grid coordinates, width/height persistence, advanced `layout` behavior, scheduled refresh, dashboard starring/cloning, actions, approvals, notifications, real external LLM calls, Supabase Auth, Redis/background jobs, or domain expansion. Milestone 6 is not complete until PR5 verification succeeds.
 
 ## License
 
