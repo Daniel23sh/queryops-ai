@@ -468,7 +468,9 @@ POST /api/v1/query-runs/{query_run_id}/export-csv
 POST /api/v1/cards/{card_id}/export-csv
 ```
 
-Both endpoints require authentication, valid CSRF, and `can_export_results`, which is seeded for Analyst and Admin. Exports revalidate and re-execute stored safe SQL through the read-only PostgreSQL runtime role under the current viewer's RLS context. Only exportable `DataResource` tables are allowed, exported string cells and headers are protected against spreadsheet formula injection, and each successful export writes safe metadata to `app_audit_logs`.
+Both endpoints require authentication, valid CSRF, and `can_export_results`, which is seeded for Analyst and Admin. Analysts may export only when every referenced `DataResource` is queryable and exportable. Admin also receives `can_export_restricted_results`, allowing export when every referenced resource is queryable but one or more is normally non-exportable. Resources marked `is_queryable=false` and missing resources remain blocked for every role.
+
+Admin restricted exports do not bypass the normal export boundary. Stored SQL is revalidated and re-executed through the read-only `queryops_query_runtime` role under the current viewer's RLS context with row limits and CSV injection protection. Every successful export is audited; restricted Admin exports record the override permission and safe restricted table names without SQL or raw rows.
 
 The optional `filename` must be printable ASCII, may omit the `.csv` extension, and may produce a final filename of at most 255 characters. `include_headers` defaults to `true` and must be a boolean.
 
@@ -557,7 +559,7 @@ cd backend
 
 The seed script is development-only and deterministic. Supported profiles are `small` for fast local or CI-style checks and `medium` for demo-scale local data. The `--reset` flag deletes seeded rows from the product and IT Operations tables before reseeding; it does not drop tables or modify Alembic migration state.
 
-After updating an existing development database to Milestone 6 PR3, rerun the seed command with the current profile and `--reset`. Existing rows are not updated in place, so the reset is required to install `can_export_results` and the current `DataResource.is_exportable` policy.
+After updating an existing development database to the final Milestone 6 export policy, rerun the seed command with the current profile and `--reset`. Existing rows are not updated in place, so the reset is required to install `can_export_results`, Admin-only `can_export_restricted_results`, and the current `DataResource.is_exportable` policy.
 
 Local demo auth uses seeded users through `POST /api/v1/demo/login`, then hydrates the current user with `GET /api/v1/auth/me`. Login sets a signed, expiring httpOnly `qo_session` cookie and a readable `qo_csrf` cookie; state-changing authenticated requests such as `POST /api/v1/auth/logout` must send `X-CSRF-Token`.
 

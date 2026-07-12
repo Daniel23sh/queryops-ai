@@ -85,6 +85,8 @@ Milestone 6 PR4 — Card Refresh & CSV Export UI is complete and merged into `ma
 
 Milestone 6 PR5 — Card Reordering & Layout Persistence is the remaining Milestone 6 slice. It adds ordered personal-dashboard cards through `DashboardCard.position`, secure full-card-set persistence with `PATCH /api/v1/dashboards/my/layout`, optimistic frontend reordering, dnd-kit pointer and keyboard support, explicit Move Up / Move Down controls, and refresh/export regressions. It does not turn `DashboardCard.layout` into a grid or resizing system.
 
+Final Milestone 6 export policy: Analyst retains `can_export_results` and may export only reports whose referenced resources are all queryable and exportable. Admin additionally receives `can_export_restricted_results`, allowing audited export of reports that reference normally non-exportable resources only when every referenced resource remains queryable. The base export permission, SQL validation, runtime role, read-only execution, current-viewer RLS, row limits, CSV sanitization, ownership/visibility checks, and successful audit persistence remain mandatory. Missing resources and `is_queryable=false` are hard denials for every role.
+
 Explicitly out of scope for M6 PR5:
 
 - card resizing
@@ -721,6 +723,8 @@ In scope for PR5:
 - dnd-kit pointer and keyboard reordering inside one dashboard only
 - explicit accessible Move Up / Move Down controls
 - optimistic update, rollback, reload-on-conflict, and refresh/export regressions
+- explicit Admin-only `can_export_restricted_results` for audited exports of queryable but normally non-exportable reports
+- unchanged Analyst exportability policy and hard denial of missing or non-queryable resources
 
 Out of scope for PR5:
 

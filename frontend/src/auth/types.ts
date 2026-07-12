@@ -20,6 +20,7 @@ export type PermissionKey =
   | "can_manage_global_dashboard"
   | "can_create_card"
   | "can_export_results"
+  | "can_export_restricted_results"
   | "can_request_action"
   | "can_approve_department_action"
   | "can_approve_scoped_action"

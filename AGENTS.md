@@ -106,6 +106,8 @@ Milestone 6 PR4 — Card Refresh & CSV Export UI is complete and merged into `ma
 
 Milestone 6 PR5 — Card Reordering & Layout Persistence persists card order through `DashboardCard.position` for owned personal dashboards only. It requires strict full-card-set validation, atomic updates, stale-layout conflict handling, dnd-kit pointer/keyboard ordering, explicit Move Up / Move Down controls, optimistic rollback, and refresh/export regression coverage. It must not expand `DashboardCard.layout` into a grid or resizing system.
 
+The final Milestone 6 export policy adds `can_export_restricted_results` only to Admin through the deterministic permission catalog. Analyst still requires every referenced resource to be queryable and exportable. Admin restricted export requires both export permissions and may override only `is_exportable=false`; missing resources and `is_queryable=false` remain hard denials. Never hardcode the Admin role in export logic or bypass SQL validation, `queryops_query_runtime`, read-only execution, current-viewer RLS, row limits, CSV sanitization, ownership/visibility, or successful audit persistence. Restricted override usage must be audited without SQL or raw rows.
+
 Milestone 4 delivered:
 
 * Domain Pack Loader
