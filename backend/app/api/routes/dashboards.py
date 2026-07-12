@@ -7,6 +7,7 @@ from uuid import UUID
 from fastapi import APIRouter, Body, Depends, Request
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session, selectinload
 
 from app.api.responses import error_response, success_response
@@ -40,6 +41,8 @@ ALLOWED_DASHBOARD_FIELDS = frozenset(
 ALLOWED_SAVE_CARD_FIELDS = frozenset(
     {"dashboard_id", "title", "description", "card_type"}
 )
+ALLOWED_LAYOUT_FIELDS = frozenset({"items"})
+ALLOWED_LAYOUT_ITEM_FIELDS = frozenset({"card_id", "position"})
 ALLOWED_VISIBILITY_SCOPES = frozenset({"personal", "department", "global"})
 ALLOWED_CARD_TYPES = frozenset({"table"})
 
@@ -84,6 +87,98 @@ def my_dashboard(
     ).all()
 
     return success_response([_serialize_dashboard(dashboard) for dashboard in dashboards])
+
+
+@router.patch("/dashboards/my/layout")
+def update_my_dashboard_layout(
+    request: Request,
+    payload: Any = Body(default=None),
+    current_user: AppUser = Depends(require_authenticated_user),
+    db: Session = Depends(get_db),
+):
+    csrf_error = _csrf_error_response(request)
+    if csrf_error is not None:
+        return csrf_error
+
+    parsed_payload = _parse_dashboard_layout_payload(payload)
+    if not isinstance(parsed_payload, dict):
+        return parsed_payload
+
+    items = parsed_payload["items"]
+    submitted_card_ids = {UUID(item["card_id"]) for item in items}
+    submitted_cards = db.scalars(
+        select(DashboardCard)
+        .join(Dashboard, Dashboard.id == DashboardCard.dashboard_id)
+        .where(
+            DashboardCard.id.in_(submitted_card_ids),
+            Dashboard.owner_user_id == current_user.id,
+            Dashboard.visibility_scope == VisibilityScope.PERSONAL.value,
+            Dashboard.is_archived.is_(False),
+        )
+    ).all()
+
+    if not submitted_cards:
+        return _dashboard_not_found_response()
+    if len(submitted_cards) != len(submitted_card_ids):
+        return _dashboard_layout_conflict_response()
+
+    dashboard_ids = {card.dashboard_id for card in submitted_cards}
+    if len(dashboard_ids) != 1:
+        return _dashboard_layout_conflict_response()
+
+    dashboard_id = dashboard_ids.pop()
+    dashboard = db.scalar(
+        select(Dashboard)
+        .where(
+            Dashboard.id == dashboard_id,
+            Dashboard.owner_user_id == current_user.id,
+            Dashboard.visibility_scope == VisibilityScope.PERSONAL.value,
+            Dashboard.is_archived.is_(False),
+        )
+        .with_for_update()
+    )
+    if dashboard is None:
+        return _dashboard_not_found_response()
+
+    current_cards = db.scalars(
+        select(DashboardCard)
+        .where(DashboardCard.dashboard_id == dashboard.id)
+        .order_by(
+            DashboardCard.position,
+            DashboardCard.created_at,
+            DashboardCard.id,
+        )
+        .with_for_update()
+    ).all()
+    if {card.id for card in current_cards} != submitted_card_ids:
+        return _dashboard_layout_conflict_response()
+
+    positions_by_card_id = {
+        UUID(item["card_id"]): item["position"] for item in items
+    }
+    order_changed = any(
+        card.position != positions_by_card_id[card.id] for card in current_cards
+    )
+
+    try:
+        if order_changed:
+            for card in current_cards:
+                card.position = positions_by_card_id[card.id]
+            dashboard.updated_at = datetime.now(UTC)
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        return _dashboard_layout_update_failed_response()
+
+    updated_dashboard = db.scalar(
+        select(Dashboard)
+        .options(selectinload(Dashboard.cards))
+        .where(Dashboard.id == dashboard.id)
+    )
+    if updated_dashboard is None:
+        return _dashboard_not_found_response()
+
+    return success_response(_serialize_dashboard(updated_dashboard))
 
 
 @router.post("/dashboards")
@@ -483,6 +578,42 @@ def _parse_save_card_payload(payload: Any):
     return parsed
 
 
+def _parse_dashboard_layout_payload(payload: Any):
+    if not isinstance(payload, dict) or set(payload) != ALLOWED_LAYOUT_FIELDS:
+        return _invalid_dashboard_layout_request_response()
+
+    items = payload.get("items")
+    if not isinstance(items, list) or not items:
+        return _invalid_dashboard_layout_request_response()
+
+    parsed_items: list[dict[str, Any]] = []
+    card_ids: set[str] = set()
+    positions: set[int] = set()
+    for item in items:
+        if not isinstance(item, dict) or set(item) != ALLOWED_LAYOUT_ITEM_FIELDS:
+            return _invalid_dashboard_layout_request_response()
+
+        card_id = _required_uuid_string(item, "card_id")
+        if card_id is _INVALID:
+            return _invalid_dashboard_layout_request_response()
+
+        position = item.get("position")
+        if isinstance(position, bool) or not isinstance(position, int) or position < 0:
+            return _invalid_dashboard_layout_request_response()
+
+        if card_id in card_ids or position in positions:
+            return _invalid_dashboard_layout_request_response()
+
+        card_ids.add(card_id)
+        positions.add(position)
+        parsed_items.append({"card_id": card_id, "position": position})
+
+    if positions != set(range(len(parsed_items))):
+        return _invalid_dashboard_layout_request_response()
+
+    return {"items": parsed_items}
+
+
 def _optional_visibility_scope(payload: dict[str, Any]):
     if "visibility_scope" not in payload:
         return None
@@ -506,6 +637,20 @@ def _optional_uuid_string(payload: dict[str, Any], key: str):
     value = payload[key]
     if value is None:
         return None
+    if not isinstance(value, str) or not value.strip():
+        return _INVALID
+
+    try:
+        return str(UUID(value.strip()))
+    except ValueError:
+        return _INVALID
+
+
+def _required_uuid_string(payload: dict[str, Any], key: str):
+    if key not in payload:
+        return _INVALID
+
+    value = payload[key]
     if not isinstance(value, str) or not value.strip():
         return _INVALID
 
@@ -560,6 +705,30 @@ def _invalid_card_refresh_request_response():
         code="INVALID_CARD_REFRESH_REQUEST",
         message="Card refresh request is invalid or unsupported.",
         status_code=400,
+    )
+
+
+def _invalid_dashboard_layout_request_response():
+    return error_response(
+        code="INVALID_DASHBOARD_LAYOUT_REQUEST",
+        message="Dashboard layout request is invalid or unsupported.",
+        status_code=400,
+    )
+
+
+def _dashboard_layout_conflict_response():
+    return error_response(
+        code="DASHBOARD_LAYOUT_CONFLICT",
+        message="Dashboard cards changed. Reload the dashboard and try again.",
+        status_code=409,
+    )
+
+
+def _dashboard_layout_update_failed_response():
+    return error_response(
+        code="DASHBOARD_LAYOUT_UPDATE_FAILED",
+        message="Dashboard card order could not be saved.",
+        status_code=500,
     )
 
 
