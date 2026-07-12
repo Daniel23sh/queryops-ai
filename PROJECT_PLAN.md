@@ -4,15 +4,15 @@
 
 The current milestone status is:
 
-`Milestone 6 — Dashboards, Cards & CSV Export` is active.
+`Milestone 6 — Dashboards, Cards & CSV Export` is complete.
 
 Current PR scope:
 
-`M6 PR5 — Card Reordering & Layout Persistence` is active on branch `feature/m6-card-reorder-layout`.
+`M6 PR5 — Card Reordering & Layout Persistence` is implementation- and verification-complete on branch `feature/m6-card-reorder-layout`.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
-Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete. Milestone 6 is now active. M6 PR1 dashboards/cards backend foundation is complete and merged into `main`. M6 PR2 dashboard/card frontend UI is complete and merged into `main`.
+Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete. Milestone 6 is complete: M6 PR1 through PR4 are merged into `main`, and PR5 plus the final Admin restricted-export policy are implemented and fully verified on `feature/m6-card-reorder-layout`. Milestone 7 is next but has not started.
 
 Milestone 2.5 delivered:
 
@@ -83,7 +83,7 @@ Milestone 6 PR3 — CSV Export Backend is complete and merged into `main`. It ad
 
 Milestone 6 PR4 — Card Refresh & CSV Export UI is complete and merged into `main` as `5b4d04c`. PR4 added frontend CSV downloads for successful Ask Data query runs and dashboard cards, a secure dashboard-card refresh endpoint that revalidates and executes stored SQL under the current viewer's `UserAccessContext`, automatic and manual card refresh UI, and safe table previews. Successful refreshes create viewer-owned linked `QueryRun` records without persisting raw result rows.
 
-Milestone 6 PR5 — Card Reordering & Layout Persistence is the remaining Milestone 6 slice. It adds ordered personal-dashboard cards through `DashboardCard.position`, secure full-card-set persistence with `PATCH /api/v1/dashboards/my/layout`, optimistic frontend reordering, dnd-kit pointer and keyboard support, explicit Move Up / Move Down controls, and refresh/export regressions. It does not turn `DashboardCard.layout` into a grid or resizing system.
+Milestone 6 PR5 — Card Reordering & Layout Persistence is complete. It adds ordered personal-dashboard cards through `DashboardCard.position`, secure full-card-set persistence with `PATCH /api/v1/dashboards/my/layout`, optimistic frontend reordering, dnd-kit pointer and keyboard support, explicit Move Up / Move Down controls, and refresh/export regressions. It does not turn `DashboardCard.layout` into a grid or resizing system.
 
 Final Milestone 6 export policy: Analyst retains `can_export_results` and may export only reports whose referenced resources are all queryable and exportable. Admin additionally receives `can_export_restricted_results`, allowing audited export of reports that reference normally non-exportable resources only when every referenced resource remains queryable. The base export permission, SQL validation, runtime role, read-only execution, current-viewer RLS, row limits, CSV sanitization, ownership/visibility checks, and successful audit persistence remain mandatory. Missing resources and `is_queryable=false` are hard denials for every role.
 
@@ -112,7 +112,7 @@ Explicitly out of scope for M6 PR5:
 - masking
 - tenant/project/region governance
 
-Later milestones will handle actions, approvals, notifications, real LLM/API-key support, and Supabase Auth unless explicitly requested. Milestone 6 is not complete until PR5 card reordering and persistence verification succeeds.
+Later milestones will handle actions, approvals, notifications, real LLM/API-key support, and Supabase Auth unless explicitly requested. Milestone 6 is complete; Milestone 7 is next but is not active and has not started.
 
 ## 2. Product Summary
 
@@ -414,13 +414,13 @@ Milestone 5 PR6 is merged into `main`. It added the Tailwind foundation, light/d
 
 Milestone 5 Ask Data and the Milestone 5 frontend redesign are complete.
 
-The active product milestone is:
+The latest completed product milestone is:
 
 `Milestone 6 — Dashboards, Cards & CSV Export`
 
 The current PR is:
 
-`M6 PR5 — Card Reordering & Layout Persistence`, active on branch `feature/m6-card-reorder-layout`.
+`M6 PR5 — Card Reordering & Layout Persistence`, implementation- and verification-complete on branch `feature/m6-card-reorder-layout`.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -714,6 +714,10 @@ Goal:
 
 Persist the order of cards in each owned personal dashboard while retaining PR4 refresh and CSV export behavior.
 
+Status:
+
+Implementation and final verification are complete on `feature/m6-card-reorder-layout`. Milestone 6 is complete. Milestone 7 is next but has not started.
+
 In scope for PR5:
 
 - `PATCH /api/v1/dashboards/my/layout`
@@ -734,4 +738,4 @@ Out of scope for PR5:
 - starring, cloning, scheduled refresh, Redis/background jobs
 - actions, approvals, notifications, real LLM/API-key support, Supabase Auth, domain expansion, or M7 work
 
-Milestone 6 remains active until PR5 passes backend, frontend, PostgreSQL/Alembic, browser QA, and review gates.
+PR5 passed backend, frontend, PostgreSQL/Alembic, medium-seed API QA, production build, diff, and CodeRabbit review gates. Milestone 6 is complete.

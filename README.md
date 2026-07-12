@@ -677,7 +677,7 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-Milestones 0 through 5 are complete. Milestone 6 is active: PR1 dashboards/cards backend, PR2 dashboard/card UI, PR3 CSV Export Backend, and PR4 Card Refresh & CSV Export UI are merged. PR5 Card Reordering & Layout Persistence is active on `feature/m6-card-reorder-layout`.
+Milestones 0 through 6 are complete. PR1 through PR4 are merged into `main`; PR5 Card Reordering & Layout Persistence and the final Admin restricted-export policy are implemented and fully verified on `feature/m6-card-reorder-layout`. Milestone 7 is next but has not started.
 
 Implemented foundation functionality includes:
 
@@ -705,11 +705,11 @@ Implemented foundation functionality includes:
 Current milestone status:
 
 ```txt
-Milestone 6 — Dashboards, Cards & CSV Export is active.
-M6 PR5 — Card Reordering & Layout Persistence is active on feature/m6-card-reorder-layout.
+Milestone 6 — Dashboards, Cards & CSV Export is complete.
+M6 PR5 — Card Reordering & Layout Persistence is implementation- and verification-complete on feature/m6-card-reorder-layout.
 ```
 
-PR5 persists the order of cards in owned personal dashboards through `DashboardCard.position`. It includes accessible drag-and-drop and Move Up / Move Down controls, but does not add card resizing, x/y grid coordinates, width/height persistence, advanced `layout` behavior, scheduled refresh, dashboard starring/cloning, actions, approvals, notifications, real external LLM calls, Supabase Auth, Redis/background jobs, or domain expansion. Milestone 6 is not complete until PR5 verification succeeds.
+PR5 persists the order of cards in owned personal dashboards through `DashboardCard.position`. It includes accessible drag-and-drop and Move Up / Move Down controls, but does not add card resizing, x/y grid coordinates, width/height persistence, advanced `layout` behavior, scheduled refresh, dashboard starring/cloning, actions, approvals, notifications, real external LLM calls, Supabase Auth, Redis/background jobs, or domain expansion. Those deferred areas remain outside Milestone 6.
 
 ## License
 

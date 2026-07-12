@@ -69,12 +69,12 @@ The milestone status is defined in `PROJECT_PLAN.md`.
 At the time this file was updated, the latest checkpoint-complete target is:
 
 ```txt
-Milestone 6 PR5 — Card Reordering & Layout Persistence
+Milestone 6 — Dashboards, Cards & CSV Export
 ```
 
 Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, Milestone 3, Milestone 4, and Milestone 5 are complete under the previous scopes. Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete.
 
-Milestone 6 is active. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, `M6 PR3 — CSV Export Backend`, and `M6 PR4 — Card Refresh & CSV Export UI` are complete and merged into `main`. PR5 — Card Reordering & Layout Persistence is active on branch `feature/m6-card-reorder-layout`.
+Milestone 6 is complete. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, `M6 PR3 — CSV Export Backend`, and `M6 PR4 — Card Refresh & CSV Export UI` are complete and merged into `main`. PR5 — Card Reordering & Layout Persistence plus the final Admin restricted-export policy are implementation- and verification-complete on `feature/m6-card-reorder-layout`. Milestone 7 is next but is not active and has not started.
 
 Milestone 2.5 introduced `access_scopes`, `user_access_scopes`, `data_resources`, `UserAccessContext`, `AccessDecision`, and `evaluate_access(subject, action, resource, context)`.
 
