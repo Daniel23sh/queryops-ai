@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { getMyDashboards } from "../../../api/dashboards";
 import type { Dashboard } from "../types";
@@ -9,21 +9,23 @@ export function useMyDashboards() {
   const [dashboards, setDashboards] = useState<Dashboard[]>([]);
   const [status, setStatus] = useState<MyDashboardsStatus>("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const requestGenerationRef = useRef(0);
 
-  const loadDashboards = useCallback(async (isCurrent: () => boolean) => {
+  const loadDashboards = useCallback(async () => {
+    const requestGeneration = ++requestGenerationRef.current;
     setStatus("loading");
     setErrorMessage(null);
 
     try {
       const loadedDashboards = await getMyDashboards();
-      if (!isCurrent()) {
+      if (requestGeneration !== requestGenerationRef.current) {
         return;
       }
 
       setDashboards(loadedDashboards);
       setStatus("success");
     } catch {
-      if (!isCurrent()) {
+      if (requestGeneration !== requestGenerationRef.current) {
         return;
       }
 
@@ -34,17 +36,15 @@ export function useMyDashboards() {
   }, []);
 
   useEffect(() => {
-    let isCurrent = true;
-
-    void loadDashboards(() => isCurrent);
+    void loadDashboards();
 
     return () => {
-      isCurrent = false;
+      requestGenerationRef.current += 1;
     };
   }, [loadDashboards]);
 
   const reload = useCallback(async () => {
-    await loadDashboards(() => true);
+    await loadDashboards();
   }, [loadDashboards]);
 
   return {

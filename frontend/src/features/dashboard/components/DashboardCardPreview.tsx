@@ -141,7 +141,7 @@ export function DashboardCardPreview({
       <dl className="dashboard-card-preview__meta" aria-label={`${card.title} metadata`}>
         <div>
           <dt>Order</dt>
-          <dd>Order {card.position + 1}</dd>
+          <dd>{card.position + 1}</dd>
         </div>
         {result ? (
           <>

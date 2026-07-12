@@ -52,7 +52,7 @@ describe("DashboardCardGrid ordering", () => {
   it("hides reorder controls when a dashboard has only one card", () => {
     renderGrid({ dashboard: dashboard({ cards: [card({ id: "only-card", position: 0 })] }) });
 
-    expect(screen.getByText("Order 1")).toBeInTheDocument();
+    expect(screen.getByText("Order").nextElementSibling).toHaveTextContent("1");
     expect(screen.queryByRole("button", { name: /Reorder/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Move .* up/i })).not.toBeInTheDocument();
   });

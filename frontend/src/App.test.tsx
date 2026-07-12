@@ -523,7 +523,7 @@ describe("App", () => {
     expect(within(savedCards).getByText("Open tickets by priority")).toBeInTheDocument();
     expect(within(savedCards).getByText("Weekly operational view.")).toBeInTheDocument();
     expect(within(savedCards).getByText("Table")).toBeInTheDocument();
-    expect(within(savedCards).getByText("Order 3")).toBeInTheDocument();
+    expect(within(savedCards).getByText("Order").nextElementSibling).toHaveTextContent("3");
     expect(screen.queryByText(/SELECT leaked_/i)).not.toBeInTheDocument();
     expect(screen.queryByText("row-secret")).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -674,7 +674,7 @@ describe("App", () => {
       within(catalog).getByText("Metadata-only saved card preview.")
     ).toBeInTheDocument();
     expect(within(catalog).getByText("Table")).toBeInTheDocument();
-    expect(within(catalog).getByText("Order 5")).toBeInTheDocument();
+    expect(within(catalog).getByText("Order").nextElementSibling).toHaveTextContent("5");
     expect(screen.queryByText(/SELECT leaked_catalog/i)).not.toBeInTheDocument();
     expect(screen.queryByText("row-secret")).not.toBeInTheDocument();
     expect(

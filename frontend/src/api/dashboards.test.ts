@@ -274,6 +274,8 @@ describe("dashboards API client", () => {
   it("persists a full zero-based card order with PATCH and CSRF", async () => {
     const updatedDashboard = {
       ...backendDashboard,
+      visibility_scope: "personal",
+      department_id: null,
       cards: [
         { ...backendCard, id: "second-card", position: 0 },
         { ...backendCard, id: "first-card", position: 1 }
