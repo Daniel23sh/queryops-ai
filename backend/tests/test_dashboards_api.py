@@ -615,6 +615,7 @@ def test_update_dashboard_layout_rolls_back_after_database_failure(
     original_commit = db_session.commit
 
     def fail_commit() -> None:
+        db_session.flush()
         raise SQLAlchemyError("private database failure")
 
     monkeypatch.setattr(db_session, "commit", fail_commit)
