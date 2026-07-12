@@ -683,6 +683,8 @@ def test_query_run_export_creates_successful_audit_log(
         "include_headers": False,
         "row_count": 2,
         "referenced_tables": ["licenses"],
+        "export_policy_override": False,
+        "restricted_tables": [],
         "query_run_id": str(query_run.id),
     }
     assert_no_forbidden_audit_metadata(audit_log.audit_metadata)
@@ -842,6 +844,7 @@ def test_query_run_export_blocks_unsafe_executed_sql_before_execution(
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "CSV_EXPORT_NOT_ALLOWED"
     assert executor.calls == []
+    assert_no_sql_payload(response.json())
     assert_no_successful_export_audit_log(db_session)
 
 
@@ -887,6 +890,7 @@ def test_query_run_export_blocks_referenced_table_mismatch_before_execution(
 def test_query_run_export_blocks_non_exportable_data_resource(
     client: TestClient,
     db_session: Session,
+    export_executor_override: Any,
 ) -> None:
     analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
     query_run = _add_query_run(
@@ -895,6 +899,7 @@ def test_query_run_export_blocks_non_exportable_data_resource(
         executed_sql="SELECT email FROM directory_users",
         referenced_tables=["directory_users"],
     )
+    executor = export_executor_override(_successful_export_result(["directory_users"]))
     csrf_token = _login(client, analyst.email)
 
     response = client.post(
@@ -905,6 +910,228 @@ def test_query_run_export_blocks_non_exportable_data_resource(
 
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "CSV_EXPORT_NOT_ALLOWED"
+    assert executor.calls == []
+    assert_no_sql_payload(response.json())
+    assert_no_successful_export_audit_log(db_session)
+
+
+def test_admin_can_export_restricted_query_run_with_audited_override(
+    client: TestClient,
+    db_session: Session,
+    export_executor_override: Any,
+) -> None:
+    admin = _user_by_email(db_session, "demo.admin@queryops.local")
+    query_run = _add_query_run(
+        db_session,
+        user=admin,
+        executed_sql=(
+            "SELECT l.product_name, la.id FROM licenses AS l "
+            "JOIN license_assignments AS la ON la.license_id = l.id"
+        ),
+        referenced_tables=["licenses", "license_assignments"],
+    )
+    executor = export_executor_override(
+        _successful_export_result(["license_assignments", "licenses"])
+    )
+    csrf_token = _login(client, admin.email)
+
+    response = client.post(
+        f"/api/v1/query-runs/{query_run.id}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={},
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"].startswith("text/csv")
+    assert len(executor.calls) == 1
+    audit_log = _single_csv_export_audit_log(db_session)
+    assert audit_log.audit_metadata["export_policy_override"] is True
+    assert audit_log.audit_metadata["restricted_tables"] == ["license_assignments"]
+    assert (
+        audit_log.audit_metadata["override_permission"]
+        == "can_export_restricted_results"
+    )
+    assert_no_forbidden_audit_metadata(audit_log.audit_metadata)
+
+
+def test_direct_restricted_export_deny_blocks_admin_restricted_export(
+    client: TestClient,
+    db_session: Session,
+    export_executor_override: Any,
+) -> None:
+    admin = _user_by_email(db_session, "demo.admin@queryops.local")
+    _set_user_permission(
+        db_session,
+        admin,
+        "can_export_restricted_results",
+        PermissionEffect.DENY.value,
+    )
+    query_run = _add_query_run(
+        db_session,
+        user=admin,
+        executed_sql="SELECT id FROM license_assignments",
+        referenced_tables=["license_assignments"],
+    )
+    executor = export_executor_override(
+        _successful_export_result(["license_assignments"])
+    )
+    csrf_token = _login(client, admin.email)
+
+    response = client.post(
+        f"/api/v1/query-runs/{query_run.id}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "CSV_EXPORT_NOT_ALLOWED"
+    assert executor.calls == []
+    assert_no_successful_export_audit_log(db_session)
+
+
+def test_direct_restricted_export_deny_does_not_block_admin_standard_export(
+    client: TestClient,
+    db_session: Session,
+    export_executor_override: Any,
+) -> None:
+    admin = _user_by_email(db_session, "demo.admin@queryops.local")
+    _set_user_permission(
+        db_session,
+        admin,
+        "can_export_restricted_results",
+        PermissionEffect.DENY.value,
+    )
+    query_run = _add_query_run(db_session, user=admin)
+    executor = export_executor_override(_successful_export_result(["licenses"]))
+    csrf_token = _login(client, admin.email)
+
+    response = client.post(
+        f"/api/v1/query-runs/{query_run.id}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={},
+    )
+
+    assert response.status_code == 200
+    assert len(executor.calls) == 1
+    audit_log = _single_csv_export_audit_log(db_session)
+    assert audit_log.audit_metadata["export_policy_override"] is False
+    assert audit_log.audit_metadata["restricted_tables"] == []
+    assert "override_permission" not in audit_log.audit_metadata
+    assert_no_forbidden_audit_metadata(audit_log.audit_metadata)
+
+
+def test_direct_base_export_deny_blocks_admin_restricted_export(
+    client: TestClient,
+    db_session: Session,
+    export_executor_override: Any,
+) -> None:
+    admin = _user_by_email(db_session, "demo.admin@queryops.local")
+    _set_user_permission(
+        db_session,
+        admin,
+        "can_export_results",
+        PermissionEffect.DENY.value,
+    )
+    query_run = _add_query_run(
+        db_session,
+        user=admin,
+        executed_sql="SELECT id FROM license_assignments",
+        referenced_tables=["license_assignments"],
+    )
+    executor = export_executor_override(
+        _successful_export_result(["license_assignments"])
+    )
+    csrf_token = _login(client, admin.email)
+
+    response = client.post(
+        f"/api/v1/query-runs/{query_run.id}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "FORBIDDEN"
+    assert executor.calls == []
+    assert_no_sql_payload(response.json())
+    assert_no_successful_export_audit_log(db_session)
+
+
+@pytest.mark.parametrize(
+    ("executed_sql", "referenced_tables"),
+    [
+        ("SELECT id FROM it_audit_events", ["it_audit_events"]),
+        ("SELECT id FROM unknown_export_resource", ["unknown_export_resource"]),
+    ],
+)
+def test_admin_override_cannot_export_non_queryable_or_missing_resource(
+    client: TestClient,
+    db_session: Session,
+    export_executor_override: Any,
+    executed_sql: str,
+    referenced_tables: list[str],
+) -> None:
+    admin = _user_by_email(db_session, "demo.admin@queryops.local")
+    query_run = _add_query_run(
+        db_session,
+        user=admin,
+        executed_sql=executed_sql,
+        referenced_tables=referenced_tables,
+    )
+    executor = export_executor_override(_successful_export_result(referenced_tables))
+    csrf_token = _login(client, admin.email)
+
+    response = client.post(
+        f"/api/v1/query-runs/{query_run.id}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "CSV_EXPORT_NOT_ALLOWED"
+    assert executor.calls == []
+    assert_no_sql_payload(response.json())
+    assert_no_successful_export_audit_log(db_session)
+
+
+@pytest.mark.parametrize(
+    ("executed_sql", "referenced_tables"),
+    [
+        (
+            "UPDATE license_assignments SET last_used_at = NULL",
+            ["license_assignments"],
+        ),
+        (
+            "SELECT product_name FROM licenses",
+            ["license_assignments", "licenses"],
+        ),
+    ],
+)
+def test_admin_override_does_not_bypass_sql_safety_or_table_match(
+    client: TestClient,
+    db_session: Session,
+    export_executor_override: Any,
+    executed_sql: str,
+    referenced_tables: list[str],
+) -> None:
+    admin = _user_by_email(db_session, "demo.admin@queryops.local")
+    query_run = _add_query_run(
+        db_session,
+        user=admin,
+        executed_sql=executed_sql,
+        referenced_tables=referenced_tables,
+    )
+    executor = export_executor_override(_successful_export_result(referenced_tables))
+    csrf_token = _login(client, admin.email)
+
+    response = client.post(
+        f"/api/v1/query-runs/{query_run.id}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "CSV_EXPORT_NOT_ALLOWED"
+    assert executor.calls == []
     assert_no_sql_payload(response.json())
     assert_no_successful_export_audit_log(db_session)
 
@@ -1369,6 +1596,7 @@ def test_card_export_rejects_non_global_user_for_global_dashboard_card(
 def test_card_export_blocks_non_exportable_data_resource(
     client: TestClient,
     db_session: Session,
+    export_executor_override: Any,
 ) -> None:
     analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
     dashboard = _add_dashboard(
@@ -1386,6 +1614,7 @@ def test_card_export_blocks_non_exportable_data_resource(
         executed_sql="SELECT email FROM directory_users",
         referenced_tables=["directory_users"],
     )
+    executor = export_executor_override(_successful_export_result(["directory_users"]))
     csrf_token = _login(client, analyst.email)
 
     response = client.post(
@@ -1396,8 +1625,67 @@ def test_card_export_blocks_non_exportable_data_resource(
 
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "CSV_EXPORT_NOT_ALLOWED"
+    assert executor.calls == []
     assert_no_sql_payload(response.json())
     assert_no_successful_export_audit_log(db_session)
+
+
+def test_admin_can_export_restricted_card_with_latest_run_and_audited_override(
+    client: TestClient,
+    db_session: Session,
+    export_executor_override: Any,
+) -> None:
+    admin = _user_by_email(db_session, "demo.admin@queryops.local")
+    dashboard = _add_dashboard(
+        db_session,
+        owner=admin,
+        title="Admin Personal",
+        visibility_scope="personal",
+    )
+    saved_query = _add_saved_query(db_session, owner=admin)
+    card = _add_card(db_session, dashboard=dashboard, saved_query=saved_query)
+    older_query_run = _add_query_run(
+        db_session,
+        user=admin,
+        saved_query=saved_query,
+        executed_sql="SELECT product_name FROM licenses",
+        referenced_tables=["licenses"],
+        completed_at=datetime(2026, 7, 5, 12, 1, tzinfo=UTC),
+    )
+    query_run = _add_query_run(
+        db_session,
+        user=admin,
+        saved_query=saved_query,
+        executed_sql=(
+            "SELECT l.product_name, la.id FROM licenses AS l "
+            "JOIN license_assignments AS la ON la.license_id = l.id"
+        ),
+        referenced_tables=["licenses", "license_assignments"],
+        completed_at=datetime(2026, 7, 5, 12, 2, tzinfo=UTC),
+    )
+    executor = export_executor_override(
+        _successful_export_result(["license_assignments", "licenses"])
+    )
+    csrf_token = _login(client, admin.email)
+
+    response = client.post(
+        f"/api/v1/cards/{card.id}/export-csv",
+        headers={"X-CSRF-Token": csrf_token},
+        json={},
+    )
+
+    assert response.status_code == 200
+    assert len(executor.calls) == 1
+    audit_log = _single_csv_export_audit_log(db_session)
+    assert audit_log.audit_metadata["query_run_id"] == str(query_run.id)
+    assert audit_log.audit_metadata["query_run_id"] != str(older_query_run.id)
+    assert audit_log.audit_metadata["export_policy_override"] is True
+    assert audit_log.audit_metadata["restricted_tables"] == ["license_assignments"]
+    assert (
+        audit_log.audit_metadata["override_permission"]
+        == "can_export_restricted_results"
+    )
+    assert_no_forbidden_audit_metadata(audit_log.audit_metadata)
 
 
 def test_card_export_allows_owner_exporting_personal_dashboard_card(
@@ -1529,6 +1817,8 @@ def test_card_export_creates_successful_audit_log(
         "include_headers": True,
         "row_count": 1,
         "referenced_tables": ["licenses"],
+        "export_policy_override": False,
+        "restricted_tables": [],
         "card_id": str(card.id),
         "dashboard_id": str(dashboard.id),
         "saved_query_id": str(saved_query.id),
@@ -1969,6 +2259,20 @@ def _add_query_run(
     db_session.commit()
     db_session.refresh(query_run)
     return query_run
+
+
+def _successful_export_result(referenced_tables: list[str]) -> "FakeExportExecutor":
+    return FakeExportExecutor(
+        SQLExecutionResult(
+            status="succeeded",
+            columns=["id"],
+            rows=[{"id": "safe-value"}],
+            row_count=1,
+            duration_ms=1.0,
+            truncated=False,
+            referenced_tables=referenced_tables,
+        )
+    )
 
 
 class FakeExportExecutor:

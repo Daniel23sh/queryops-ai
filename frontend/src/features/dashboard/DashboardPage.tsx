@@ -42,6 +42,7 @@ export function DashboardPage({
         csrfToken={csrfToken}
         dashboards={myDashboards.dashboards}
         errorMessage={myDashboards.errorMessage}
+        onReload={myDashboards.reload}
         status={myDashboards.status}
       />
       <CreateDashboardPanel

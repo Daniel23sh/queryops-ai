@@ -468,13 +468,15 @@ POST /api/v1/query-runs/{query_run_id}/export-csv
 POST /api/v1/cards/{card_id}/export-csv
 ```
 
-Both endpoints require authentication, valid CSRF, and `can_export_results`, which is seeded for Analyst and Admin. Exports revalidate and re-execute stored safe SQL through the read-only PostgreSQL runtime role under the current viewer's RLS context. Only exportable `DataResource` tables are allowed, exported string cells and headers are protected against spreadsheet formula injection, and each successful export writes safe metadata to `app_audit_logs`.
+Both endpoints require authentication, valid CSRF, and `can_export_results`, which is seeded for Analyst and Admin. Analysts may export only when every referenced `DataResource` is queryable and exportable. Admin also receives `can_export_restricted_results`, allowing export when every referenced resource is queryable but one or more is normally non-exportable. Resources marked `is_queryable=false` and missing resources remain blocked for every role.
+
+Admin restricted exports do not bypass the normal export boundary. Stored SQL is revalidated and re-executed through the read-only `queryops_query_runtime` role under the current viewer's RLS context with row limits and CSV injection protection. Every successful export is audited; restricted Admin exports record the override permission and safe restricted table names without SQL or raw rows.
 
 The optional `filename` must be printable ASCII, may omit the `.csv` extension, and may produce a final filename of at most 255 characters. `include_headers` defaults to `true` and must be a boolean.
 
-Milestone 6 PR4 adds authorized browser downloads for both export endpoints. Ask Data exposes Export CSV only for successful exportable query runs and dashboard cards expose Export CSV only when the current user has `can_export_results`. The frontend never builds CSV from visible rows; it downloads the backend response so SQL validation, current-viewer RLS, sanitization, export policy, and audit remain authoritative.
+Milestone 6 PR4 added authorized browser downloads for both export endpoints. Ask Data exposes Export CSV only for successful exportable query runs and dashboard cards expose Export CSV only when the current user has `can_export_results`. The frontend never builds CSV from visible rows; it downloads the backend response so SQL validation, current-viewer RLS, sanitization, export policy, and audit remain authoritative.
 
-PR4 also adds current-viewer card refresh:
+PR4 also added current-viewer card refresh:
 
 ```txt
 POST /api/v1/cards/{card_id}/refresh
@@ -557,7 +559,7 @@ cd backend
 
 The seed script is development-only and deterministic. Supported profiles are `small` for fast local or CI-style checks and `medium` for demo-scale local data. The `--reset` flag deletes seeded rows from the product and IT Operations tables before reseeding; it does not drop tables or modify Alembic migration state.
 
-After updating an existing development database to Milestone 6 PR3, rerun the seed command with the current profile and `--reset`. Existing rows are not updated in place, so the reset is required to install `can_export_results` and the current `DataResource.is_exportable` policy.
+After updating an existing development database to the final Milestone 6 export policy, rerun the seed command with the current profile and `--reset`. Existing rows are not updated in place, so the reset is required to install `can_export_results`, Admin-only `can_export_restricted_results`, and the current `DataResource.is_exportable` policy.
 
 Local demo auth uses seeded users through `POST /api/v1/demo/login`, then hydrates the current user with `GET /api/v1/auth/me`. Login sets a signed, expiring httpOnly `qo_session` cookie and a readable `qo_csrf` cookie; state-changing authenticated requests such as `POST /api/v1/auth/logout` must send `X-CSRF-Token`.
 
@@ -675,7 +677,7 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-Milestones 0 through 5 are complete. Milestone 6 is active: PR1 dashboards/cards backend, PR2 dashboard/card UI, and PR3 CSV Export Backend are merged. All PR4 Card Refresh & CSV Export UI checkpoints are complete on `feature/m6-card-refresh-export-ui`; PR4 is not yet merged.
+Milestones 0 through 6 are complete. PR1 through PR4 are merged into `main`; PR5 Card Reordering & Layout Persistence and the final Admin restricted-export policy are implemented and fully verified on `feature/m6-card-reorder-layout`. Milestone 7 is next but has not started.
 
 Implemented foundation functionality includes:
 
@@ -703,11 +705,11 @@ Implemented foundation functionality includes:
 Current milestone status:
 
 ```txt
-Milestone 6 — Dashboards, Cards & CSV Export is active.
-M6 PR4 — Card Refresh & CSV Export UI is checkpoint-complete on feature/m6-card-refresh-export-ui and is not yet merged.
+Milestone 6 — Dashboards, Cards & CSV Export is complete.
+M6 PR5 — Card Reordering & Layout Persistence is implementation- and verification-complete on feature/m6-card-reorder-layout.
 ```
 
-M6 PR4 does not include drag-and-drop, layout persistence, card resizing, scheduled refresh, dashboard starring/cloning, actions, approvals, notifications, real external LLM calls, Supabase Auth, Redis/background jobs, or domain expansion. Card reorder and layout persistence remain a separate Milestone 6 slice, so Milestone 6 is not complete.
+PR5 persists the order of cards in owned personal dashboards through `DashboardCard.position`. It includes accessible drag-and-drop and Move Up / Move Down controls, but does not add card resizing, x/y grid coordinates, width/height persistence, advanced `layout` behavior, scheduled refresh, dashboard starring/cloning, actions, approvals, notifications, real external LLM calls, Supabase Auth, Redis/background jobs, or domain expansion. Those deferred areas remain outside Milestone 6.
 
 ## License
 

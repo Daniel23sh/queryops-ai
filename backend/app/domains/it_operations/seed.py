@@ -97,6 +97,11 @@ PERMISSIONS = [
     ("can_manage_global_dashboard", "dashboard", "Manage global dashboards"),
     ("can_create_card", "dashboard", "Create dashboard cards"),
     ("can_export_results", "export", "Export query and dashboard card results as CSV"),
+    (
+        "can_export_restricted_results",
+        "export",
+        "Export query and dashboard-card results that reference restricted but queryable resources",
+    ),
     ("can_request_action", "action", "Request controlled actions"),
     ("can_approve_department_action", "action", "Approve department actions"),
     ("can_approve_scoped_action", "action", "Approve assigned-scope actions"),

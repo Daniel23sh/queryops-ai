@@ -71,7 +71,8 @@ describe("DashboardCardPreview refresh", () => {
       })
     ).toBeInTheDocument();
     expect(refreshDashboardCardMock).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("1", { selector: "dd" })).toBeInTheDocument();
+    expect(screen.getByText("Order").nextElementSibling).toHaveTextContent("1");
+    expect(screen.getByText("Rows").nextElementSibling).toHaveTextContent("1");
     expect(screen.getByText(/Jul 11, 2026/i)).toBeInTheDocument();
   });
 

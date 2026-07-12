@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -143,6 +144,501 @@ def test_save_card_requires_valid_csrf(
     assert response.status_code == 403
     assert response.json()["error"]["code"] == "CSRF_TOKEN_MISSING"
     assert_no_sql_payload(response.json())
+
+
+def test_update_dashboard_layout_requires_authentication(client: TestClient) -> None:
+    response = client.patch("/api/v1/dashboards/my/layout", json={"items": []})
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "UNAUTHORIZED"
+    assert_no_sql_payload(response.json())
+
+
+@pytest.mark.parametrize("csrf_header", [None, "wrong-csrf-token"])
+def test_update_dashboard_layout_requires_valid_csrf(
+    client: TestClient,
+    csrf_header: str | None,
+) -> None:
+    _login(client, "demo.manager@queryops.local")
+    headers = {"X-CSRF-Token": csrf_header} if csrf_header is not None else {}
+
+    response = client.patch(
+        "/api/v1/dashboards/my/layout",
+        headers=headers,
+        json={"items": []},
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "CSRF_TOKEN_MISSING"
+    assert_no_sql_payload(response.json())
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        None,
+        [],
+        {},
+        {"items": []},
+        {"items": "not-a-list"},
+        {"items": [], "dashboard_id": str(uuid.uuid4())},
+    ],
+)
+def test_update_dashboard_layout_rejects_malformed_root_payload(
+    client: TestClient,
+    payload: Any,
+) -> None:
+    csrf_token = _login(client, "demo.manager@queryops.local")
+
+    response = client.patch(
+        "/api/v1/dashboards/my/layout",
+        headers={"X-CSRF-Token": csrf_token},
+        json=payload,
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID_DASHBOARD_LAYOUT_REQUEST"
+    assert_no_sql_payload(response.json())
+
+
+@pytest.mark.parametrize(
+    "items",
+    [
+        [None],
+        [{"card_id": str(uuid.uuid4())}],
+        [{"position": 0}],
+        [{"card_id": str(uuid.uuid4()), "position": 0, "title": "extra"}],
+        [{"card_id": "not-a-uuid", "position": 0}],
+        [{"card_id": str(uuid.uuid4()), "position": -1}],
+        [{"card_id": str(uuid.uuid4()), "position": True}],
+        [{"card_id": str(uuid.uuid4()), "position": "0"}],
+        [
+            {"card_id": str(uuid.uuid4()), "position": 0},
+            {"card_id": str(uuid.uuid4()), "position": 0},
+        ],
+        [
+            {"card_id": str(uuid.uuid4()), "position": 0},
+            {"card_id": str(uuid.uuid4()), "position": 2},
+        ],
+    ],
+)
+def test_update_dashboard_layout_rejects_invalid_items(
+    client: TestClient,
+    items: list[Any],
+) -> None:
+    csrf_token = _login(client, "demo.manager@queryops.local")
+
+    response = client.patch(
+        "/api/v1/dashboards/my/layout",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"items": items},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID_DASHBOARD_LAYOUT_REQUEST"
+    assert_no_sql_payload(response.json())
+
+
+def test_update_dashboard_layout_rejects_duplicate_card_ids(client: TestClient) -> None:
+    csrf_token = _login(client, "demo.manager@queryops.local")
+    card_id = str(uuid.uuid4())
+
+    response = client.patch(
+        "/api/v1/dashboards/my/layout",
+        headers={"X-CSRF-Token": csrf_token},
+        json={
+            "items": [
+                {"card_id": card_id, "position": 0},
+                {"card_id": card_id, "position": 1},
+            ]
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["error"]["code"] == "INVALID_DASHBOARD_LAYOUT_REQUEST"
+    assert_no_sql_payload(response.json())
+
+
+def test_update_dashboard_layout_rejects_unknown_card_without_leaking_existence(
+    client: TestClient,
+) -> None:
+    csrf_token = _login(client, "demo.manager@queryops.local")
+
+    response = client.patch(
+        "/api/v1/dashboards/my/layout",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"items": [{"card_id": str(uuid.uuid4()), "position": 0}]},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "DASHBOARD_NOT_FOUND"
+    assert_no_sql_payload(response.json())
+
+
+def test_update_dashboard_layout_rejects_another_users_personal_dashboard_without_leakage(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    manager = _user_by_email(db_session, "demo.manager@queryops.local")
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    dashboard = _add_dashboard(
+        db_session,
+        owner=analyst,
+        title="Analyst Personal",
+        visibility_scope="personal",
+    )
+    card = _add_card(
+        db_session,
+        dashboard=dashboard,
+        saved_query=_add_saved_query(db_session, owner=analyst),
+        title="Analyst card",
+        position=0,
+    )
+    csrf_token = _login(client, manager.email)
+
+    response = client.patch(
+        "/api/v1/dashboards/my/layout",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"items": [{"card_id": str(card.id), "position": 0}]},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"] == {
+        "code": "DASHBOARD_NOT_FOUND",
+        "message": "Dashboard was not found.",
+        "details": {},
+        "request_id": response.json()["error"]["request_id"],
+    }
+    assert_no_sql_payload(response.json())
+
+
+@pytest.mark.parametrize("visibility_scope", ["department", "global"])
+def test_update_dashboard_layout_rejects_non_personal_dashboard(
+    client: TestClient,
+    db_session: Session,
+    visibility_scope: str,
+) -> None:
+    manager = _user_by_email(db_session, "demo.manager@queryops.local")
+    department = (
+        _department_by_name(db_session, "Finance")
+        if visibility_scope == "department"
+        else None
+    )
+    dashboard = _add_dashboard(
+        db_session,
+        owner=manager,
+        title=f"{visibility_scope.title()} dashboard",
+        visibility_scope=visibility_scope,
+        department=department,
+    )
+    card = _add_card(
+        db_session,
+        dashboard=dashboard,
+        saved_query=_add_saved_query(db_session, owner=manager),
+        title="Shared card",
+        position=0,
+    )
+    csrf_token = _login(client, manager.email)
+
+    response = client.patch(
+        "/api/v1/dashboards/my/layout",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"items": [{"card_id": str(card.id), "position": 0}]},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "DASHBOARD_NOT_FOUND"
+    assert_no_sql_payload(response.json())
+
+
+def test_update_dashboard_layout_rejects_archived_dashboard(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    manager = _user_by_email(db_session, "demo.manager@queryops.local")
+    dashboard = _add_dashboard(
+        db_session,
+        owner=manager,
+        title="Archived Personal",
+        visibility_scope="personal",
+        is_archived=True,
+    )
+    card = _add_card(
+        db_session,
+        dashboard=dashboard,
+        saved_query=_add_saved_query(db_session, owner=manager),
+        title="Archived card",
+        position=0,
+    )
+    csrf_token = _login(client, manager.email)
+
+    response = client.patch(
+        "/api/v1/dashboards/my/layout",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"items": [{"card_id": str(card.id), "position": 0}]},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "DASHBOARD_NOT_FOUND"
+    assert_no_sql_payload(response.json())
+
+
+def test_update_dashboard_layout_rejects_mixed_dashboards(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    manager = _user_by_email(db_session, "demo.manager@queryops.local")
+    first_dashboard = _add_dashboard(
+        db_session,
+        owner=manager,
+        title="First",
+        visibility_scope="personal",
+    )
+    second_dashboard = _add_dashboard(
+        db_session,
+        owner=manager,
+        title="Second",
+        visibility_scope="personal",
+        minute=1,
+    )
+    first_card = _add_card(
+        db_session,
+        dashboard=first_dashboard,
+        saved_query=_add_saved_query(db_session, owner=manager),
+        title="First card",
+        position=0,
+    )
+    second_card = _add_card(
+        db_session,
+        dashboard=second_dashboard,
+        saved_query=_add_saved_query(db_session, owner=manager),
+        title="Second card",
+        position=0,
+    )
+    csrf_token = _login(client, manager.email)
+
+    response = client.patch(
+        "/api/v1/dashboards/my/layout",
+        headers={"X-CSRF-Token": csrf_token},
+        json={
+            "items": [
+                {"card_id": str(first_card.id), "position": 0},
+                {"card_id": str(second_card.id), "position": 1},
+            ]
+        },
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "DASHBOARD_LAYOUT_CONFLICT"
+    assert_no_sql_payload(response.json())
+
+
+def test_update_dashboard_layout_rejects_partial_or_stale_card_set(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    manager = _user_by_email(db_session, "demo.manager@queryops.local")
+    dashboard = _add_dashboard(
+        db_session,
+        owner=manager,
+        title="Manager Personal",
+        visibility_scope="personal",
+    )
+    first_card = _add_card(
+        db_session,
+        dashboard=dashboard,
+        saved_query=_add_saved_query(db_session, owner=manager),
+        title="First card",
+        position=0,
+    )
+    _add_card(
+        db_session,
+        dashboard=dashboard,
+        saved_query=_add_saved_query(db_session, owner=manager),
+        title="Added after stale view",
+        position=1,
+    )
+    csrf_token = _login(client, manager.email)
+
+    response = client.patch(
+        "/api/v1/dashboards/my/layout",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"items": [{"card_id": str(first_card.id), "position": 0}]},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "DASHBOARD_LAYOUT_CONFLICT"
+    assert_no_sql_payload(response.json())
+
+
+def test_update_dashboard_layout_persists_atomic_normalized_order(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    manager = _user_by_email(db_session, "demo.manager@queryops.local")
+    dashboard = _add_dashboard(
+        db_session,
+        owner=manager,
+        title="Manager Personal",
+        visibility_scope="personal",
+    )
+    first_saved_query = _add_saved_query(db_session, owner=manager)
+    second_saved_query = _add_saved_query(db_session, owner=manager)
+    third_saved_query = _add_saved_query(db_session, owner=manager)
+    first_card = _add_card(
+        db_session,
+        dashboard=dashboard,
+        saved_query=first_saved_query,
+        title="First card",
+        position=4,
+    )
+    second_card = _add_card(
+        db_session,
+        dashboard=dashboard,
+        saved_query=second_saved_query,
+        title="Second card",
+        position=1,
+    )
+    third_card = _add_card(
+        db_session,
+        dashboard=dashboard,
+        saved_query=third_saved_query,
+        title="Third card",
+        position=9,
+    )
+    refresh_run = _add_query_run(db_session, user=manager)
+    refresh_run.saved_query_id = first_saved_query.id
+    db_session.commit()
+    csrf_token = _login(client, manager.email)
+
+    response = client.patch(
+        "/api/v1/dashboards/my/layout",
+        headers={"X-CSRF-Token": csrf_token},
+        json={
+            "items": [
+                {"card_id": str(third_card.id), "position": 0},
+                {"card_id": str(first_card.id), "position": 1},
+                {"card_id": str(second_card.id), "position": 2},
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["id"] == str(dashboard.id)
+    assert [(card["id"], card["position"]) for card in data["cards"]] == [
+        (str(third_card.id), 0),
+        (str(first_card.id), 1),
+        (str(second_card.id), 2),
+    ]
+    assert_no_sql_payload(response.json())
+
+    db_session.expire_all()
+    persisted_cards = db_session.scalars(
+        select(DashboardCard)
+        .where(DashboardCard.dashboard_id == dashboard.id)
+        .order_by(DashboardCard.position)
+    ).all()
+    assert [(card.id, card.position) for card in persisted_cards] == [
+        (third_card.id, 0),
+        (first_card.id, 1),
+        (second_card.id, 2),
+    ]
+    assert first_card.layout == {"w": 4}
+    assert first_card.config == {"columns": ["product_name"]}
+    assert first_card.saved_query_id == first_saved_query.id
+    assert second_card.saved_query_id == second_saved_query.id
+    assert third_card.saved_query_id == third_saved_query.id
+    assert db_session.get(QueryRun, refresh_run.id) is not None
+    assert db_session.get(QueryRun, refresh_run.id).saved_query_id == first_saved_query.id
+
+
+def test_update_dashboard_layout_is_idempotent_for_one_card(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    manager = _user_by_email(db_session, "demo.manager@queryops.local")
+    dashboard = _add_dashboard(
+        db_session,
+        owner=manager,
+        title="Manager Personal",
+        visibility_scope="personal",
+    )
+    card = _add_card(
+        db_session,
+        dashboard=dashboard,
+        saved_query=_add_saved_query(db_session, owner=manager),
+        title="Only card",
+        position=0,
+    )
+    csrf_token = _login(client, manager.email)
+
+    response = client.patch(
+        "/api/v1/dashboards/my/layout",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"items": [{"card_id": str(card.id), "position": 0}]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["cards"][0]["id"] == str(card.id)
+    assert response.json()["data"]["cards"][0]["position"] == 0
+    assert_no_sql_payload(response.json())
+
+
+def test_update_dashboard_layout_rolls_back_after_database_failure(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = _user_by_email(db_session, "demo.manager@queryops.local")
+    dashboard = _add_dashboard(
+        db_session,
+        owner=manager,
+        title="Manager Personal",
+        visibility_scope="personal",
+    )
+    first_card = _add_card(
+        db_session,
+        dashboard=dashboard,
+        saved_query=_add_saved_query(db_session, owner=manager),
+        title="First card",
+        position=0,
+    )
+    second_card = _add_card(
+        db_session,
+        dashboard=dashboard,
+        saved_query=_add_saved_query(db_session, owner=manager),
+        title="Second card",
+        position=1,
+    )
+    csrf_token = _login(client, manager.email)
+    original_commit = db_session.commit
+
+    def fail_commit() -> None:
+        db_session.flush()
+        raise SQLAlchemyError("private database failure")
+
+    monkeypatch.setattr(db_session, "commit", fail_commit)
+    response = client.patch(
+        "/api/v1/dashboards/my/layout",
+        headers={"X-CSRF-Token": csrf_token},
+        json={
+            "items": [
+                {"card_id": str(second_card.id), "position": 0},
+                {"card_id": str(first_card.id), "position": 1},
+            ]
+        },
+    )
+    monkeypatch.setattr(db_session, "commit", original_commit)
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "DASHBOARD_LAYOUT_UPDATE_FAILED"
+    assert "private database failure" not in response.text
+    assert_no_sql_payload(response.json())
+
+    db_session.expire_all()
+    assert db_session.get(DashboardCard, first_card.id).position == 0
+    assert db_session.get(DashboardCard, second_card.id).position == 1
 
 
 def test_create_dashboard_rejects_unknown_fields(client: TestClient) -> None:

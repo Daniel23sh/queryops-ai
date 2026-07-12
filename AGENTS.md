@@ -69,12 +69,12 @@ The milestone status is defined in `PROJECT_PLAN.md`.
 At the time this file was updated, the latest checkpoint-complete target is:
 
 ```txt
-Milestone 6 PR4 — Card Refresh & CSV Export UI
+Milestone 6 — Dashboards, Cards & CSV Export
 ```
 
 Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, Milestone 3, Milestone 4, and Milestone 5 are complete under the previous scopes. Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete.
 
-Milestone 6 is active. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, and `M6 PR3 — CSV Export Backend` are complete and merged into `main`. All six checkpoints for `M6 PR4 — Card Refresh & CSV Export UI` are complete on branch `feature/m6-card-refresh-export-ui`; PR4 is not yet merged into `main`.
+Milestone 6 is complete. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, `M6 PR3 — CSV Export Backend`, and `M6 PR4 — Card Refresh & CSV Export UI` are complete and merged into `main`. PR5 — Card Reordering & Layout Persistence plus the final Admin restricted-export policy are implementation- and verification-complete on `feature/m6-card-reorder-layout`. Milestone 7 is next but is not active and has not started.
 
 Milestone 2.5 introduced `access_scopes`, `user_access_scopes`, `data_resources`, `UserAccessContext`, `AccessDecision`, and `evaluate_access(subject, action, resource, context)`.
 
@@ -102,7 +102,11 @@ Milestone 6 PR2 added frontend dashboard/card API clients and types, read-only M
 
 Milestone 6 PR3 — CSV Export Backend is complete and merged into `main`. It added controlled query-run and dashboard-card CSV export, export-time SQL validation, current-viewer PostgreSQL RLS, the dedicated read-only runtime role, CSV injection protection, safe filenames, successful export audit persistence, and PostgreSQL-backed export tests.
 
-Milestone 6 PR4 — Card Refresh & CSV Export UI is implemented and checkpoint-complete on branch `feature/m6-card-refresh-export-ui`, but is not yet merged into `main`. It adds frontend CSV downloads for successful Ask Data results and dashboard cards, secure dashboard-card refresh under the current viewer's `UserAccessContext`, automatic/manual refresh UI, safe table previews, and viewer-owned refresh `QueryRun` persistence without raw row snapshots.
+Milestone 6 PR4 — Card Refresh & CSV Export UI is complete and merged into `main`. It added frontend CSV downloads for successful Ask Data results and dashboard cards, secure dashboard-card refresh under the current viewer's `UserAccessContext`, automatic/manual refresh UI, safe table previews, and viewer-owned refresh `QueryRun` persistence without raw row snapshots.
+
+Milestone 6 PR5 — Card Reordering & Layout Persistence persists card order through `DashboardCard.position` for owned personal dashboards only. It requires strict full-card-set validation, atomic updates, stale-layout conflict handling, dnd-kit pointer/keyboard ordering, explicit Move Up / Move Down controls, optimistic rollback, and refresh/export regression coverage. It must not expand `DashboardCard.layout` into a grid or resizing system.
+
+The final Milestone 6 export policy adds `can_export_restricted_results` only to Admin through the deterministic permission catalog. Analyst still requires every referenced resource to be queryable and exportable. Admin restricted export requires both export permissions and may override only `is_exportable=false`; missing resources and `is_queryable=false` remain hard denials. Never hardcode the Admin role in export logic or bypass SQL validation, `queryops_query_runtime`, read-only execution, current-viewer RLS, row limits, CSV sanitization, ownership/visibility, or successful audit persistence. Restricted override usage must be audited without SQL or raw rows.
 
 Milestone 4 delivered:
 
@@ -134,11 +138,12 @@ Query Engine security rules:
 * Query Engine code must continue to use `UserAccessContext`, `DataResource`, `AccessDecision`, `evaluate_access(...)`, `authorize_resource_access(...)`, `RLSContext`, `build_rls_context(...)`, `set_rls_context(...)`, PostgreSQL RLS policies from `0005_scope_aware_rls.py`, and the existing `QueryRun` model.
 * No real LLM calls, external provider integrations, or API-key requirements are allowed in Milestone 4.
 
-Out of scope for M6 PR4 unless explicitly requested:
+Out of scope for M6 PR5 unless explicitly requested:
 
-* drag-and-drop
-* layout persistence
 * card resizing
+* x/y grid coordinates
+* width or height persistence
+* advanced `DashboardCard.layout` behavior
 * persistent raw result snapshots
 * scheduled refresh
 * department/global dashboard creation UI
@@ -161,7 +166,7 @@ Out of scope for M6 PR4 unless explicitly requested:
 * Redis
 * API rate limiter
 
-Later Milestone 6 work will handle card reordering and layout persistence. Later milestones will handle actions, approvals, notifications, real LLM/API-key support, and Supabase Auth unless explicitly requested. Do not add drag-and-drop, layout persistence, catalog mutation behavior, department/global dashboard creation behavior, action execution, approval behavior, real LLM providers, API keys, Supabase Auth, or unrelated Ask Data behavior in PR4.
+Do not add cross-dashboard movement, department/global dashboard reordering, card resizing, advanced layout persistence, catalog mutation behavior, action execution, approval behavior, real LLM providers, API keys, Supabase Auth, or unrelated Ask Data behavior in PR5. Later milestones will handle actions, approvals, notifications, real LLM/API-key support, and Supabase Auth unless explicitly requested.
 
 ## 6. Product Direction
 

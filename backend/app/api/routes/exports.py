@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
 from typing import Any, Protocol
 from uuid import UUID
 
@@ -37,11 +38,19 @@ from app.query_engine.sql_validator import SQLValidationResult, validate_sql
 router = APIRouter(prefix="/api/v1")
 
 EXPORT_PERMISSION = "can_export_results"
+RESTRICTED_EXPORT_PERMISSION = "can_export_restricted_results"
 ALLOWED_EXPORT_FIELDS = frozenset({"filename", "include_headers"})
 EXPORT_QUERY_ACTION = "query:scoped_data"
 EXPORT_ROW_LIMIT = 1_000
 MAX_EXPORT_FILENAME_LENGTH = 255
 SAFE_TABLE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
+
+@dataclass(frozen=True)
+class ExportResourcePolicyDecision:
+    allowed: bool
+    restricted_tables: tuple[str, ...]
+    override_used: bool
 
 
 class ExportSQLExecutor(Protocol):
@@ -231,9 +240,13 @@ def _export_query_run_as_csv(
         return referenced_tables_or_error
     referenced_tables = referenced_tables_or_error
 
-    resource_error = _export_resource_policy_error(db, referenced_tables)
-    if resource_error is not None:
-        return resource_error
+    resource_policy = _evaluate_export_resource_policy(
+        db,
+        access_context,
+        referenced_tables,
+    )
+    if not resource_policy.allowed:
+        return _csv_export_not_allowed_response()
 
     validation_result = _validate_export_sql(
         db,
@@ -277,6 +290,13 @@ def _export_query_run_as_csv(
             "include_headers": parsed_payload["include_headers"],
             "row_count": execution_result.row_count,
             "referenced_tables": referenced_tables,
+            "export_policy_override": resource_policy.override_used,
+            "restricted_tables": list(resource_policy.restricted_tables),
+            **(
+                {"override_permission": RESTRICTED_EXPORT_PERMISSION}
+                if resource_policy.override_used
+                else {}
+            ),
         },
     )
     return response
@@ -352,7 +372,11 @@ def _referenced_tables_for_export(query_run: QueryRun):
     return sorted(tables)
 
 
-def _export_resource_policy_error(db: Session, referenced_tables: list[str]):
+def _evaluate_export_resource_policy(
+    db: Session,
+    access_context: UserAccessContext,
+    referenced_tables: list[str],
+) -> ExportResourcePolicyDecision:
     resources = db.scalars(
         select(DataResource)
         .where(
@@ -364,16 +388,30 @@ def _export_resource_policy_error(db: Session, referenced_tables: list[str]):
     ).all()
     resources_by_table = {resource.table_name: resource for resource in resources}
 
+    restricted_tables: list[str] = []
     for table_name in referenced_tables:
         resource = resources_by_table.get(table_name)
         if resource is None:
-            return _csv_export_not_allowed_response()
+            return ExportResourcePolicyDecision(False, (), False)
         if resource.is_queryable is not True:
-            return _csv_export_not_allowed_response()
+            return ExportResourcePolicyDecision(False, (), False)
         if resource.is_exportable is not True:
-            return _csv_export_not_allowed_response()
+            restricted_tables.append(table_name)
 
-    return None
+    normalized_restricted_tables = tuple(sorted(restricted_tables))
+    if not normalized_restricted_tables:
+        return ExportResourcePolicyDecision(True, (), False)
+    if not access_context.has_permission(RESTRICTED_EXPORT_PERMISSION):
+        return ExportResourcePolicyDecision(
+            False,
+            normalized_restricted_tables,
+            False,
+        )
+    return ExportResourcePolicyDecision(
+        True,
+        normalized_restricted_tables,
+        True,
+    )
 
 
 def _validate_export_sql(

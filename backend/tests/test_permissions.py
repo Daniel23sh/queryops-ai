@@ -65,6 +65,7 @@ EXPECTED_ADMIN_PERMISSIONS = {
     "can_create_global_dashboard",
     "can_create_personal_dashboard",
     "can_create_scope_dashboard",
+    "can_export_restricted_results",
     "can_export_results",
     "can_disable_app_user",
     "can_downgrade_user_role",
@@ -175,7 +176,7 @@ def test_analyst_permissions_exclude_global_and_admin_permissions(
     assert "can_manage_users" not in permissions
 
 
-def test_export_permission_is_limited_to_analyst_and_admin(
+def test_export_permissions_are_assigned_by_role(
     db_session: Session,
 ) -> None:
     permissions_by_email = {
@@ -197,6 +198,30 @@ def test_export_permission_is_limited_to_analyst_and_admin(
     assert "can_export_results" not in permissions_by_email["demo.manager@queryops.local"]
     assert "can_export_results" in permissions_by_email["demo.analyst@queryops.local"]
     assert "can_export_results" in permissions_by_email["demo.admin@queryops.local"]
+    assert (
+        "can_export_restricted_results"
+        not in permissions_by_email["demo.user@queryops.local"]
+    )
+    assert (
+        "can_export_restricted_results"
+        not in permissions_by_email["demo.manager@queryops.local"]
+    )
+    assert (
+        "can_export_restricted_results"
+        not in permissions_by_email["demo.analyst@queryops.local"]
+    )
+    assert (
+        "can_export_restricted_results"
+        in permissions_by_email["demo.admin@queryops.local"]
+    )
+
+
+def test_restricted_export_permission_has_export_category(
+    db_session: Session,
+) -> None:
+    permission = _permission_by_key(db_session, "can_export_restricted_results")
+
+    assert permission.category == "export"
 
 
 def test_resolver_returns_stable_sorted_permission_keys(db_session: Session) -> None:
