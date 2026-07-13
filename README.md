@@ -329,7 +329,7 @@ Default local URLs:
 * Backend health endpoint: `http://localhost:8000/health`
 * PostgreSQL: `localhost:5432`
 
-PostgreSQL is included for the local development environment. Milestone 6 is complete and merged into `main`; the current application includes deterministic IT Operations seed data, demo auth, scope-aware PostgreSQL RLS, the backend Query Engine, the Ask Data frontend, dashboards and saved cards, controlled query/card CSV downloads, automatic/manual dashboard-card refresh, and persistent accessible card ordering. Milestone 7 is actively redesigning the product UX. Actions, approvals, notifications, real LLM providers, Supabase Auth, and domain expansion remain planned for later milestones.
+PostgreSQL is included for the local development environment. Milestone 6 is complete and merged into `main`; the current application includes deterministic IT Operations seed data, demo auth, scope-aware PostgreSQL RLS, the backend Query Engine, the Ask Data frontend, dashboards and saved cards, controlled query/card CSV downloads, automatic/manual dashboard-card refresh, and persistent accessible card ordering. Milestone 7 is the active product UX milestone, and M7 PR1 is implementation-complete on `feature/m7-product-shell-navigation`. Actions, approvals, notifications, real LLM providers, Supabase Auth, and domain expansion remain planned for later milestones.
 
 Stop the stack:
 
@@ -679,9 +679,9 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-Milestones 0 through 6 are complete and merged into `main`; PR #24 merged M6 PR5 Card Reordering & Layout Persistence and the final Admin restricted-export policy. Milestone 7 — Product UX & Dashboard Redesign is active. Its first PR is rebuilding the frontend shell, URL routing, focused navigation, Profile, and transitional My Dashboard experience.
+Milestones 0 through 6 are complete and merged into `main`; PR #24 merged M6 PR5 Card Reordering & Layout Persistence and the final Admin restricted-export policy. Milestone 7 — Product UX & Dashboard Redesign is active. M7 PR1 is implementation-complete on `feature/m7-product-shell-navigation`; it establishes the routed dark-first product shell, focused navigation, Profile, and transitional My Dashboard experience.
 
-The active Milestone 7 UX direction is dark-first with a persistent light option, responsive navigation, My Dashboard as the authenticated home, permission-aware routes, and Scope terminology in the general product UI. This describes work in progress: role-aware Home metrics and the dashboard browser arrive in PR2, the dashboard editor/grid/visualizations arrive in PR3, and the Ask Data redesign arrives in PR4.
+The Milestone 7 UX direction is dark-first with a persistent light option, responsive navigation, My Dashboard as the authenticated home, permission-aware routes, and Scope terminology in the general product UI. Milestone 7 remains incomplete: role-aware Home metrics and the dashboard browser are planned for PR2, the dashboard editor/grid/visualizations for PR3, and the Ask Data redesign for PR4. M7 PR2 is not active and has not started.
 
 Implemented foundation functionality includes:
 
@@ -711,7 +711,7 @@ Current milestone status:
 ```txt
 Milestone 6 — Dashboards, Cards & CSV Export is complete.
 Milestone 7 — Product UX & Dashboard Redesign is active.
-M7 PR1 — Product Shell, Routing & Navigation is in progress on feature/m7-product-shell-navigation.
+M7 PR1 — Product Shell, Routing & Navigation is implementation-complete on feature/m7-product-shell-navigation.
 ```
 
 PR5 persists the order of cards in owned personal dashboards through `DashboardCard.position`. It includes accessible drag-and-drop and Move Up / Move Down controls, but does not add card resizing, x/y grid coordinates, width/height persistence, advanced `layout` behavior, scheduled refresh, dashboard starring/cloning, actions, approvals, notifications, real external LLM calls, Supabase Auth, Redis/background jobs, or domain expansion. Those deferred areas remain outside Milestone 6.

@@ -8,7 +8,7 @@ The current milestone status is:
 
 Current PR scope:
 
-`M7 PR1 — Product Shell, Routing & Navigation` is active on branch `feature/m7-product-shell-navigation`.
+`M7 PR1 — Product Shell, Routing & Navigation` is implementation-complete on branch `feature/m7-product-shell-navigation`.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
@@ -415,21 +415,13 @@ Milestone 1 should leave the repository ready for auth, permission, and RLS work
 
 The latest completed product milestone is:
 
-`Milestone 5 PR6 — Tailwind UI Foundation & Full Frontend Redesign`
-
-Milestone 5 PR6 is merged into `main`. It added the Tailwind foundation, light/dark mode, redesigned app shell/sidebar, redesigned Dashboard, focused Ask Data command workspace, light polish for remaining frontend pages, and final CSS/docs cleanup.
-
-Milestone 5 Ask Data and the Milestone 5 frontend redesign are complete.
-
-The latest completed product milestone is:
-
 `Milestone 6 — Dashboards, Cards & CSV Export`, merged into `main` through PR #24.
 
-The active milestone and PR are:
+The active milestone and latest PR status are:
 
 `Milestone 7 — Product UX & Dashboard Redesign`
 
-`M7 PR1 — Product Shell, Routing & Navigation` on branch `feature/m7-product-shell-navigation`.
+`M7 PR1 — Product Shell, Routing & Navigation` is implementation-complete on branch `feature/m7-product-shell-navigation`. M7 PR2 is not active and has not started.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -756,7 +748,7 @@ Milestone 7 — Product UX & Dashboard Redesign is active. It modernizes the fro
 Milestone 7 is split into four PRs:
 
 1. `M7 PR1 — Product Shell, Routing & Navigation`
-   - Active on `feature/m7-product-shell-navigation`.
+   - Implementation-complete on `feature/m7-product-shell-navigation`.
    - Frontend-only routed shell, dark-first responsive navigation, Profile and Role Upgrade consolidation, and transitional My Dashboard cleanup.
 2. `M7 PR2 — Role-Aware Home & Dashboard Browser`
    - Not started.
