@@ -1,37 +1,40 @@
+import { NavLink } from "react-router-dom";
+
 import type { NavItem } from "./navigation";
 
-export function AppNavigation({
-  activeNavId,
-  items,
-  onNavigate
-}: {
-  activeNavId: string;
-  items: NavItem[];
-  onNavigate: (navId: string) => void;
-}) {
+export function AppNavigation({ items }: { items: NavItem[] }) {
+  const workspaceItems = items.filter((item) => item.section === "workspace");
+  const adminItems = items.filter((item) => item.section === "admin");
+
   return (
     <nav className="workspace-nav" aria-label="Workspace navigation">
+      <NavigationGroup items={workspaceItems} />
+      {adminItems.length > 0 ? (
+        <NavigationGroup items={adminItems} label="Admin" />
+      ) : null}
+    </nav>
+  );
+}
+
+function NavigationGroup({ items, label }: { items: NavItem[]; label?: string }) {
+  return (
+    <div className="workspace-nav__group">
+      {label ? <p className="workspace-nav__section-label">{label}</p> : null}
       {items.map((item) => {
-        const isActive = item.id === activeNavId;
+        const Icon = item.icon;
 
         return (
-          <button
+          <NavLink
             key={item.id}
-            type="button"
             className="workspace-nav__item"
-            aria-current={isActive ? "page" : undefined}
-            data-active={isActive ? "true" : "false"}
-            onClick={() => onNavigate(item.id)}
+            to={item.path}
+            end={item.path === "/"}
           >
-            <span
-              className="workspace-nav__icon"
-              data-icon={item.icon}
-              aria-hidden="true"
-            />
+            <Icon className="workspace-nav__icon" aria-hidden="true" size={19} />
             <span className="workspace-nav__label">{item.label}</span>
-          </button>
+          </NavLink>
         );
       })}
-    </nav>
+    </div>
   );
 }

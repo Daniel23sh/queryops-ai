@@ -146,7 +146,9 @@ The frontend never communicates directly with the database or the LLM provider. 
 * React
 * TypeScript
 * Vite
+* React Router
 * Tailwind CSS
+* Lucide icons
 * shadcn/ui
 * Recharts
 * dnd-kit
