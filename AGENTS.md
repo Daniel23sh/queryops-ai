@@ -66,15 +66,15 @@ Prefer boring, maintainable structure over clever abstractions.
 
 The milestone status is defined in `PROJECT_PLAN.md`.
 
-At the time this file was updated, the latest checkpoint-complete target is:
+At the time this file was updated, the active target is:
 
 ```txt
-Milestone 6 — Dashboards, Cards & CSV Export
+M7 PR1 — Product Shell, Routing & Navigation
 ```
 
 Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, Milestone 3, Milestone 4, and Milestone 5 are complete under the previous scopes. Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete.
 
-Milestone 6 is complete. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, `M6 PR3 — CSV Export Backend`, and `M6 PR4 — Card Refresh & CSV Export UI` are complete and merged into `main`. PR5 — Card Reordering & Layout Persistence plus the final Admin restricted-export policy are implementation- and verification-complete on `feature/m6-card-reorder-layout`. Milestone 7 is next but is not active and has not started.
+Milestone 6 is complete and merged into `main`. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, `M6 PR3 — CSV Export Backend`, `M6 PR4 — Card Refresh & CSV Export UI`, and `M6 PR5 — Card Reordering & Layout Persistence` plus the final Admin restricted-export policy are complete. PR #24 merged PR5. Milestone 7 — Product UX & Dashboard Redesign is active, and M7 PR1 is the current scope.
 
 Milestone 2.5 introduced `access_scopes`, `user_access_scopes`, `data_resources`, `UserAccessContext`, `AccessDecision`, and `evaluate_access(subject, action, resource, context)`.
 
@@ -138,21 +138,32 @@ Query Engine security rules:
 * Query Engine code must continue to use `UserAccessContext`, `DataResource`, `AccessDecision`, `evaluate_access(...)`, `authorize_resource_access(...)`, `RLSContext`, `build_rls_context(...)`, `set_rls_context(...)`, PostgreSQL RLS policies from `0005_scope_aware_rls.py`, and the existing `QueryRun` model.
 * No real LLM calls, external provider integrations, or API-key requirements are allowed in Milestone 4.
 
-Out of scope for M6 PR5 unless explicitly requested:
+M7 PR1 is frontend-only. Do not change `backend/`, Alembic migrations, database models, seed behavior, permissions, RLS, or API contracts. If the existing `/auth/me` response or another frontend-consumed contract lacks data required for Profile or routing, stop and request approval before making any backend change.
+
+M7 PR1 must implement only:
+
+* real URL routing for `/login`, `/`, `/ask`, `/profile`, and permission-gated `/admin/role-requests`
+* My Dashboard as authenticated home
+* a dark-first responsive shell with persistent light mode
+* navigation containing only active capabilities
+* Profile with the existing Role Upgrade flow for eligible non-Admin users
+* transitional My Dashboard cleanup using existing dashboard APIs
+
+Out of scope for M7 PR1 unless explicitly requested:
 
 * card resizing
 * x/y grid coordinates
 * width or height persistence
 * advanced `DashboardCard.layout` behavior
-* persistent raw result snapshots
-* scheduled refresh
-* department/global dashboard creation UI
-* catalog starring
-* dashboard cloning
-* Save as Card modal
+* Home Overview backend or scope operational metrics
+* Dashboard Library filters, preview modal, detail route, thumbnails, editor, or visualizations
+* Recharts or any additional charting/component library
+* Ask Data redesign, templates consolidation, or five-query history drawer
 * actions
 * approvals
 * notifications
+* Users UI
+* Audit UI
 * real LLM/API-key support
 * Supabase Auth
 * domain pack expansion
@@ -166,7 +177,13 @@ Out of scope for M6 PR5 unless explicitly requested:
 * Redis
 * API rate limiter
 
-Do not add cross-dashboard movement, department/global dashboard reordering, card resizing, advanced layout persistence, catalog mutation behavior, action execution, approval behavior, real LLM providers, API keys, Supabase Auth, or unrelated Ask Data behavior in PR5. Later milestones will handle actions, approvals, notifications, real LLM/API-key support, and Supabase Auth unless explicitly requested.
+Do not show future or placeholder destinations in navigation. Templates, Role Upgrade as a standalone destination, Query History, SQL / Technical, Department Dashboards, Admin Console, Users, and Audit must remain absent from navigation in PR1. Frontend permission visibility is UX only; backend authorization remains the source of truth.
+
+Use the term Scope in general product UI. Department remains valid in the IT Operations domain model, internal permission names, and V1 compatibility API names, but must not be presented as the product's universal governance concept.
+
+Local `docs/planning/` documents may be updated for M7 PR1 because the user explicitly authorized it. They remain ignored and must never be staged or committed.
+
+M7 PR2 will own Home Overview and Dashboard Browser work. M7 PR3 will own dashboard editor, grid/resizing, and visualizations. M7 PR4 will own the Ask Data redesign. Actions, Approvals & Audit are deferred to Milestone 8.
 
 ## 6. Product Direction
 

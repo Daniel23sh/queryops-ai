@@ -4,15 +4,15 @@
 
 The current milestone status is:
 
-`Milestone 6 — Dashboards, Cards & CSV Export` is complete.
+`Milestone 6 — Dashboards, Cards & CSV Export` is complete and merged into `main` through PR #24.
 
 Current PR scope:
 
-`M6 PR5 — Card Reordering & Layout Persistence` is implementation- and verification-complete on branch `feature/m6-card-reorder-layout`.
+`M7 PR1 — Product Shell, Routing & Navigation` is active on branch `feature/m7-product-shell-navigation`.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
-Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete. Milestone 6 is complete: M6 PR1 through PR4 are merged into `main`, and PR5 plus the final Admin restricted-export policy are implemented and fully verified on `feature/m6-card-reorder-layout`. Milestone 7 is next but has not started.
+Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete. Milestone 6 is complete: M6 PR1 through PR5, including the final Admin restricted-export policy, are merged into `main`; PR #24 merged PR5. Milestone 7 — Product UX & Dashboard Redesign is active.
 
 Milestone 2.5 delivered:
 
@@ -112,7 +112,7 @@ Explicitly out of scope for M6 PR5:
 - masking
 - tenant/project/region governance
 
-Later milestones will handle actions, approvals, notifications, real LLM/API-key support, and Supabase Auth unless explicitly requested. Milestone 6 is complete; Milestone 7 is next but is not active and has not started.
+Actions, approvals, audit UI, notifications, real LLM/API-key support, and Supabase Auth remain deferred unless explicitly requested. The former Actions, Approvals & Audit Milestone 7 is now Milestone 8. Milestone 7 is the active Product UX & Dashboard Redesign milestone.
 
 ## 2. Product Summary
 
@@ -175,6 +175,13 @@ Locked decisions from the planning documents:
 - IT Operations is the first domain pack, not a product hard-coding target.
 - The frontend never talks directly to PostgreSQL or an LLM.
 - The backend is the source of truth for permissions and policy enforcement.
+- My Dashboard is the authenticated home route.
+- Frontend navigation uses real URL routes and never advertises placeholder destinations.
+- Product UI uses the term Scope; Department remains an implementation/domain concept rather than the general product label.
+- The product shell is dark-first with a persistent light option.
+- Profile contains Role Upgrade for eligible non-Admin users; Admin does not see Role Upgrade.
+- Admin navigation exposes only implemented capabilities. Users and Audit remain hidden until real screens are implemented.
+- M7 PR1 is frontend-only. It must not change backend code, database models, migrations, seeds, permissions, RLS, or API contracts.
 
 ## 5. Milestone 1 Scope
 
@@ -416,11 +423,13 @@ Milestone 5 Ask Data and the Milestone 5 frontend redesign are complete.
 
 The latest completed product milestone is:
 
-`Milestone 6 — Dashboards, Cards & CSV Export`
+`Milestone 6 — Dashboards, Cards & CSV Export`, merged into `main` through PR #24.
 
-The current PR is:
+The active milestone and PR are:
 
-`M6 PR5 — Card Reordering & Layout Persistence`, implementation- and verification-complete on branch `feature/m6-card-reorder-layout`.
+`Milestone 7 — Product UX & Dashboard Redesign`
+
+`M7 PR1 — Product Shell, Routing & Navigation` on branch `feature/m7-product-shell-navigation`.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -716,7 +725,7 @@ Persist the order of cards in each owned personal dashboard while retaining PR4 
 
 Status:
 
-Implementation and final verification are complete on `feature/m6-card-reorder-layout`. Milestone 6 is complete. Milestone 7 is next but has not started.
+Complete and merged into `main` through PR #24. Milestone 6 is complete.
 
 In scope for PR5:
 
@@ -739,3 +748,36 @@ Out of scope for PR5:
 - actions, approvals, notifications, real LLM/API-key support, Supabase Auth, domain expansion, or M7 work
 
 PR5 passed backend, frontend, PostgreSQL/Alembic, medium-seed API QA, production build, diff, and CodeRabbit review gates. Milestone 6 is complete.
+
+## 16. Milestone 7 Implementation Plan
+
+Milestone 7 — Product UX & Dashboard Redesign is active. It modernizes the frontend experience on top of the completed Milestone 6 backend without starting Actions, Approvals & Audit, which are deferred to Milestone 8.
+
+Milestone 7 is split into four PRs:
+
+1. `M7 PR1 — Product Shell, Routing & Navigation`
+   - Active on `feature/m7-product-shell-navigation`.
+   - Frontend-only routed shell, dark-first responsive navigation, Profile and Role Upgrade consolidation, and transitional My Dashboard cleanup.
+2. `M7 PR2 — Role-Aware Home & Dashboard Browser`
+   - Not started.
+   - Adds real role-aware Home overview data and the dashboard browser/detail experience, including `/dashboards/:dashboardId` only when the real detail screen exists.
+3. `M7 PR3 — Dashboard Editor, Grid & Visualizations`
+   - Not started.
+   - Adds the editor, grid/resizing behavior, and real visualization support.
+4. `M7 PR4 — Ask Data Redesign & Final UX Hardening`
+   - Not started.
+   - Delivers the command-first Ask Data redesign, templates/history consolidation, and final UX hardening.
+
+### M7 PR1 Locked Scope
+
+- `/` is My Dashboard and the authenticated home.
+- Implement real routes for `/login`, `/`, `/ask`, `/profile`, and `/admin/role-requests`.
+- Do not add `/dashboards/:dashboardId` until PR2 provides a real dashboard detail page.
+- Navigation shows only implemented destinations: My Dashboard, Ask Data when `can_use_query_templates`, Profile, and permission-gated Admin → Role Requests when `can_approve_role_requests`.
+- No future or placeholder navigation items are rendered, including Templates, Query History, SQL / Technical, Department Dashboards, Admin Console, Users, or Audit.
+- Use Scope terminology in product UI. Department-specific names may remain in domain and compatibility APIs.
+- Use a dark-first responsive shell with a persistent light option, accessible mobile drawer behavior, 44×44 minimum touch targets, and reduced-motion handling.
+- Profile contains the existing Role Upgrade workflow for User, Manager, and Analyst. Admin sees no Role Upgrade heading, message, form, or own-request API load.
+- Frontend permission checks improve UX only; backend authorization remains authoritative.
+- PR1 may reuse only existing frontend API contracts. If required Profile or route data is missing from `/auth/me`, stop and request approval before any backend change.
+- PR1 must not implement Home Overview metrics, dashboard library filters/previews/details, visualizations, resizing/grid coordinates, Ask Data redesign, Actions, Approvals, notifications, Users UI, Audit UI, or any Milestone 8 work.
