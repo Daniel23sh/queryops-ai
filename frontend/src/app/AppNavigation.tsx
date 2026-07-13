@@ -4,19 +4,19 @@ import type { NavItem } from "./navigation";
 
 export function AppNavigation({
   items,
-  onNavigate
+  onLinkSelect
 }: {
   items: NavItem[];
-  onNavigate: () => void;
+  onLinkSelect: () => void;
 }) {
   const workspaceItems = items.filter((item) => item.section === "workspace");
   const adminItems = items.filter((item) => item.section === "admin");
 
   return (
     <nav className="workspace-nav" aria-label="Workspace navigation">
-      <NavigationGroup items={workspaceItems} onNavigate={onNavigate} />
+      <NavigationGroup items={workspaceItems} onLinkSelect={onLinkSelect} />
       {adminItems.length > 0 ? (
-        <NavigationGroup items={adminItems} label="Admin" onNavigate={onNavigate} />
+        <NavigationGroup items={adminItems} label="Admin" onLinkSelect={onLinkSelect} />
       ) : null}
     </nav>
   );
@@ -25,11 +25,11 @@ export function AppNavigation({
 function NavigationGroup({
   items,
   label,
-  onNavigate
+  onLinkSelect
 }: {
   items: NavItem[];
   label?: string;
-  onNavigate: () => void;
+  onLinkSelect: () => void;
 }) {
   return (
     <div className="workspace-nav__group">
@@ -45,7 +45,7 @@ function NavigationGroup({
             }
             to={item.path}
             end={item.path === "/"}
-            onClick={onNavigate}
+            onClick={onLinkSelect}
           >
             <Icon className="workspace-nav__icon" aria-hidden="true" size={19} />
             <span className="workspace-nav__label">{item.label}</span>

@@ -94,20 +94,18 @@ export function RoleRequestsPage({ csrfToken }: { csrfToken: string | null }) {
   }
 
   return (
-    <article className="role-upgrade-panel admin-role-requests-panel">
-      <div className="role-upgrade-panel__header">
+    <article
+      className="admin-role-requests-page"
+      aria-labelledby="admin-role-requests-title"
+    >
+      <header className="admin-role-requests-header">
         <p className="eyebrow">Role upgrade review</p>
-        <h1 id="workspace-title">Admin Role Requests</h1>
+        <h1 id="admin-role-requests-title">Admin Role Requests</h1>
         <p className="subtitle">
           Review role upgrade requests only. Approving a request changes the
           requester's role after their next auth refresh.
         </p>
-        <div className="role-upgrade-panel__chips" aria-label="Admin review safeguards">
-          <span>Existing approval flow</span>
-          <span>Role-only decision</span>
-          <span>No policy changes</span>
-        </div>
-      </div>
+      </header>
 
       {isLoadingRequests ? (
         <p className="status-copy">Loading admin role requests...</p>

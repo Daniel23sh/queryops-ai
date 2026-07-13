@@ -1,16 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Outlet,
-  useLocation,
-  useNavigate,
-  type NavigateFunction
+  useLocation
 } from "react-router-dom";
 
 import { ApiError } from "../api/client";
 import { useAuth } from "../auth/AuthProvider";
 import type { AuthUser } from "../auth/types";
 import { AppSidebar } from "./AppSidebar";
-import { getVisibleNavItems, type NavItem } from "./navigation";
+import { getVisibleNavItems } from "./navigation";
 import { ProductTopbar } from "./ProductTopbar";
 import { getRouteTitle } from "./routeConfig";
 
@@ -19,15 +17,12 @@ const MOBILE_NAVIGATION_QUERY = "(max-width: 899px)";
 
 export type AuthenticatedOutletContext = {
   csrfToken: string | null;
-  navigate: NavigateFunction;
   user: AuthUser;
-  visibleNavItems: NavItem[];
 };
 
 export function AuthenticatedLayout() {
   const auth = useAuth();
   const location = useLocation();
-  const navigate = useNavigate();
   const isMobile = useMediaQuery(MOBILE_NAVIGATION_QUERY);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(readSidebarCollapsed);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -53,7 +48,33 @@ export function AuthenticatedLayout() {
       }
     }
 
+    function keepFocusInDrawer(event: KeyboardEvent) {
+      if (event.key !== "Tab") {
+        return;
+      }
+
+      const drawer = document.getElementById("primary-navigation");
+      const focusableElements = drawer?.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+      );
+      if (!focusableElements || focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      if (event.shiftKey && document.activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+      } else if (!event.shiftKey && document.activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    }
+
     document.addEventListener("keydown", handleEscape);
+    document.addEventListener("keydown", keepFocusInDrawer);
     window.requestAnimationFrame(() => {
       document
         .querySelector<HTMLElement>("#primary-navigation a[aria-current='page']")
@@ -63,6 +84,7 @@ export function AuthenticatedLayout() {
     return () => {
       document.body.style.overflow = previousOverflow;
       document.removeEventListener("keydown", handleEscape);
+      document.removeEventListener("keydown", keepFocusInDrawer);
     };
   }, [isDrawerOpen, isMobile]);
 
@@ -135,9 +157,10 @@ export function AuthenticatedLayout() {
         isMobile={isMobile}
         items={visibleNavItems}
         onClose={closeDrawerAndRestoreFocus}
-        onNavigate={() => {
+        onLinkSelect={() => {
           if (isMobile) {
             setIsDrawerOpen(false);
+            window.requestAnimationFrame(() => mainContentRef.current?.focus());
           }
         }}
       />
@@ -179,9 +202,7 @@ export function AuthenticatedLayout() {
           <Outlet
             context={{
               csrfToken: auth.csrfToken,
-              navigate,
-              user,
-              visibleNavItems
+              user
             } satisfies AuthenticatedOutletContext}
           />
         </main>

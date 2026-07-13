@@ -18,7 +18,7 @@ const ROLE_UPGRADE_OPTIONS: Array<{ value: RoleUpgradeTarget; label: string }> =
 
 const ROLE_UPGRADE_ORDER: RoleUpgradeTarget[] = ["manager", "analyst", "admin"];
 
-export function RoleUpgradePage({
+export function RoleUpgradeSection({
   userRole,
   csrfToken
 }: {
@@ -39,6 +39,14 @@ export function RoleUpgradePage({
 
   useEffect(() => {
     let isCurrent = true;
+
+    if (!hasRoleUpgradeOptions) {
+      setIsLoadingRequests(false);
+      return () => {
+        isCurrent = false;
+      };
+    }
+
     setIsLoadingRequests(true);
     setLoadError(null);
 
@@ -61,7 +69,7 @@ export function RoleUpgradePage({
     return () => {
       isCurrent = false;
     };
-  }, []);
+  }, [hasRoleUpgradeOptions]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -104,80 +112,69 @@ export function RoleUpgradePage({
     }
   }
 
+  if (!hasRoleUpgradeOptions) {
+    return null;
+  }
+
   return (
-    <article className="role-upgrade-panel">
-      <div className="role-upgrade-panel__header">
-        <p className="eyebrow">Role upgrade</p>
-        <h1 id="workspace-title">Request Role Upgrade</h1>
-        <p className="subtitle">
-          Choose the role you need and explain the access change. Admin approval is
-          required.
-        </p>
-        <div className="role-upgrade-panel__chips" aria-label="Role request safeguards">
-          <span>Existing workflow</span>
-          <span>Admin reviewed</span>
-          <span>No automatic access</span>
-        </div>
+    <section className="profile-section profile-role-upgrade" aria-labelledby="role-upgrade-title">
+      <div className="profile-section__header">
+        <h2 id="role-upgrade-title">Role Upgrade</h2>
+        <p>Request a higher role. An administrator must review the request.</p>
       </div>
 
-      {hasRoleUpgradeOptions ? (
-        <form className="role-request-form" onSubmit={(event) => void handleSubmit(event)}>
-          <div className="form-field">
-            <label htmlFor="requested-role">Requested role</label>
-            <select
-              id="requested-role"
-              value={requestedRole}
-              onChange={(event) =>
-                setRequestedRole(event.target.value as RoleUpgradeTarget)
-              }
-            >
-              {roleUpgradeOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <div className="form-field">
-            <label htmlFor="role-request-reason">Reason</label>
-            <textarea
-              id="role-request-reason"
-              rows={4}
-              value={reason}
-              onChange={(event) => setReason(event.target.value)}
-            />
-          </div>
-
-          <p className="role-request-note">Admin approval is required.</p>
-
-          {submitError ? (
-            <p className="form-message form-message--error" role="alert">
-              {submitError}
-            </p>
-          ) : null}
-
-          {successMessage ? (
-            <p className="form-message form-message--success" role="status">
-              {successMessage}
-            </p>
-          ) : null}
-
-          <button
-            type="submit"
-            className="primary-action-button"
-            disabled={isSubmitting}
+      <form className="role-request-form" onSubmit={(event) => void handleSubmit(event)}>
+        <div className="form-field">
+          <label htmlFor="requested-role">Requested role</label>
+          <select
+            id="requested-role"
+            value={requestedRole}
+            onChange={(event) =>
+              setRequestedRole(event.target.value as RoleUpgradeTarget)
+            }
           >
-            {isSubmitting ? "Submitting..." : "Submit request"}
-          </button>
-        </form>
-      ) : (
-        <p className="role-request-note">Admin already has the highest role.</p>
-      )}
+            {roleUpgradeOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="form-field">
+          <label htmlFor="role-request-reason">Reason</label>
+          <textarea
+            id="role-request-reason"
+            rows={4}
+            value={reason}
+            onChange={(event) => setReason(event.target.value)}
+          />
+        </div>
+
+        {submitError ? (
+          <p className="form-message form-message--error" role="alert">
+            {submitError}
+          </p>
+        ) : null}
+
+        {successMessage ? (
+          <p className="form-message form-message--success" role="status">
+            {successMessage}
+          </p>
+        ) : null}
+
+        <button
+          type="submit"
+          className="primary-action-button"
+          disabled={isSubmitting}
+        >
+          {isSubmitting ? "Submitting..." : "Submit request"}
+        </button>
+      </form>
 
       <section className="role-request-status" aria-labelledby="role-request-status-title">
         <div className="role-request-status__header">
-          <h2 id="role-request-status-title">My role requests</h2>
+          <h3 id="role-request-status-title">Existing requests</h3>
         </div>
 
         {isLoadingRequests ? (
@@ -213,7 +210,7 @@ export function RoleUpgradePage({
           </ul>
         ) : null}
       </section>
-    </article>
+    </section>
   );
 }
 

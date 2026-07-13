@@ -3,8 +3,8 @@ import { Navigate, Outlet, Route, Routes, useOutletContext } from "react-router-
 import { useAuth } from "../auth/AuthProvider";
 import { AskDataPage } from "../features/ask-data";
 import { DashboardPage } from "../features/dashboard/DashboardPage";
+import { ProfilePage } from "../features/profile/ProfilePage";
 import { RoleRequestsPage } from "../features/role-requests/RoleRequestsPage";
-import { RoleUpgradePage } from "../features/role-upgrade/RoleUpgradePage";
 import { LoginPage } from "../pages/LoginPage";
 import {
   AuthenticatedLayout,
@@ -21,7 +21,14 @@ export function AppRoutes() {
       <Route element={<AuthenticatedRoute />}>
         <Route element={<AuthenticatedLayout />}>
           <Route index element={<DashboardRoute />} />
-          <Route path={APP_ROUTES.ask} element={<AskDataRoute />} />
+          <Route
+            path={APP_ROUTES.ask}
+            element={
+              <PermissionRoute permission="can_use_query_templates">
+                <AskDataRoute />
+              </PermissionRoute>
+            }
+          />
           <Route path={APP_ROUTES.profile} element={<ProfileRoute />} />
           <Route
             path={APP_ROUTES.adminRoleRequests}
@@ -87,22 +94,9 @@ function AuthLoadingPage() {
 }
 
 function DashboardRoute() {
-  const { csrfToken, navigate, user, visibleNavItems } =
-    useOutletContext<AuthenticatedOutletContext>();
+  const { csrfToken, user } = useOutletContext<AuthenticatedOutletContext>();
 
-  return (
-    <DashboardPage
-      csrfToken={csrfToken}
-      user={user}
-      visibleNavItems={visibleNavItems}
-      onNavigate={(navId) => {
-        const target = visibleNavItems.find((item) => item.id === navId);
-        if (target) {
-          navigate(target.path);
-        }
-      }}
-    />
-  );
+  return <DashboardPage csrfToken={csrfToken} user={user} />;
 }
 
 function AskDataRoute() {
@@ -112,7 +106,7 @@ function AskDataRoute() {
 
 function ProfileRoute() {
   const { csrfToken, user } = useOutletContext<AuthenticatedOutletContext>();
-  return <RoleUpgradePage userRole={user.role} csrfToken={csrfToken} />;
+  return <ProfilePage user={user} csrfToken={csrfToken} />;
 }
 
 function AdminRoleRequestsRoute() {

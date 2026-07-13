@@ -26,8 +26,8 @@ export function DashboardCatalogItem({ dashboard }: { dashboard: Dashboard }) {
         </div>
         {dashboard.department_id ? (
           <div>
-            <dt>Department</dt>
-            <dd>Department: {dashboard.department_id}</dd>
+            <dt>Scope</dt>
+            <dd>Scope ID: {dashboard.department_id}</dd>
           </div>
         ) : null}
       </dl>
@@ -55,7 +55,7 @@ export function DashboardCatalogItem({ dashboard }: { dashboard: Dashboard }) {
 
 function formatVisibilityScope(scope: DashboardVisibilityScope): string {
   if (scope === "department") {
-    return "Department";
+    return "Scope";
   }
 
   if (scope === "global") {

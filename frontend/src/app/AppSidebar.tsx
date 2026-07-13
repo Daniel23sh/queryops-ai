@@ -9,14 +9,14 @@ export function AppSidebar({
   isMobile,
   items,
   onClose,
-  onNavigate
+  onLinkSelect
 }: {
   collapsed: boolean;
   drawerOpen: boolean;
   isMobile: boolean;
   items: NavItem[];
   onClose: () => void;
-  onNavigate: () => void;
+  onLinkSelect: () => void;
 }) {
   return (
     <aside
@@ -50,7 +50,7 @@ export function AppSidebar({
         ) : null}
       </div>
 
-      <AppNavigation items={items} onNavigate={onNavigate} />
+      <AppNavigation items={items} onLinkSelect={onLinkSelect} />
     </aside>
   );
 }
