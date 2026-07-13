@@ -1,13 +1,21 @@
-import { useState } from "react";
-import { Outlet, useNavigate, type NavigateFunction } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import {
+  Outlet,
+  useLocation,
+  useNavigate,
+  type NavigateFunction
+} from "react-router-dom";
 
 import { ApiError } from "../api/client";
 import { useAuth } from "../auth/AuthProvider";
 import type { AuthUser } from "../auth/types";
-import { formatRole } from "../lib/format";
-import { AppShell } from "./AppShell";
 import { AppSidebar } from "./AppSidebar";
 import { getVisibleNavItems, type NavItem } from "./navigation";
+import { ProductTopbar } from "./ProductTopbar";
+import { getRouteTitle } from "./routeConfig";
+
+const SIDEBAR_STORAGE_KEY = "queryops-sidebar-collapsed";
+const MOBILE_NAVIGATION_QUERY = "(max-width: 899px)";
 
 export type AuthenticatedOutletContext = {
   csrfToken: string | null;
@@ -18,11 +26,87 @@ export type AuthenticatedOutletContext = {
 
 export function AuthenticatedLayout() {
   const auth = useAuth();
+  const location = useLocation();
   const navigate = useNavigate();
-  const user = auth.user as AuthUser;
-  const visibleNavItems = getVisibleNavItems(user);
+  const isMobile = useMediaQuery(MOBILE_NAVIGATION_QUERY);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(readSidebarCollapsed);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
   const [logoutError, setLogoutError] = useState<string | null>(null);
+  const navigationToggleRef = useRef<HTMLButtonElement>(null);
+  const mainContentRef = useRef<HTMLElement>(null);
+  const previousPathRef = useRef(location.pathname);
+  const user = auth.user;
+
+  useEffect(() => {
+    if (!isMobile || !isDrawerOpen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setIsDrawerOpen(false);
+        window.requestAnimationFrame(() => navigationToggleRef.current?.focus());
+      }
+    }
+
+    document.addEventListener("keydown", handleEscape);
+    window.requestAnimationFrame(() => {
+      document
+        .querySelector<HTMLElement>("#primary-navigation a[aria-current='page']")
+        ?.focus();
+    });
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [isDrawerOpen, isMobile]);
+
+  useEffect(() => {
+    if (location.pathname === previousPathRef.current) {
+      return;
+    }
+
+    previousPathRef.current = location.pathname;
+    setIsDrawerOpen(false);
+    mainContentRef.current?.focus();
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!isMobile) {
+      setIsDrawerOpen(false);
+    }
+  }, [isMobile]);
+
+  if (!user) {
+    return null;
+  }
+
+  const visibleNavItems = getVisibleNavItems(user);
+  const activeScope = getActiveScopeLabel(user);
+  const isNavigationExpanded = isMobile ? isDrawerOpen : !isSidebarCollapsed;
+
+  function toggleNavigation() {
+    if (isMobile) {
+      setIsDrawerOpen((isOpen) => !isOpen);
+      return;
+    }
+
+    setIsSidebarCollapsed((isCollapsed) => {
+      const nextValue = !isCollapsed;
+      persistSidebarCollapsed(nextValue);
+      return nextValue;
+    });
+  }
+
+  function closeDrawerAndRestoreFocus() {
+    setIsDrawerOpen(false);
+    window.requestAnimationFrame(() => navigationToggleRef.current?.focus());
+  }
 
   async function handleLogout() {
     setIsLoggingOut(true);
@@ -37,62 +121,72 @@ export function AuthenticatedLayout() {
   }
 
   return (
-    <AppShell>
-      <main className="app-main app-main--workspace">
-        <div className="workspace-layout">
-          <AppSidebar items={visibleNavItems} />
+    <div
+      className="product-shell"
+      data-sidebar-collapsed={!isMobile && isSidebarCollapsed ? "true" : "false"}
+    >
+      <a className="skip-link" href="#main-content">
+        Skip to main content
+      </a>
 
-          <section className="workspace-content" aria-labelledby="workspace-title">
-            <div className="workspace-topbar">
-              <dl className="identity-grid" aria-label="Current user">
-                <div>
-                  <dt>Email</dt>
-                  <dd>{user.email}</dd>
-                </div>
-                <div>
-                  <dt>Role</dt>
-                  <dd>{formatRole(user.role)}</dd>
-                </div>
-                <div>
-                  <dt>Scope</dt>
-                  <dd>{getActiveScopeLabel(user)}</dd>
-                </div>
-                <div>
-                  <dt>Auth mode</dt>
-                  <dd>{user.authMode}</dd>
-                </div>
-              </dl>
+      <AppSidebar
+        collapsed={isSidebarCollapsed}
+        drawerOpen={isDrawerOpen}
+        isMobile={isMobile}
+        items={visibleNavItems}
+        onClose={closeDrawerAndRestoreFocus}
+        onNavigate={() => {
+          if (isMobile) {
+            setIsDrawerOpen(false);
+          }
+        }}
+      />
 
-              <div className="workspace-actions" aria-label="Session actions">
-                <button
-                  type="button"
-                  className="logout-button"
-                  disabled={isLoggingOut}
-                  onClick={() => void handleLogout()}
-                >
-                  {isLoggingOut ? "Logging out..." : "Log out"}
-                </button>
-              </div>
-            </div>
+      {isMobile && isDrawerOpen ? (
+        <button
+          type="button"
+          className="navigation-backdrop"
+          aria-label="Close navigation"
+          onClick={closeDrawerAndRestoreFocus}
+        />
+      ) : null}
 
-            {logoutError ? (
-              <p className="logout-error" role="alert">
-                {logoutError}
-              </p>
-            ) : null}
+      <div className="product-shell__workspace">
+        <ProductTopbar
+          activeScope={activeScope}
+          isLoggingOut={isLoggingOut}
+          isMobile={isMobile}
+          isNavigationExpanded={isNavigationExpanded}
+          navigationToggleRef={navigationToggleRef}
+          onLogout={() => void handleLogout()}
+          onToggleNavigation={toggleNavigation}
+          routeTitle={getRouteTitle(location.pathname)}
+          user={user}
+        />
 
-            <Outlet
-              context={{
-                csrfToken: auth.csrfToken,
-                navigate,
-                user,
-                visibleNavItems
-              } satisfies AuthenticatedOutletContext}
-            />
-          </section>
-        </div>
-      </main>
-    </AppShell>
+        <main
+          id="main-content"
+          ref={mainContentRef}
+          className="product-content"
+          tabIndex={-1}
+        >
+          {logoutError ? (
+            <p className="logout-error" role="alert">
+              {logoutError}
+            </p>
+          ) : null}
+
+          <Outlet
+            context={{
+              csrfToken: auth.csrfToken,
+              navigate,
+              user,
+              visibleNavItems
+            } satisfies AuthenticatedOutletContext}
+          />
+        </main>
+      </div>
+    </div>
   );
 }
 
@@ -100,8 +194,51 @@ function getActiveScopeLabel(user: AuthUser): string {
   return (
     user.scopes.find((scope) => scope.isDefault)?.displayName ??
     user.scopes[0]?.displayName ??
-    "No scope assigned"
+    "Not assigned"
   );
+}
+
+function readSidebarCollapsed(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  try {
+    return window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
+
+function persistSidebarCollapsed(collapsed: boolean) {
+  try {
+    window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(collapsed));
+  } catch {
+    // Sidebar persistence is optional; the current interaction still succeeds.
+  }
+}
+
+function useMediaQuery(query: string): boolean {
+  const [matches, setMatches] = useState(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+      return false;
+    }
+    return window.matchMedia(query).matches;
+  });
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia(query);
+    const updateMatches = (event: MediaQueryListEvent) => setMatches(event.matches);
+    setMatches(mediaQuery.matches);
+    mediaQuery.addEventListener("change", updateMatches);
+    return () => mediaQuery.removeEventListener("change", updateMatches);
+  }, [query]);
+
+  return matches;
 }
 
 function formatLogoutError(error: unknown): string {

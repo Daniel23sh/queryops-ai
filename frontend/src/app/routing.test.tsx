@@ -3,6 +3,7 @@ import { BrowserRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import App from "../App";
+import { ThemeProvider } from "./ThemeProvider";
 import { AuthProvider } from "../auth/AuthProvider";
 
 const manager = backendUser({
@@ -142,11 +143,13 @@ describe("application routing", () => {
 function renderApp(path: string) {
   window.history.replaceState({}, "", path);
   render(
-    <BrowserRouter>
-      <AuthProvider>
-        <App />
-      </AuthProvider>
-    </BrowserRouter>
+    <ThemeProvider>
+      <BrowserRouter>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
+      </BrowserRouter>
+    </ThemeProvider>
   );
 }
 
