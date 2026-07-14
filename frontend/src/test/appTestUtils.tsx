@@ -112,6 +112,8 @@ export function authenticatedRoutes(
 ): ApiRoutes {
   return {
     "GET /api/v1/auth/me": successResponse(user),
+    "GET /api/v1/home/overview": successResponse(backendHomeOverview(user)),
+    "GET /api/v1/dashboards/library": successResponse([]),
     ...routes
   };
 }
@@ -202,6 +204,115 @@ export function backendDashboardCard({
     config: null,
     created_at: "2026-07-13T12:00:00Z",
     updated_at: "2026-07-13T12:00:00Z"
+  };
+}
+
+export function backendHomeOverview(user: BackendUser = demoManager) {
+  const isPersonal = user.role === "user";
+  const isGlobal = user.role === "admin";
+  return {
+    mode: isPersonal ? "personal" : isGlobal ? "global" : "scoped",
+    scope: {
+      type: isGlobal ? "global" : "department",
+      display_name: user.scopes[0]?.display_name ?? "Personal",
+      scope_count: 1
+    },
+    personal_summary: {
+      owned_dashboard_count: 0,
+      shared_dashboard_count: 0,
+      owned_card_count: 0,
+      successful_queries_last_30_days: 0,
+      pending_own_role_requests: 0
+    },
+    operational_metrics: isPersonal
+      ? null
+      : {
+          active_human_users: 84,
+          device_total: 117,
+          compliant_device_count: 109,
+          device_compliance_rate: 93.16,
+          monthly_license_cost_usd: 18432.5,
+          unused_license_assignments: 18,
+          open_support_tickets: 11,
+          security_events_last_30_days: 7
+        },
+    admin_metrics: isGlobal
+      ? {
+          active_app_users: 4,
+          pending_role_requests: 1,
+          app_audit_events_last_7_days: null
+        }
+      : null
+  };
+}
+
+export function backendDashboardLibraryItem({
+  id = "dashboard-id",
+  title = "Operations review",
+  relationship = "owned",
+  cardCount = 1,
+  description = "Saved operational questions.",
+  createdAt = "2026-07-12T12:00:00Z",
+  updatedAt = "2026-07-13T12:00:00Z"
+}: {
+  id?: string;
+  title?: string;
+  relationship?: "owned" | "shared";
+  cardCount?: number;
+  description?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+} = {}) {
+  return {
+    id,
+    title,
+    description,
+    visibility_scope: relationship === "owned" ? "personal" : "department",
+    relationship,
+    owner: {
+      id: relationship === "owned" ? "current-user" : "other-user",
+      display_name: relationship === "owned" ? "Demo Manager" : "Demo Analyst"
+    },
+    scope: {
+      type: relationship === "owned" ? "personal" : "department",
+      display_name: relationship === "owned" ? "Personal" : "Finance"
+    },
+    card_count: cardCount,
+    preview_cards: Array.from({ length: Math.min(cardCount, 4) }, (_, index) => ({
+      id: `${id}-card-${index}`,
+      title: `Card ${index + 1}`,
+      card_type: "table",
+      position: index
+    })),
+    created_at: createdAt,
+    updated_at: updatedAt
+  };
+}
+
+export function backendDashboardDetail({
+  id = "dashboard-id",
+  relationship = "owned",
+  visibilityScope = "personal",
+  cards = []
+}: {
+  id?: string;
+  relationship?: "owned" | "shared";
+  visibilityScope?: "personal" | "department" | "global";
+  cards?: Array<Record<string, unknown>>;
+} = {}) {
+  return {
+    ...backendDashboardLibraryItem({ id, relationship, cardCount: cards.length }),
+    visibility_scope: visibilityScope,
+    scope: {
+      type: visibilityScope,
+      display_name:
+        visibilityScope === "personal"
+          ? "Personal"
+          : visibilityScope === "global"
+            ? "Global"
+            : "Finance"
+    },
+    cards
   };
 }
 

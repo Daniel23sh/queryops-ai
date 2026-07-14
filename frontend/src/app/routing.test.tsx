@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import {
   authenticatedRoutes,
+  backendHomeOverview,
   demoAdmin,
   demoManager,
   errorResponse,
@@ -38,7 +39,8 @@ describe("application routing", () => {
         requires_onboarding: false,
         csrf_token: "csrf-from-login"
       }),
-      "GET /api/v1/dashboards/my": successResponse([])
+      "GET /api/v1/home/overview": successResponse(backendHomeOverview(demoManager)),
+      "GET /api/v1/dashboards/library": successResponse([])
     });
 
     renderAppAt("/login");

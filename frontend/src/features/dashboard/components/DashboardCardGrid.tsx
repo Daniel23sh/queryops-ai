@@ -22,13 +22,15 @@ export function DashboardCardGrid({
   canRefreshCards,
   csrfToken,
   dashboard,
-  onReload
+  onReload,
+  showDashboardHeader = true
 }: {
   canExportCards: boolean;
   canRefreshCards: boolean;
   csrfToken: string | null;
   dashboard: Dashboard;
   onReload: () => Promise<void>;
+  showDashboardHeader?: boolean;
 }) {
   const { cards, isSaving, moveCard, saveState } = useDashboardCardOrder({
     dashboard,
@@ -60,7 +62,7 @@ export function DashboardCardGrid({
 
   return (
     <article className="dashboard-saved-dashboard">
-      <header className="dashboard-saved-dashboard__header">
+      {showDashboardHeader ? <header className="dashboard-saved-dashboard__header">
         <div>
           <p className="eyebrow">{formatVisibilityScope(dashboard.visibility_scope)}</p>
           <h3>{dashboard.title}</h3>
@@ -73,7 +75,7 @@ export function DashboardCardGrid({
         <span className="dashboard-card-count">
           {cards.length} {cards.length === 1 ? "card" : "cards"}
         </span>
-      </header>
+      </header> : null}
 
       {cards.length > 0 ? (
         <DndContext

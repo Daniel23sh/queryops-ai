@@ -16,6 +16,7 @@ from app.auth.permissions import require_authenticated_user
 from app.auth.session import csrf_is_valid, session_from_request
 from app.db.session import get_db
 from app.dashboards.policy import dashboard_is_visible
+from app.domains.it_operations.models import Department
 from app.models.product import (
     AppUser,
     Dashboard,
@@ -62,7 +63,7 @@ def dashboard_catalog(
     visible_dashboards = [
         dashboard
         for dashboard in dashboards
-        if _dashboard_visible_in_catalog(dashboard, current_user, access_context)
+        if dashboard_is_visible(dashboard, current_user, access_context)
     ]
 
     return success_response(
@@ -87,6 +88,74 @@ def my_dashboard(
     ).all()
 
     return success_response([_serialize_dashboard(dashboard) for dashboard in dashboards])
+
+
+@router.get("/dashboards/library")
+def dashboard_library(
+    current_user: AppUser = Depends(require_authenticated_user),
+    db: Session = Depends(get_db),
+):
+    access_context = build_user_access_context(current_user, db)
+    dashboards = db.scalars(
+        select(Dashboard)
+        .options(
+            selectinload(Dashboard.cards),
+            selectinload(Dashboard.owner),
+        )
+        .where(Dashboard.is_archived.is_(False))
+        .order_by(Dashboard.updated_at.desc(), Dashboard.title, Dashboard.id)
+    ).all()
+    visible_dashboards = [
+        dashboard
+        for dashboard in dashboards
+        if dashboard_is_visible(dashboard, current_user, access_context)
+    ]
+    department_names = _department_names(db, visible_dashboards)
+
+    return success_response(
+        [
+            _serialize_dashboard_library_item(
+                dashboard,
+                current_user=current_user,
+                department_names=department_names,
+            )
+            for dashboard in visible_dashboards
+        ]
+    )
+
+
+@router.get("/dashboards/{dashboard_id}")
+def dashboard_detail(
+    dashboard_id: UUID,
+    current_user: AppUser = Depends(require_authenticated_user),
+    db: Session = Depends(get_db),
+):
+    access_context = build_user_access_context(current_user, db)
+    dashboard = db.scalar(
+        select(Dashboard)
+        .options(
+            selectinload(Dashboard.cards),
+            selectinload(Dashboard.owner),
+        )
+        .where(
+            Dashboard.id == dashboard_id,
+            Dashboard.is_archived.is_(False),
+        )
+    )
+    if dashboard is None or not dashboard_is_visible(
+        dashboard,
+        current_user,
+        access_context,
+    ):
+        return _dashboard_not_found_response()
+
+    return success_response(
+        _serialize_dashboard_detail(
+            dashboard,
+            current_user=current_user,
+            department_names=_department_names(db, [dashboard]),
+        )
+    )
 
 
 @router.patch("/dashboards/my/layout")
@@ -345,14 +414,6 @@ def _csrf_error_response(request: Request):
             status_code=403,
         )
     return None
-
-
-def _dashboard_visible_in_catalog(
-    dashboard: Dashboard,
-    current_user: AppUser,
-    access_context: UserAccessContext,
-) -> bool:
-    return dashboard_is_visible(dashboard, current_user, access_context)
 
 
 def _dashboard_create_values(
@@ -818,6 +879,141 @@ def _serialize_dashboard_card(card: DashboardCard) -> dict[str, Any]:
         "created_at": _serialize_datetime(card.created_at),
         "updated_at": _serialize_datetime(card.updated_at),
     }
+
+
+def _serialize_dashboard_library_item(
+    dashboard: Dashboard,
+    *,
+    current_user: AppUser,
+    department_names: dict[UUID, str],
+) -> dict[str, Any]:
+    ordered_cards = _ordered_cards(dashboard)
+    return {
+        **_serialize_safe_dashboard_metadata(
+            dashboard,
+            current_user=current_user,
+            department_names=department_names,
+        ),
+        "card_count": len(ordered_cards),
+        "preview_cards": [
+            _serialize_dashboard_card_descriptor(card) for card in ordered_cards[:4]
+        ],
+    }
+
+
+def _serialize_dashboard_detail(
+    dashboard: Dashboard,
+    *,
+    current_user: AppUser,
+    department_names: dict[UUID, str],
+) -> dict[str, Any]:
+    ordered_cards = _ordered_cards(dashboard)
+    return {
+        **_serialize_safe_dashboard_metadata(
+            dashboard,
+            current_user=current_user,
+            department_names=department_names,
+        ),
+        "card_count": len(ordered_cards),
+        "cards": [_serialize_safe_dashboard_card(card) for card in ordered_cards],
+    }
+
+
+def _serialize_safe_dashboard_metadata(
+    dashboard: Dashboard,
+    *,
+    current_user: AppUser,
+    department_names: dict[UUID, str],
+) -> dict[str, Any]:
+    return {
+        "id": str(dashboard.id),
+        "title": dashboard.title,
+        "description": dashboard.description,
+        "visibility_scope": dashboard.visibility_scope,
+        "relationship": (
+            "owned" if dashboard.owner_user_id == current_user.id else "shared"
+        ),
+        "owner": _serialize_safe_owner(dashboard),
+        "scope": _serialize_dashboard_scope(dashboard, department_names),
+        "created_at": _serialize_datetime(dashboard.created_at),
+        "updated_at": _serialize_datetime(dashboard.updated_at),
+    }
+
+
+def _serialize_safe_owner(dashboard: Dashboard) -> dict[str, str] | None:
+    if dashboard.owner is None:
+        return None
+    return {
+        "id": str(dashboard.owner.id),
+        "display_name": dashboard.owner.full_name,
+    }
+
+
+def _serialize_dashboard_scope(
+    dashboard: Dashboard,
+    department_names: dict[UUID, str],
+) -> dict[str, str]:
+    if dashboard.visibility_scope == VisibilityScope.PERSONAL.value:
+        display_name = "Personal"
+    elif dashboard.visibility_scope == VisibilityScope.GLOBAL.value:
+        display_name = "Global"
+    elif dashboard.department_id is not None:
+        display_name = department_names.get(dashboard.department_id, "Assigned scope")
+    else:
+        display_name = "Assigned scope"
+    return {
+        "type": dashboard.visibility_scope,
+        "display_name": display_name,
+    }
+
+
+def _serialize_dashboard_card_descriptor(card: DashboardCard) -> dict[str, Any]:
+    return {
+        "id": str(card.id),
+        "title": card.title,
+        "card_type": card.card_type,
+        "position": card.position,
+    }
+
+
+def _serialize_safe_dashboard_card(card: DashboardCard) -> dict[str, Any]:
+    return {
+        "id": str(card.id),
+        "dashboard_id": str(card.dashboard_id),
+        "saved_query_id": str(card.saved_query_id)
+        if card.saved_query_id is not None
+        else None,
+        "title": card.title,
+        "description": card.description,
+        "card_type": card.card_type,
+        "position": card.position,
+        "created_at": _serialize_datetime(card.created_at),
+        "updated_at": _serialize_datetime(card.updated_at),
+    }
+
+
+def _ordered_cards(dashboard: Dashboard) -> list[DashboardCard]:
+    return sorted(
+        dashboard.cards,
+        key=lambda card: (card.position, card.created_at, str(card.id)),
+    )
+
+
+def _department_names(
+    db: Session,
+    dashboards: list[Dashboard],
+) -> dict[UUID, str]:
+    department_ids = {
+        dashboard.department_id
+        for dashboard in dashboards
+        if dashboard.department_id is not None
+    }
+    if not department_ids:
+        return {}
+    departments = db.scalars(
+        select(Department).where(Department.id.in_(department_ids))
+    ).all()
+    return {department.id: department.name for department in departments}
 
 
 def _serialize_datetime(value: datetime) -> str:

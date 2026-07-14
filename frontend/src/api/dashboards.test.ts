@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createDashboard,
   getDashboardCatalog,
+  getDashboardDetail,
+  getDashboardLibrary,
   getMyDashboards,
   refreshDashboardCard,
   saveQueryRunAsCard,
@@ -47,6 +49,31 @@ afterEach(() => {
 });
 
 describe("dashboards API client", () => {
+  it("gets safe library and detail resources with cancellation", async () => {
+    const library = [{ id: "dashboard-id", relationship: "owned" }];
+    const detail = { id: "dashboard-id", cards: [] };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(apiResponse({ data: library }))
+      .mockResolvedValueOnce(apiResponse({ data: detail }));
+    vi.stubGlobal("fetch", fetchMock);
+    const controller = new AbortController();
+
+    await expect(getDashboardLibrary(controller.signal)).resolves.toEqual(library);
+    await expect(
+      getDashboardDetail("dashboard/id", controller.signal)
+    ).resolves.toEqual(detail);
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      1,
+      "http://localhost:8000/api/v1/dashboards/library",
+      expect.objectContaining({ method: "GET", signal: controller.signal })
+    );
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      "http://localhost:8000/api/v1/dashboards/dashboard%2Fid",
+      expect.objectContaining({ method: "GET", signal: controller.signal })
+    );
+  });
   it("gets the dashboard catalog with cookies included", async () => {
     const fetchMock = stubFetch({
       data: [backendDashboard],
@@ -367,4 +394,12 @@ function stubFetch(
   const fetchMock = vi.fn().mockResolvedValue(response);
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
+}
+
+function apiResponse(payload: unknown) {
+  return {
+    ok: true,
+    status: 200,
+    json: vi.fn().mockResolvedValue(payload)
+  };
 }

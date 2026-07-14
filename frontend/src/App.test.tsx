@@ -5,6 +5,8 @@ import {
   authenticatedRoutes,
   backendDashboard,
   backendDashboardCard,
+  backendDashboardLibraryItem,
+  backendHomeOverview,
   backendQueryResult,
   backendQueryTemplate,
   demoAnalyst,
@@ -39,7 +41,8 @@ describe("App", () => {
         requires_onboarding: false,
         csrf_token: "csrf-from-login"
       }),
-      "GET /api/v1/dashboards/my": successResponse([])
+      "GET /api/v1/home/overview": successResponse(backendHomeOverview(demoManager)),
+      "GET /api/v1/dashboards/library": successResponse([])
     });
 
     renderAppAt("/login");
@@ -61,7 +64,7 @@ describe("App", () => {
   it("renders only real Home data and corrected empty copy", async () => {
     installApiMock(
       authenticatedRoutes(demoManager, {
-        "GET /api/v1/dashboards/my": successResponse([])
+        "GET /api/v1/dashboards/library": successResponse([])
       })
     );
 
@@ -71,9 +74,7 @@ describe("App", () => {
     expect(within(dashboard).getByRole("heading", { name: "My Dashboard" })).toBeInTheDocument();
     expect(within(dashboard).getByText(/Manager.*Scope: Finance/)).toBeInTheDocument();
     expect(
-      await within(dashboard).findByText(
-        "No dashboards or saved cards yet. Run a query in Ask Data and save it to a dashboard."
-      )
+      await within(dashboard).findByText("No dashboards are available yet.")
     ).toBeInTheDocument();
     expect(within(dashboard).getByRole("link", { name: "Open Ask Data" })).toHaveAttribute(
       "href",
@@ -93,9 +94,10 @@ describe("App", () => {
     };
     installApiMock(
       authenticatedRoutes(demoAnalyst, {
-        "GET /api/v1/dashboards/my": successResponse([
+        "GET /api/v1/dashboards/library": successResponse([
           {
-            ...backendDashboard({ cards: [card] }),
+            ...backendDashboardLibraryItem({ title: "Operations review" }),
+            preview_cards: [card],
             generated_sql: "SELECT dashboard_secret"
           }
         ])
@@ -104,8 +106,10 @@ describe("App", () => {
 
     renderAppAt("/");
 
-    expect(await screen.findByRole("heading", { name: "Operations review" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Scoped incident review" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Preview dashboard Operations review" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Scoped incident review")).toBeInTheDocument();
     expect(screen.queryByText("SELECT secret_generated_sql")).not.toBeInTheDocument();
     expect(screen.queryByText("SELECT secret_executed_sql")).not.toBeInTheDocument();
     expect(screen.queryByText("SELECT dashboard_secret")).not.toBeInTheDocument();
@@ -114,18 +118,18 @@ describe("App", () => {
   it("shows genuine Home loading and retryable error states", async () => {
     installApiMock(
       authenticatedRoutes(demoManager, {
-        "GET /api/v1/dashboards/my": pendingResponse()
+        "GET /api/v1/dashboards/library": pendingResponse()
       })
     );
     const firstRender = renderAppAt("/");
     expect(
-      await screen.findByText("Loading your saved dashboard cards...")
+      await screen.findByText("Loading dashboard library...")
     ).toBeInTheDocument();
 
     firstRender.unmount();
     installApiMock(
       authenticatedRoutes(demoManager, {
-        "GET /api/v1/dashboards/my": [
+        "GET /api/v1/dashboards/library": [
           errorResponse("DASHBOARDS_UNAVAILABLE", 503),
           successResponse([])
         ]
@@ -134,39 +138,49 @@ describe("App", () => {
     renderAppAt("/");
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Dashboard cards could not be loaded."
+      "Dashboard library could not be loaded."
     );
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(
-      await screen.findByText(/No dashboards or saved cards yet/)
+      await screen.findByText("No dashboards are available yet.")
     ).toBeInTheDocument();
   });
 
   it("creates a personal dashboard with CSRF and refreshes Home", async () => {
     setCsrfCookie("csrf-from-cookie");
     const createdDashboard = backendDashboard({ title: "Quarterly review" });
+    const createdLibraryItem = backendDashboardLibraryItem({
+      title: "Quarterly review"
+    });
     const fetchMock = installApiMock(
       authenticatedRoutes(demoManager, {
-        "GET /api/v1/dashboards/my": [
+        "GET /api/v1/home/overview": [
+          successResponse(backendHomeOverview(demoManager)),
+          successResponse(backendHomeOverview(demoManager))
+        ],
+        "GET /api/v1/dashboards/library": [
           successResponse([]),
-          successResponse([createdDashboard])
+          successResponse([createdLibraryItem])
         ],
         "POST /api/v1/dashboards": successResponse(createdDashboard)
       })
     );
 
     renderAppAt("/");
-    await screen.findByText(/No dashboards or saved cards yet/);
+    await screen.findByText("No dashboards are available yet.");
+    fireEvent.click(screen.getByRole("button", { name: "New dashboard" }));
     fireEvent.change(screen.getByLabelText("Dashboard title"), {
       target: { value: "Quarterly review" }
     });
-    fireEvent.change(screen.getByLabelText("Description"), {
+    fireEvent.change(screen.getByLabelText("Description (optional)"), {
       target: { value: "Leadership review" }
     });
     fireEvent.click(screen.getByRole("button", { name: "Create dashboard" }));
 
-    expect(await screen.findByText("Personal dashboard created.")).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "Quarterly review" })).toBeInTheDocument();
+    expect(await screen.findByText("Quarterly review was created.")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Preview dashboard Quarterly review" })
+    ).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/api/v1/dashboards",
       expect.objectContaining({
@@ -179,14 +193,14 @@ describe("App", () => {
   it("keeps personal dashboard creation hidden without its permission", async () => {
     installApiMock(
       authenticatedRoutes(demoUser, {
-        "GET /api/v1/dashboards/my": successResponse([])
+        "GET /api/v1/dashboards/library": successResponse([])
       })
     );
 
     renderAppAt("/");
     await screen.findByRole("region", { name: "My Dashboard" });
 
-    expect(screen.queryByRole("heading", { name: "Create personal dashboard" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "New dashboard" })).not.toBeInTheDocument();
     expect(screen.queryByText(/not available for your role/i)).not.toBeInTheDocument();
   });
 

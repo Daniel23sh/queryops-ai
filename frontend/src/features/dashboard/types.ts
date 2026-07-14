@@ -22,10 +22,45 @@ export type DashboardCard = {
   description: string | null;
   card_type: DashboardCardType;
   position: number;
-  layout: DashboardJsonValue;
-  config: DashboardJsonValue;
+  layout?: DashboardJsonValue;
+  config?: DashboardJsonValue;
   created_at: string;
   updated_at: string;
+};
+
+export type DashboardRelationship = "owned" | "shared";
+
+export type DashboardOwner = {
+  id: string;
+  display_name: string;
+};
+
+export type DashboardScope = {
+  type: DashboardVisibilityScope;
+  display_name: string;
+};
+
+export type DashboardPreviewCard = Pick<
+  DashboardCard,
+  "id" | "title" | "card_type" | "position"
+>;
+
+export type DashboardLibraryItem = {
+  id: string;
+  title: string;
+  description: string | null;
+  visibility_scope: DashboardVisibilityScope;
+  relationship: DashboardRelationship;
+  owner: DashboardOwner | null;
+  scope: DashboardScope;
+  card_count: number;
+  preview_cards: DashboardPreviewCard[];
+  created_at: string;
+  updated_at: string;
+};
+
+export type DashboardDetail = Omit<DashboardLibraryItem, "preview_cards"> & {
+  cards: DashboardCard[];
 };
 
 export type Dashboard = {

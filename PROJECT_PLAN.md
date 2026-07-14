@@ -8,7 +8,11 @@ The current milestone status is:
 
 Current PR scope:
 
-`M7 PR1 — Product Shell, Routing & Navigation` is implementation-complete on branch `feature/m7-product-shell-navigation`.
+`M7 PR1 — Product Shell, Routing & Navigation` is complete and merged into `main` through PR #25.
+
+`M7 PR2 — Role-Aware Home & Dashboard Browser` is implementation-complete on branch `feature/m7-home-dashboard-browser`.
+
+M7 PR3 and M7 PR4 have not started. Milestone 8 has not started.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
@@ -181,7 +185,11 @@ Locked decisions from the planning documents:
 - The product shell is dark-first with a persistent light option.
 - Profile contains Role Upgrade for eligible non-Admin users; Admin does not see Role Upgrade.
 - Admin navigation exposes only implemented capabilities. Users and Audit remain hidden until real screens are implemented.
-- M7 PR1 is frontend-only. It must not change backend code, database models, migrations, seeds, permissions, RLS, or API contracts.
+- M7 PR1 was frontend-only and is complete and merged.
+- M7 PR2 adds safe Home aggregates and dashboard library/detail contracts without schema changes.
+- M7 PR2 operational aggregates must use the current `UserAccessContext`, application authorization, the non-owner read-only runtime role, transaction-local PostgreSQL RLS context, and PostgreSQL RLS.
+- An `app_user` must never be associated with a `directory_user` by email, name, provider id, or any inferred identity for Home metrics.
+- Home, dashboard library, preview, and detail responses must not expose SQL, raw operational rows, raw card config, or raw card layout.
 
 ## 5. Milestone 1 Scope
 
@@ -421,7 +429,9 @@ The active milestone and latest PR status are:
 
 `Milestone 7 — Product UX & Dashboard Redesign`
 
-`M7 PR1 — Product Shell, Routing & Navigation` is implementation-complete on branch `feature/m7-product-shell-navigation`. M7 PR2 is not active and has not started.
+`M7 PR1 — Product Shell, Routing & Navigation` is complete and merged into `main` through PR #25.
+
+`M7 PR2 — Role-Aware Home & Dashboard Browser` is implementation-complete on `feature/m7-home-dashboard-browser`. M7 PR3 and PR4 have not started. Milestone 8 has not started.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -748,11 +758,11 @@ Milestone 7 — Product UX & Dashboard Redesign is active. It modernizes the fro
 Milestone 7 is split into four PRs:
 
 1. `M7 PR1 — Product Shell, Routing & Navigation`
-   - Implementation-complete on `feature/m7-product-shell-navigation`.
+   - Complete and merged into `main` through PR #25.
    - Frontend-only routed shell, dark-first responsive navigation, Profile and Role Upgrade consolidation, and transitional My Dashboard cleanup.
 2. `M7 PR2 — Role-Aware Home & Dashboard Browser`
-   - Not started.
-   - Adds real role-aware Home overview data and the dashboard browser/detail experience, including `/dashboards/:dashboardId` only when the real detail screen exists.
+   - Implementation-complete on `feature/m7-home-dashboard-browser`.
+   - Adds real role-aware Home overview data and the dashboard browser/detail experience, including `/dashboards/:dashboardId` with a real detail screen.
 3. `M7 PR3 — Dashboard Editor, Grid & Visualizations`
    - Not started.
    - Adds the editor, grid/resizing behavior, and real visualization support.
@@ -773,3 +783,48 @@ Milestone 7 is split into four PRs:
 - Frontend permission checks improve UX only; backend authorization remains authoritative.
 - PR1 may reuse only existing frontend API contracts. If required Profile or route data is missing from `/auth/me`, stop and request approval before any backend change.
 - PR1 must not implement Home Overview metrics, dashboard library filters/previews/details, visualizations, resizing/grid coordinates, Ask Data redesign, Actions, Approvals, notifications, Users UI, Audit UI, or any Milestone 8 work.
+
+### M7 PR2 Locked Scope
+
+Goal: Role-Aware Home & Dashboard Browser.
+
+Implementation status: complete on `feature/m7-home-dashboard-browser`. PR2 added the three read-only APIs below, scoped/global Home aggregates through the existing read-only runtime/RLS boundary, the Owned/Shared browser and accessible metadata preview, the direct dashboard detail route, compact personal creation, and explicit owned-personal reorder compatibility. No schema change, charting library, editor, resize behavior, Ask Data redesign, or Milestone 8 work was added.
+
+In scope:
+
+- `GET /api/v1/home/overview` with a personal product summary for every authenticated user.
+- Manager/Analyst operational aggregates across every department scope authorized by their effective permissions and `UserAccessContext`.
+- Admin global operational aggregates plus independently permission-gated active app-user, pending role-request, and recent application-audit counts.
+- Resource-by-resource authorization, transaction-local PostgreSQL RLS, the non-owner read-only runtime role, read-only transactions, and null metrics when a resource is unavailable.
+- `GET /api/v1/dashboards/library` with non-archived visible dashboards classified as `owned` or `shared`.
+- Dashboard title/description client-side search, All/Owned/Shared filters, and Recently updated/Name/Created sorting.
+- A metadata-only dashboard preview dialog that never refreshes cards, executes queries, exports data, or exposes SQL/config/layout/raw rows.
+- `GET /api/v1/dashboards/{dashboard_id}` and authenticated `/dashboards/:dashboardId` with safe ordered card metadata.
+- Full dashboard presentation with existing current-viewer card refresh and permission-gated CSV export behavior.
+- Explicit owner-only reorder compatibility for owned personal dashboards using the existing M6 layout endpoint and conflict handling.
+- Compact personal dashboard creation with existing permission and CSRF behavior.
+- Responsive desktop/tablet/mobile behavior, including an accessible full-screen mobile preview dialog.
+
+Security and data semantics:
+
+- `app_users` and `directory_users` remain separate identities. Do not match them by email, full name, provider id, or another inferred attribute.
+- User receives the personal product summary and scope display metadata only; operational and admin metrics are null.
+- Home never returns employee, device, license, ticket, security-event, SQL, or raw-row detail.
+- Active human users are human, active-employment, active-account directory users.
+- Device compliance uses `devices.compliance_status`; no devices produces a null rate.
+- Monthly license cost includes active assignments and `licenses.monthly_cost_usd` under viewer RLS.
+- Unused licenses reuse the approved 60-day active, non-mandatory template semantics.
+- Open support tickets are `open` or `in_progress`.
+- Recent security events use `security_events.occurred_at` for the last 30 days.
+- Dashboard visibility continues to use the existing `dashboard_is_visible` policy; foreign personal and archived dashboards never appear.
+- Static `/dashboards/my`, `/dashboards/catalog`, and `/dashboards/library` routes must precede the UUID detail route.
+
+Out of scope:
+
+- database migrations, new tables, or schema changes; stop and report if one becomes necessary
+- charts, Recharts, visualization rendering, grid coordinates, resizing, or advanced layout behavior
+- the PR3 View/Edit editor, Add Card, card context menus, rename, duplicate, remove, dashboard cloning, or scoped/global dashboard creation UI
+- Ask Data redesign, query history drawer, or PR4 work
+- Actions, Approvals, Audit UI, Users UI, notifications, real LLM providers, Supabase Auth, Redis/background jobs, or Milestone 8 work
+
+M7 PR3 is next but not started. M7 PR4 remains not started. Milestone 8 remains not started. Do not infer approval to begin any of them from PR2 completion.
