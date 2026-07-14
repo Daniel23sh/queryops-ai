@@ -49,7 +49,8 @@ export function DashboardVisualization({
     : recommendation.mapping;
   const rows = result.rows.slice(0, MAX_CHART_ROWS);
   const truncated = result.truncated || result.rows.length > rows.length;
-  const summary = `${title}: ${visualizationLabel(recommendation.renderType)} visualization with ${result.row_count} ${result.row_count === 1 ? "row" : "rows"}${truncated ? "; visual data is truncated" : ""}.`;
+  const primaryMeasure = mapping.value_columns[0];
+  const summary = `${title}: ${visualizationLabel(recommendation.renderType)} visualization with ${result.row_count} ${result.row_count === 1 ? "row" : "rows"}${truncated ? "; visual data is truncated" : ""}.${primaryMeasure ? ` Primary measure: ${humanize(primaryMeasure)}.` : ""}`;
 
   if (result.rows.length === 0 || result.columns.length === 0) {
     return <VisualizationEmptyState />;

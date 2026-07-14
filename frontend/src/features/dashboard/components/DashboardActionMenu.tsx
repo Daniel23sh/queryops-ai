@@ -29,7 +29,15 @@ export function DashboardActionMenu({
     <div className="dashboard-action-menu" ref={rootRef}>
       <button aria-expanded={open} aria-haspopup="menu" aria-label="Dashboard actions" onClick={() => setOpen((value) => !value)} ref={triggerRef} type="button"><MoreHorizontal aria-hidden="true" size={20} /></button>
       {open ? (
-        <div onKeyDown={(event) => { if (event.key === "Escape") { setOpen(false); triggerRef.current?.focus(); } }} role="menu">
+        <div onKeyDown={(event) => {
+          const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]'));
+          const index = items.indexOf(document.activeElement as HTMLButtonElement);
+          if (event.key === "Escape") { event.preventDefault(); setOpen(false); triggerRef.current?.focus(); }
+          else if (event.key === "ArrowDown") { event.preventDefault(); items[(index + 1) % items.length]?.focus(); }
+          else if (event.key === "ArrowUp") { event.preventDefault(); items[(index - 1 + items.length) % items.length]?.focus(); }
+          else if (event.key === "Home") { event.preventDefault(); items[0]?.focus(); }
+          else if (event.key === "End") { event.preventDefault(); items[items.length - 1]?.focus(); }
+        }} role="menu">
           {canManage ? <MenuButton action="rename" icon={<Pencil aria-hidden="true" size={16} />} label="Rename dashboard" /> : null}
           {canDuplicate ? <MenuButton action="duplicate" icon={<Copy aria-hidden="true" size={16} />} label="Duplicate dashboard" /> : null}
           {canManage ? <MenuButton action="archive" danger icon={<Archive aria-hidden="true" size={16} />} label="Archive dashboard" /> : null}

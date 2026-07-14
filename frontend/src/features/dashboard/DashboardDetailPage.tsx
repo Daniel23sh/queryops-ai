@@ -100,11 +100,17 @@ export function DashboardDetailPage({
       const anchor = (event.target as Element).closest("a[href]");
       if (anchor && !window.confirm("Discard unsaved dashboard layout changes?")) event.preventDefault();
     };
+    const historyNavigation = () => {
+      if (!window.confirm("Discard unsaved dashboard layout changes?")) window.history.forward();
+      else setDirty(false);
+    };
     window.addEventListener("beforeunload", beforeUnload);
     document.addEventListener("click", links, true);
+    window.addEventListener("popstate", historyNavigation);
     return () => {
       window.removeEventListener("beforeunload", beforeUnload);
       document.removeEventListener("click", links, true);
+      window.removeEventListener("popstate", historyNavigation);
     };
   }, [dirty]);
 

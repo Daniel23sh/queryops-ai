@@ -35,6 +35,7 @@ export function AddCardDrawer({
   const [created, setCreated] = useState(false);
   const inFlight = useRef(false);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const drawerRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -53,7 +54,15 @@ export function AddCardDrawer({
       if (!active) return;
       setLoadError(true); setLoading(false);
     });
-    const escape = (event: KeyboardEvent) => { if (event.key === "Escape" && !inFlight.current) onClose(); };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !inFlight.current) { onClose(); return; }
+      if (event.key !== "Tab" || !drawerRef.current) return;
+      const focusable = Array.from(drawerRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'));
+      const first = focusable[0]; const last = focusable[focusable.length - 1];
+      if (!first || !last) { event.preventDefault(); return; }
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
     document.addEventListener("keydown", escape);
     return () => {
       active = false;
@@ -127,7 +136,7 @@ export function AddCardDrawer({
 
   return (
     <div className="dashboard-add-card-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !inFlight.current) onClose(); }}>
-      <aside aria-labelledby="add-card-title" aria-modal="true" className="dashboard-add-card" role="dialog">
+      <aside aria-labelledby="add-card-title" aria-modal="true" className="dashboard-add-card" ref={drawerRef} role="dialog">
         <header>
           <div><p className="eyebrow">Dashboard editor</p><h2 id="add-card-title">Add Card</h2><p>Use a governed query source. Result rows stay in memory and are never stored in card configuration.</p></div>
           <button aria-label="Close Add Card" className="dashboard-dialog-close" disabled={inFlight.current} onClick={onClose} ref={closeRef} type="button"><X aria-hidden="true" size={20} /></button>

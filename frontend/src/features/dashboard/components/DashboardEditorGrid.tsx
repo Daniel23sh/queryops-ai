@@ -70,9 +70,9 @@ export function DashboardEditorGrid({
       const previous = layouts[card.id];
       next[card.id] = {
         version: 1,
-        desktop: fromGridItem(nextLayouts.desktop?.find((item) => item.i === card.id), previous.desktop),
-        tablet: fromGridItem(nextLayouts.tablet?.find((item) => item.i === card.id), previous.tablet),
-        mobile: fromGridItem(nextLayouts.mobile?.find((item) => item.i === card.id), previous.mobile)
+        desktop: safeGridItem(card, "desktop", nextLayouts.desktop?.find((item) => item.i === card.id), previous.desktop),
+        tablet: safeGridItem(card, "tablet", nextLayouts.tablet?.find((item) => item.i === card.id), previous.tablet),
+        mobile: safeGridItem(card, "mobile", nextLayouts.mobile?.find((item) => item.i === card.id), previous.mobile)
       };
     }
     onLayoutsChange(next);
@@ -162,4 +162,14 @@ function toResponsiveLayouts(cards: EditorDashboardCard[], layouts: Record<strin
 function toGridItem(i: string, layout: GridItemLayout) { return { i, ...layout }; }
 function fromGridItem(item: Layout[number] | undefined, fallback: GridItemLayout): GridItemLayout {
   return item ? { x: item.x, y: item.y, w: item.w, h: item.h } : fallback;
+}
+function safeGridItem(
+  card: EditorDashboardCard,
+  breakpoint: DashboardBreakpoint,
+  item: Layout[number] | undefined,
+  fallback: GridItemLayout
+): GridItemLayout {
+  const candidate = fromGridItem(item, fallback);
+  const size = nearestAllowedSize(card.visualization.type, breakpoint, candidate);
+  return { ...candidate, ...size, x: breakpoint === "mobile" ? 0 : candidate.x };
 }

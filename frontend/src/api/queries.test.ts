@@ -261,6 +261,17 @@ describe("queries API client", () => {
     );
   });
 
+  it("can request own history without SQL for Add Card", async () => {
+    const fetchMock = stubFetch({ data: [backendHistoryItem] });
+
+    await getQueryHistory({ limit: 20, offset: 0, include_sql: false });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/queries/history?limit=20&offset=0&include_sql=false",
+      expect.objectContaining({ method: "GET" })
+    );
+  });
+
   it("gets department query history through the V1 compatibility alias", async () => {
     const fetchMock = stubFetch({
       data: [backendHistoryItem],
