@@ -1531,6 +1531,270 @@ def test_save_card_positions_increment_deterministically(
     assert_no_sql_payload(second_response.json())
 
 
+def test_dashboard_library_and_detail_require_authentication(
+    client: TestClient,
+) -> None:
+    library_response = client.get("/api/v1/dashboards/library")
+    detail_response = client.get(f"/api/v1/dashboards/{uuid.uuid4()}")
+
+    assert library_response.status_code == 401
+    assert detail_response.status_code == 401
+
+
+def test_dashboard_library_classifies_visible_dashboards_and_returns_safe_previews(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    manager = _user_by_email(db_session, "demo.manager@queryops.local")
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    finance = _department_by_name(db_session, "Finance")
+    sales = _department_by_name(db_session, "Sales")
+    owned_personal = _add_dashboard(
+        db_session,
+        owner=manager,
+        title="Owned personal",
+        visibility_scope="personal",
+        minute=1,
+    )
+    owned_department = _add_dashboard(
+        db_session,
+        owner=manager,
+        title="Owned finance",
+        visibility_scope="department",
+        department=finance,
+        minute=5,
+    )
+    shared_department = _add_dashboard(
+        db_session,
+        owner=analyst,
+        title="Shared finance",
+        visibility_scope="department",
+        department=finance,
+        minute=4,
+    )
+    _add_dashboard(
+        db_session,
+        owner=analyst,
+        title="Foreign personal",
+        visibility_scope="personal",
+        minute=6,
+    )
+    _add_dashboard(
+        db_session,
+        owner=analyst,
+        title="Unrelated sales",
+        visibility_scope="department",
+        department=sales,
+        minute=7,
+    )
+    _add_dashboard(
+        db_session,
+        owner=analyst,
+        title="Global hidden",
+        visibility_scope="global",
+        minute=8,
+    )
+    _add_dashboard(
+        db_session,
+        owner=manager,
+        title="Archived",
+        visibility_scope="personal",
+        is_archived=True,
+        minute=9,
+    )
+    saved_query = _add_saved_query(db_session, owner=manager)
+    for position in [5, 1, 3, 0, 2]:
+        _add_card(
+            db_session,
+            dashboard=owned_department,
+            saved_query=saved_query,
+            title=f"Card {position}",
+            position=position,
+        )
+    _login(client, manager.email)
+
+    response = client.get("/api/v1/dashboards/library")
+
+    assert response.status_code == 200
+    dashboards = response.json()["data"]
+    assert [dashboard["id"] for dashboard in dashboards] == [
+        str(owned_department.id),
+        str(shared_department.id),
+        str(owned_personal.id),
+    ]
+    assert [dashboard["relationship"] for dashboard in dashboards] == [
+        "owned",
+        "shared",
+        "owned",
+    ]
+    owned = dashboards[0]
+    assert owned["owner"] == {
+        "id": str(manager.id),
+        "display_name": manager.full_name,
+    }
+    assert owned["scope"] == {"type": "department", "display_name": "Finance"}
+    assert owned["card_count"] == 5
+    assert [card["position"] for card in owned["preview_cards"]] == [0, 1, 2, 3]
+    assert len(owned["preview_cards"]) == 4
+    assert dashboards[1]["owner"] == {
+        "id": str(analyst.id),
+        "display_name": analyst.full_name,
+    }
+    _assert_safe_dashboard_read(response.json())
+
+
+def test_admin_library_includes_visible_global_dashboard_as_shared(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    admin = _user_by_email(db_session, "demo.admin@queryops.local")
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    dashboard = _add_dashboard(
+        db_session,
+        owner=analyst,
+        title="Global operations",
+        visibility_scope="global",
+    )
+    _login(client, admin.email)
+
+    response = client.get("/api/v1/dashboards/library")
+
+    assert response.status_code == 200
+    assert response.json()["data"][0]["id"] == str(dashboard.id)
+    assert response.json()["data"][0]["relationship"] == "shared"
+    assert response.json()["data"][0]["scope"] == {
+        "type": "global",
+        "display_name": "Global",
+    }
+
+
+def test_dashboard_detail_returns_safe_ordered_metadata_without_refreshing(
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manager = _user_by_email(db_session, "demo.manager@queryops.local")
+    dashboard = _add_dashboard(
+        db_session,
+        owner=manager,
+        title="Detailed dashboard",
+        visibility_scope="personal",
+    )
+    saved_query = _add_saved_query(db_session, owner=manager)
+    cards = [
+        _add_card(
+            db_session,
+            dashboard=dashboard,
+            saved_query=saved_query,
+            title=f"Card {position}",
+            position=position,
+        )
+        for position in [4, 0, 2]
+    ]
+
+    def fail_if_refreshed(*_args, **_kwargs):
+        raise AssertionError("Dashboard detail GET must not execute card queries.")
+
+    monkeypatch.setattr(
+        "app.api.routes.dashboards.refresh_dashboard_card",
+        fail_if_refreshed,
+    )
+    _login(client, manager.email)
+
+    response = client.get(f"/api/v1/dashboards/{dashboard.id}")
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["id"] == str(dashboard.id)
+    assert data["relationship"] == "owned"
+    assert data["card_count"] == 3
+    assert [card["id"] for card in data["cards"]] == [
+        str(cards[1].id),
+        str(cards[2].id),
+        str(cards[0].id),
+    ]
+    _assert_safe_dashboard_read(response.json())
+
+
+def test_dashboard_detail_enforces_personal_scope_archive_and_safe_not_found(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    manager = _user_by_email(db_session, "demo.manager@queryops.local")
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    personal = _add_dashboard(
+        db_session,
+        owner=analyst,
+        title="Analyst private",
+        visibility_scope="personal",
+    )
+    archived = _add_dashboard(
+        db_session,
+        owner=manager,
+        title="Archived",
+        visibility_scope="personal",
+        is_archived=True,
+    )
+    _login(client, manager.email)
+
+    personal_response = client.get(f"/api/v1/dashboards/{personal.id}")
+    archived_response = client.get(f"/api/v1/dashboards/{archived.id}")
+    unknown_response = client.get(f"/api/v1/dashboards/{uuid.uuid4()}")
+
+    for response in [personal_response, archived_response, unknown_response]:
+        assert response.status_code == 404
+        assert response.json()["error"]["code"] == "DASHBOARD_NOT_FOUND"
+        assert "policy" not in response.text.lower()
+
+
+def test_dashboard_detail_allows_matching_department_scope(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    finance = _department_by_name(db_session, "Finance")
+    dashboard = _add_dashboard(
+        db_session,
+        owner=_user_by_email(db_session, "demo.analyst@queryops.local"),
+        title="Finance shared",
+        visibility_scope="department",
+        department=finance,
+    )
+    _login(client, "demo.manager@queryops.local")
+
+    response = client.get(f"/api/v1/dashboards/{dashboard.id}")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["relationship"] == "shared"
+    assert response.json()["data"]["scope"]["display_name"] == "Finance"
+
+
+def test_static_dashboard_routes_are_not_shadowed_by_detail_route(
+    client: TestClient,
+) -> None:
+    _login(client, "demo.manager@queryops.local")
+
+    responses = {
+        path: client.get(f"/api/v1/dashboards/{path}")
+        for path in ["my", "catalog", "library"]
+    }
+
+    assert {path: response.status_code for path, response in responses.items()} == {
+        "my": 200,
+        "catalog": 200,
+        "library": 200,
+    }
+
+
+def test_dashboard_detail_malformed_uuid_uses_standard_validation_response(
+    client: TestClient,
+) -> None:
+    _login(client, "demo.manager@queryops.local")
+
+    response = client.get("/api/v1/dashboards/not-a-uuid")
+
+    assert response.status_code == 422
+
+
 def assert_no_sql_payload(payload: Any) -> None:
     serialized = json.dumps(payload)
     assert "SELECT " not in serialized
@@ -1546,6 +1810,31 @@ def _assert_no_forbidden_keys(value: Any) -> None:
     elif isinstance(value, list):
         for item in value:
             _assert_no_forbidden_keys(item)
+
+
+def _assert_safe_dashboard_read(payload: Any) -> None:
+    serialized = json.dumps(payload)
+    assert "SELECT " not in serialized
+    forbidden_keys = {
+        "generated_sql",
+        "executed_sql",
+        "config",
+        "layout",
+        "parameters",
+        "result_schema",
+        "email",
+    }
+
+    def assert_value(value: Any) -> None:
+        if isinstance(value, dict):
+            assert forbidden_keys.isdisjoint(value)
+            for child in value.values():
+                assert_value(child)
+        elif isinstance(value, list):
+            for child in value:
+                assert_value(child)
+
+    assert_value(payload)
 
 
 def _login(client: TestClient, email: str) -> str:
