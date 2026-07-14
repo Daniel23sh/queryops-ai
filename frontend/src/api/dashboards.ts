@@ -4,6 +4,8 @@ import type {
   Dashboard,
   DashboardCard,
   DashboardCardRefreshResult,
+  DashboardDetail,
+  DashboardLibraryItem,
   SaveCardRequest,
   UpdateDashboardLayoutRequest
 } from "../features/dashboard/types";
@@ -18,6 +20,25 @@ export function getMyDashboards(): Promise<Dashboard[]> {
   return apiRequest<Dashboard[]>("/api/v1/dashboards/my", {
     method: "GET"
   });
+}
+
+export function getDashboardLibrary(
+  signal?: AbortSignal
+): Promise<DashboardLibraryItem[]> {
+  return apiRequest<DashboardLibraryItem[]>("/api/v1/dashboards/library", {
+    method: "GET",
+    signal
+  });
+}
+
+export function getDashboardDetail(
+  dashboardId: string,
+  signal?: AbortSignal
+): Promise<DashboardDetail> {
+  return apiRequest<DashboardDetail>(
+    `/api/v1/dashboards/${encodeURIComponent(dashboardId)}`,
+    { method: "GET", signal }
+  );
 }
 
 export function createDashboard(

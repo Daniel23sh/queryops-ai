@@ -2,7 +2,8 @@ import { Navigate, Outlet, Route, Routes, useOutletContext } from "react-router-
 
 import { useAuth } from "../auth/AuthProvider";
 import { AskDataPage } from "../features/ask-data";
-import { DashboardPage } from "../features/dashboard/DashboardPage";
+import { DashboardDetailPage } from "../features/dashboard/DashboardDetailPage";
+import { HomePage } from "../features/home/HomePage";
 import { ProfilePage } from "../features/profile/ProfilePage";
 import { RoleRequestsPage } from "../features/role-requests/RoleRequestsPage";
 import { LoginPage } from "../pages/LoginPage";
@@ -21,6 +22,7 @@ export function AppRoutes() {
       <Route element={<AuthenticatedRoute />}>
         <Route element={<AuthenticatedLayout />}>
           <Route index element={<DashboardRoute />} />
+          <Route path={APP_ROUTES.dashboard} element={<DashboardDetailRoute />} />
           <Route
             path={APP_ROUTES.ask}
             element={
@@ -96,7 +98,12 @@ function AuthLoadingPage() {
 function DashboardRoute() {
   const { csrfToken, user } = useOutletContext<AuthenticatedOutletContext>();
 
-  return <DashboardPage csrfToken={csrfToken} user={user} />;
+  return <HomePage csrfToken={csrfToken} user={user} />;
+}
+
+function DashboardDetailRoute() {
+  const { csrfToken, user } = useOutletContext<AuthenticatedOutletContext>();
+  return <DashboardDetailPage csrfToken={csrfToken} user={user} />;
 }
 
 function AskDataRoute() {

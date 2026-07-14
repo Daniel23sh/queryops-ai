@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 
 import type { NavItem } from "./navigation";
 
@@ -31,18 +31,22 @@ function NavigationGroup({
   label?: string;
   onLinkSelect: () => void;
 }) {
+  const location = useLocation();
   return (
     <div className="workspace-nav__group">
       {label ? <p className="workspace-nav__section-label">{label}</p> : null}
       {items.map((item) => {
         const Icon = item.icon;
+        const isDashboardDetail =
+          item.path === "/" && location.pathname.startsWith("/dashboards/");
 
         return (
           <NavLink
             key={item.id}
             className={({ isActive }) =>
-              `workspace-nav__item${isActive ? " workspace-nav__item--active" : ""}`
+              `workspace-nav__item${isActive || isDashboardDetail ? " workspace-nav__item--active" : ""}`
             }
+            aria-current={isDashboardDetail ? "page" : undefined}
             to={item.path}
             end={item.path === "/"}
             onClick={onLinkSelect}
