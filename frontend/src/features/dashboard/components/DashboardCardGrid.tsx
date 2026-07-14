@@ -158,7 +158,7 @@ export function DashboardCardGrid({
 
 function formatVisibilityScope(scope: DashboardVisibilityScope): string {
   if (scope === "department") {
-    return "Department";
+    return "Scope";
   }
 
   if (scope === "global") {

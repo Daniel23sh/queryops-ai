@@ -3,7 +3,7 @@ import type { Dashboard } from "../types";
 import { DashboardCardGrid } from "./DashboardCardGrid";
 
 const EMPTY_DASHBOARD_MESSAGE =
-  "No saved dashboard cards yet. Run a query in Ask Data and save it as a card once Save as Card is enabled.";
+  "No dashboards or saved cards yet. Run a query in Ask Data and save it to a dashboard.";
 
 export function MyDashboardsPanel({
   canExportCards,
@@ -29,7 +29,7 @@ export function MyDashboardsPanel({
     >
       <div className="dashboard-section__header">
         <p className="eyebrow">Saved views</p>
-        <h2 id="dashboard-saved-cards-title">Saved dashboard cards</h2>
+        <h2 id="dashboard-saved-cards-title">Your dashboards</h2>
       </div>
 
       {status === "loading" ? (
@@ -39,9 +39,16 @@ export function MyDashboardsPanel({
       ) : null}
 
       {status === "error" ? (
-        <p className="dashboard-saved-panel__state" role="alert">
-          {errorMessage ?? "Dashboard cards could not be loaded."}
-        </p>
+        <div className="dashboard-saved-panel__state" role="alert">
+          <p>{errorMessage ?? "Dashboard cards could not be loaded."}</p>
+          <button
+            type="button"
+            className="qops-button-secondary qops-focus-ring"
+            onClick={() => void onReload()}
+          >
+            Try again
+          </button>
+        </div>
       ) : null}
 
       {status === "success" && dashboards.length === 0 ? (

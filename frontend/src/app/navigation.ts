@@ -1,127 +1,71 @@
-import { hasAnyPermission, hasPermission } from "../auth/permissions";
-import type { AuthUser } from "../auth/types";
+import {
+  CircleUserRound,
+  LayoutDashboard,
+  MessageSquareText,
+  ShieldCheck,
+  type LucideIcon
+} from "lucide-react";
 
-export type NavIconName =
-  | "templates"
-  | "dashboard"
-  | "upgrade"
-  | "requests"
-  | "ask"
-  | "history"
-  | "sql"
-  | "department"
-  | "admin"
-  | "users"
-  | "audit";
+import { hasPermission } from "../auth/permissions";
+import type { AuthUser } from "../auth/types";
+import { APP_ROUTES, type AppRoutePath } from "./routeConfig";
+
+export type NavigationSection = "workspace" | "admin";
 
 export type NavItem = {
-  id: string;
+  id: "my-dashboard" | "ask-data" | "profile" | "admin-role-requests";
   label: string;
   title: string;
   summary: string;
-  icon: NavIconName;
+  path: AppRoutePath;
+  icon: LucideIcon;
+  section: NavigationSection;
   canView: (user: AuthUser) => boolean;
 };
 
 export const WORKSPACE_NAV_ITEMS: NavItem[] = [
   {
-    id: "templates",
-    label: "Templates",
-    title: "Templates",
-    summary:
-      "Approved query templates are available from Ask Data while standalone template management waits for a later milestone.",
-    icon: "templates",
-    canView: () => true
-  },
-  {
     id: "my-dashboard",
     label: "My Dashboard",
-    title: "QueryOps Command Center",
-    summary: "Role-aware governed analytics overview.",
-    icon: "dashboard",
+    title: "My Dashboard",
+    summary: "Your personal dashboards and saved cards.",
+    path: APP_ROUTES.home,
+    icon: LayoutDashboard,
+    section: "workspace",
     canView: () => true
-  },
-  {
-    id: "role-upgrade",
-    label: "Role Upgrade",
-    title: "Request Role Upgrade",
-    summary: "Request a role change and track admin approval status.",
-    icon: "upgrade",
-    canView: () => true
-  },
-  {
-    id: "admin-role-requests",
-    label: "Role Requests",
-    title: "Admin Role Requests",
-    summary: "Review role upgrade requests and record role-only decisions.",
-    icon: "requests",
-    canView: (user) => hasPermission(user, "can_approve_role_requests")
   },
   {
     id: "ask-data",
     label: "Ask Data",
     title: "Ask Data",
     summary: "Run governed template and permitted free-form questions.",
-    icon: "ask",
+    path: APP_ROUTES.ask,
+    icon: MessageSquareText,
+    section: "workspace",
     canView: (user) => hasPermission(user, "can_use_query_templates")
   },
   {
-    id: "query-history",
-    label: "Query History",
-    title: "Query History",
-    summary:
-      "History navigation is role-gated; the dedicated history UI remains future work.",
-    icon: "history",
-    canView: (user) => hasPermission(user, "can_view_query_history_department")
+    id: "profile",
+    label: "Profile",
+    title: "Profile",
+    summary: "Review your identity, scopes, appearance, and access requests.",
+    path: APP_ROUTES.profile,
+    icon: CircleUserRound,
+    section: "workspace",
+    canView: () => true
   },
   {
-    id: "sql-technical",
-    label: "SQL / Technical",
-    title: "SQL / Technical",
-    summary:
-      "Technical details stay role-gated and contained inside Ask Data result tabs.",
-    icon: "sql",
-    canView: (user) => hasPermission(user, "can_view_sql")
-  },
-  {
-    id: "department-dashboards",
-    label: "Department Dashboards",
-    title: "Department Dashboards",
-    summary:
-      "Browse visible shared dashboards returned by backend catalog visibility rules.",
-    icon: "department",
-    canView: (user) =>
-      hasAnyPermission(user, [
-        "can_create_department_dashboard",
-        "can_manage_department_dashboard"
-      ])
-  },
-  {
-    id: "admin-console",
-    label: "Admin Console",
-    title: "Admin Console",
-    summary:
-      "Administrative controls are staged intentionally; Role Requests remains the active admin workflow.",
-    icon: "admin",
-    canView: (user) =>
-      hasAnyPermission(user, ["can_manage_users", "can_approve_role_requests"])
-  },
-  {
-    id: "users",
-    label: "Users",
-    title: "Users",
-    summary:
-      "User management UI is planned later; demo identity context remains read-only here.",
-    icon: "users",
-    canView: (user) => hasPermission(user, "can_manage_users")
-  },
-  {
-    id: "audit",
-    label: "Audit",
-    title: "Audit",
-    summary:
-      "Audit review is planned for a later milestone while backend governance remains the source of truth.",
-    icon: "audit",
-    canView: (user) => hasPermission(user, "can_view_global_audit")
+    id: "admin-role-requests",
+    label: "Role Requests",
+    title: "Role Requests",
+    summary: "Review existing role upgrade requests.",
+    path: APP_ROUTES.adminRoleRequests,
+    icon: ShieldCheck,
+    section: "admin",
+    canView: (user) => hasPermission(user, "can_approve_role_requests")
   }
 ];
+
+export function getVisibleNavItems(user: AuthUser): NavItem[] {
+  return WORKSPACE_NAV_ITEMS.filter((item) => item.canView(user));
+}

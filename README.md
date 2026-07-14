@@ -14,7 +14,7 @@ QueryOps AI is designed to solve this with a controlled interface where users wi
 * receive SQL-backed results
 * view explanations and assumptions
 * save useful results as dashboard cards
-* explore dashboards by role and department
+* explore personal, shared, and scope-aware dashboards
 * request operational actions based on query results
 * route sensitive actions through approval flows
 * keep a complete audit trail of important operations
@@ -85,7 +85,7 @@ Planned V1 capabilities include:
 * query history
 * saved cards
 * dashboard catalog
-* personal and department dashboards
+* personal, shared, and scope-aware dashboards
 * controlled CSV export
 * action recommendations
 * action preview
@@ -146,7 +146,9 @@ The frontend never communicates directly with the database or the LLM provider. 
 * React
 * TypeScript
 * Vite
+* React Router
 * Tailwind CSS
+* Lucide icons
 * shadcn/ui
 * Recharts
 * dnd-kit
@@ -327,7 +329,7 @@ Default local URLs:
 * Backend health endpoint: `http://localhost:8000/health`
 * PostgreSQL: `localhost:5432`
 
-PostgreSQL is included for the local development environment. The current application includes deterministic IT Operations seed data, demo auth, scope-aware PostgreSQL RLS, the backend Query Engine, the Ask Data frontend, dashboards and saved cards, controlled query/card CSV downloads, and automatic/manual dashboard-card refresh. Actions, approvals, notifications, real LLM providers, Supabase Auth, and domain expansion remain planned for later milestones.
+PostgreSQL is included for the local development environment. Milestone 6 is complete and merged into `main`; the current application includes deterministic IT Operations seed data, demo auth, scope-aware PostgreSQL RLS, the backend Query Engine, the Ask Data frontend, dashboards and saved cards, controlled query/card CSV downloads, automatic/manual dashboard-card refresh, and persistent accessible card ordering. Milestone 7 is the active product UX milestone, and M7 PR1 is implementation-complete on `feature/m7-product-shell-navigation`. Actions, approvals, notifications, real LLM providers, Supabase Auth, and domain expansion remain planned for later milestones.
 
 Stop the stack:
 
@@ -677,7 +679,9 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-Milestones 0 through 6 are complete. PR1 through PR4 are merged into `main`; PR5 Card Reordering & Layout Persistence and the final Admin restricted-export policy are implemented and fully verified on `feature/m6-card-reorder-layout`. Milestone 7 is next but has not started.
+Milestones 0 through 6 are complete and merged into `main`; PR #24 merged M6 PR5 Card Reordering & Layout Persistence and the final Admin restricted-export policy. Milestone 7 — Product UX & Dashboard Redesign is active. M7 PR1 is implementation-complete on `feature/m7-product-shell-navigation`; it establishes the routed dark-first product shell, focused navigation, Profile, and transitional My Dashboard experience.
+
+The Milestone 7 UX direction is dark-first with a persistent light option, responsive navigation, My Dashboard as the authenticated home, permission-aware routes, and Scope terminology in the general product UI. Milestone 7 remains incomplete: role-aware Home metrics and the dashboard browser are planned for PR2, the dashboard editor/grid/visualizations for PR3, and the Ask Data redesign for PR4. M7 PR2 is not active and has not started.
 
 Implemented foundation functionality includes:
 
@@ -706,7 +710,8 @@ Current milestone status:
 
 ```txt
 Milestone 6 — Dashboards, Cards & CSV Export is complete.
-M6 PR5 — Card Reordering & Layout Persistence is implementation- and verification-complete on feature/m6-card-reorder-layout.
+Milestone 7 — Product UX & Dashboard Redesign is active.
+M7 PR1 — Product Shell, Routing & Navigation is implementation-complete on feature/m7-product-shell-navigation.
 ```
 
 PR5 persists the order of cards in owned personal dashboards through `DashboardCard.position`. It includes accessible drag-and-drop and Move Up / Move Down controls, but does not add card resizing, x/y grid coordinates, width/height persistence, advanced `layout` behavior, scheduled refresh, dashboard starring/cloning, actions, approvals, notifications, real external LLM calls, Supabase Auth, Redis/background jobs, or domain expansion. Those deferred areas remain outside Milestone 6.
