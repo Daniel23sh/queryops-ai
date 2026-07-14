@@ -11,6 +11,7 @@ describe("editor context menus", () => {
 
     fireEvent.contextMenu(screen.getByRole("button", { name: "Card actions for Open tickets" }), { clientX: 40, clientY: 60 });
 
+    expect(screen.getByRole("menu").parentElement).toBe(document.body);
     expect(screen.getByRole("menuitem", { name: "Refresh" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "Export CSV" })).toBeInTheDocument();
     expect(screen.getByRole("menuitem", { name: "View source" })).toBeInTheDocument();

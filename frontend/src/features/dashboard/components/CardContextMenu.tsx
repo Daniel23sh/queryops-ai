@@ -1,5 +1,6 @@
 import { Copy, Download, Eye, MoreHorizontal, Pencil, RefreshCw, ScanLine, Shapes, Trash2 } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 export type CardMenuAction =
   | "refresh"
@@ -89,7 +90,7 @@ export function CardContextMenu({
       >
         <MoreHorizontal aria-hidden="true" size={20} />
       </button>
-      {menu ? (
+      {menu ? createPortal((
         <div
           className="dashboard-card-menu"
           id={menuId}
@@ -118,7 +119,7 @@ export function CardContextMenu({
             </button>
           )) : <span className="dashboard-card-menu__empty">No actions available</span>}
         </div>
-      ) : null}
+      ), document.body) : null}
     </>
   );
 }

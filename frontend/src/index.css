@@ -1759,7 +1759,7 @@ h1 {
   line-height: 1.45;
 }
 
-.dashboard-editor-card__content { min-height: 0; flex: 1 1 auto; }
+.dashboard-editor-card__content { min-height: 0; flex: 1 1 auto; overflow: hidden; }
 .dashboard-editor-card__state { min-height: 120px; display: grid; place-content: center; margin: 0; color: var(--qops-color-text-faint); text-align: center; font-size: 0.8rem; }
 .dashboard-editor-card__status,
 .dashboard-editor-card__error { margin: 0; color: var(--qops-color-text-faint); font-size: 0.75rem; }
@@ -1834,7 +1834,13 @@ h1 {
   box-shadow: var(--qops-shadow-panel);
 }
 
-.dashboard-editor-card__mobile-controls { margin-top: auto; }
+.dashboard-editor-card__mobile-controls {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+  margin-top: auto;
+  background: var(--qops-color-elevated-surface);
+}
 .dashboard-editor-card__mobile-controls button,
 .dashboard-size-presets button {
   min-height: 44px;
