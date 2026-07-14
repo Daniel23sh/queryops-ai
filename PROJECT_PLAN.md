@@ -12,7 +12,7 @@ Current PR scope:
 
 `M7 PR2 — Role-Aware Home & Dashboard Browser` is complete and merged into `main` through PR #26.
 
-`M7 PR3 — Dashboard Editor, Grid & Visualizations` is active on branch `feature/m7-dashboard-editor-visualizations`.
+`M7 PR3 — Dashboard Editor, Grid & Visualizations` is implementation-complete on branch `feature/m7-dashboard-editor-visualizations` and awaits merge.
 
 M7 PR4 has not started. Milestone 8 has not started.
 
@@ -436,7 +436,7 @@ The active milestone and latest PR status are:
 
 `M7 PR1 — Product Shell, Routing & Navigation` is complete and merged into `main` through PR #25.
 
-`M7 PR2 — Role-Aware Home & Dashboard Browser` is complete and merged through PR #26. `M7 PR3 — Dashboard Editor, Grid & Visualizations` is active on `feature/m7-dashboard-editor-visualizations`. M7 PR4 has not started. Milestone 8 has not started.
+`M7 PR2 — Role-Aware Home & Dashboard Browser` is complete and merged through PR #26. `M7 PR3 — Dashboard Editor, Grid & Visualizations` is implementation-complete on `feature/m7-dashboard-editor-visualizations` and awaits merge. M7 PR4 has not started. Milestone 8 has not started.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -769,7 +769,7 @@ Milestone 7 is split into four PRs:
    - Complete and merged into `main` through PR #26.
    - Adds real role-aware Home overview data and the dashboard browser/detail experience, including `/dashboards/:dashboardId` with a real detail screen.
 3. `M7 PR3 — Dashboard Editor, Grid & Visualizations`
-   - Active on `feature/m7-dashboard-editor-visualizations`.
+   - Implementation-complete on `feature/m7-dashboard-editor-visualizations`; awaiting merge.
    - Adds explicit View/Edit modes, responsive versioned grid layouts, constrained drag/resize behavior, visualization recommendation/rendering, safe dashboard/card actions, and Add Card sources.
 4. `M7 PR4 — Ask Data Redesign & Final UX Hardening`
    - Not started.
@@ -836,7 +836,15 @@ Out of scope:
 
 Goal: Dashboard Editor, Grid & Visualizations.
 
-Implementation status: active on `feature/m7-dashboard-editor-visualizations`.
+Implementation status: implementation-complete on `feature/m7-dashboard-editor-visualizations`; awaiting merge.
+
+Delivered implementation:
+
+- Alembic migration `0007_dashboard_layout_version.py` adds non-null `dashboards.layout_version` with default `1` while retaining per-card `position`, safe `layout`, and sanitized `config` storage.
+- Detail capabilities and independently authorized dashboard/card mutation endpoints implement rename, personal duplicate, soft archive, visualization changes, duplicate/remove, source view, and expected-version full-layout persistence.
+- The responsive editor uses Recharts and React Grid Layout for the approved nine visualization types and 12/6/1 layouts, with mobile movement/size controls and accessible dashboard/card menus and dialogs.
+- Add Card supports approved templates and eligible recent successful own query results through the existing Query Engine, Save as Card, refresh, permission, RLS, and audit boundaries.
+- Verification completed with 639 PostgreSQL-backed backend tests, 192 frontend tests, a production build, Alembic upgrade/check, deterministic medium-seed role/viewpoint QA, diff checks, and a zero-finding manual full-diff review after CodeRabbit timed out.
 
 In scope:
 

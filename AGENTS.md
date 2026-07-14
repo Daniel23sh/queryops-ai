@@ -69,12 +69,12 @@ The milestone status is defined in `PROJECT_PLAN.md`.
 At the time this file was updated, the latest checkpoint-complete target is:
 
 ```txt
-M7 PR2 — Role-Aware Home & Dashboard Browser
+M7 PR3 — Dashboard Editor, Grid & Visualizations
 ```
 
 Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, Milestone 3, Milestone 4, and Milestone 5 are complete under the previous scopes. Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete.
 
-Milestone 6 is complete and merged into `main`. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, `M6 PR3 — CSV Export Backend`, `M6 PR4 — Card Refresh & CSV Export UI`, and `M6 PR5 — Card Reordering & Layout Persistence` plus the final Admin restricted-export policy are complete. PR #24 merged PR5. Milestone 7 — Product UX & Dashboard Redesign is active. M7 PR1 is complete and merged through PR #25. M7 PR2 is complete and merged through PR #26. M7 PR3 — Dashboard Editor, Grid & Visualizations is active on `feature/m7-dashboard-editor-visualizations`. M7 PR4 and Milestone 8 have not started.
+Milestone 6 is complete and merged into `main`. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, `M6 PR3 — CSV Export Backend`, `M6 PR4 — Card Refresh & CSV Export UI`, and `M6 PR5 — Card Reordering & Layout Persistence` plus the final Admin restricted-export policy are complete. PR #24 merged PR5. Milestone 7 — Product UX & Dashboard Redesign is active. M7 PR1 is complete and merged through PR #25. M7 PR2 is complete and merged through PR #26. M7 PR3 — Dashboard Editor, Grid & Visualizations is implementation-complete on `feature/m7-dashboard-editor-visualizations` and awaits merge. M7 PR4 and Milestone 8 have not started.
 
 Milestone 2.5 introduced `access_scopes`, `user_access_scopes`, `data_resources`, `UserAccessContext`, `AccessDecision`, and `evaluate_access(subject, action, resource, context)`.
 
@@ -204,7 +204,7 @@ Use the term Scope in general product UI. Department remains valid in the IT Ope
 
 Local `docs/planning/` documents may be updated for M7 PR3 because the user explicitly authorized it. They remain ignored and must never be staged or committed.
 
-M7 PR3 is active and owns only the full-dashboard editor, responsive versioned grid, visualization recommendation/rendering, safe dashboard/card actions, and Add Card flows described in `PROJECT_PLAN.md`.
+M7 PR3 is implementation-complete and owns only the full-dashboard editor, responsive versioned grid, visualization recommendation/rendering, safe dashboard/card actions, and Add Card flows described in `PROJECT_PLAN.md`. Retain the following rules through review and merge.
 
 M7 PR3 guardrails:
 
