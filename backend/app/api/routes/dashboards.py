@@ -582,7 +582,9 @@ def save_query_run_as_card(
     if not access_context.has_permission("can_create_card"):
         return _forbidden_response()
 
-    query_run = db.get(QueryRun, query_run_id)
+    query_run = db.scalar(
+        select(QueryRun).where(QueryRun.id == query_run_id).with_for_update()
+    )
     if query_run is None or query_run.user_id != current_user.id:
         return _query_run_not_found_response()
     if not _query_run_can_be_saved(query_run):
@@ -666,6 +668,26 @@ def update_card(
         return _card_not_found_response() if management_error.status_code == 404 else management_error
 
     dashboard = card.dashboard
+    dashboard = db.scalar(
+        select(Dashboard)
+        .where(
+            Dashboard.id == dashboard.id,
+            Dashboard.is_archived.is_(False),
+        )
+        .with_for_update()
+    )
+    if dashboard is None:
+        return _card_not_found_response()
+    card = db.scalar(
+        select(DashboardCard)
+        .where(
+            DashboardCard.id == card_id,
+            DashboardCard.dashboard_id == dashboard.id,
+        )
+        .with_for_update()
+    )
+    if card is None:
+        return _card_not_found_response()
     if "title" in parsed_payload:
         card.title = parsed_payload["title"]
     if "description" in parsed_payload:
@@ -676,9 +698,15 @@ def update_card(
         card.card_type = visualization["type"]
         card.layout = None
         dashboard.layout_version += 1
-        normalized_layouts = normalize_card_layouts(dashboard.cards)
+        current_cards = db.scalars(
+            select(DashboardCard)
+            .where(DashboardCard.dashboard_id == dashboard.id)
+            .order_by(DashboardCard.position, DashboardCard.created_at, DashboardCard.id)
+            .with_for_update()
+        ).all()
+        normalized_layouts = normalize_card_layouts(current_cards)
         positions = derive_positions(normalized_layouts)
-        for dashboard_card in dashboard.cards:
+        for dashboard_card in current_cards:
             dashboard_card.layout = normalized_layouts[dashboard_card.id]
             dashboard_card.position = positions[dashboard_card.id]
     dashboard.updated_at = datetime.now(UTC)
@@ -729,7 +757,27 @@ def duplicate_card(
     if not access_context.has_permission("can_create_card"):
         return _forbidden_response()
 
-    dashboard = source_card.dashboard
+    dashboard_id = source_card.dashboard.id
+    dashboard = db.scalar(
+        select(Dashboard)
+        .where(
+            Dashboard.id == dashboard_id,
+            Dashboard.is_archived.is_(False),
+        )
+        .with_for_update()
+    )
+    if dashboard is None:
+        return _card_not_found_response()
+    current_cards = db.scalars(
+        select(DashboardCard)
+        .where(DashboardCard.dashboard_id == dashboard.id)
+        .order_by(DashboardCard.position, DashboardCard.created_at, DashboardCard.id)
+        .with_for_update()
+    ).all()
+    source_card = next((item for item in current_cards if item.id == card_id), None)
+    if source_card is None:
+        return _card_not_found_response()
+
     visualization = safe_visualization_for_card(source_card)
     duplicate = DashboardCard(
         dashboard=dashboard,
@@ -737,16 +785,17 @@ def duplicate_card(
         title=_bounded_copy_title(source_card.title, " Copy"),
         description=source_card.description,
         card_type=visualization["type"],
-        position=_next_card_position(db, dashboard.id),
+        position=max((card.position for card in current_cards), default=-1) + 1,
         layout=None,
         config={"visualization": visualization},
     )
     db.add(duplicate)
     db.flush()
 
-    normalized_layouts = normalize_card_layouts(dashboard.cards)
+    all_cards = [*current_cards, duplicate]
+    normalized_layouts = normalize_card_layouts(all_cards)
     positions = derive_positions(normalized_layouts)
-    for dashboard_card in dashboard.cards:
+    for dashboard_card in all_cards:
         dashboard_card.layout = normalized_layouts[dashboard_card.id]
         dashboard_card.position = positions[dashboard_card.id]
     dashboard.layout_version += 1

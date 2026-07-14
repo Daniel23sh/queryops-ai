@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event, select
+from sqlalchemy import create_engine, event, func, select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
@@ -1220,6 +1220,19 @@ def test_analyst_can_save_successful_own_query_run_as_card(
     assert card is not None
     assert card.dashboard_id == dashboard.id
     assert card.saved_query_id == saved_query.id
+
+    repeat_response = client.post(
+        f"/api/v1/query-runs/{query_run.id}/save-card",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"dashboard_id": str(dashboard.id), "title": "Duplicate submission"},
+    )
+    assert repeat_response.status_code == 400
+    assert repeat_response.json()["error"]["code"] == "QUERY_RUN_NOT_SAVEABLE"
+    assert db_session.scalar(
+        select(func.count(DashboardCard.id)).where(
+            DashboardCard.dashboard_id == dashboard.id
+        )
+    ) == 1
 
     dashboard_response = client.get("/api/v1/dashboards/my")
     assert dashboard_response.status_code == 200
