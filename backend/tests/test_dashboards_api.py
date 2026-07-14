@@ -746,8 +746,26 @@ def test_my_dashboard_returns_owned_personal_dashboards_with_cards(
         "description": "Card description",
         "card_type": "table",
         "position": 2,
-        "layout": {"w": 4},
-        "config": {"columns": ["product_name"]},
+        "layout": {
+            "version": 1,
+            "desktop": {"x": 0, "y": 0, "w": 6, "h": 3},
+            "tablet": {"x": 0, "y": 0, "w": 6, "h": 3},
+            "mobile": {"x": 0, "y": 0, "w": 1, "h": 3},
+        },
+        "config": {
+            "visualization": {
+                "mode": "auto",
+                "type": "table",
+                "recommended_type": "table",
+                "mapping": {
+                    "category_column": None,
+                    "value_columns": [],
+                    "series_column": None,
+                    "label_column": None,
+                    "target_column": None,
+                },
+            }
+        },
         "created_at": dashboard["cards"][0]["created_at"],
         "updated_at": dashboard["cards"][0]["updated_at"],
     }
@@ -1178,8 +1196,9 @@ def test_analyst_can_save_successful_own_query_run_as_card(
     assert data["description"] == "Licensing detail"
     assert data["card_type"] == "table"
     assert data["position"] == 0
-    assert data["layout"] is None
-    assert data["config"] is None
+    assert data["layout"]["version"] == 1
+    assert data["layout"]["desktop"] == {"x": 0, "y": 0, "w": 6, "h": 3}
+    assert data["config"]["visualization"]["type"] == "table"
     assert_no_sql_payload(response.json())
 
     saved_query = db_session.get(SavedQuery, uuid.UUID(data["saved_query_id"]))
@@ -1640,6 +1659,8 @@ def test_dashboard_library_classifies_visible_dashboards_and_returns_safe_previe
         "id": str(analyst.id),
         "display_name": analyst.full_name,
     }
+    assert all("layout" not in dashboard for dashboard in dashboards)
+    assert all("config" not in dashboard for dashboard in dashboards)
     _assert_safe_dashboard_read(response.json())
 
 
@@ -1819,7 +1840,6 @@ def _assert_safe_dashboard_read(payload: Any) -> None:
         "generated_sql",
         "executed_sql",
         "config",
-        "layout",
         "parameters",
         "result_schema",
         "email",

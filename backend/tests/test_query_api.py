@@ -25,6 +25,7 @@ from app.models.product import (
     PermissionEffect,
     QueryRun,
     Role,
+    SavedQuery,
     UserAccessScope,
     UserPermission,
 )
@@ -321,6 +322,37 @@ def test_history_includes_sql_for_analyst(client: TestClient, db_session: Sessio
     row = response.json()["data"][0]
     assert row["generated_sql"] == "SELECT generated"
     assert row["executed_sql"] == "SELECT executed"
+
+
+def test_history_can_return_sql_free_save_eligibility_for_add_card(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    analyst = _user_by_email(db_session, "demo.analyst@queryops.local")
+    saveable = _add_query_run(db_session, analyst, "saveable run", minute=1)
+    already_saved = _add_query_run(db_session, analyst, "saved run", minute=2)
+    saved_query = SavedQuery(
+        owner_user_id=analyst.id,
+        name="Already saved",
+        natural_language_question="saved run",
+        visibility_scope="personal",
+        parameters={},
+    )
+    db_session.add(saved_query)
+    db_session.flush()
+    already_saved.saved_query_id = saved_query.id
+    db_session.commit()
+    _login(client, analyst.email)
+
+    response = client.get("/api/v1/queries/history?limit=10&include_sql=false")
+
+    assert response.status_code == 200
+    rows = {row["id"]: row for row in response.json()["data"]}
+    assert rows[str(saveable.id)]["can_save_as_card"] is True
+    assert rows[str(already_saved.id)]["can_save_as_card"] is False
+    assert all("generated_sql" not in row for row in rows.values())
+    assert all("executed_sql" not in row for row in rows.values())
+    assert "SELECT generated" not in response.text
 
 
 def test_analyst_can_retrieve_scope_query_history(

@@ -137,6 +137,7 @@ def query_history(
     db: Session = Depends(get_db),
     limit: int = DEFAULT_HISTORY_LIMIT,
     offset: int = 0,
+    include_sql: bool = True,
 ):
     access_context = build_user_access_context(current_user, db)
     safe_limit = max(1, min(int(limit), MAX_HISTORY_LIMIT))
@@ -154,7 +155,9 @@ def query_history(
             [
                 _serialize_query_run(
                     query_run,
-                    can_view_sql=access_context.has_permission("can_view_sql"),
+                    can_view_sql=include_sql
+                    and access_context.has_permission("can_view_sql"),
+                    include_save_capability=True,
                 )
                 for query_run in query_runs
             ]
@@ -375,6 +378,7 @@ def _serialize_query_run(
     query_run: QueryRun,
     *,
     can_view_sql: bool,
+    include_save_capability: bool = False,
 ) -> dict[str, Any]:
     data = {
         "id": str(query_run.id),
@@ -388,10 +392,24 @@ def _serialize_query_run(
         "completed_at": query_run.completed_at,
         "metadata": _safe_metadata(query_run.query_metadata or {}),
     }
+    if include_save_capability:
+        data["can_save_as_card"] = _query_run_can_be_saved_as_card(query_run)
     if can_view_sql:
         data["generated_sql"] = query_run.generated_sql
         data["executed_sql"] = query_run.executed_sql
     return data
+
+
+def _query_run_can_be_saved_as_card(query_run: QueryRun) -> bool:
+    if query_run.status != "succeeded" or query_run.saved_query_id is not None:
+        return False
+    metadata = query_run.query_metadata
+    if not isinstance(metadata, dict):
+        return True
+    return not (
+        metadata.get("clarification_required") is True
+        or metadata.get("unsupported_reason") is not None
+    )
 
 
 def _safe_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
