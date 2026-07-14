@@ -124,7 +124,7 @@ export function TableVisualization({ rows }: { rows: QueryResultRow[] }) {
   const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
   return (
     <div className="dashboard-viz-table">
-      <table>
+      <table aria-label="Dashboard card results">
         <thead><tr>{columns.map((column) => <th scope="col" key={column}>{humanize(column)}</th>)}</tr></thead>
         <tbody>
           {rows.slice(0, 10).map((row, index) => (

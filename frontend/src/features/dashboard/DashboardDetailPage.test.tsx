@@ -20,7 +20,7 @@ import {
 afterEach(resetAppTestState);
 
 describe("DashboardDetailPage", () => {
-  it("loads directly, renders safe cards, and preserves refresh/export/reorder", async () => {
+  it("loads directly in View mode, renders safe cards, and exposes secure actions through menus", async () => {
     setCsrfCookie("csrf-token");
     const firstCard = {
       ...backendDashboardCard({ id: "first-card", title: "Open tickets" }),
@@ -51,18 +51,24 @@ describe("DashboardDetailPage", () => {
       "/"
     );
     expect(await screen.findAllByRole("table", { name: "Dashboard card results" })).toHaveLength(2);
-    expect(screen.getAllByRole("button", { name: /Export .* as CSV/ })).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: /Export .* as CSV/ })).not.toBeInTheDocument();
+    const menus = screen.getAllByRole("button", { name: /Card actions for/ });
+    expect(menus).toHaveLength(2);
+    fireEvent.click(menus[0]);
+    expect(screen.getByRole("menuitem", { name: "Export CSV" })).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     expect(screen.queryByText("SELECT private_sql")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Arrange cards" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit" })).toHaveAttribute("aria-pressed", "false");
 
-    fireEvent.click(screen.getByRole("button", { name: "Arrange cards" }));
-    expect(screen.getByRole("button", { name: "Done arranging" })).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: /Move .* down/ }).length).toBeGreaterThan(0);
-    expect(screen.queryByRole("button", { name: /resize|visualization|add card/i })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add Card" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Drag / })).toHaveLength(2);
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.filter(([url]) => String(url).includes("/cards/first-card/refresh"))
-      ).toHaveLength(2)
+      ).toHaveLength(1)
     );
     expect(fetchMock).toHaveBeenCalledWith(
       "http://localhost:8000/api/v1/dashboards/dashboard-id",
@@ -90,7 +96,7 @@ describe("DashboardDetailPage", () => {
     renderAppAt("/dashboards/shared-id");
 
     expect(await screen.findByRole("heading", { name: "Operations review" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Arrange cards" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Export .* as CSV/ })).not.toBeInTheDocument();
   });
 

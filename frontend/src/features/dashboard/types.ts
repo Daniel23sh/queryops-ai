@@ -158,7 +158,7 @@ export type DashboardMutationResult = {
   created_at: string;
   updated_at: string;
 };
-export type DuplicateDashboardResult = { dashboard: DashboardMutationResult };
+export type DuplicateDashboardResult = DashboardMutationResult;
 export type UpdateCardRequest = {
   title?: string;
   description?: string | null;
