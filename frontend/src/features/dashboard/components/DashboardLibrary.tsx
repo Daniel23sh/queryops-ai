@@ -84,7 +84,9 @@ export function DashboardLibrary({
         </div>
       ) : null}
 
-      {status !== "loading" && visibleDashboards.length === 0 ? (
+      {status !== "loading" &&
+        status !== "error" &&
+        visibleDashboards.length === 0 ? (
         <div className="dashboard-library__state">
           <p>
             {dashboards.length === 0

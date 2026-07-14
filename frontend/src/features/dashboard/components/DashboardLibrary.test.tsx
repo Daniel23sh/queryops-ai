@@ -61,6 +61,17 @@ describe("DashboardLibrary", () => {
     expect(screen.queryByText(/42|93%|\$1/)).not.toBeInTheDocument();
   });
 
+  it("does not pair an error alert with the empty-library state", () => {
+    renderLibrary([], false, "error");
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Dashboard library could not be loaded."
+    );
+    expect(
+      screen.queryByText("No dashboards are available yet.")
+    ).not.toBeInTheDocument();
+  });
+
   it("opens a metadata-only modal, traps focus, closes, and navigates", () => {
     const dashboard = item({ id: "open-me", title: "Open me", cardCount: 6 });
     const fetchMock = vi.fn();
@@ -123,7 +134,11 @@ describe("filterAndSortDashboards", () => {
   });
 });
 
-function renderLibrary(dashboards: DashboardLibraryItem[], withRoute = false) {
+function renderLibrary(
+  dashboards: DashboardLibraryItem[],
+  withRoute = false,
+  status: "error" | "success" = "success"
+) {
   return render(
     <MemoryRouter initialEntries={["/"]}>
       <Routes>
@@ -136,7 +151,7 @@ function renderLibrary(dashboards: DashboardLibraryItem[], withRoute = false) {
               errorMessage="Dashboard library could not be loaded."
               onCreate={vi.fn()}
               onReload={vi.fn().mockResolvedValue(undefined)}
-              status="success"
+              status={status}
             />
           }
         />

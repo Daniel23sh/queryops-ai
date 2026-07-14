@@ -188,7 +188,7 @@ Locked decisions from the planning documents:
 - M7 PR1 was frontend-only and is complete and merged.
 - M7 PR2 adds safe Home aggregates and dashboard library/detail contracts without schema changes.
 - M7 PR2 operational aggregates must use the current `UserAccessContext`, application authorization, the non-owner read-only runtime role, transaction-local PostgreSQL RLS context, and PostgreSQL RLS.
-- An `app_user` must never be associated with a `directory_user` by email, name, or provider id for Home metrics.
+- An `app_user` must never be associated with a `directory_user` by email, name, provider id, or any inferred identity for Home metrics.
 - Home, dashboard library, preview, and detail responses must not expose SQL, raw operational rows, raw card config, or raw card layout.
 
 ## 5. Milestone 1 Scope
@@ -823,7 +823,7 @@ Out of scope:
 
 - database migrations, new tables, or schema changes; stop and report if one becomes necessary
 - charts, Recharts, visualization rendering, grid coordinates, resizing, or advanced layout behavior
-- the PR3 View/Edit editor, Add Card, card context menus, rename, duplicate, remove, dashboard cloning, or department/global dashboard creation UI
+- the PR3 View/Edit editor, Add Card, card context menus, rename, duplicate, remove, dashboard cloning, or scoped/global dashboard creation UI
 - Ask Data redesign, query history drawer, or PR4 work
 - Actions, Approvals, Audit UI, Users UI, notifications, real LLM providers, Supabase Auth, Redis/background jobs, or Milestone 8 work
 
