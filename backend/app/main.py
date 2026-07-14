@@ -6,6 +6,7 @@ from app.api.routes.auth import router as auth_router
 from app.api.routes.dashboards import router as dashboards_router
 from app.api.routes.exports import router as exports_router
 from app.api.routes.health import router as health_router
+from app.api.routes.home import router as home_router
 from app.api.routes.queries import router as queries_router
 from app.api.routes.query_templates import router as query_templates_router
 from app.api.routes.role_requests import router as role_requests_router
@@ -24,6 +25,7 @@ app.include_router(auth_router)
 app.include_router(dashboards_router)
 app.include_router(exports_router)
 app.include_router(health_router)
+app.include_router(home_router)
 app.include_router(queries_router)
 app.include_router(query_templates_router)
 app.include_router(role_requests_router)
