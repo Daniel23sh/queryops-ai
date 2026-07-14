@@ -56,6 +56,8 @@ def test_visualization_parser_accepts_only_the_safe_bounded_shape() -> None:
         ("kpi", "desktop", {"w": 3, "h": 1}),
         ("bar", "tablet", {"w": 6, "h": 2}),
         ("table", "mobile", {"w": 1, "h": 3}),
+        ("kpi", "mobile", {"w": 1, "h": 2}),
+        ("donut", "mobile", {"w": 1, "h": 3}),
         ("semicircle_gauge", "mobile", {"w": 1, "h": 2}),
     ],
 )

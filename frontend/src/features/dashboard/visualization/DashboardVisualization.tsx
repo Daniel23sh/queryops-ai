@@ -18,7 +18,7 @@ import {
 
 import type { QueryResultRow, QueryRowValue } from "../../ask-data/types";
 import type { DashboardCardRefreshResult, DashboardCardType, VisualizationConfig, VisualizationMapping } from "../types";
-import { formatVisualizationValue, inferVisualization, numericValue } from ".";
+import { formatVisualizationValue, inferVisualization, mappingForType, numericValue } from ".";
 
 const MAX_CHART_ROWS = 24;
 const SERIES_COLORS = [
@@ -44,9 +44,9 @@ export function DashboardVisualization({
     rows: result.rows,
     currentConfig: config
   });
-  const mapping = validMapping(config.mapping, result.columns)
+  const mapping = validMapping(config.mapping, recommendation.renderType, result.columns)
     ? config.mapping
-    : recommendation.mapping;
+    : mappingForType(recommendation.renderType, recommendation.profiles);
   const rows = result.rows.slice(0, MAX_CHART_ROWS);
   const truncated = result.truncated || result.rows.length > rows.length;
   const primaryMeasure = mapping.value_columns[0];
@@ -277,9 +277,15 @@ function SafeTooltip() {
   return <Tooltip contentStyle={{ background: "var(--qops-color-elevated-surface)", border: "1px solid var(--qops-color-border)", borderRadius: 8, color: "var(--qops-color-text)" }} formatter={(value) => formatVisualizationValue(value as QueryRowValue)} />;
 }
 
-function validMapping(mapping: VisualizationMapping, columns: string[]): boolean {
+function validMapping(mapping: VisualizationMapping, type: DashboardCardType, columns: string[]): boolean {
   const candidates = [mapping.category_column, mapping.series_column, mapping.label_column, mapping.target_column, ...mapping.value_columns].filter((value): value is string => value !== null);
-  return candidates.length > 0 && candidates.every((column) => columns.includes(column));
+  if (!candidates.every((column) => columns.includes(column))) return false;
+  if (type === "table" || type === "status_list") return true;
+  if (type === "kpi" || type === "semicircle_gauge") return mapping.value_columns.length > 0;
+  if (type === "stacked_bar") {
+    return mapping.category_column !== null && mapping.series_column !== null && mapping.value_columns.length > 0;
+  }
+  return mapping.category_column !== null && mapping.value_columns.length > 0;
 }
 
 function pivotRows(rows: QueryResultRow[], category: string | null, series: string | null, value: string | undefined) {

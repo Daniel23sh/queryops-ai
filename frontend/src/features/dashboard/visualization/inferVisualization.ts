@@ -79,7 +79,7 @@ export function inferVisualization(input: VisualizationInput): VisualizationReco
     }
   }
 
-  const mapping = mappingFor(recommendedType, profiles);
+  const mapping = mappingForType(recommendedType, profiles);
   const manualType = input.currentConfig?.mode === "manual" ? input.currentConfig.type : null;
   const manualCompatible = manualType ? compatible.has(manualType) : true;
   return {
@@ -129,7 +129,7 @@ function isTemporalColumn(name: string, values: string[]): boolean {
   return values.every((value) => value.trim() !== "" && Number.isFinite(Date.parse(value)));
 }
 
-function mappingFor(type: DashboardCardType, profiles: ColumnProfile[]): VisualizationMapping {
+export function mappingForType(type: DashboardCardType, profiles: ColumnProfile[]): VisualizationMapping {
   const numeric = profiles.filter((profile) => profile.kind === "numeric");
   const temporal = profiles.find((profile) => profile.kind === "temporal");
   const category = temporal ?? profiles.find((profile) => profile.kind === "categorical" || profile.kind === "status");

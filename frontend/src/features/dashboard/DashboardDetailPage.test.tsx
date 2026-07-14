@@ -65,6 +65,11 @@ describe("DashboardDetailPage", () => {
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Add Card" })).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /Drag / })).toHaveLength(2);
+    fireEvent.click(screen.getByRole("button", { name: "Card actions for Open tickets" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Change visualization" }));
+    expect(screen.getByRole("dialog", { name: "Visualization for Open tickets" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Visualization preview")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close Visualization for Open tickets" }));
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.filter(([url]) => String(url).includes("/cards/first-card/refresh"))

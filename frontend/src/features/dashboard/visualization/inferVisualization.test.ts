@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { VisualizationConfig } from "../types";
-import { inferVisualization, nearestAllowedSize } from ".";
+import { inferVisualization, manualConfig, nearestAllowedSize } from ".";
 
 describe("inferVisualization", () => {
   it("recommends KPI for one numeric result", () => {
@@ -59,6 +59,24 @@ describe("inferVisualization", () => {
       ]
     });
     expect(result.recommendedType).toBe("stacked_bar");
+  });
+
+  it("builds a type-specific mapping for manual stacked-bar selection", () => {
+    const result = inferVisualization({
+      columns: ["priority", "status", "ticket_count"],
+      rows: [
+        { priority: "high", status: "open", ticket_count: 3 },
+        { priority: "high", status: "in_progress", ticket_count: 2 }
+      ]
+    });
+
+    expect(result.recommendedType).toBe("bar");
+    expect(result.compatibleTypes).toContain("stacked_bar");
+    expect(manualConfig("stacked_bar", result).mapping).toMatchObject({
+      category_column: "priority",
+      series_column: "status",
+      value_columns: ["ticket_count"]
+    });
   });
 
   it("allows donut only for bounded, non-negative part-to-whole data", () => {

@@ -1,5 +1,5 @@
 import { ArrowLeft, Check, Edit3, Plus, RotateCcw, Save, X } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { ApiError } from "../../api/client";
@@ -21,6 +21,7 @@ import type { CardMenuAction } from "./components/CardContextMenu";
 import { DashboardEditorGrid } from "./components/DashboardEditorGrid";
 import { EditorDialog } from "./components/EditorDialog";
 import { useDashboardDetail } from "./hooks/useDashboardDetail";
+import { DashboardVisualization } from "./visualization/DashboardVisualization";
 import type {
   CardSource,
   DashboardBreakpoint,
@@ -69,6 +70,7 @@ export function DashboardDetailPage({
   const [addCardOpen, setAddCardOpen] = useState(false);
   const [results, setResults] = useState<Record<string, DashboardCardRefreshResult>>({});
   const [source, setSource] = useState<{ loading: boolean; data: CardSource | null; error: string | null }>({ loading: false, data: null, error: null });
+  const sourceRequestRef = useRef<AbortController | null>(null);
   const dashboard = detail.dashboard;
   const effectiveLayouts = useMemo(
     () => dashboard
@@ -87,11 +89,16 @@ export function DashboardDetailPage({
   }, [dashboard]);
 
   useEffect(() => {
+    sourceRequestRef.current?.abort();
     setMode("view");
     setDialog(null);
     setAddCardOpen(false);
     setResults({});
+    setStatus(null);
+    setError(null);
   }, [dashboardId]);
+
+  useEffect(() => () => sourceRequestRef.current?.abort(), []);
 
   useEffect(() => {
     if (!dirty) return;
@@ -123,6 +130,7 @@ export function DashboardDetailPage({
     setDirty(layoutFingerprint(next) !== layoutFingerprint(serverLayouts));
     setConflict(false);
   }, [serverLayouts]);
+  const closeAddCard = useCallback(() => setAddCardOpen(false), []);
 
   if (detail.status === "loading" && !dashboard) {
     return <section className="dashboard-detail dashboard-detail--state" aria-live="polite">Loading dashboard…</section>;
@@ -185,9 +193,21 @@ export function DashboardDetailPage({
   }
 
   async function loadSource(card: EditorDashboardCard) {
+    sourceRequestRef.current?.abort();
+    const controller = new AbortController();
+    sourceRequestRef.current = controller;
     setSource({ loading: true, data: null, error: null });
-    try { setSource({ loading: false, data: await getDashboardCardSource(card.id), error: null }); }
-    catch { setSource({ loading: false, data: null, error: "Source is unavailable with your current access." }); }
+    try {
+      const data = await getDashboardCardSource(card.id, controller.signal);
+      if (!controller.signal.aborted) setSource({ loading: false, data, error: null });
+    } catch {
+      if (!controller.signal.aborted) setSource({ loading: false, data: null, error: "Source is unavailable with your current access." });
+    }
+  }
+
+  function closeSourceDialog() {
+    sourceRequestRef.current?.abort();
+    setDialog(null);
   }
 
   async function dashboardAction(action: DashboardMenuAction) {
@@ -266,10 +286,10 @@ export function DashboardDetailPage({
       {dialog?.kind === "dashboard-archive" ? <ConfirmDialog confirmLabel="Archive dashboard" description="This removes the dashboard from active views. Its saved cards and query history are preserved." onClose={() => setDialog(null)} onConfirm={async () => { if (!csrfToken) return; await archiveDashboard(dashboard.id, csrfToken); setDirty(false); navigate(APP_ROUTES.home); }} title="Archive dashboard?" /> : null}
       {dialog?.kind === "card-rename" ? <RenameCardDialog card={dialog.card} onClose={() => setDialog(null)} onSaved={async (title, description) => { if (!csrfToken) return; await updateDashboardCard(dialog.card.id, { title, description }, csrfToken); setDialog(null); setStatus("Card updated."); await detail.reload(); }} /> : null}
       {dialog?.kind === "card-remove" ? <ConfirmDialog confirmLabel="Remove card" description="Only this dashboard card will be removed. The saved query and all query-run history are preserved." onClose={() => setDialog(null)} onConfirm={async () => { if (!csrfToken) return; await removeDashboardCard(dialog.card.id, csrfToken); setDialog(null); setStatus("Card removed; query history was preserved."); await detail.reload(); }} title={`Remove ${dialog.card.title}?`} /> : null}
-      {dialog?.kind === "card-source" ? <SourceDialog card={dialog.card} onClose={() => setDialog(null)} source={source} /> : null}
+      {dialog?.kind === "card-source" ? <SourceDialog card={dialog.card} onClose={closeSourceDialog} source={source} /> : null}
       {dialog?.kind === "card-resize" ? <ResizeDialog breakpoint={dialog.breakpoint} card={dialog.card} onClose={() => setDialog(null)} onSelect={(w, h) => applySize(dialog.card, dialog.breakpoint, w, h)} /> : null}
       {dialog?.kind === "card-visualization" ? <VisualizationDialog card={dialog.card} onClose={() => setDialog(null)} onSave={async (visualization) => { if (!csrfToken) return; await updateDashboardCard(dialog.card.id, { visualization }, csrfToken); setDialog(null); setStatus("Visualization preference saved."); await detail.reload(); }} result={results[dialog.card.id] ?? null} /> : null}
-      {addCardOpen && csrfToken ? <AddCardDrawer csrfToken={csrfToken} dashboardId={dashboard.id} onClose={() => setAddCardOpen(false)} onDashboardReload={async (message) => { setStatus(message); await detail.reload(); }} /> : null}
+      {addCardOpen && csrfToken ? <AddCardDrawer csrfToken={csrfToken} dashboardId={dashboard.id} onClose={closeAddCard} onDashboardReload={async (message) => { setStatus(message); await detail.reload(); }} /> : null}
     </article>
   );
 }
@@ -308,7 +328,7 @@ function VisualizationDialog({ card, onClose, onSave, result }: { card: EditorDa
   const compatible = recommendation?.compatibleTypes ?? [card.visualization.type, "table" as const];
   const save = (config: VisualizationConfig) => { setBusy(true); setError(null); void onSave(config).catch(() => { setBusy(false); setError("The visualization preference could not be saved."); }); };
   return <EditorDialog footer={<><button className="qops-button-secondary" onClick={onClose} type="button">Cancel</button>{recommendation ? <button className="qops-button-primary" disabled={busy} onClick={() => save(manualConfig(selected, recommendation))} type="button">Save visualization</button> : null}</>} onClose={onClose} title={`Visualization for ${card.title}`}>
-    {recommendation ? <><p><strong>Recommended:</strong> {VISUALIZATION_LABELS[recommendation.recommendedType]}. {recommendation.reason}</p><fieldset className="dashboard-visualization-options"><legend>Compatible visualizations</legend>{compatible.map((type) => <label key={type}><input checked={selected === type} name="visualization" onChange={() => setSelected(type)} type="radio" />{VISUALIZATION_LABELS[type]}</label>)}</fieldset><button className="qops-button-secondary" disabled={busy} onClick={() => save(recommendedConfig(recommendation))} type="button"><RotateCcw aria-hidden="true" size={16} />Reset to recommended</button></> : <p>Refresh this card before choosing a compatible visualization.</p>}
+    {recommendation ? <><p><strong>Recommended:</strong> {VISUALIZATION_LABELS[recommendation.recommendedType]}. {recommendation.reason}</p><fieldset className="dashboard-visualization-options"><legend>Compatible visualizations</legend>{compatible.map((type) => <label key={type}><input checked={selected === type} name="visualization" onChange={() => setSelected(type)} type="radio" />{VISUALIZATION_LABELS[type]}</label>)}</fieldset><div className="dashboard-visualization-dialog__preview" aria-label="Visualization preview"><DashboardVisualization config={manualConfig(selected, recommendation)} result={result!} title={`Preview of ${card.title}`} /></div><button className="qops-button-secondary" disabled={busy} onClick={() => save(recommendedConfig(recommendation))} type="button"><RotateCcw aria-hidden="true" size={16} />Reset to recommended</button></> : <p>Refresh this card before choosing a compatible visualization.</p>}
     {error ? <p role="alert">{error}</p> : null}
   </EditorDialog>;
 }

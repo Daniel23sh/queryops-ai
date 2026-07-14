@@ -38,17 +38,17 @@ SIZE_POLICY: dict[str, dict[str, frozenset[tuple[int, int]]]] = {
     "kpi": {
         "desktop": frozenset({(3, 1), (4, 1), (6, 1)}),
         "tablet": frozenset({(3, 1), (4, 1), (6, 1)}),
-        "mobile": frozenset({(1, 1)}),
+        "mobile": frozenset({(1, 1), (1, 2)}),
     },
     "donut": {
         "desktop": frozenset({(3, 2), (4, 2), (6, 2)}),
         "tablet": frozenset({(3, 2), (4, 2), (6, 2)}),
-        "mobile": frozenset({(1, 2)}),
+        "mobile": frozenset({(1, 2), (1, 3)}),
     },
     "semicircle_gauge": {
         "desktop": frozenset({(3, 2), (4, 2), (6, 2)}),
         "tablet": frozenset({(3, 2), (4, 2), (6, 2)}),
-        "mobile": frozenset({(1, 2)}),
+        "mobile": frozenset({(1, 2), (1, 3)}),
     },
     "bar": {
         "desktop": frozenset(

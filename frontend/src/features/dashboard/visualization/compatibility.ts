@@ -1,4 +1,5 @@
 import type { DashboardCardType, VisualizationConfig } from "../types";
+import { mappingForType } from "./inferVisualization";
 import type { VisualizationRecommendation } from "./types";
 
 export function isVisualizationCompatible(
@@ -27,6 +28,6 @@ export function manualConfig(
     mode: "manual",
     type,
     recommended_type: recommendation.recommendedType,
-    mapping: recommendation.mapping
+    mapping: mappingForType(type, recommendation.profiles)
   };
 }

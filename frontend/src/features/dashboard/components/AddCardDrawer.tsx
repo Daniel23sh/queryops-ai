@@ -36,6 +36,8 @@ export function AddCardDrawer({
   const inFlight = useRef(false);
   const closeRef = useRef<HTMLButtonElement>(null);
   const drawerRef = useRef<HTMLElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -55,7 +57,7 @@ export function AddCardDrawer({
       setLoadError(true); setLoading(false);
     });
     const escape = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !inFlight.current) { onClose(); return; }
+      if (event.key === "Escape" && !inFlight.current) { onCloseRef.current(); return; }
       if (event.key !== "Tab" || !drawerRef.current) return;
       const focusable = Array.from(drawerRef.current.querySelectorAll<HTMLElement>('button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'));
       const first = focusable[0]; const last = focusable[focusable.length - 1];
@@ -69,7 +71,7 @@ export function AddCardDrawer({
       document.removeEventListener("keydown", escape);
       document.body.style.overflow = previousOverflow;
     };
-  }, [onClose]);
+  }, []);
 
   const normalizedSearch = search.trim().toLocaleLowerCase();
   const visibleTemplates = useMemo(() => templates.filter((template) =>

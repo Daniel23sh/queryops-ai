@@ -78,12 +78,20 @@ export function DashboardEditorGrid({
     onLayoutsChange(next);
   }
 
-  function snapResize(_layout: Layout, _oldItem: Layout[number] | null, newItem: Layout[number] | null) {
+  function snapResize(layout: Layout, _oldItem: Layout[number] | null, newItem: Layout[number] | null) {
     if (!newItem) return;
-    const card = cards.find((candidate) => candidate.id === newItem.i);
-    if (!card) return;
-    const snapped = nearestAllowedSize(card.visualization.type, breakpoint, { w: newItem.w, h: newItem.h });
-    const next = { ...layouts, [card.id]: { ...layouts[card.id], [breakpoint]: { x: newItem.x, y: newItem.y, ...snapped } } };
+    const next = { ...layouts };
+    for (const card of cards) {
+      next[card.id] = {
+        ...layouts[card.id],
+        [breakpoint]: safeGridItem(
+          card,
+          breakpoint,
+          layout.find((item) => item.i === card.id),
+          layouts[card.id][breakpoint]
+        )
+      };
+    }
     onLayoutsChange(next);
   }
 
@@ -171,5 +179,11 @@ function safeGridItem(
 ): GridItemLayout {
   const candidate = fromGridItem(item, fallback);
   const size = nearestAllowedSize(card.visualization.type, breakpoint, candidate);
-  return { ...candidate, ...size, x: breakpoint === "mobile" ? 0 : candidate.x };
+  const columns = COLUMNS[breakpoint];
+  return {
+    ...candidate,
+    ...size,
+    x: breakpoint === "mobile" ? 0 : Math.max(0, Math.min(candidate.x, columns - size.w)),
+    y: Math.max(0, candidate.y)
+  };
 }

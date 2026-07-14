@@ -21,13 +21,15 @@ export function EditorDialog({
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const opener = useRef(document.activeElement instanceof HTMLElement ? document.activeElement : null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     closeRef.current?.focus();
     function keydown(event: KeyboardEvent) {
-      if (event.key === "Escape") { event.preventDefault(); onClose(); return; }
+      if (event.key === "Escape") { event.preventDefault(); onCloseRef.current(); return; }
       if (event.key !== "Tab" || !dialogRef.current) return;
       const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE));
       const first = focusable[0];
@@ -42,7 +44,7 @@ export function EditorDialog({
       document.body.style.overflow = previousOverflow;
       opener.current?.focus();
     };
-  }, [onClose]);
+  }, []);
 
   return (
     <div className="dashboard-dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>

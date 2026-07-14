@@ -111,7 +111,11 @@ export function CardContextMenu({
             <button
               className={item.destructive ? "dashboard-card-menu__danger" : undefined}
               key={item.action}
-              onClick={() => { close(false); onSelect(item.action); }}
+              onClick={() => {
+                triggerRef.current?.focus();
+                close(false);
+                onSelect(item.action);
+              }}
               role="menuitem"
               type="button"
             >

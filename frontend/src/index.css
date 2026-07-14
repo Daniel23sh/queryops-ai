@@ -1904,6 +1904,15 @@ h1 {
 .dashboard-visualization-options { border: 0; padding: 0; margin: 18px 0; }
 .dashboard-visualization-options legend { margin-bottom: 9px; color: var(--qops-color-text-strong); font-weight: 800; }
 .dashboard-visualization-options label { min-height: 44px; display: flex; align-items: center; gap: 9px; border: 1px solid var(--qops-color-border); border-radius: 8px; padding: 0 11px; }
+.dashboard-visualization-dialog__preview {
+  height: 260px;
+  margin-bottom: 16px;
+  overflow: hidden;
+  border: 1px solid var(--qops-color-border);
+  border-radius: 10px;
+  background: var(--qops-color-muted-surface);
+  padding: 12px;
+}
 .dashboard-source { display: grid; gap: 18px; }
 .dashboard-source h3 { margin: 0 0 7px; font-size: 0.8rem; text-transform: uppercase; color: var(--qops-color-text-faint); }
 .dashboard-source p { margin: 0; }

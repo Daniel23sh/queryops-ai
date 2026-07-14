@@ -47,6 +47,6 @@ export function DashboardActionMenu({
   );
 
   function MenuButton({ action, danger = false, icon, label }: { action: DashboardMenuAction; danger?: boolean; icon: React.ReactNode; label: string }) {
-    return <button className={danger ? "dashboard-action-menu__danger" : undefined} onClick={() => { setOpen(false); onSelect(action); }} role="menuitem" type="button">{icon}{label}</button>;
+    return <button className={danger ? "dashboard-action-menu__danger" : undefined} onClick={() => { triggerRef.current?.focus(); setOpen(false); onSelect(action); }} role="menuitem" type="button">{icon}{label}</button>;
   }
 }
