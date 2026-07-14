@@ -129,11 +129,13 @@ export type QueryHistoryItem = {
   metadata: QueryMetadata;
   generated_sql?: string | null;
   executed_sql?: string | null;
+  can_save_as_card?: boolean;
 };
 
 export type QueryHistoryParams = {
   limit?: number;
   offset?: number;
+  include_sql?: boolean;
 };
 
 export type ScopeQueryHistoryParams = QueryHistoryParams;
