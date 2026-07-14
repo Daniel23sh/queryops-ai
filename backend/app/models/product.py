@@ -486,6 +486,12 @@ class Dashboard(Base):
         default=False,
         server_default="false",
     )
+    layout_version: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=1,
+        server_default="1",
+    )
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()
 
