@@ -329,7 +329,7 @@ Default local URLs:
 * Backend health endpoint: `http://localhost:8000/health`
 * PostgreSQL: `localhost:5432`
 
-PostgreSQL is included for the local development environment. Milestone 6 is complete and merged into `main`; the current application includes deterministic IT Operations seed data, demo auth, scope-aware PostgreSQL RLS, the backend Query Engine, the Ask Data frontend, dashboards and saved cards, controlled query/card CSV downloads, automatic/manual dashboard-card refresh, and persistent accessible card ordering. Milestone 7 is the active product UX milestone, and M7 PR1 is implementation-complete on `feature/m7-product-shell-navigation`. Actions, approvals, notifications, real LLM providers, Supabase Auth, and domain expansion remain planned for later milestones.
+PostgreSQL is included for the local development environment. Milestone 6 is complete and merged into `main`; the current application includes deterministic IT Operations seed data, demo auth, scope-aware PostgreSQL RLS, the backend Query Engine, the Ask Data frontend, dashboards and saved cards, controlled query/card CSV downloads, automatic/manual dashboard-card refresh, and persistent accessible card ordering. Milestone 7 is the active product UX milestone. M7 PR1 is merged, and M7 PR2 is implementation-complete on `feature/m7-home-dashboard-browser` with role-aware Home aggregates, an Owned/Shared dashboard browser, safe previews, and a full dashboard route. Actions, approvals, notifications, real LLM providers, Supabase Auth, and domain expansion remain planned for later milestones.
 
 Stop the stack:
 
@@ -460,6 +460,22 @@ Current Query Engine limitations:
 * Scope-aware query history requires assigned access scopes and the appropriate history permission.
 * Full domain pack expansion to 36 templates / 40 evaluation cases is not implemented.
 * Scheduled card refresh, actions, approvals, and notifications are not implemented.
+
+### Role-Aware Home and Dashboard Browser
+
+M7 PR2 adds these authenticated read endpoints:
+
+```txt
+GET /api/v1/home/overview
+GET /api/v1/dashboards/library
+GET /api/v1/dashboards/{dashboard_id}
+```
+
+Home always returns the current app user's personal product summary. User receives no operational domain metrics. Manager and Analyst receive aggregate-only operational metrics across their authorized scopes. Admin receives global operational aggregates and independently permission-gated product administration counts. Operational reads use existing `DataResource` authorization, `queryops_query_runtime`, a read-only transaction, transaction-local `UserAccessContext` RLS settings, and PostgreSQL RLS. QueryOps app users are never matched to IT Operations directory users by email, name, or provider identity.
+
+My Dashboard at `/` includes an Owned/Shared library with title/description search, All/Owned/Shared filters, Recently updated/Name/Created sorting, compact personal dashboard creation, and an accessible metadata-only preview dialog. Preview never refreshes cards or fetches results. `Open dashboard` navigates to `/dashboards/:dashboardId`, where existing current-viewer refresh and permission-gated CSV export remain available. Owned personal dashboards retain explicit arrange-only M6 ordering compatibility.
+
+Home and the new dashboard read APIs do not return SQL, raw operational rows, raw card config, raw card layout, owner email, or sensitive event detail. PR2 does not add charts, card resizing, an editor, Add Card, context menus, or an Ask Data redesign; those areas remain deferred.
 
 ### CSV Export and Dashboard Card Refresh
 
@@ -679,9 +695,9 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-Milestones 0 through 6 are complete and merged into `main`; PR #24 merged M6 PR5 Card Reordering & Layout Persistence and the final Admin restricted-export policy. Milestone 7 — Product UX & Dashboard Redesign is active. M7 PR1 is implementation-complete on `feature/m7-product-shell-navigation`; it establishes the routed dark-first product shell, focused navigation, Profile, and transitional My Dashboard experience.
+Milestones 0 through 6 are complete and merged into `main`; PR #24 merged M6 PR5 Card Reordering & Layout Persistence and the final Admin restricted-export policy. Milestone 7 — Product UX & Dashboard Redesign is active. M7 PR1 is merged through PR #25. M7 PR2 is implementation-complete on `feature/m7-home-dashboard-browser` and replaces the transitional Home with role-aware aggregates plus the dashboard browser/detail experience.
 
-The Milestone 7 UX direction is dark-first with a persistent light option, responsive navigation, My Dashboard as the authenticated home, permission-aware routes, and Scope terminology in the general product UI. Milestone 7 remains incomplete: role-aware Home metrics and the dashboard browser are planned for PR2, the dashboard editor/grid/visualizations for PR3, and the Ask Data redesign for PR4. M7 PR2 is not active and has not started.
+The Milestone 7 UX direction is dark-first with a persistent light option, responsive navigation, My Dashboard as the authenticated home, permission-aware routes, and Scope terminology in the general product UI. Milestone 7 remains incomplete: M7 PR3 dashboard editor/grid/visualizations is next but not started, and M7 PR4 Ask Data redesign is not started. Milestone 8 is not started.
 
 Implemented foundation functionality includes:
 
@@ -705,13 +721,18 @@ Implemented foundation functionality includes:
 * controlled query-run and dashboard-card CSV export with permissions, exportability policy, current-viewer RLS execution, CSV injection protection, and successful export audit persistence
 * authorized Ask Data and dashboard-card CSV download controls
 * automatic/manual dashboard-card refresh under current-viewer RLS with safe table previews and viewer-owned refresh history
+* role-aware Home personal/scoped/global aggregate summaries without app-user/directory-user identity inference
+* Owned/Shared dashboard search, filters, sorting, accessible safe preview, and `/dashboards/:dashboardId`
+* full dashboard presentation with preserved secure refresh/export and explicit owned-personal arrange compatibility
 
 Current milestone status:
 
 ```txt
 Milestone 6 — Dashboards, Cards & CSV Export is complete.
 Milestone 7 — Product UX & Dashboard Redesign is active.
-M7 PR1 — Product Shell, Routing & Navigation is implementation-complete on feature/m7-product-shell-navigation.
+M7 PR1 — Product Shell, Routing & Navigation is complete and merged through PR #25.
+M7 PR2 — Role-Aware Home & Dashboard Browser is implementation-complete on feature/m7-home-dashboard-browser.
+M7 PR3 and M7 PR4 are not started. Milestone 8 is not started.
 ```
 
 PR5 persists the order of cards in owned personal dashboards through `DashboardCard.position`. It includes accessible drag-and-drop and Move Up / Move Down controls, but does not add card resizing, x/y grid coordinates, width/height persistence, advanced `layout` behavior, scheduled refresh, dashboard starring/cloning, actions, approvals, notifications, real external LLM calls, Supabase Auth, Redis/background jobs, or domain expansion. Those deferred areas remain outside Milestone 6.

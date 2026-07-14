@@ -10,7 +10,9 @@ Current PR scope:
 
 `M7 PR1 — Product Shell, Routing & Navigation` is complete and merged into `main` through PR #25.
 
-`M7 PR2 — Role-Aware Home & Dashboard Browser` is active on branch `feature/m7-home-dashboard-browser`.
+`M7 PR2 — Role-Aware Home & Dashboard Browser` is implementation-complete on branch `feature/m7-home-dashboard-browser`.
+
+M7 PR3 and M7 PR4 have not started. Milestone 8 has not started.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
@@ -429,7 +431,7 @@ The active milestone and latest PR status are:
 
 `M7 PR1 — Product Shell, Routing & Navigation` is complete and merged into `main` through PR #25.
 
-`M7 PR2 — Role-Aware Home & Dashboard Browser` is active on `feature/m7-home-dashboard-browser`. M7 PR3 and PR4 have not started. Milestone 8 has not started.
+`M7 PR2 — Role-Aware Home & Dashboard Browser` is implementation-complete on `feature/m7-home-dashboard-browser`. M7 PR3 and PR4 have not started. Milestone 8 has not started.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -759,7 +761,7 @@ Milestone 7 is split into four PRs:
    - Complete and merged into `main` through PR #25.
    - Frontend-only routed shell, dark-first responsive navigation, Profile and Role Upgrade consolidation, and transitional My Dashboard cleanup.
 2. `M7 PR2 — Role-Aware Home & Dashboard Browser`
-   - Active on `feature/m7-home-dashboard-browser`.
+   - Implementation-complete on `feature/m7-home-dashboard-browser`.
    - Adds real role-aware Home overview data and the dashboard browser/detail experience, including `/dashboards/:dashboardId` with a real detail screen.
 3. `M7 PR3 — Dashboard Editor, Grid & Visualizations`
    - Not started.
@@ -785,6 +787,8 @@ Milestone 7 is split into four PRs:
 ### M7 PR2 Locked Scope
 
 Goal: Role-Aware Home & Dashboard Browser.
+
+Implementation status: complete on `feature/m7-home-dashboard-browser`. PR2 added the three read-only APIs below, scoped/global Home aggregates through the existing read-only runtime/RLS boundary, the Owned/Shared browser and accessible metadata preview, the direct dashboard detail route, compact personal creation, and explicit owned-personal reorder compatibility. No schema change, charting library, editor, resize behavior, Ask Data redesign, or Milestone 8 work was added.
 
 In scope:
 
@@ -823,4 +827,4 @@ Out of scope:
 - Ask Data redesign, query history drawer, or PR4 work
 - Actions, Approvals, Audit UI, Users UI, notifications, real LLM providers, Supabase Auth, Redis/background jobs, or Milestone 8 work
 
-M7 PR3 and M7 PR4 remain not started. Milestone 8 remains not started.
+M7 PR3 is next but not started. M7 PR4 remains not started. Milestone 8 remains not started. Do not infer approval to begin any of them from PR2 completion.

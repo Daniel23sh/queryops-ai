@@ -74,7 +74,7 @@ M7 PR2 — Role-Aware Home & Dashboard Browser
 
 Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, Milestone 3, Milestone 4, and Milestone 5 are complete under the previous scopes. Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete.
 
-Milestone 6 is complete and merged into `main`. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, `M6 PR3 — CSV Export Backend`, `M6 PR4 — Card Refresh & CSV Export UI`, and `M6 PR5 — Card Reordering & Layout Persistence` plus the final Admin restricted-export policy are complete. PR #24 merged PR5. Milestone 7 — Product UX & Dashboard Redesign is active. M7 PR1 is complete and merged through PR #25. M7 PR2 is active on `feature/m7-home-dashboard-browser`.
+Milestone 6 is complete and merged into `main`. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, `M6 PR3 — CSV Export Backend`, `M6 PR4 — Card Refresh & CSV Export UI`, and `M6 PR5 — Card Reordering & Layout Persistence` plus the final Admin restricted-export policy are complete. PR #24 merged PR5. Milestone 7 — Product UX & Dashboard Redesign is active. M7 PR1 is complete and merged through PR #25. M7 PR2 is implementation-complete on `feature/m7-home-dashboard-browser`. M7 PR3 and PR4 have not started; Milestone 8 has not started.
 
 Milestone 2.5 introduced `access_scopes`, `user_access_scopes`, `data_resources`, `UserAccessContext`, `AccessDecision`, and `evaluate_access(subject, action, resource, context)`.
 
@@ -138,7 +138,7 @@ Query Engine security rules:
 * Query Engine code must continue to use `UserAccessContext`, `DataResource`, `AccessDecision`, `evaluate_access(...)`, `authorize_resource_access(...)`, `RLSContext`, `build_rls_context(...)`, `set_rls_context(...)`, PostgreSQL RLS policies from `0005_scope_aware_rls.py`, and the existing `QueryRun` model.
 * No real LLM calls, external provider integrations, or API-key requirements are allowed in Milestone 4.
 
-M7 PR1 was frontend-only and is complete and merged. M7 PR2 is the approved backend/frontend scope for Home aggregates and dashboard browsing. Do not create an Alembic migration, add a database table, or change the schema in PR2. If an approved requirement cannot be implemented without a schema change, stop and report before creating one.
+M7 PR1 was frontend-only and is complete and merged. M7 PR2 is implementation-complete and its backend/frontend Home aggregate and dashboard-browser boundaries must be preserved. PR2 introduced no Alembic migration, database table, or schema change.
 
 M7 PR1 implemented only:
 
@@ -149,7 +149,7 @@ M7 PR1 implemented only:
 * Profile with the existing Role Upgrade flow for eligible non-Admin users
 * transitional My Dashboard cleanup using existing dashboard APIs
 
-M7 PR2 must implement only:
+M7 PR2 implemented only:
 
 * `GET /api/v1/home/overview` with personal product metrics for every authenticated user
 * scoped operational aggregates for effective scoped-data permissions and global aggregates for effective global-data permissions
@@ -204,7 +204,7 @@ Use the term Scope in general product UI. Department remains valid in the IT Ope
 
 Local `docs/planning/` documents may be updated for M7 PR2 because the user explicitly authorized it. They remain ignored and must never be staged or committed.
 
-M7 PR2 owns Home Overview and Dashboard Browser work. M7 PR3 remains not started and will own dashboard editor, grid/resizing, and visualizations. M7 PR4 remains not started and will own the Ask Data redesign. Actions, Approvals & Audit remain not started and deferred to Milestone 8.
+M7 PR2 owns the completed Home Overview and Dashboard Browser work. M7 PR3 is next but remains not started and will own dashboard editor, grid/resizing, and visualizations. M7 PR4 remains not started and will own the Ask Data redesign. Actions, Approvals & Audit remain not started and deferred to Milestone 8. Do not begin PR3, PR4, or Milestone 8 without an explicit request and active scope update.
 
 ## 6. Product Direction
 
