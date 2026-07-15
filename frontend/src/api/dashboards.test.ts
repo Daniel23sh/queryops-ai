@@ -1,13 +1,21 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  archiveDashboard,
   createDashboard,
+  duplicateDashboard,
+  duplicateDashboardCard,
+  getDashboardCardSource,
   getDashboardCatalog,
   getDashboardDetail,
   getDashboardLibrary,
   getMyDashboards,
   refreshDashboardCard,
   saveQueryRunAsCard,
+  removeDashboardCard,
+  updateDashboard,
+  updateDashboardCard,
+  updateDashboardEditorLayout,
   updateMyDashboardLayout
 } from "./dashboards";
 import type {
@@ -361,6 +369,68 @@ describe("dashboards API client", () => {
       code: "DASHBOARD_LAYOUT_CONFLICT",
       status: 409
     });
+  });
+
+  it("sends strict encoded editor mutations with CSRF and safe bodies", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(apiResponse({ data: { id: "result-id" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const visualization = {
+      mode: "manual" as const,
+      type: "bar" as const,
+      recommended_type: "bar" as const,
+      mapping: {
+        category_column: "department",
+        value_columns: ["device_count"],
+        series_column: null,
+        label_column: null,
+        target_column: null
+      }
+    };
+
+    await updateDashboard("folder/dashboard", { title: " Renamed ", description: null }, "csrf");
+    await duplicateDashboard("folder/dashboard", "csrf");
+    await archiveDashboard("folder/dashboard", "csrf");
+    await updateDashboardCard("folder/card", { title: " Card ", visualization }, "csrf");
+    await duplicateDashboardCard("folder/card", "csrf");
+    await removeDashboardCard("folder/card", "csrf");
+    await updateDashboardEditorLayout("folder/dashboard", {
+      expected_layout_version: 4,
+      items: [{
+        card_id: "card-id",
+        desktop: { x: 0, y: 0, w: 6, h: 3 },
+        tablet: { x: 0, y: 0, w: 6, h: 3 },
+        mobile: { x: 0, y: 0, w: 1, h: 3 }
+      }]
+    }, "csrf");
+
+    expect(fetchMock).toHaveBeenNthCalledWith(1, "http://localhost:8000/api/v1/dashboards/folder%2Fdashboard", expect.objectContaining({
+      method: "PATCH",
+      body: JSON.stringify({ title: "Renamed", description: null })
+    }));
+    expect(fetchMock).toHaveBeenNthCalledWith(2, "http://localhost:8000/api/v1/dashboards/folder%2Fdashboard/duplicate", expect.objectContaining({ method: "POST", body: "{}" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(3, "http://localhost:8000/api/v1/dashboards/folder%2Fdashboard", expect.objectContaining({ method: "DELETE" }));
+    expect(fetchMock).toHaveBeenNthCalledWith(4, "http://localhost:8000/api/v1/cards/folder%2Fcard", expect.objectContaining({
+      method: "PATCH",
+      body: JSON.stringify({ title: "Card", visualization })
+    }));
+    expect(fetchMock).toHaveBeenNthCalledWith(7, "http://localhost:8000/api/v1/dashboards/folder%2Fdashboard/layout", expect.objectContaining({
+      method: "PATCH",
+      headers: expect.objectContaining({ "X-CSRF-Token": "csrf" }),
+      body: expect.stringContaining('"expected_layout_version":4')
+    }));
+  });
+
+  it("gets only the encoded card source contract and supports cancellation", async () => {
+    const fetchMock = stubFetch({ data: { question: "How many?", sql: "SELECT count(*)" } });
+    const controller = new AbortController();
+    await expect(getDashboardCardSource("folder/card", controller.signal)).resolves.toEqual({
+      question: "How many?",
+      sql: "SELECT count(*)"
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "http://localhost:8000/api/v1/cards/folder%2Fcard/source",
+      expect.objectContaining({ method: "GET", signal: controller.signal })
+    );
   });
 
   it("exports dashboard request types that compile with backend field names", () => {

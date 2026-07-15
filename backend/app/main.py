@@ -18,7 +18,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=FRONTEND_DEV_ORIGINS,
     allow_credentials=True,
-    allow_methods=["GET", "POST", "PATCH", "OPTIONS"],
+    allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "X-CSRF-Token"],
 )
 app.include_router(auth_router)

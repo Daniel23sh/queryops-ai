@@ -69,12 +69,12 @@ The milestone status is defined in `PROJECT_PLAN.md`.
 At the time this file was updated, the latest checkpoint-complete target is:
 
 ```txt
-M7 PR2 — Role-Aware Home & Dashboard Browser
+M7 PR3 — Dashboard Editor, Grid & Visualizations
 ```
 
 Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, Milestone 3, Milestone 4, and Milestone 5 are complete under the previous scopes. Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete.
 
-Milestone 6 is complete and merged into `main`. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, `M6 PR3 — CSV Export Backend`, `M6 PR4 — Card Refresh & CSV Export UI`, and `M6 PR5 — Card Reordering & Layout Persistence` plus the final Admin restricted-export policy are complete. PR #24 merged PR5. Milestone 7 — Product UX & Dashboard Redesign is active. M7 PR1 is complete and merged through PR #25. M7 PR2 is implementation-complete on `feature/m7-home-dashboard-browser`. M7 PR3 and PR4 have not started; Milestone 8 has not started.
+Milestone 6 is complete and merged into `main`. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, `M6 PR3 — CSV Export Backend`, `M6 PR4 — Card Refresh & CSV Export UI`, and `M6 PR5 — Card Reordering & Layout Persistence` plus the final Admin restricted-export policy are complete. PR #24 merged PR5. Milestone 7 — Product UX & Dashboard Redesign is active. M7 PR1 is complete and merged through PR #25. M7 PR2 is complete and merged through PR #26. M7 PR3 — Dashboard Editor, Grid & Visualizations is implementation-complete on `feature/m7-dashboard-editor-visualizations` and awaits merge. M7 PR4 and Milestone 8 have not started.
 
 Milestone 2.5 introduced `access_scopes`, `user_access_scopes`, `data_resources`, `UserAccessContext`, `AccessDecision`, and `evaluate_access(subject, action, resource, context)`.
 
@@ -138,7 +138,7 @@ Query Engine security rules:
 * Query Engine code must continue to use `UserAccessContext`, `DataResource`, `AccessDecision`, `evaluate_access(...)`, `authorize_resource_access(...)`, `RLSContext`, `build_rls_context(...)`, `set_rls_context(...)`, PostgreSQL RLS policies from `0005_scope_aware_rls.py`, and the existing `QueryRun` model.
 * No real LLM calls, external provider integrations, or API-key requirements are allowed in Milestone 4.
 
-M7 PR1 was frontend-only and is complete and merged. M7 PR2 is implementation-complete and its backend/frontend Home aggregate and dashboard-browser boundaries must be preserved. PR2 introduced no Alembic migration, database table, or schema change.
+M7 PR1 and M7 PR2 are complete and merged. M7 PR2's backend/frontend Home aggregate and dashboard-browser boundaries must be preserved. PR2 introduced no Alembic migration, database table, or schema change.
 
 M7 PR1 implemented only:
 
@@ -202,9 +202,26 @@ Do not show future or placeholder destinations in navigation. Templates, Role Up
 
 Use the term Scope in general product UI. Department remains valid in the IT Operations domain model, internal permission names, and V1 compatibility API names, but must not be presented as the product's universal governance concept.
 
-Local `docs/planning/` documents may be updated for M7 PR2 because the user explicitly authorized it. They remain ignored and must never be staged or committed.
+Local `docs/planning/` documents may be updated for M7 PR3 because the user explicitly authorized it. They remain ignored and must never be staged or committed.
 
-M7 PR2 owns the completed Home Overview and Dashboard Browser work. M7 PR3 is next but remains not started and will own dashboard editor, grid/resizing, and visualizations. M7 PR4 remains not started and will own the Ask Data redesign. Actions, Approvals & Audit remain not started and deferred to Milestone 8. Do not begin PR3, PR4, or Milestone 8 without an explicit request and active scope update.
+M7 PR3 is implementation-complete and owns only the full-dashboard editor, responsive versioned grid, visualization recommendation/rendering, safe dashboard/card actions, and Add Card flows described in `PROJECT_PLAN.md`. Retain the following rules through review and merge.
+
+M7 PR3 guardrails:
+
+* Every dashboard or card mutation must independently enforce backend dashboard manageability and effective permissions; frontend capability checks are UX only.
+* Layout updates require dashboard/card row locks, a complete current card set, strict 12/6/1 breakpoint validation, no overlaps, approved size presets, optimistic `layout_version` concurrency, atomic commit, and safe conflict responses.
+* `DashboardCard.layout` and `DashboardCard.config` may contain only the approved versioned layout and sanitized visualization shapes. Never accept or expose arbitrary config JSON.
+* Never persist query-result rows in card config/layout, local storage, URL state, SavedQuery metadata, or another new snapshot store.
+* SQL source requires effective `can_view_sql`, dashboard visibility, and a deterministic latest-successful linked QueryRun. Return only original question and stored sanitized/executed SQL.
+* Refresh/export continue through the existing secure endpoints and must retain current-viewer `UserAccessContext`, SQL validation, validator-sanitized SQL, `queryops_query_runtime`, read-only execution, PostgreSQL RLS, row limits, CSV sanitization, and successful export audit persistence.
+* Card removal deletes only the `DashboardCard`. Preserve `SavedQuery` and every `QueryRun`.
+* Dashboard archive is soft deletion. Duplicates are new personal dashboards/cards that reuse SavedQuery references and never duplicate QueryRuns or raw rows.
+* Keep the legacy order-only `PATCH /api/v1/dashboards/my/layout` contract compatible while the new versioned full-layout endpoint is added.
+* Do not implement cross-dashboard card movement, shared-dashboard layout personalization, arbitrary freeform resize, custom chart colors/formulas, dashboard restore/sharing mutation, or department/global dashboard creation UI.
+* Do not redesign Ask Data or add the PR4 history drawer.
+* Do not add Actions, Approvals, Audit UI, Users UI, notifications, real LLM providers, Supabase Auth, Redis/background jobs, or Milestone 8 behavior.
+
+M7 PR4 remains not started and will own the Ask Data redesign. Actions, Approvals & Audit remain not started and deferred to Milestone 8. Do not begin PR4 or Milestone 8 without an explicit request and active scope update.
 
 ## 6. Product Direction
 

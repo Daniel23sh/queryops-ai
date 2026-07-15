@@ -84,7 +84,7 @@ def test_postgres_library_and_detail_preserve_dashboard_visibility_and_safe_shap
     assert detail_response.status_code == 200
     assert len(detail_response.json()["data"]["cards"]) == 5
     _assert_safe(library_response.json())
-    _assert_safe(detail_response.json())
+    _assert_safe(detail_response.json(), allow_safe_layout=True)
 
 
 def test_postgres_foreign_personal_dashboard_returns_safe_not_found(
@@ -142,19 +142,20 @@ def _department_by_name(session: Session, name: str) -> Department:
     return department
 
 
-def _assert_safe(payload: object) -> None:
+def _assert_safe(payload: object, *, allow_safe_layout: bool = False) -> None:
     serialized = json.dumps(payload)
     assert "SELECT " not in serialized
     for forbidden in [
         '"generated_sql"',
         '"executed_sql"',
         '"config"',
-        '"layout"',
         '"parameters"',
         '"result_schema"',
         '"email"',
     ]:
         assert forbidden not in serialized
+    if not allow_safe_layout:
+        assert '"layout"' not in serialized
 
 
 @pytest.fixture(scope="module")

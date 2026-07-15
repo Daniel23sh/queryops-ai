@@ -10,9 +10,11 @@ Current PR scope:
 
 `M7 PR1 — Product Shell, Routing & Navigation` is complete and merged into `main` through PR #25.
 
-`M7 PR2 — Role-Aware Home & Dashboard Browser` is implementation-complete on branch `feature/m7-home-dashboard-browser`.
+`M7 PR2 — Role-Aware Home & Dashboard Browser` is complete and merged into `main` through PR #26.
 
-M7 PR3 and M7 PR4 have not started. Milestone 8 has not started.
+`M7 PR3 — Dashboard Editor, Grid & Visualizations` is implementation-complete on branch `feature/m7-dashboard-editor-visualizations` and awaits merge.
+
+M7 PR4 has not started. Milestone 8 has not started.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
@@ -186,8 +188,11 @@ Locked decisions from the planning documents:
 - Profile contains Role Upgrade for eligible non-Admin users; Admin does not see Role Upgrade.
 - Admin navigation exposes only implemented capabilities. Users and Audit remain hidden until real screens are implemented.
 - M7 PR1 was frontend-only and is complete and merged.
-- M7 PR2 adds safe Home aggregates and dashboard library/detail contracts without schema changes.
-- M7 PR2 operational aggregates must use the current `UserAccessContext`, application authorization, the non-owner read-only runtime role, transaction-local PostgreSQL RLS context, and PostgreSQL RLS.
+- M7 PR2 added safe Home aggregates and dashboard library/detail contracts without schema changes and is complete through PR #26.
+- M7 PR3 adds the explicit View/Edit dashboard editor, versioned responsive layouts, approved visualizations, safe dashboard/card mutations, and Add Card flows.
+- M7 PR3 mutations must use effective permissions and dashboard manageability checks; frontend capability checks remain UX only.
+- Card refresh/export must continue to use current-viewer `UserAccessContext`, validator-sanitized SQL, `queryops_query_runtime`, read-only execution, transaction-local PostgreSQL RLS, row limits, CSV sanitization, and existing audit behavior.
+- SQL source is returned only with effective `can_view_sql`, and no raw result rows may be persisted in `DashboardCard.layout`, `DashboardCard.config`, local storage, or URL state.
 - An `app_user` must never be associated with a `directory_user` by email, name, provider id, or any inferred identity for Home metrics.
 - Home, dashboard library, preview, and detail responses must not expose SQL, raw operational rows, raw card config, or raw card layout.
 
@@ -431,7 +436,7 @@ The active milestone and latest PR status are:
 
 `M7 PR1 — Product Shell, Routing & Navigation` is complete and merged into `main` through PR #25.
 
-`M7 PR2 — Role-Aware Home & Dashboard Browser` is implementation-complete on `feature/m7-home-dashboard-browser`. M7 PR3 and PR4 have not started. Milestone 8 has not started.
+`M7 PR2 — Role-Aware Home & Dashboard Browser` is complete and merged through PR #26. `M7 PR3 — Dashboard Editor, Grid & Visualizations` is implementation-complete on `feature/m7-dashboard-editor-visualizations` and awaits merge. M7 PR4 has not started. Milestone 8 has not started.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -761,11 +766,11 @@ Milestone 7 is split into four PRs:
    - Complete and merged into `main` through PR #25.
    - Frontend-only routed shell, dark-first responsive navigation, Profile and Role Upgrade consolidation, and transitional My Dashboard cleanup.
 2. `M7 PR2 — Role-Aware Home & Dashboard Browser`
-   - Implementation-complete on `feature/m7-home-dashboard-browser`.
+   - Complete and merged into `main` through PR #26.
    - Adds real role-aware Home overview data and the dashboard browser/detail experience, including `/dashboards/:dashboardId` with a real detail screen.
 3. `M7 PR3 — Dashboard Editor, Grid & Visualizations`
-   - Not started.
-   - Adds the editor, grid/resizing behavior, and real visualization support.
+   - Implementation-complete on `feature/m7-dashboard-editor-visualizations`; awaiting merge.
+   - Adds explicit View/Edit modes, responsive versioned grid layouts, constrained drag/resize behavior, visualization recommendation/rendering, safe dashboard/card actions, and Add Card sources.
 4. `M7 PR4 — Ask Data Redesign & Final UX Hardening`
    - Not started.
    - Delivers the command-first Ask Data redesign, templates/history consolidation, and final UX hardening.
@@ -788,7 +793,7 @@ Milestone 7 is split into four PRs:
 
 Goal: Role-Aware Home & Dashboard Browser.
 
-Implementation status: complete on `feature/m7-home-dashboard-browser`. PR2 added the three read-only APIs below, scoped/global Home aggregates through the existing read-only runtime/RLS boundary, the Owned/Shared browser and accessible metadata preview, the direct dashboard detail route, compact personal creation, and explicit owned-personal reorder compatibility. No schema change, charting library, editor, resize behavior, Ask Data redesign, or Milestone 8 work was added.
+Implementation status: complete and merged into `main` through PR #26. PR2 added the three read-only APIs below, scoped/global Home aggregates through the existing read-only runtime/RLS boundary, the Owned/Shared browser and accessible metadata preview, the direct dashboard detail route, compact personal creation, and explicit owned-personal reorder compatibility. No schema change, charting library, editor, resize behavior, Ask Data redesign, or Milestone 8 work was added.
 
 In scope:
 
@@ -827,4 +832,55 @@ Out of scope:
 - Ask Data redesign, query history drawer, or PR4 work
 - Actions, Approvals, Audit UI, Users UI, notifications, real LLM providers, Supabase Auth, Redis/background jobs, or Milestone 8 work
 
-M7 PR3 is next but not started. M7 PR4 remains not started. Milestone 8 remains not started. Do not infer approval to begin any of them from PR2 completion.
+### M7 PR3 Locked Scope
+
+Goal: Dashboard Editor, Grid & Visualizations.
+
+Implementation status: implementation-complete on `feature/m7-dashboard-editor-visualizations`; awaiting merge.
+
+Delivered implementation:
+
+- Alembic migration `0007_dashboard_layout_version.py` adds non-null `dashboards.layout_version` with default `1` while retaining per-card `position`, safe `layout`, and sanitized `config` storage.
+- Detail capabilities and independently authorized dashboard/card mutation endpoints implement rename, personal duplicate, soft archive, visualization changes, duplicate/remove, source view, and expected-version full-layout persistence.
+- The responsive editor uses Recharts and React Grid Layout for the approved nine visualization types and 12/6/1 layouts, with mobile movement/size controls and accessible dashboard/card menus and dialogs.
+- Add Card supports approved templates and eligible recent successful own query results through the existing Query Engine, Save as Card, refresh, permission, RLS, and audit boundaries.
+- Verification completed with 639 PostgreSQL-backed backend tests, 192 frontend tests, a production build, Alembic upgrade/check, deterministic medium-seed role/viewpoint QA, diff checks, and a zero-finding manual full-diff review after CodeRabbit timed out.
+
+In scope:
+
+- Explicit View mode by default and capability-gated Edit mode on `/dashboards/:dashboardId`.
+- A `dashboards.layout_version` migration for optimistic concurrency; no new layout table.
+- Strict versioned `DashboardCard.layout` with desktop 12-column, tablet 6-column, and mobile 1-column coordinates.
+- Complete-card-set, non-overlapping, breakpoint-safe layout validation with atomic row locks, a single version increment, and deterministic `position` derivation.
+- Responsive drag/reorder and constrained resize on desktop/tablet; mobile uses Move Up/Move Down and approved size presets without free drag-resize.
+- Safe visualization configuration for KPI, Table, Bar, Line, Area, Donut, Semicircle gauge, Stacked bar, and Status list.
+- Deterministic recommendation from in-memory refreshed result data, compatible manual overrides, reset-to-recommended, and safe Table fallback without deleting a saved preference.
+- Effective-permission/dashboard-manageability capabilities and independent backend authorization for every mutation.
+- Dashboard rename, personal duplicate, and soft archive; card rename, visualization update, duplicate, remove, source, refresh, and CSV export.
+- Source responses limited to original question and stored sanitized/executed SQL, gated by effective `can_view_sql` and dashboard visibility.
+- Accessible card context menus on the full route only, with right-click, menu button, Shift+F10, keyboard navigation, Escape, outside click, and focus restoration.
+- Add Card from authorized query templates and bounded eligible own successful query history through the existing query, save-card, refresh, and RLS boundaries.
+- Existing `PATCH /api/v1/dashboards/my/layout` order-only compatibility, existing PR2 Home/library/metadata preview, and existing secure refresh/export behavior.
+
+Security and persistence rules:
+
+- Backend authorization, dashboard manageability, `UserAccessContext`, application policy, and PostgreSQL RLS remain authoritative.
+- Do not hardcode role names where effective permissions/capabilities apply.
+- Never accept or expose arbitrary config JSON, user SQL, raw result rows, diagnostics, runtime details, or policy internals.
+- Never persist refreshed result rows in card config/layout, local storage, or URL state.
+- Layout saves require `expected_layout_version`, lock the dashboard and current cards, validate the complete set, and fail with `DASHBOARD_LAYOUT_CONFLICT` on stale state.
+- Card removal deletes only `DashboardCard`; SavedQuery and QueryRun history remain intact.
+- Dashboard archive is soft deletion; dashboard/card duplication reuses SavedQuery references and does not duplicate QueryRuns.
+- Refresh/export retain validator revalidation, the non-owner read-only runtime role, current-viewer RLS, row caps, CSV sanitization, and export audit semantics.
+
+Out of scope:
+
+- cross-dashboard card movement or duplication
+- per-user/shared-dashboard layout personalization
+- arbitrary freeform sizes, chart formulas, or custom color editors
+- persisted query-result rows or snapshot storage
+- dashboard restore, sharing mutation, or department/global dashboard creation UI
+- Ask Data redesign or the five-item query history drawer (M7 PR4)
+- Actions, Approvals, Audit UI, Users UI, notifications, real LLM providers, Supabase Auth, Redis/background jobs, or Milestone 8
+
+M7 PR4 remains not started. Milestone 8 remains not started. Do not begin either from PR3 scope.

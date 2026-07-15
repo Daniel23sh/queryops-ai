@@ -36,8 +36,10 @@ export function useDashboardCardRefresh({
 }) {
   const [state, setState] = useState<CardRefreshState>({ status: "idle" });
   const requestInFlight = useRef(false);
+  const requestSequence = useRef(0);
   const lastSuccessfulResult = useRef<DashboardCardRefreshResult | null>(null);
   const automaticRefreshCardId = useRef<string | null>(null);
+  const activeCardId = useRef(cardId);
 
   const refresh = useCallback(async () => {
     if (requestInFlight.current || !canRefresh || !csrfToken) {
@@ -45,23 +47,36 @@ export function useDashboardCardRefresh({
     }
 
     requestInFlight.current = true;
+    const requestId = ++requestSequence.current;
     const previousResult = lastSuccessfulResult.current;
     setState({ status: "loading", previousResult });
 
     try {
       const result = await refreshDashboardCard(cardId, csrfToken);
+      if (requestId !== requestSequence.current) return;
       lastSuccessfulResult.current = result;
       setState({ status: "success", result });
     } catch (error: unknown) {
+      if (requestId !== requestSequence.current) return;
       setState({
         status: "error",
         message: refreshErrorMessage(error),
         previousResult
       });
     } finally {
-      requestInFlight.current = false;
+      if (requestId === requestSequence.current) requestInFlight.current = false;
     }
   }, [canRefresh, cardId, csrfToken]);
+
+  useEffect(() => {
+    if (activeCardId.current === cardId) return;
+    activeCardId.current = cardId;
+    requestSequence.current += 1;
+    requestInFlight.current = false;
+    lastSuccessfulResult.current = null;
+    automaticRefreshCardId.current = null;
+    setState({ status: "idle" });
+  }, [cardId]);
 
   useEffect(() => {
     if (

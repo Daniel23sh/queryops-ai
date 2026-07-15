@@ -115,6 +115,9 @@ function pathWithQueryParams(
   if (params.offset !== undefined) {
     queryParams.set("offset", String(params.offset));
   }
+  if (params.include_sql !== undefined) {
+    queryParams.set("include_sql", String(params.include_sql));
+  }
 
   const queryString = queryParams.toString();
   return queryString ? `${path}?${queryString}` : path;

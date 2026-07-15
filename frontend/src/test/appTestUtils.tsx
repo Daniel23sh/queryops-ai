@@ -186,11 +186,13 @@ export function backendDashboard({
 export function backendDashboardCard({
   id = "card-id",
   dashboardId = "dashboard-id",
-  title = "Open tickets"
+  title = "Open tickets",
+  position = 0
 }: {
   id?: string;
   dashboardId?: string;
   title?: string;
+  position?: number;
 } = {}) {
   return {
     id,
@@ -199,9 +201,10 @@ export function backendDashboardCard({
     title,
     description: "Current scoped result.",
     card_type: "table",
-    position: 0,
-    layout: null,
-    config: null,
+    position,
+    layout: editorLayout(position),
+    visualization: editorVisualization(),
+    allowed_sizes: editorAllowedSizes(),
     created_at: "2026-07-13T12:00:00Z",
     updated_at: "2026-07-13T12:00:00Z"
   };
@@ -312,7 +315,54 @@ export function backendDashboardDetail({
             ? "Global"
             : "Finance"
     },
-    cards
+    layout_version: 1,
+    capabilities: {
+      can_manage: relationship === "owned",
+      can_duplicate: true,
+      can_refresh_cards: true,
+      can_export_cards: relationship === "owned",
+      can_view_source: relationship === "owned",
+      can_create_cards: relationship === "owned"
+    },
+    cards: cards.map((card, index) => ({
+      ...card,
+      layout: card.layout && typeof card.layout === "object" ? card.layout : editorLayout(index),
+      visualization: card.visualization && typeof card.visualization === "object" ? card.visualization : editorVisualization(),
+      allowed_sizes: card.allowed_sizes && typeof card.allowed_sizes === "object" ? card.allowed_sizes : editorAllowedSizes(),
+      position: typeof card.position === "number" ? card.position : index
+    }))
+  };
+}
+
+function editorLayout(position: number) {
+  return {
+    version: 1,
+    desktop: { x: (position % 2) * 6, y: Math.floor(position / 2) * 3, w: 6, h: 3 },
+    tablet: { x: 0, y: position * 3, w: 6, h: 3 },
+    mobile: { x: 0, y: position * 3, w: 1, h: 3 }
+  };
+}
+
+function editorVisualization() {
+  return {
+    mode: "auto",
+    type: "table",
+    recommended_type: "table",
+    mapping: {
+      category_column: null,
+      value_columns: [],
+      series_column: null,
+      label_column: null,
+      target_column: null
+    }
+  };
+}
+
+function editorAllowedSizes() {
+  return {
+    desktop: [{ w: 6, h: 3 }, { w: 8, h: 3 }, { w: 12, h: 3 }, { w: 6, h: 4 }, { w: 8, h: 4 }, { w: 12, h: 4 }],
+    tablet: [{ w: 6, h: 3 }, { w: 6, h: 4 }],
+    mobile: [{ w: 1, h: 3 }, { w: 1, h: 4 }]
   };
 }
 

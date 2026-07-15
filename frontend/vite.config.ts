@@ -3,6 +3,16 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          charts: ["recharts"],
+          grid: ["react-grid-layout"]
+        }
+      }
+    }
+  },
   test: {
     environment: "jsdom",
     globals: true,
