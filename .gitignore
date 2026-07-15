@@ -17,6 +17,8 @@ __pycache__/
 node_modules/
 dist/
 *.tsbuildinfo
+frontend/playwright-report/
+frontend/test-results/
 
 # Local DB export artifacts
 backend/db_export/
