@@ -74,7 +74,7 @@ M7 PR3 — Dashboard Editor, Grid & Visualizations
 
 Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, Milestone 3, Milestone 4, and Milestone 5 are complete under the previous scopes. Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete.
 
-Milestone 6 is complete and merged into `main`. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, `M6 PR3 — CSV Export Backend`, `M6 PR4 — Card Refresh & CSV Export UI`, and `M6 PR5 — Card Reordering & Layout Persistence` plus the final Admin restricted-export policy are complete. PR #24 merged PR5. Milestone 7 — Product UX & Dashboard Redesign is active. M7 PR1 is complete and merged through PR #25. M7 PR2 is complete and merged through PR #26. M7 PR3 — Dashboard Editor, Grid & Visualizations is implementation-complete on `feature/m7-dashboard-editor-visualizations` and awaits merge. M7 PR4 and Milestone 8 have not started.
+Milestone 6 is complete and merged into `main`. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, `M6 PR3 — CSV Export Backend`, `M6 PR4 — Card Refresh & CSV Export UI`, and `M6 PR5 — Card Reordering & Layout Persistence` plus the final Admin restricted-export policy are complete. PR #24 merged PR5. Milestone 7 — Product UX & Dashboard Redesign is active. M7 PR1 is complete and merged through PR #25. M7 PR2 is complete and merged through PR #26. M7 PR3 — Dashboard Editor, Grid & Visualizations is complete and merged through PR #27. M7 PR4 — Ask Data Redesign & Final UX Hardening is active on `feature/m7-ask-data-responsive-polish`. Milestone 8 has not started.
 
 Milestone 2.5 introduced `access_scopes`, `user_access_scopes`, `data_resources`, `UserAccessContext`, `AccessDecision`, and `evaluate_access(subject, action, resource, context)`.
 
@@ -221,7 +221,24 @@ M7 PR3 guardrails:
 * Do not redesign Ask Data or add the PR4 history drawer.
 * Do not add Actions, Approvals, Audit UI, Users UI, notifications, real LLM providers, Supabase Auth, Redis/background jobs, or Milestone 8 behavior.
 
-M7 PR4 remains not started and will own the Ask Data redesign. Actions, Approvals & Audit remain not started and deferred to Milestone 8. Do not begin PR4 or Milestone 8 without an explicit request and active scope update.
+M7 PR4 is active and owns only the command-first Ask Data redesign, final responsive/accessibility hardening, focused Playwright E2E/CI coverage, and the dashboard drag-handle regression described in `PROJECT_PLAN.md`.
+
+M7 PR4 guardrails:
+
+* Ask Data remains at `/ask` with composer → current result → progressive details as its primary hierarchy. Templates and the five most recent own query runs live in accessible drawers/full-screen mobile sheets, not permanent columns or standalone routes.
+* Quick history must call the own-history endpoint with `limit=5`, `offset=0`, and `include_sql=false`. Never use scope/department history for the drawer, expose another user's run, or render an `Open result` action.
+* Historic QueryRun result rows are intentionally not persisted. Never restore, fabricate, or persist them in card config/layout, local storage, URL state, SavedQuery metadata, or another snapshot store.
+* Templated reruns must resolve the saved `metadata.template_id` against the currently allowed template catalog and use that template's current approved question. Free reruns require effective `can_run_free_query`. Modified approved questions must clear template association.
+* Reuse the PR3 visualization engine, compatibility logic, recommended configuration helpers, and renderer. Do not introduce duplicate inference rules. Ask Data Visual/Table choice is in-memory only, and Table is the safe fallback.
+* Save and Export share a compact result toolbar. CSV continues through the secure backend endpoint. Save targets personal dashboards only and persists a safe recommended visualization through the existing card update endpoint without storing rows.
+* SQL and Diagnostics require effective `can_view_sql`; User and Manager technical content must be absent from the DOM. Frontend permission checks improve UX only and never replace backend authorization.
+* Scope display uses serialized scopes, default/global scope metadata, and effective permissions. Do not use `user.role === "admin"` to infer scope.
+* Preserve backend auth, CSRF, dashboard manageability, SQL validation, validator-sanitized SQL, `queryops_query_runtime`, read-only execution, current-viewer RLS, row limits, CSV sanitization, export auditing, and restricted-export policy.
+* Do not change backend endpoints, database schema/migrations, seed behavior, permissions, RLS, or API response shapes. If an existing contract is insufficient, stop and report the exact gap before implementation.
+* Final M7 gates include the role matrix, stale-response protections, unit/integration tests, responsive desktop/tablet/mobile checks, keyboard/focus/accessibility checks, dark/light and reduced-motion checks, focused Playwright E2E, deterministic E2E CI, frontend build, full PostgreSQL backend suite, Alembic check, diff review, and CodeRabbit/manual review.
+* Do not add Actions, Approvals, Audit UI, Users UI, notifications, real LLM providers, Supabase Auth, Redis/background jobs, or any Milestone 8 behavior.
+
+M7 PR4 is expected to complete Milestone 7 only after every completion gate passes. Milestone 8 remains next and not started.
 
 ## 6. Product Direction
 
