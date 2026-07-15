@@ -17,8 +17,9 @@ import {
 } from "recharts";
 
 import type { QueryResultRow, QueryRowValue } from "../../ask-data/types";
-import type { DashboardCardRefreshResult, DashboardCardType, VisualizationConfig, VisualizationMapping } from "../types";
+import type { DashboardCardType, VisualizationConfig, VisualizationMapping } from "../types";
 import { formatVisualizationValue, inferVisualization, mappingForType, numericValue } from ".";
+import type { VisualizationResultData } from "./types";
 
 const MAX_CHART_ROWS = 24;
 const SERIES_COLORS = [
@@ -36,7 +37,7 @@ export function DashboardVisualization({
   title
 }: {
   config: VisualizationConfig;
-  result: DashboardCardRefreshResult;
+  result: VisualizationResultData;
   title: string;
 }) {
   const recommendation = inferVisualization({

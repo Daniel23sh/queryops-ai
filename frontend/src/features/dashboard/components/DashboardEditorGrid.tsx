@@ -45,6 +45,8 @@ export function DashboardEditorGrid({
   onResult: (cardId: string, result: DashboardCardRefreshResult) => void;
 }) {
   const [breakpoint, setBreakpoint] = useState<DashboardBreakpoint>("desktop");
+  const [moveAnnouncement, setMoveAnnouncement] = useState("");
+  const announcementFrameRef = useRef<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(1120);
   useEffect(() => {
@@ -59,6 +61,11 @@ export function DashboardEditorGrid({
       observer?.disconnect();
       window.removeEventListener("resize", measure);
     };
+  }, []);
+  useEffect(() => () => {
+    if (announcementFrameRef.current !== null) {
+      window.cancelAnimationFrame(announcementFrameRef.current);
+    }
   }, []);
   const gridLayouts = useMemo(() => toResponsiveLayouts(cards, layouts), [cards, layouts]);
   const orderedMobileCards = [...cards].sort((left, right) => layouts[left.id].mobile.y - layouts[right.id].mobile.y);
@@ -110,6 +117,75 @@ export function DashboardEditorGrid({
     onLayoutsChange(next);
   }
 
+  function moveWithKeyboard(
+    card: EditorDashboardCard,
+    direction: "down" | "left" | "right" | "up"
+  ) {
+    if (!editMode || breakpoint === "mobile") return;
+    const current = layouts[card.id][breakpoint];
+    const columns = COLUMNS[breakpoint];
+    const candidate = {
+      ...current,
+      x:
+        direction === "left"
+          ? Math.max(0, current.x - current.w)
+          : direction === "right"
+            ? Math.min(columns - current.w, current.x + current.w)
+            : current.x,
+      y:
+        direction === "up"
+          ? Math.max(0, current.y - current.h)
+          : direction === "down"
+            ? current.y + current.h
+            : current.y
+    };
+    if (candidate.x === current.x && candidate.y === current.y) {
+      announceMove(`${card.title} cannot move farther ${direction}.`);
+      return;
+    }
+
+    const collidingCards = cards.filter(
+      (other) =>
+        other.id !== card.id &&
+        overlaps(candidate, layouts[other.id][breakpoint])
+    );
+    if (collidingCards.length > 1) {
+      announceMove(`${card.title} cannot move ${direction} without overlapping multiple cards.`);
+      return;
+    }
+    const collidingCard = collidingCards[0];
+    const next = { ...layouts, [card.id]: { ...layouts[card.id], [breakpoint]: candidate } };
+    if (collidingCard) {
+      const otherLayout = layouts[collidingCard.id][breakpoint];
+      const swapped = { ...otherLayout, x: current.x, y: current.y };
+      const swapOutOfBounds = swapped.x + swapped.w > columns;
+      const swapCollides = cards.some(
+        (other) =>
+          other.id !== card.id &&
+          other.id !== collidingCard.id &&
+          overlaps(swapped, layouts[other.id][breakpoint])
+      );
+      if (swapOutOfBounds || overlaps(candidate, swapped) || swapCollides) {
+        announceMove(`${card.title} cannot move ${direction} without overlapping another card.`);
+        return;
+      }
+      next[collidingCard.id] = { ...layouts[collidingCard.id], [breakpoint]: swapped };
+    }
+    onLayoutsChange(next);
+    announceMove(`${card.title} moved ${direction}. Save changes to persist the new position.`);
+  }
+
+  function announceMove(message: string) {
+    if (announcementFrameRef.current !== null) {
+      window.cancelAnimationFrame(announcementFrameRef.current);
+    }
+    setMoveAnnouncement("");
+    announcementFrameRef.current = window.requestAnimationFrame(() => {
+      announcementFrameRef.current = null;
+      setMoveAnnouncement(message);
+    });
+  }
+
   if (cards.length === 0) return <p className="dashboard-detail__empty">No cards are in this dashboard yet.</p>;
 
   return (
@@ -122,8 +198,7 @@ export function DashboardEditorGrid({
         dragConfig={{
           enabled: editMode && breakpoint !== "mobile",
           bounded: true,
-          handle: ".dashboard-card-drag-handle",
-          cancel: "button:not(.dashboard-card-drag-handle), input, textarea, select, a"
+          handle: ".dashboard-card-drag-handle"
         }}
         layouts={gridLayouts}
         margin={[14, 14]}
@@ -149,6 +224,7 @@ export function DashboardEditorGrid({
                 isFirst={mobileIndex === 0}
                 isLast={mobileIndex === orderedMobileCards.length - 1}
                 onAction={(action, selectedCard) => onAction(action, selectedCard, breakpoint)}
+                onKeyboardMove={(direction) => moveWithKeyboard(card, direction)}
                 onMove={(direction) => moveMobile(card.id, direction)}
                 onResult={onResult}
               />
@@ -156,7 +232,17 @@ export function DashboardEditorGrid({
           );
         })}
       </Responsive>
+      <p className="qops-sr-only" aria-live="polite">{moveAnnouncement}</p>
     </div>
+  );
+}
+
+function overlaps(left: GridItemLayout, right: GridItemLayout): boolean {
+  return !(
+    left.x + left.w <= right.x ||
+    right.x + right.w <= left.x ||
+    left.y + left.h <= right.y ||
+    right.y + right.h <= left.y
   );
 }
 
