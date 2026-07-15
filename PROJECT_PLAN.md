@@ -14,11 +14,11 @@ Current PR scope:
 
 `M7 PR3 — Dashboard Editor, Grid & Visualizations` is complete and merged into `main` through PR #27.
 
-`M7 PR4 — Ask Data Redesign & Final UX Hardening` is active on branch `feature/m7-ask-data-responsive-polish`. It is expected to complete Milestone 7. Milestone 8 has not started.
+`M7 PR4 — Ask Data Redesign & Final UX Hardening` is implementation-complete on branch `feature/m7-ask-data-responsive-polish`. Milestone 7 is complete. Milestone 8 is next and has not started.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
-Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete. Milestone 6 is complete: M6 PR1 through PR5, including the final Admin restricted-export policy, are merged into `main`; PR #24 merged PR5. Milestone 7 — Product UX & Dashboard Redesign is active.
+Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete. Milestone 6 is complete: M6 PR1 through PR5, including the final Admin restricted-export policy, are merged into `main`; PR #24 merged PR5. Milestone 7 — Product UX & Dashboard Redesign is complete.
 
 Milestone 2.5 delivered:
 
@@ -118,7 +118,7 @@ Explicitly out of scope for M6 PR5:
 - masking
 - tenant/project/region governance
 
-Actions, approvals, audit UI, notifications, real LLM/API-key support, and Supabase Auth remain deferred unless explicitly requested. The former Actions, Approvals & Audit Milestone 7 is now Milestone 8. Milestone 7 is the active Product UX & Dashboard Redesign milestone.
+Actions, approvals, audit UI, notifications, real LLM/API-key support, and Supabase Auth remain deferred unless explicitly requested. The former Actions, Approvals & Audit Milestone 7 is now Milestone 8. Milestone 7 Product UX & Dashboard Redesign is complete; Milestone 8 is next and not started.
 
 ## 2. Product Summary
 
@@ -428,15 +428,15 @@ Milestone 1 should leave the repository ready for auth, permission, and RLS work
 
 The latest completed product milestone is:
 
-`Milestone 6 — Dashboards, Cards & CSV Export`, merged into `main` through PR #24.
+`Milestone 7 — Product UX & Dashboard Redesign`, with PR4 implementation-complete on `feature/m7-ask-data-responsive-polish`.
 
-The active milestone and latest PR status are:
+The latest PR status is:
 
 `Milestone 7 — Product UX & Dashboard Redesign`
 
 `M7 PR1 — Product Shell, Routing & Navigation` is complete and merged into `main` through PR #25.
 
-`M7 PR2 — Role-Aware Home & Dashboard Browser` is complete and merged through PR #26. `M7 PR3 — Dashboard Editor, Grid & Visualizations` is complete and merged through PR #27. `M7 PR4 — Ask Data Redesign & Final UX Hardening` is active on `feature/m7-ask-data-responsive-polish`. Milestone 8 has not started.
+`M7 PR2 — Role-Aware Home & Dashboard Browser` is complete and merged through PR #26. `M7 PR3 — Dashboard Editor, Grid & Visualizations` is complete and merged through PR #27. `M7 PR4 — Ask Data Redesign & Final UX Hardening` is implementation-complete on `feature/m7-ask-data-responsive-polish`. Milestone 8 is next and has not started.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -758,7 +758,7 @@ PR5 passed backend, frontend, PostgreSQL/Alembic, medium-seed API QA, production
 
 ## 16. Milestone 7 Implementation Plan
 
-Milestone 7 — Product UX & Dashboard Redesign is active. It modernizes the frontend experience on top of the completed Milestone 6 backend without starting Actions, Approvals & Audit, which are deferred to Milestone 8.
+Milestone 7 — Product UX & Dashboard Redesign is complete. It modernizes the frontend experience on top of the completed Milestone 6 backend without starting Actions, Approvals & Audit, which remain deferred to Milestone 8.
 
 Milestone 7 is split into four PRs:
 
@@ -772,7 +772,7 @@ Milestone 7 is split into four PRs:
    - Complete and merged into `main` through PR #27.
    - Adds explicit View/Edit modes, responsive versioned grid layouts, constrained drag/resize behavior, visualization recommendation/rendering, safe dashboard/card actions, and Add Card sources.
 4. `M7 PR4 — Ask Data Redesign & Final UX Hardening`
-   - Active on `feature/m7-ask-data-responsive-polish`.
+   - Implementation-complete on `feature/m7-ask-data-responsive-polish`.
    - Delivers the command-first Ask Data redesign, templates/history consolidation, PR3 visualization reuse, final responsive/accessibility hardening, and focused Playwright E2E/CI coverage.
    - Expected to complete Milestone 7 after every unit, integration, E2E, build, PostgreSQL, Alembic, accessibility, responsive, documentation, and review gate passes.
 
@@ -888,9 +888,9 @@ Out of scope:
 
 Goal: Ask Data Redesign & Final UX Hardening.
 
-Implementation status: active on `feature/m7-ask-data-responsive-polish`.
+Implementation status: complete on `feature/m7-ask-data-responsive-polish`.
 
-In scope:
+Delivered implementation:
 
 - Replace the permanent split layout with a command-first `/ask` hierarchy: compact page header, dominant composer, current result, then progressive details.
 - Move approved templates into an accessible desktop drawer/full-screen mobile sheet with client-side search and category filters.
@@ -922,4 +922,6 @@ Out of scope:
 - department/global dashboard save targets, cross-dashboard movement, dashboard editor expansion, custom chart formulas/colors, or scheduled refresh
 - Actions, Approvals, Audit UI, Users UI, notifications, real LLM providers, Supabase Auth, Redis/background jobs, or any Milestone 8 behavior
 
-Milestone 8 remains next and not started. Do not begin it until explicitly requested and activated after M7 PR4 completion.
+Completion evidence: 184 frontend tests, the production frontend build, four deterministic Chromium Playwright flows, 639 PostgreSQL-backed backend tests, Alembic no-diff verification, responsive/focus/theme checks, and manual full-diff review all pass. The final CodeRabbit rerun was unavailable because the free CLI rate limit was reached after valid findings from earlier passes were fixed and retested. No backend, migration, seed, permission, RLS, or API-contract changes were made. The local medium seed was restored after QA.
+
+Milestone 7 is complete. Milestone 8 remains next and not started. Do not begin it until explicitly requested and activated.
