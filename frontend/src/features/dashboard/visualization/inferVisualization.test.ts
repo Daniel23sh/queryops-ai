@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { VisualizationConfig } from "../types";
-import { inferVisualization, manualConfig, nearestAllowedSize } from ".";
+import {
+  inferVisualization,
+  manualConfig,
+  nearestAllowedSize
+} from ".";
 
 describe("inferVisualization", () => {
   it("recommends KPI for one numeric result", () => {
@@ -129,9 +133,43 @@ describe("inferVisualization", () => {
     expect(incompatible.warning).toMatch(/saved visualization/i);
   });
 
-  it("snaps resize candidates to stable size presets", () => {
-    expect(nearestAllowedSize("table", "desktop", { w: 7, h: 4 })).toEqual({ w: 6, h: 4 });
-    expect(nearestAllowedSize("kpi", "mobile", { w: 1, h: 9 })).toEqual({ w: 1, h: 2 });
+  it("preserves exact resize presets and chooses the nearest non-tied preset", () => {
+    const allowed = [{ w: 4, h: 2 }, { w: 6, h: 2 }, { w: 8, h: 2 }, { w: 12, h: 2 }];
+    expect(nearestAllowedSize(allowed, { w: 6, h: 2 }, { w: 4, h: 2 }))
+      .toEqual({ w: 6, h: 2 });
+    expect(nearestAllowedSize(allowed, { w: 11, h: 2 }, { w: 8, h: 2 }))
+      .toEqual({ w: 12, h: 2 });
+  });
+
+  it("breaks equally near resize presets in the gesture direction", () => {
+    const allowed = [{ w: 6, h: 2 }, { w: 8, h: 2 }];
+    expect(nearestAllowedSize(allowed, { w: 7, h: 2 }, { w: 6, h: 2 }))
+      .toEqual({ w: 8, h: 2 });
+    expect(nearestAllowedSize(allowed, { w: 7, h: 2 }, { w: 8, h: 2 }))
+      .toEqual({ w: 6, h: 2 });
+  });
+
+  it("preserves stable server order when distance and gesture direction remain tied", () => {
+    const allowed = [{ w: 8, h: 2 }, { w: 6, h: 2 }];
+    expect(nearestAllowedSize(allowed, { w: 7, h: 2 }, { w: 7, h: 2 }))
+      .toEqual({ w: 8, h: 2 });
+  });
+
+  it("returns the starting size when the server supplies no allowed presets", () => {
+    expect(nearestAllowedSize([], { w: 9, h: 4 }, { w: 6, h: 3 }))
+      .toEqual({ w: 6, h: 3 });
+  });
+
+  it("always returns a preset from the supplied server policy", () => {
+    const policies = [
+      [{ w: 4, h: 2 }, { w: 6, h: 3 }, { w: 12, h: 4 }],
+      [{ w: 3, h: 2 }, { w: 4, h: 3 }, { w: 6, h: 4 }],
+      [{ w: 1, h: 2 }, { w: 1, h: 3 }, { w: 1, h: 4 }]
+    ];
+    for (const allowed of policies) {
+      const result = nearestAllowedSize(allowed, { w: 10, h: 10 }, { w: 1, h: 1 });
+      expect(allowed).toContainEqual(result);
+    }
   });
 });
 

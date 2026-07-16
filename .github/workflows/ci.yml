@@ -62,3 +62,101 @@ jobs:
       - name: Build frontend
         working-directory: frontend
         run: npm run build
+
+  e2e:
+    name: E2E
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: queryops
+          POSTGRES_USER: queryops
+          POSTGRES_PASSWORD: queryops
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U queryops -d queryops"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AUTH_MODE: demo
+      DATABASE_URL: postgresql+psycopg://queryops:queryops@localhost:5432/queryops
+      SESSION_SECRET_KEY: queryops-e2e-session-secret
+      SESSION_COOKIE_SECURE: "false"
+      VITE_API_BASE_URL: http://127.0.0.1:8000
+      PLAYWRIGHT_BASE_URL: http://127.0.0.1:5173
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -e ".[dev]"
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Apply database migrations and seed deterministic data
+        working-directory: backend
+        run: |
+          alembic upgrade head
+          python scripts/seed_it_operations.py --profile small --reset
+
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Start backend and frontend
+        run: |
+          cd backend
+          python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/queryops-backend.log 2>&1 &
+          cd ../frontend
+          npm run dev -- --host 127.0.0.1 --port 5173 > /tmp/queryops-frontend.log 2>&1 &
+
+      - name: Wait for application readiness
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8000/health > /dev/null; then break; fi
+            if [ "$attempt" = 30 ]; then cat /tmp/queryops-backend.log; exit 1; fi
+            sleep 2
+          done
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:5173 > /dev/null; then break; fi
+            if [ "$attempt" = 30 ]; then cat /tmp/queryops-frontend.log; exit 1; fi
+            sleep 2
+          done
+
+      - name: Run focused Playwright flows
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_SKIP_WEBSERVER: "1"
+        run: npm run test:e2e
+
+      - name: Upload Playwright failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+            /tmp/queryops-backend.log
+            /tmp/queryops-frontend.log
+          if-no-files-found: ignore
+          retention-days: 7

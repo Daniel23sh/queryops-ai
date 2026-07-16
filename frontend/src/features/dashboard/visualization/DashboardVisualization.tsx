@@ -17,8 +17,9 @@ import {
 } from "recharts";
 
 import type { QueryResultRow, QueryRowValue } from "../../ask-data/types";
-import type { DashboardCardRefreshResult, DashboardCardType, VisualizationConfig, VisualizationMapping } from "../types";
+import type { DashboardCardType, VisualizationConfig, VisualizationMapping } from "../types";
 import { formatVisualizationValue, inferVisualization, mappingForType, numericValue } from ".";
+import type { VisualizationResultData } from "./types";
 
 const MAX_CHART_ROWS = 24;
 const SERIES_COLORS = [
@@ -36,7 +37,7 @@ export function DashboardVisualization({
   title
 }: {
   config: VisualizationConfig;
-  result: DashboardCardRefreshResult;
+  result: VisualizationResultData;
   title: string;
 }) {
   const recommendation = inferVisualization({
@@ -270,7 +271,7 @@ const CHART_MARGIN = { top: 8, right: 8, bottom: 4, left: 0 };
 const AXIS_TICK = { fill: "var(--qops-color-text-faint)", fontSize: 11 };
 
 function ChartFrame({ children }: { children: React.ReactElement }) {
-  return <div className="dashboard-viz-chart"><ResponsiveContainer height="100%" minHeight={180} width="100%">{children}</ResponsiveContainer></div>;
+  return <div className="dashboard-viz-chart"><ResponsiveContainer height="100%" width="100%">{children}</ResponsiveContainer></div>;
 }
 
 function SafeTooltip() {

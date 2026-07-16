@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Responsive,
   verticalCompactor,
@@ -20,6 +20,27 @@ import { DashboardEditorCard } from "./DashboardEditorCard";
 
 const BREAKPOINTS = { desktop: 1024, tablet: 600, mobile: 0 };
 const COLUMNS = { desktop: 12, tablet: 6, mobile: 1 };
+
+type ActiveLayoutUpdate =
+  | { kind: "position"; layout: Layout }
+  | {
+      kind: "resize";
+      cardId: string;
+      item: Layout[number];
+      size: { w: number; h: number };
+    };
+
+type PendingResize = {
+  breakpoint: DashboardBreakpoint;
+  cardTitle: string;
+  changed: boolean;
+  nextLayouts: Record<string, DashboardCardLayout>;
+  snappedSize: { w: number; h: number };
+};
+
+type ResizeSync = PendingResize & {
+  rawLayouts: ResponsiveLayouts<DashboardBreakpoint>;
+};
 
 export function DashboardEditorGrid({
   canExport,
@@ -45,8 +66,25 @@ export function DashboardEditorGrid({
   onResult: (cardId: string, result: DashboardCardRefreshResult) => void;
 }) {
   const [breakpoint, setBreakpoint] = useState<DashboardBreakpoint>("desktop");
+  const breakpointRef = useRef<DashboardBreakpoint>("desktop");
+  const [moveAnnouncement, setMoveAnnouncement] = useState("");
+  const announcementFrameRef = useRef<number | null>(null);
+  const pendingPointerDragRef = useRef(false);
+  const pendingResizeRef = useRef<PendingResize | null>(null);
+  const suppressGridChangesRef = useRef(false);
+  const [resizeSync, setResizeSync] = useState<ResizeSync | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(1120);
+  const announceMove = useCallback((message: string) => {
+    if (announcementFrameRef.current !== null) {
+      window.cancelAnimationFrame(announcementFrameRef.current);
+    }
+    setMoveAnnouncement("");
+    announcementFrameRef.current = window.requestAnimationFrame(() => {
+      announcementFrameRef.current = null;
+      setMoveAnnouncement(message);
+    });
+  }, []);
   useEffect(() => {
     const node = containerRef.current;
     if (!node) return;
@@ -60,39 +98,94 @@ export function DashboardEditorGrid({
       window.removeEventListener("resize", measure);
     };
   }, []);
-  const gridLayouts = useMemo(() => toResponsiveLayouts(cards, layouts), [cards, layouts]);
+  useEffect(() => () => {
+    if (announcementFrameRef.current !== null) {
+      window.cancelAnimationFrame(announcementFrameRef.current);
+    }
+  }, []);
+  const legalGridLayouts = useMemo(() => toResponsiveLayouts(cards, layouts), [cards, layouts]);
+  const gridLayouts = resizeSync?.rawLayouts ?? legalGridLayouts;
   const orderedMobileCards = [...cards].sort((left, right) => layouts[left.id].mobile.y - layouts[right.id].mobile.y);
 
-  function updateFromGrid(nextLayouts: ResponsiveLayouts<DashboardBreakpoint>) {
-    if (!editMode) return;
-    const next = { ...layouts };
-    for (const card of cards) {
-      const previous = layouts[card.id];
-      next[card.id] = {
-        version: 1,
-        desktop: safeGridItem(card, "desktop", nextLayouts.desktop?.find((item) => item.i === card.id), previous.desktop),
-        tablet: safeGridItem(card, "tablet", nextLayouts.tablet?.find((item) => item.i === card.id), previous.tablet),
-        mobile: safeGridItem(card, "mobile", nextLayouts.mobile?.find((item) => item.i === card.id), previous.mobile)
-      };
+  useEffect(() => {
+    if (!resizeSync) {
+      suppressGridChangesRef.current = false;
+      return;
     }
-    onLayoutsChange(next);
+    if (resizeSync.changed) {
+      onLayoutsChange(resizeSync.nextLayouts);
+      announceMove(
+        `${resizeSync.cardTitle} resized to ${resizeSync.snappedSize.w} by ${resizeSync.snappedSize.h}. Save changes to persist.`
+      );
+    }
+    setResizeSync(null);
+  }, [announceMove, onLayoutsChange, resizeSync]);
+
+  function updateFromGrid(currentLayout: Layout) {
+    if (!editMode) return;
+    const pendingResize = pendingResizeRef.current;
+    if (pendingResize) {
+      pendingResizeRef.current = null;
+      suppressGridChangesRef.current = true;
+      setResizeSync({
+        ...pendingResize,
+        rawLayouts: {
+          ...legalGridLayouts,
+          [pendingResize.breakpoint]: cloneGridLayout(currentLayout)
+        }
+      });
+      return;
+    }
+    if (suppressGridChangesRef.current) return;
+    if (!pendingPointerDragRef.current) return;
+    pendingPointerDragRef.current = false;
+
+    const update = buildActiveLayoutUpdate(
+      cards,
+      layouts,
+      breakpointRef.current,
+      { kind: "position", layout: currentLayout }
+    );
+    if (update.changed) onLayoutsChange(update.layouts);
   }
 
-  function snapResize(layout: Layout, _oldItem: Layout[number] | null, newItem: Layout[number] | null) {
-    if (!newItem) return;
-    const next = { ...layouts };
-    for (const card of cards) {
-      next[card.id] = {
-        ...layouts[card.id],
-        [breakpoint]: safeGridItem(
-          card,
-          breakpoint,
-          layout.find((item) => item.i === card.id),
-          layouts[card.id][breakpoint]
-        )
-      };
-    }
-    onLayoutsChange(next);
+  function snapResize(
+    _layout: Layout,
+    oldItem: Layout[number] | null,
+    newItem: Layout[number] | null
+  ) {
+    pendingResizeRef.current = null;
+    if (
+      !editMode ||
+      !oldItem ||
+      !newItem ||
+      (oldItem.x === newItem.x &&
+        oldItem.y === newItem.y &&
+        oldItem.w === newItem.w &&
+        oldItem.h === newItem.h)
+    ) return;
+
+    const card = cards.find((candidate) => candidate.id === newItem.i);
+    if (!card) return;
+    const activeBreakpoint = breakpointRef.current;
+    const snappedSize = nearestAllowedSize(
+      card.allowed_sizes[activeBreakpoint],
+      { w: newItem.w, h: newItem.h },
+      { w: oldItem.w, h: oldItem.h }
+    );
+    const update = buildActiveLayoutUpdate(
+      cards,
+      layouts,
+      activeBreakpoint,
+      { kind: "resize", cardId: card.id, item: newItem, size: snappedSize }
+    );
+    pendingResizeRef.current = {
+      breakpoint: activeBreakpoint,
+      cardTitle: card.title,
+      changed: update.changed,
+      nextLayouts: update.layouts,
+      snappedSize
+    };
   }
 
   function moveMobile(cardId: string, direction: -1 | 1) {
@@ -108,6 +201,80 @@ export function DashboardEditorGrid({
       y += next[card.id].mobile.h;
     }
     onLayoutsChange(next);
+  }
+
+  function moveWithKeyboard(
+    card: EditorDashboardCard,
+    direction: "down" | "left" | "right" | "up"
+  ) {
+    if (!editMode || breakpoint === "mobile") return;
+    const current = layouts[card.id][breakpoint];
+    const columns = COLUMNS[breakpoint];
+    const candidate = {
+      ...current,
+      x:
+        direction === "left"
+          ? Math.max(0, current.x - current.w)
+          : direction === "right"
+            ? Math.min(columns - current.w, current.x + current.w)
+            : current.x,
+      y:
+        direction === "up"
+          ? Math.max(0, current.y - current.h)
+          : direction === "down"
+            ? current.y + current.h
+            : current.y
+    };
+    if (candidate.x === current.x && candidate.y === current.y) {
+      announceMove(`${card.title} cannot move farther ${direction}.`);
+      return;
+    }
+
+    const collidingCards = cards.filter(
+      (other) =>
+        other.id !== card.id &&
+        overlaps(candidate, layouts[other.id][breakpoint])
+    );
+    if (collidingCards.length > 1) {
+      announceMove(`${card.title} cannot move ${direction} without overlapping multiple cards.`);
+      return;
+    }
+    const collidingCard = collidingCards[0];
+    const next = { ...layouts, [card.id]: { ...layouts[card.id], [breakpoint]: candidate } };
+    if (collidingCard) {
+      const otherLayout = layouts[collidingCard.id][breakpoint];
+      const swapped = { ...otherLayout, x: current.x, y: current.y };
+      const swapOutOfBounds = swapped.x + swapped.w > columns;
+      const swapCollides = cards.some(
+        (other) =>
+          other.id !== card.id &&
+          other.id !== collidingCard.id &&
+          overlaps(swapped, layouts[other.id][breakpoint])
+      );
+      if (swapOutOfBounds || overlaps(candidate, swapped) || swapCollides) {
+        announceMove(`${card.title} cannot move ${direction} without overlapping another card.`);
+        return;
+      }
+      next[collidingCard.id] = { ...layouts[collidingCard.id], [breakpoint]: swapped };
+    }
+    onLayoutsChange(next);
+    announceMove(`${card.title} moved ${direction}. Save changes to persist the new position.`);
+  }
+
+  function announcePointerMove(
+    previous: Layout[number] | null,
+    current: Layout[number] | null
+  ) {
+    pendingPointerDragRef.current = false;
+    if (
+      !previous ||
+      !current ||
+      (previous.x === current.x && previous.y === current.y)
+    ) return;
+    const card = cards.find((candidate) => candidate.id === current.i);
+    if (!card) return;
+    pendingPointerDragRef.current = true;
+    announceMove(`${card.title} moved. Save changes to persist the new position.`);
   }
 
   if (cards.length === 0) return <p className="dashboard-detail__empty">No cards are in this dashboard yet.</p>;
@@ -127,8 +294,12 @@ export function DashboardEditorGrid({
         }}
         layouts={gridLayouts}
         margin={[14, 14]}
-        onBreakpointChange={(value) => setBreakpoint(value)}
-        onLayoutChange={(_current, all) => updateFromGrid(all)}
+        onBreakpointChange={(value) => {
+          breakpointRef.current = value;
+          setBreakpoint(value);
+        }}
+        onDragStop={(_layout, previous, current) => announcePointerMove(previous, current)}
+        onLayoutChange={(current) => updateFromGrid(current)}
         onResizeStop={snapResize}
         resizeConfig={{ enabled: editMode && breakpoint !== "mobile", handles: ["se"] }}
         rowHeight={112}
@@ -149,6 +320,7 @@ export function DashboardEditorGrid({
                 isFirst={mobileIndex === 0}
                 isLast={mobileIndex === orderedMobileCards.length - 1}
                 onAction={(action, selectedCard) => onAction(action, selectedCard, breakpoint)}
+                onKeyboardMove={(direction) => moveWithKeyboard(card, direction)}
                 onMove={(direction) => moveMobile(card.id, direction)}
                 onResult={onResult}
               />
@@ -156,7 +328,17 @@ export function DashboardEditorGrid({
           );
         })}
       </Responsive>
+      <p className="qops-sr-only" aria-live="polite">{moveAnnouncement}</p>
     </div>
+  );
+}
+
+function overlaps(left: GridItemLayout, right: GridItemLayout): boolean {
+  return !(
+    left.x + left.w <= right.x ||
+    right.x + right.w <= left.x ||
+    left.y + left.h <= right.y ||
+    right.y + right.h <= left.y
   );
 }
 
@@ -168,22 +350,62 @@ function toResponsiveLayouts(cards: EditorDashboardCard[], layouts: Record<strin
   };
 }
 function toGridItem(i: string, layout: GridItemLayout) { return { i, ...layout }; }
-function fromGridItem(item: Layout[number] | undefined, fallback: GridItemLayout): GridItemLayout {
-  return item ? { x: item.x, y: item.y, w: item.w, h: item.h } : fallback;
+function cloneGridLayout(layout: Layout): Layout {
+  return layout.map((item) => ({
+    i: item.i,
+    x: item.x,
+    y: item.y,
+    w: item.w,
+    h: item.h
+  }));
 }
-function safeGridItem(
-  card: EditorDashboardCard,
+
+function buildActiveLayoutUpdate(
+  cards: EditorDashboardCard[],
+  layouts: Record<string, DashboardCardLayout>,
   breakpoint: DashboardBreakpoint,
-  item: Layout[number] | undefined,
-  fallback: GridItemLayout
-): GridItemLayout {
-  const candidate = fromGridItem(item, fallback);
-  const size = nearestAllowedSize(card.visualization.type, breakpoint, candidate);
+  change: ActiveLayoutUpdate
+): { changed: boolean; layouts: Record<string, DashboardCardLayout> } {
   const columns = COLUMNS[breakpoint];
-  return {
-    ...candidate,
-    ...size,
-    x: breakpoint === "mobile" ? 0 : Math.max(0, Math.min(candidate.x, columns - size.w)),
-    y: Math.max(0, candidate.y)
-  };
+  const gridItems = change.kind === "position"
+    ? new Map(change.layout.map((item) => [item.i, item]))
+    : null;
+  const candidate = cards.map((card) => {
+    const previous = layouts[card.id][breakpoint];
+    const source = change.kind === "position"
+      ? gridItems?.get(card.id) ?? previous
+      : card.id === change.cardId
+        ? change.item
+        : previous;
+    const size = change.kind === "resize" && card.id === change.cardId
+      ? change.size
+      : { w: previous.w, h: previous.h };
+    return {
+      i: card.id,
+      x: breakpoint === "mobile"
+        ? 0
+        : Math.max(0, Math.min(source.x, columns - size.w)),
+      y: Math.max(0, source.y),
+      w: size.w,
+      h: size.h
+    };
+  });
+  const compacted = verticalCompactor.compact(candidate, columns);
+  const compactedById = new Map(compacted.map((item) => [item.i, item]));
+  const next = { ...layouts };
+  let changed = false;
+  for (const card of cards) {
+    const previous = layouts[card.id][breakpoint];
+    const item = compactedById.get(card.id);
+    if (!item) continue;
+    const activeLayout = { x: item.x, y: item.y, w: item.w, h: item.h };
+    if (sameGridItem(previous, activeLayout)) continue;
+    changed = true;
+    next[card.id] = { ...layouts[card.id], [breakpoint]: activeLayout };
+  }
+  return { changed, layouts: next };
+}
+
+function sameGridItem(left: GridItemLayout, right: GridItemLayout): boolean {
+  return left.x === right.x && left.y === right.y && left.w === right.w && left.h === right.h;
 }

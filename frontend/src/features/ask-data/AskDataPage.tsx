@@ -1,15 +1,15 @@
+import { useRef, useState } from "react";
+
+import { hasPermission } from "../../auth/permissions";
 import type { AuthUser } from "../../auth/types";
-import { formatRole } from "../../lib/format";
-import { AskDataHeader } from "./components/AskDataHeader";
-import { InsightsPanel } from "./components/InsightsPanel";
-import { QuestionComposer } from "./components/QuestionComposer";
-import { QueryResultExportButton } from "./components/QueryResultExportButton";
-import { ResultWorkspace } from "./components/ResultWorkspace";
-import { SaveAsCardPanel } from "./components/SaveAsCardPanel";
-import { TemplateCatalog } from "./components/TemplateCatalog";
+import { AskDataCommandBar } from "./components/AskDataCommandBar";
+import { AskDataPageHeader } from "./components/AskDataPageHeader";
+import { AskDataResultWorkspace } from "./components/AskDataResultWorkspace";
+import { QueryHistoryDrawer } from "./components/QueryHistoryDrawer";
+import { TemplateDrawer } from "./components/TemplateDrawer";
 import { useAskDataRun } from "./hooks/useAskDataRun";
 import { useQueryTemplates } from "./hooks/useQueryTemplates";
-import { clarificationDisabledReason } from "./utils/resultSummary";
+import { useRecentQueryHistory } from "./hooks/useRecentQueryHistory";
 
 type AskDataPageProps = {
   user: AuthUser;
@@ -17,106 +17,93 @@ type AskDataPageProps = {
 };
 
 export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
-  const canRunFreeQuery = user.permissions.includes("can_run_free_query");
-  const canViewTechnicalDetails = user.permissions.includes("can_view_sql");
-  const isAdmin = user.role === "admin";
-  const {
-    selectedTemplate,
-    selectedTemplateId,
-    setSelectedTemplateId,
-    templateCategories,
-    templateLoadError,
-    templateLoadStatus
-  } = useQueryTemplates();
-  const {
-    clarificationQuestion,
-    freeQuestion,
-    handleRunFreeQuery,
-    handleRunSelectedTemplate,
-    handleSubmitClarification,
-    queryRunState,
-    setClarificationQuestion,
-    setFreeQuestion
-  } = useAskDataRun({ csrfToken, selectedTemplate });
-  const scopeLabel =
-    isAdmin ? "Global admin scope" : user.department?.name ?? "No scope";
-  const modeLabel = canRunFreeQuery ? "Free query enabled" : "Template-only mode";
-  const modeDescription = canRunFreeQuery
-    ? "Ask governed questions with backend authorization applied to every run."
-    : "Use approved templates only; free-query access is not enabled for this role.";
+  const canRunFreeQuery = hasPermission(user, "can_run_free_query");
+  const canViewTechnicalDetails = hasPermission(user, "can_view_sql");
+  const canExport = hasPermission(user, "can_export_results");
+  const canSave = hasPermission(user, "can_create_card");
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const commandRef = useRef<HTMLDivElement>(null);
+  const { templates, templateLoadError, templateLoadStatus } = useQueryTemplates();
+  const ask = useAskDataRun({ canRunFreeQuery, csrfToken, templates });
+  const history = useRecentQueryHistory({
+    isOpen: historyOpen,
+    refreshGeneration: ask.historyRefreshGeneration
+  });
+  const activeScope =
+    user.scopes.find((scope) => scope.isDefault) ?? user.scopes[0] ?? null;
+  const scopeLabel = activeScope?.displayName ?? user.department?.name ?? "No active scope";
+  const modeLabel = canRunFreeQuery ? "Free and template questions" : "Template-only";
+  const successfulActionResult =
+    ask.currentResult?.result.status === "succeeded" &&
+    ask.currentResult.result.clarification_required === false;
 
   return (
-    <article
-      className="grid min-h-[420px] gap-5"
-      aria-labelledby="workspace-title"
-    >
-      <AskDataHeader
-        modeDescription={modeDescription}
+    <article className="mx-auto grid w-full max-w-[1120px] gap-5" aria-labelledby="workspace-title">
+      <AskDataPageHeader
         modeLabel={modeLabel}
-        roleLabel={formatRole(user.role)}
+        onOpenHistory={() => setHistoryOpen(true)}
+        onOpenTemplates={() => setTemplatesOpen(true)}
         scopeLabel={scopeLabel}
-        showAdminGlobalIndicator={isAdmin}
       />
 
-      <div className="grid items-start gap-4 xl:grid-cols-[minmax(280px,0.34fr)_minmax(0,1fr)] 2xl:grid-cols-[minmax(300px,0.32fr)_minmax(0,1fr)]">
-        <TemplateCatalog
-          categories={templateCategories}
+      <AskDataCommandBar
+        ref={commandRef}
+        canRunFreeQuery={canRunFreeQuery}
+        composerText={ask.composerText}
+        csrfToken={csrfToken}
+        onChange={ask.updateComposerText}
+        onChooseTemplate={() => setTemplatesOpen(true)}
+        onClearTemplate={ask.clearTemplate}
+        onRun={() => void ask.runCurrentQuestion()}
+        requestState={ask.requestState}
+        selectedTemplate={ask.selectedTemplate}
+      />
+
+      <AskDataResultWorkspace
+        canClarify={canRunFreeQuery}
+        canExport={Boolean(successfulActionResult && canExport)}
+        canSave={Boolean(successfulActionResult && canSave)}
+        canViewTechnicalDetails={canViewTechnicalDetails}
+        clarificationError={ask.clarificationError}
+        clarificationText={ask.clarificationText}
+        csrfToken={csrfToken}
+        current={ask.currentResult}
+        onClarificationChange={ask.setClarificationText}
+        onDisplayModeChange={ask.setResultDisplayMode}
+        onSubmitClarification={() => void ask.submitClarification()}
+        requestState={ask.requestState}
+        resultDisplayMode={ask.resultDisplayMode}
+      />
+
+      {templatesOpen ? (
+        <TemplateDrawer
           error={templateLoadError}
-          onSelectTemplate={setSelectedTemplateId}
-          onRunSelectedTemplate={() => void handleRunSelectedTemplate()}
-          runDisabledReason={
-            selectedTemplate && !csrfToken
-              ? "Refresh your session before running a template query."
-              : null
-          }
-          running={queryRunState.status === "running"}
-          selectedTemplate={selectedTemplate}
-          selectedTemplateId={selectedTemplateId}
+          focusTargetRef={commandRef}
+          onClose={() => setTemplatesOpen(false)}
+          onSelect={ask.selectTemplate}
+          selectedTemplateId={ask.selectedTemplateId}
           status={templateLoadStatus}
+          templates={templates}
         />
-        <section
-          className="grid min-w-0 gap-4"
-          aria-label="Ask Data command workspace"
-        >
-          <QuestionComposer
-            canRunFreeQuery={canRunFreeQuery}
-            freeQuestion={freeQuestion}
-            onFreeQuestionChange={setFreeQuestion}
-            onRunFreeQuery={() => void handleRunFreeQuery()}
-            runDisabledReason={
-              canRunFreeQuery && !csrfToken
-                ? "Refresh your session before running a free query."
-                : null
-            }
-            running={queryRunState.status === "running"}
-          />
-          <ResultWorkspace
-            canClarify={canRunFreeQuery}
-            canViewTechnicalDetails={canViewTechnicalDetails}
-            clarificationDisabledReason={
-              queryRunState.status === "success" &&
-              queryRunState.result.clarification_required
-                ? clarificationDisabledReason(queryRunState.result, csrfToken)
-                : null
-            }
-            clarificationQuestion={clarificationQuestion}
-            onClarificationQuestionChange={setClarificationQuestion}
-            onSubmitClarification={() => void handleSubmitClarification()}
-            queryRunState={queryRunState}
-          />
-          <QueryResultExportButton
-            csrfToken={csrfToken}
-            queryRunState={queryRunState}
-            user={user}
-          />
-          <SaveAsCardPanel
-            csrfToken={csrfToken}
-            queryRunState={queryRunState}
-            user={user}
-          />
-          <InsightsPanel />
-        </section>
-      </div>
+      ) : null}
+
+      {historyOpen ? (
+        <QueryHistoryDrawer
+          canRunFreeQuery={canRunFreeQuery}
+          error={history.error}
+          focusTargetRef={commandRef}
+          items={history.items}
+          onClose={() => setHistoryOpen(false)}
+          onRunFreeQuestion={(question) => void ask.runFreeQuestion(question)}
+          onRunTemplate={(template) => void ask.runTemplate(template)}
+          onSelectTemplate={ask.selectTemplate}
+          onUseQuestion={ask.useQuestion}
+          running={ask.requestState.status === "running"}
+          status={history.status}
+          templates={templates}
+        />
+      ) : null}
     </article>
   );
 }

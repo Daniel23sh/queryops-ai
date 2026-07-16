@@ -329,7 +329,7 @@ Default local URLs:
 * Backend health endpoint: `http://localhost:8000/health`
 * PostgreSQL: `localhost:5432`
 
-PostgreSQL is included for the local development environment. Milestone 6 is complete and merged into `main`; the current application includes deterministic IT Operations seed data, demo auth, scope-aware PostgreSQL RLS, the backend Query Engine, the Ask Data frontend, dashboards and saved cards, controlled query/card CSV downloads, automatic/manual dashboard-card refresh, and persistent accessible card ordering. Milestone 7 is the active product UX milestone. M7 PR1 and PR2 are merged, and M7 PR3 is implementation-complete on `feature/m7-dashboard-editor-visualizations` with an explicit dashboard editor, responsive versioned layouts, safe visualizations, and authorized dashboard/card actions. M7 PR4, Actions, approvals, notifications, real LLM providers, Supabase Auth, and domain expansion remain planned for later milestones.
+PostgreSQL is included for the local development environment. Milestones 0 through 6 are complete and merged into `main`. Milestone 7 implementation is complete: PR1 through PR3 are merged, and PR4 is implementation-complete on `feature/m7-ask-data-responsive-polish`. The current application includes the governed Query Engine, command-first Ask Data, dashboards and saved cards, controlled CSV export, current-viewer card refresh, a responsive dashboard editor, safe visualizations, and final responsive/accessibility hardening. Milestone 8 features—including Actions, approvals, audit UI, and notifications—have not started.
 
 Stop the stack:
 
@@ -481,11 +481,23 @@ Home and the new dashboard read APIs do not return SQL, raw operational rows, ra
 
 M7 PR3 upgrades `/dashboards/:dashboardId` while keeping View mode as the default. Authorized owners can enter Edit mode, draft layout changes locally, save with optimistic `layout_version` concurrency, or cancel without persisting. Desktop and tablet use constrained 12-column and 6-column grids with drag and approved resize presets; mobile uses a single column with explicit Move Up, Move Down, and size presets instead of free drag-resize.
 
+Approved presets provide compact, standard, and tall card sizes: Tables can use 2/3/4 grid-row heights, Cartesian charts add compact and large layouts, and overflowing Table or Status list content scrolls inside the card without resizing the dashboard automatically.
+
 Dashboard cards support KPI, Table, Bar, Line, Area, Donut, Semicircle gauge, Stacked bar, and Status list presentations. QueryOps recommends a compatible visualization from the current in-memory refresh result. A saved manual override remains authoritative, `Reset to recommended` restores automatic selection, and incompatible manual choices render a safe Table fallback without deleting the preference. Refreshed rows are never persisted in card config, layout, local storage, or URL state.
 
 The full dashboard route provides accessible right-click, ellipsis, and keyboard card menus for authorized refresh, CSV export, source view, rename, visualization changes, resize presets, duplicate, and remove actions. Dashboard owners can rename, create a personal duplicate, or soft-archive the dashboard. Source view is gated by effective `can_view_sql` and returns only the original question and stored sanitized/executed SQL. Card removal preserves its `SavedQuery` and all `QueryRun` history.
 
 Edit mode can add cards from approved templates or eligible recent successful query results. Both flows continue through the existing Query Engine, Save as Card, current-viewer refresh, SQL validation, read-only runtime, PostgreSQL RLS, and export/audit boundaries. PR3 does not add cross-dashboard card movement, shared-dashboard personalization, department/global creation, Ask Data redesign, or Milestone 8 features.
+
+### Ask Data Redesign and Final UX Hardening
+
+M7 PR4 keeps Ask Data at `/ask` and replaces the previous multi-panel workspace with a command-first hierarchy: question composer, stable current result, and collapsed progressive details. Users without free-query permission select an approved template; permitted roles can ask free questions or edit a selected template question, which safely clears the template association.
+
+Templates and the five most recent own query requests open in accessible drawers that become full-screen sheets on mobile. Quick history always requests `limit=5`, `offset=0`, and `include_sql=false`; it reruns a new governed query and never restores historic rows or exposes SQL. Current results reuse the PR3 visualization recommendation and renderer for an in-memory Visual/Table switch with Table as the safe fallback.
+
+Successful results expose one compact Save to Dashboard / Export CSV toolbar. Save targets personal dashboards, reuses the existing QueryRun-to-card endpoint, and applies only a sanitized recommended visualization—never result rows. Export continues through the backend CSV endpoint and its current-viewer RLS, validation, sanitization, policy, and audit controls. SQL and Diagnostics are absent from the DOM without effective `can_view_sql`.
+
+The shared overlay system traps focus, restores it predictably, locks background scrolling, supports Escape and backdrop dismissal, and remains full-width on small screens. The dashboard editor's dedicated handle supports pointer and arrow-key movement without turning adjacent controls into drag targets. Focused Chromium Playwright coverage exercises User, Analyst, and Admin flows, responsive drawers, restricted export behavior, save/open-dashboard behavior, and persisted handle movement.
 
 ### CSV Export and Dashboard Card Refresh
 
@@ -606,6 +618,8 @@ Build and test commands:
 ```bash
 npm run build
 npm test
+npx playwright install chromium
+npm run test:e2e
 ```
 
 The frontend auth client calls the backend at `http://localhost:8000` by default.
@@ -651,6 +665,8 @@ cd frontend
 npm install
 npm test
 npm run build
+npx playwright install chromium
+npm run test:e2e
 ```
 
 ### Docker Compose
@@ -705,9 +721,9 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-Milestones 0 through 6 are complete and merged into `main`; PR #24 merged M6 PR5 Card Reordering & Layout Persistence and the final Admin restricted-export policy. Milestone 7 — Product UX & Dashboard Redesign is active. M7 PR1 is merged through PR #25 and M7 PR2 is merged through PR #26. M7 PR3 is implementation-complete on `feature/m7-dashboard-editor-visualizations` and upgrades the full dashboard route with responsive editing, visualizations, actions, and Add Card flows.
+Milestones 0 through 6 are complete and merged into `main`; PR #24 merged M6 PR5 Card Reordering & Layout Persistence and the final Admin restricted-export policy. Milestone 7 — Product UX & Dashboard Redesign is complete. M7 PR1 is merged through PR #25, M7 PR2 through PR #26, M7 PR3 through PR #27, and M7 PR4 is implementation-complete on `feature/m7-ask-data-responsive-polish`.
 
-The Milestone 7 UX direction is dark-first with a persistent light option, responsive navigation, My Dashboard as the authenticated home, permission-aware routes, and Scope terminology in the general product UI. Milestone 7 remains incomplete: M7 PR3 is awaiting merge, M7 PR4 Ask Data redesign is not started, and Milestone 8 is not started.
+The completed Milestone 7 experience is dark-first with a persistent light option, responsive navigation, My Dashboard as the authenticated home, permission-aware routes, Scope terminology, a responsive dashboard editor, safe visualizations, and command-first Ask Data. Milestone 8 is next and has not started.
 
 Implemented foundation functionality includes:
 
@@ -738,16 +754,21 @@ Implemented foundation functionality includes:
 * responsive 12/6/1 grid layouts with constrained desktop/tablet resize and mobile presets
 * nine safe visualization types with deterministic recommendation, manual override, and accessible fallback behavior
 * authorized dashboard/card context menus, mutations, SQL source view, and Add Card sources
+* command-first Ask Data with accessible template and five-item own-history drawers
+* PR3-powered in-memory Visual/Table result switching and progressive technical details
+* consolidated governed result save/export controls and clarification-safe state handling
+* deterministic Chromium Playwright coverage in CI
 
 Current milestone status:
 
 ```txt
 Milestone 6 — Dashboards, Cards & CSV Export is complete.
-Milestone 7 — Product UX & Dashboard Redesign is active.
+Milestone 7 — Product UX & Dashboard Redesign is complete.
 M7 PR1 — Product Shell, Routing & Navigation is complete and merged through PR #25.
 M7 PR2 — Role-Aware Home & Dashboard Browser is complete and merged through PR #26.
-M7 PR3 — Dashboard Editor, Grid & Visualizations is implementation-complete on feature/m7-dashboard-editor-visualizations.
-M7 PR4 and Milestone 8 are not started.
+M7 PR3 — Dashboard Editor, Grid & Visualizations is complete and merged through PR #27.
+M7 PR4 — Ask Data Redesign & Final UX Hardening is implementation-complete on feature/m7-ask-data-responsive-polish.
+Milestone 8 is next and not started.
 ```
 
 PR5 persists the order of cards in owned personal dashboards through `DashboardCard.position`. It includes accessible drag-and-drop and Move Up / Move Down controls, but does not add card resizing, x/y grid coordinates, width/height persistence, advanced `layout` behavior, scheduled refresh, dashboard starring/cloning, actions, approvals, notifications, real external LLM calls, Supabase Auth, Redis/background jobs, or domain expansion. Those deferred areas remain outside Milestone 6.

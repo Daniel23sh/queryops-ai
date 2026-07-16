@@ -10,6 +10,7 @@ import { DashboardVisualization } from "../visualization/DashboardVisualization"
 import { CardContextMenu, type CardMenuAction } from "./CardContextMenu";
 
 type ExportState = "idle" | "loading" | "success" | "error";
+type MoveDirection = "down" | "left" | "right" | "up";
 
 export function DashboardEditorCard({
   breakpoint,
@@ -22,6 +23,7 @@ export function DashboardEditorCard({
   isFirst,
   isLast,
   onAction,
+  onKeyboardMove,
   onMove,
   onResult
 }: {
@@ -35,6 +37,7 @@ export function DashboardEditorCard({
   isFirst: boolean;
   isLast: boolean;
   onAction: (action: CardMenuAction, card: EditorDashboardCard) => void;
+  onKeyboardMove: (direction: "down" | "left" | "right" | "up") => void;
   onMove: (direction: -1 | 1) => void;
   onResult: (cardId: string, result: DashboardCardRefreshResult) => void;
 }) {
@@ -106,7 +109,20 @@ export function DashboardEditorCard({
         </div>
         <div className="dashboard-editor-card__controls">
           {editMode && breakpoint !== "mobile" ? (
-            <button aria-label={`Drag ${card.title}`} className="dashboard-card-drag-handle" type="button">
+            <button
+              aria-description="Drag with a pointer, or use the arrow keys to move this card."
+              aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
+              aria-label={`Drag ${card.title}`}
+              className="dashboard-card-drag-handle"
+              type="button"
+              onKeyDown={(event) => {
+                const direction = keyboardDirection(event.key);
+                if (!direction) return;
+                event.preventDefault();
+                event.stopPropagation();
+                onKeyboardMove(direction);
+              }}
+            >
               <Grip aria-hidden="true" size={18} />
             </button>
           ) : null}
@@ -150,4 +166,12 @@ export function DashboardEditorCard({
       {exportState === "loading" ? <span className="qops-sr-only" role="status">Preparing CSV export…</span> : null}
     </article>
   );
+}
+
+function keyboardDirection(key: string): MoveDirection | null {
+  if (key === "ArrowDown") return "down";
+  if (key === "ArrowLeft") return "left";
+  if (key === "ArrowRight") return "right";
+  if (key === "ArrowUp") return "up";
+  return null;
 }

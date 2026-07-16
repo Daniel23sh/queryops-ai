@@ -120,8 +120,8 @@ export type QueryHistoryItem = {
   id: string;
   status: QueryStatus;
   natural_language_question: string;
-  row_count: number;
-  duration_ms: number;
+  row_count: number | null;
+  duration_ms: number | null;
   error_message: string | null;
   created_at: string;
   started_at: string | null;
@@ -143,6 +143,31 @@ export type ScopeQueryHistoryParams = QueryHistoryParams;
 export type TemplateLoadStatus = "loading" | "loaded" | "error";
 
 export type QueryRunMode = "template" | "free" | "clarification";
+
+export type ComposerMode = "template" | "free";
+
+export type ResultDisplayMode = "visual" | "table";
+
+export type CurrentQueryResult = {
+  question: string;
+  originalQuestion: string;
+  clarificationResponse: string | null;
+  result: QueryRunResult;
+  generation: number;
+};
+
+export type QueryRequestState =
+  | { status: "idle" }
+  | {
+      status: "running";
+      mode: QueryRunMode;
+      question: string;
+    }
+  | {
+      status: "error";
+      mode: QueryRunMode;
+      message: string;
+    };
 
 export type AskDataResultTab = "results" | "summary" | "sql" | "diagnostics";
 

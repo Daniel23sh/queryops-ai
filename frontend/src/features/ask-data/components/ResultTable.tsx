@@ -14,6 +14,7 @@ export function ResultTable({
         className="w-full min-w-[520px] border-collapse text-left text-sm tabular-nums text-app-text"
         aria-label="Query results"
       >
+        <caption className="qops-sr-only">Query result rows</caption>
         <thead>
           <tr>
             {columns.map((column) => (

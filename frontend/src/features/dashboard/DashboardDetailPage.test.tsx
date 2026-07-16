@@ -186,6 +186,8 @@ describe("DashboardDetailPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
     fireEvent.click(screen.getByRole("button", { name: "Card actions for Open tickets" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Resize" }));
+    expect(screen.getByRole("button", { name: "4 × 2" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "12 × 4" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "8 × 3" }));
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
@@ -200,6 +202,44 @@ describe("DashboardDetailPage", () => {
       tablet: expect.objectContaining({ w: 6 }),
       mobile: expect.objectContaining({ x: 0, w: 1 })
     }));
+  });
+
+  it("moves a card from the dedicated keyboard drag handle and persists the local draft", async () => {
+    setCsrfCookie("csrf-token");
+    const cards = [
+      backendDashboardCard({ id: "first", title: "First card", position: 0 }),
+      backendDashboardCard({ id: "second", title: "Second card", position: 1 })
+    ];
+    const initial = backendDashboardDetail({ cards });
+    const fetchMock = installApiMock(
+      authenticatedRoutes(demoAnalyst, {
+        "GET /api/v1/dashboards/dashboard-id": [successResponse(initial), successResponse(initial)],
+        "POST /api/v1/cards/first/refresh": successResponse(refreshResult("first")),
+        "POST /api/v1/cards/second/refresh": successResponse(refreshResult("second")),
+        "PATCH /api/v1/dashboards/dashboard-id/layout": successResponse({ layout_version: 2, items: [] })
+      })
+    );
+
+    renderAppAt("/dashboards/dashboard-id");
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    const handle = screen.getByRole("button", { name: "Drag First card" });
+    fireEvent.keyDown(handle, { key: "ArrowDown" });
+
+    expect(await screen.findByText(/First card moved down/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Edit" })).toHaveAttribute("aria-pressed", "false")
+    );
+
+    const request = fetchMock.mock.calls.find(([url]) =>
+      String(url).endsWith("/dashboards/dashboard-id/layout")
+    );
+    const payload = JSON.parse(String(request?.[1]?.body));
+    expect(payload.items.find((item: { card_id: string }) => item.card_id === "first").desktop).toMatchObject({
+      x: 0,
+      y: 3
+    });
   });
 
   it("preserves a local layout draft when the backend reports a conflict", async () => {
@@ -274,6 +314,11 @@ describe("DashboardDetailPage", () => {
     expect(screen.queryByRole("button", { name: /Drag / })).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Move down" })).toHaveLength(2);
     expect(screen.getAllByRole("button", { name: "Size preset" })).toHaveLength(2);
+    fireEvent.click(screen.getAllByRole("button", { name: "Size preset" })[0]);
+    const resizeDialog = screen.getByRole("dialog", { name: "Resize Open tickets" });
+    expect(resizeDialog).toHaveTextContent("Height 2");
+    expect(resizeDialog).toHaveTextContent("Height 3");
+    expect(resizeDialog).toHaveTextContent("Height 4");
     rect.mockRestore();
   });
 

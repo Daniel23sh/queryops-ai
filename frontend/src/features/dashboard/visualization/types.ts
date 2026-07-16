@@ -25,6 +25,13 @@ export type VisualizationInput = {
   currentConfig?: VisualizationConfig | null;
 };
 
+export type VisualizationResultData = {
+  columns: string[];
+  rows: QueryResultRow[];
+  row_count: number;
+  truncated: boolean;
+};
+
 export type VisualizationRecommendation = {
   recommendedType: DashboardCardType;
   renderType: DashboardCardType;

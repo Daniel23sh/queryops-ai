@@ -136,6 +136,7 @@ def test_detail_returns_effective_capabilities_and_sanitized_editor_metadata(
     assert serialized_card["layout"] == _layout_for_table(0)
     assert serialized_card["visualization"] == _visualization("table")
     assert serialized_card["allowed_sizes"]["mobile"] == [
+        {"w": 1, "h": 2},
         {"w": 1, "h": 3},
         {"w": 1, "h": 4},
     ]
@@ -157,9 +158,14 @@ def test_layout_save_persists_complete_breakpoint_layout_and_rejects_stale_versi
     dashboard = _dashboard(db_session, analyst, "Layout dashboard")
     card = _card(db_session, dashboard, _saved_query(db_session, analyst))
     csrf_token = _login(client, analyst.email)
+    compact_layout = {
+        "desktop": {"x": 0, "y": 0, "w": 12, "h": 2},
+        "tablet": {"x": 0, "y": 0, "w": 3, "h": 2},
+        "mobile": {"x": 0, "y": 0, "w": 1, "h": 2},
+    }
     payload = {
         "expected_layout_version": 1,
-        "items": [{"card_id": str(card.id), **_layout_item_for_table(0)}],
+        "items": [{"card_id": str(card.id), **compact_layout}],
     }
 
     response = client.patch(
@@ -173,7 +179,10 @@ def test_layout_save_persists_complete_breakpoint_layout_and_rejects_stale_versi
     assert response.json()["data"]["items"][0]["position"] == 0
     db_session.expire_all()
     assert db_session.get(Dashboard, dashboard.id).layout_version == 2
-    assert db_session.get(DashboardCard, card.id).layout == _layout_for_table(0)
+    assert db_session.get(DashboardCard, card.id).layout == {
+        "version": 1,
+        **compact_layout,
+    }
 
     stale_response = client.patch(
         f"/api/v1/dashboards/{dashboard.id}/layout",
