@@ -186,6 +186,8 @@ describe("DashboardDetailPage", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
     fireEvent.click(screen.getByRole("button", { name: "Card actions for Open tickets" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Resize" }));
+    expect(screen.getByRole("button", { name: "4 × 2" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "12 × 4" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "8 × 3" }));
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
 
@@ -312,6 +314,11 @@ describe("DashboardDetailPage", () => {
     expect(screen.queryByRole("button", { name: /Drag / })).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: "Move down" })).toHaveLength(2);
     expect(screen.getAllByRole("button", { name: "Size preset" })).toHaveLength(2);
+    fireEvent.click(screen.getAllByRole("button", { name: "Size preset" })[0]);
+    const resizeDialog = screen.getByRole("dialog", { name: "Resize Open tickets" });
+    expect(resizeDialog).toHaveTextContent("Height 2");
+    expect(resizeDialog).toHaveTextContent("Height 3");
+    expect(resizeDialog).toHaveTextContent("Height 4");
     rect.mockRestore();
   });
 

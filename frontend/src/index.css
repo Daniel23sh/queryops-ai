@@ -1854,7 +1854,7 @@ h1 {
 }
 
 .dashboard-visualization { min-width: 0; height: 100%; display: flex; flex-direction: column; gap: 7px; }
-.dashboard-viz-chart { min-height: 180px; height: 100%; }
+.dashboard-viz-chart { min-height: 0; flex: 1 1 auto; }
 .dashboard-viz-kpi { min-height: 100px; display: grid; place-content: center; text-align: center; }
 .dashboard-viz-kpi strong { color: var(--qops-color-text-strong); font-size: clamp(2rem, 4vw, 3.5rem); line-height: 1; }
 .dashboard-viz-kpi span { margin-top: 8px; color: var(--qops-color-text-subtle); font-size: 0.82rem; }
@@ -1863,10 +1863,10 @@ h1 {
 .dashboard-viz-table th,
 .dashboard-viz-table td { min-width: 100px; border-bottom: 1px solid var(--qops-color-border); padding: 8px; text-align: left; }
 .dashboard-viz-table th { position: sticky; top: 0; background: var(--qops-color-muted-surface); color: var(--qops-color-text-strong); }
-.dashboard-viz-status-list { display: grid; gap: 7px; margin: 0; padding: 0; list-style: none; }
+.dashboard-viz-status-list { min-height: 0; flex: 1 1 auto; display: grid; gap: 7px; overflow: auto; margin: 0; padding: 0; list-style: none; }
 .dashboard-viz-status-list li { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; border-bottom: 1px solid var(--qops-color-border); padding: 8px 2px; font-size: 0.78rem; }
 .dashboard-viz-status-list__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--qops-color-success); }
-.dashboard-viz-gauge { position: relative; height: 100%; min-height: 180px; text-align: center; }
+.dashboard-viz-gauge { position: relative; min-height: 0; flex: 1 1 auto; text-align: center; }
 .dashboard-viz-gauge .dashboard-viz-chart { position: absolute; inset: 0; }
 .dashboard-viz-gauge strong,
 .dashboard-viz-gauge span { position: relative; z-index: 1; top: 60%; display: block; }

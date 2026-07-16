@@ -11,7 +11,6 @@ import { CardContextMenu, type CardMenuAction } from "./CardContextMenu";
 
 type ExportState = "idle" | "loading" | "success" | "error";
 type MoveDirection = "down" | "left" | "right" | "up";
-type PointerDrag = { pointerId: number; x: number; y: number };
 
 export function DashboardEditorCard({
   breakpoint,
@@ -50,7 +49,6 @@ export function DashboardEditorCard({
   const [exportState, setExportState] = useState<ExportState>("idle");
   const [exportMessage, setExportMessage] = useState<string | null>(null);
   const exportInFlight = useRef(false);
-  const pointerDrag = useRef<PointerDrag | null>(null);
 
   useEffect(() => {
     if (refreshState.result) onResult(card.id, refreshState.result);
@@ -117,35 +115,6 @@ export function DashboardEditorCard({
               aria-label={`Drag ${card.title}`}
               className="dashboard-card-drag-handle"
               type="button"
-              onPointerCancel={() => {
-                pointerDrag.current = null;
-              }}
-              onPointerDown={(event) => {
-                if (!event.isPrimary || event.button !== 0) return;
-                event.preventDefault();
-                event.stopPropagation();
-                pointerDrag.current = {
-                  pointerId: event.pointerId,
-                  x: event.clientX,
-                  y: event.clientY
-                };
-                event.currentTarget.setPointerCapture(event.pointerId);
-              }}
-              onPointerUp={(event) => {
-                const start = pointerDrag.current;
-                pointerDrag.current = null;
-                if (!start || start.pointerId !== event.pointerId) return;
-                event.preventDefault();
-                event.stopPropagation();
-                if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-                  event.currentTarget.releasePointerCapture(event.pointerId);
-                }
-                const direction = pointerDirection(
-                  event.clientX - start.x,
-                  event.clientY - start.y
-                );
-                if (direction) onKeyboardMove(direction);
-              }}
               onKeyDown={(event) => {
                 const direction = keyboardDirection(event.key);
                 if (!direction) return;
@@ -205,10 +174,4 @@ function keyboardDirection(key: string): MoveDirection | null {
   if (key === "ArrowRight") return "right";
   if (key === "ArrowUp") return "up";
   return null;
-}
-
-function pointerDirection(deltaX: number, deltaY: number): MoveDirection | null {
-  if (Math.max(Math.abs(deltaX), Math.abs(deltaY)) < 24) return null;
-  if (Math.abs(deltaX) >= Math.abs(deltaY)) return deltaX < 0 ? "left" : "right";
-  return deltaY < 0 ? "up" : "down";
 }

@@ -360,9 +360,18 @@ function editorVisualization() {
 
 function editorAllowedSizes() {
   return {
-    desktop: [{ w: 6, h: 3 }, { w: 8, h: 3 }, { w: 12, h: 3 }, { w: 6, h: 4 }, { w: 8, h: 4 }, { w: 12, h: 4 }],
-    tablet: [{ w: 6, h: 3 }, { w: 6, h: 4 }],
-    mobile: [{ w: 1, h: 3 }, { w: 1, h: 4 }]
+    desktop: [
+      { w: 4, h: 2 }, { w: 4, h: 3 }, { w: 4, h: 4 },
+      { w: 6, h: 2 }, { w: 6, h: 3 }, { w: 6, h: 4 },
+      { w: 8, h: 2 }, { w: 8, h: 3 }, { w: 8, h: 4 },
+      { w: 12, h: 2 }, { w: 12, h: 3 }, { w: 12, h: 4 }
+    ],
+    tablet: [
+      { w: 3, h: 2 }, { w: 3, h: 3 }, { w: 3, h: 4 },
+      { w: 4, h: 2 }, { w: 4, h: 3 }, { w: 4, h: 4 },
+      { w: 6, h: 2 }, { w: 6, h: 3 }, { w: 6, h: 4 }
+    ],
+    mobile: [{ w: 1, h: 2 }, { w: 1, h: 3 }, { w: 1, h: 4 }]
   };
 }
 

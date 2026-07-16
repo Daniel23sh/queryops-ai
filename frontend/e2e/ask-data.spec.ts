@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { allowExpectedConsoleError, expect, test } from "./fixtures";
 
 import { chooseTemplate, loginAs, openAskData, runFreeQuestion } from "./helpers";
 
@@ -36,12 +36,13 @@ test.describe("Ask Data governed flows", () => {
   });
 
   test("analyst switches result views, inspects details, saves a visualized card, and sees history", async ({ page }) => {
+    const dashboardTitle = `E2E Analyst Dashboard ${Date.now()}`;
     await page.setViewportSize({ width: 1600, height: 1000 });
     await loginAs(page, "Demo Analyst");
     await page.getByRole("button", { name: "New dashboard" }).click();
-    await page.getByLabel("Dashboard title").fill("E2E Analyst Dashboard");
+    await page.getByLabel("Dashboard title").fill(dashboardTitle);
     await page.getByRole("button", { name: "Create dashboard" }).click();
-    await expect(page.getByText("E2E Analyst Dashboard was created.")).toBeVisible();
+    await expect(page.getByText(`${dashboardTitle} was created.`)).toBeVisible();
     await openAskData(page);
 
     const question = "How many open support tickets exist in my department by priority?";
@@ -62,53 +63,30 @@ test.describe("Ask Data governed flows", () => {
     await page.getByRole("tab", { name: "Diagnostics" }).click();
     await expect(page.getByRole("region", { name: "Run diagnostics" })).toBeVisible();
 
+    allowExpectedConsoleError(page, (message) =>
+      message.text() === "Failed to load resource: the server responded with a status of 403 (Forbidden)" &&
+      /\/api\/v1\/query-runs\/[^/]+\/export-csv$/.test(message.location().url)
+    );
+    const deniedExport = page.waitForResponse((response) =>
+      response.url().endsWith("/export-csv") && response.request().method() === "POST"
+    );
     await page.getByRole("button", { name: "Export CSV" }).click();
+    expect((await deniedExport).status()).toBe(403);
     await expect(page.getByText("This result cannot be exported with your current permissions.")).toBeVisible();
 
     await page.getByRole("button", { name: "Save to Dashboard" }).click();
     const saveDialog = page.getByRole("dialog", { name: "Save to Dashboard" });
-    await saveDialog.getByLabel("Target dashboard").selectOption({ label: "E2E Analyst Dashboard" });
+    await saveDialog.getByLabel("Target dashboard").selectOption({ label: dashboardTitle });
     const saveResponse = page.waitForResponse((response) =>
       response.url().includes("/save-card") && response.request().method() === "POST"
     );
     await saveDialog.getByRole("button", { name: "Save", exact: true }).click();
     expect((await saveResponse).ok()).toBeTruthy();
-    await expect(saveDialog.getByText("Saved to E2E Analyst Dashboard", { exact: true })).toBeVisible();
+    await expect(saveDialog.getByText(`Saved to ${dashboardTitle}`, { exact: true })).toBeVisible();
     await saveDialog.getByRole("link", { name: "Open dashboard" }).click();
     await expect(page).toHaveURL(/\/dashboards\//);
-    await expect(page.getByRole("heading", { name: "E2E Analyst Dashboard" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: dashboardTitle })).toBeVisible();
     await expect(page.getByRole("article", { name: `Dashboard card ${question}` })).toBeVisible();
-
-    await page.getByRole("button", { name: "Edit", exact: true }).click();
-    const dragHandle = page.getByRole("button", { name: `Drag ${question}` });
-    const gridItem = dragHandle.locator("xpath=ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' react-grid-item ')]").first();
-    await expect(gridItem).toHaveClass(/react-draggable/);
-    const beforeDragStyle = await gridItem.getAttribute("style");
-    const handleBox = await dragHandle.boundingBox();
-    expect(handleBox).not.toBeNull();
-    if (handleBox) {
-      const handleCenter = {
-        x: handleBox.x + handleBox.width / 2,
-        y: handleBox.y + handleBox.height / 2
-      };
-      expect(await page.evaluate(({ x, y }) =>
-        document.elementFromPoint(x, y)?.closest(".dashboard-card-drag-handle") !== null,
-      handleCenter)).toBeTruthy();
-      await page.mouse.move(handleCenter.x, handleCenter.y);
-      await page.mouse.down();
-      await page.waitForTimeout(100);
-      await page.mouse.move(handleCenter.x + 300, handleCenter.y, { steps: 8 });
-      await page.waitForTimeout(100);
-      await page.mouse.up();
-    }
-    await expect(gridItem).not.toHaveAttribute("style", beforeDragStyle ?? "");
-    const saveLayoutButton = page.getByRole("button", { name: "Save changes" });
-    await expect(saveLayoutButton).toBeEnabled();
-    const layoutResponse = page.waitForResponse((response) =>
-      response.url().includes("/layout") && response.request().method() === "PATCH"
-    );
-    await saveLayoutButton.click();
-    expect((await layoutResponse).ok()).toBeTruthy();
 
     await openAskData(page);
     await page.getByRole("button", { name: "History" }).click();

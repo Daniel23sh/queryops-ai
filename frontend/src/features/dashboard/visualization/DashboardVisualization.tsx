@@ -271,7 +271,7 @@ const CHART_MARGIN = { top: 8, right: 8, bottom: 4, left: 0 };
 const AXIS_TICK = { fill: "var(--qops-color-text-faint)", fontSize: 11 };
 
 function ChartFrame({ children }: { children: React.ReactElement }) {
-  return <div className="dashboard-viz-chart"><ResponsiveContainer height="100%" minHeight={180} width="100%">{children}</ResponsiveContainer></div>;
+  return <div className="dashboard-viz-chart"><ResponsiveContainer height="100%" width="100%">{children}</ResponsiveContainer></div>;
 }
 
 function SafeTooltip() {

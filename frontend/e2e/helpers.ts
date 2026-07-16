@@ -32,6 +32,46 @@ export async function runFreeQuestion(page: Page, question: string) {
   await expect(page.getByText("succeeded", { exact: true })).toBeVisible();
 }
 
+export async function createDashboardWithSavedCard(
+  page: Page,
+  dashboardTitle: string,
+  question: string
+) {
+  await loginAs(page, "Demo Analyst");
+  await page.getByRole("button", { name: "New dashboard" }).click();
+  await page.getByLabel("Dashboard title").fill(dashboardTitle);
+  await page.getByRole("button", { name: "Create dashboard" }).click();
+  await expect(page.getByText(`${dashboardTitle} was created.`)).toBeVisible();
+
+  await openAskData(page);
+  await runFreeQuestion(page, question);
+  await saveCurrentResultToDashboard(page, dashboardTitle, true);
+  await expect(page).toHaveURL(/\/dashboards\//);
+  await expect(page.getByRole("heading", { name: dashboardTitle })).toBeVisible();
+  await expect(page.getByRole("article", { name: `Dashboard card ${question}` })).toBeVisible();
+}
+
+export async function saveCurrentResultToDashboard(
+  page: Page,
+  dashboardTitle: string,
+  openDashboard = false
+) {
+  await page.getByRole("button", { name: "Save to Dashboard" }).click();
+  const saveDialog = page.getByRole("dialog", { name: "Save to Dashboard" });
+  await saveDialog.getByLabel("Target dashboard").selectOption({ label: dashboardTitle });
+  const saveResponse = page.waitForResponse((response) =>
+    response.url().includes("/save-card") && response.request().method() === "POST"
+  );
+  await saveDialog.getByRole("button", { name: "Save", exact: true }).click();
+  expect((await saveResponse).ok()).toBeTruthy();
+  await expect(saveDialog.getByText(`Saved to ${dashboardTitle}`, { exact: true })).toBeVisible();
+  if (openDashboard) {
+    await saveDialog.getByRole("link", { name: "Open dashboard" }).click();
+  } else {
+    await saveDialog.getByRole("button", { name: "Done" }).click();
+  }
+}
+
 export async function chooseTemplate(page: Page, title: string) {
   await page.getByRole("button", { name: /Templates|Choose a template/ }).first().click();
   const drawer = page.getByRole("dialog", { name: "Templates" });

@@ -34,6 +34,30 @@ VISUALIZATION_TYPES = frozenset(
 )
 VISUALIZATION_MODES = frozenset({"auto", "manual"})
 
+_CARTESIAN_DESKTOP_SIZES = frozenset(
+    {
+        (4, 2),
+        (4, 3),
+        (6, 2),
+        (6, 3),
+        (6, 4),
+        (8, 2),
+        (8, 3),
+        (8, 4),
+        (12, 2),
+        (12, 3),
+        (12, 4),
+    }
+)
+_CARTESIAN_TABLET_SIZES = frozenset(
+    {(3, 2), (3, 3), (4, 2), (4, 3), (6, 2), (6, 3), (6, 4)}
+)
+_CARTESIAN_MOBILE_SIZES = frozenset({(1, 2), (1, 3)})
+_DONUT_GAUGE_DESKTOP_TABLET_SIZES = frozenset(
+    {(3, 2), (3, 3), (4, 2), (4, 3), (6, 2), (6, 3)}
+)
+_DONUT_GAUGE_MOBILE_SIZES = frozenset({(1, 2), (1, 3)})
+
 SIZE_POLICY: dict[str, dict[str, frozenset[tuple[int, int]]]] = {
     "kpi": {
         "desktop": frozenset({(3, 1), (4, 1), (6, 1)}),
@@ -41,53 +65,72 @@ SIZE_POLICY: dict[str, dict[str, frozenset[tuple[int, int]]]] = {
         "mobile": frozenset({(1, 1), (1, 2)}),
     },
     "donut": {
-        "desktop": frozenset({(3, 2), (4, 2), (6, 2)}),
-        "tablet": frozenset({(3, 2), (4, 2), (6, 2)}),
-        "mobile": frozenset({(1, 2), (1, 3)}),
+        "desktop": _DONUT_GAUGE_DESKTOP_TABLET_SIZES,
+        "tablet": _DONUT_GAUGE_DESKTOP_TABLET_SIZES,
+        "mobile": _DONUT_GAUGE_MOBILE_SIZES,
     },
     "semicircle_gauge": {
-        "desktop": frozenset({(3, 2), (4, 2), (6, 2)}),
-        "tablet": frozenset({(3, 2), (4, 2), (6, 2)}),
-        "mobile": frozenset({(1, 2), (1, 3)}),
+        "desktop": _DONUT_GAUGE_DESKTOP_TABLET_SIZES,
+        "tablet": _DONUT_GAUGE_DESKTOP_TABLET_SIZES,
+        "mobile": _DONUT_GAUGE_MOBILE_SIZES,
     },
     "bar": {
-        "desktop": frozenset(
-            {(6, 2), (8, 2), (12, 2), (6, 3), (8, 3), (12, 3)}
-        ),
-        "tablet": frozenset({(6, 2), (6, 3)}),
-        "mobile": frozenset({(1, 2), (1, 3)}),
+        "desktop": _CARTESIAN_DESKTOP_SIZES,
+        "tablet": _CARTESIAN_TABLET_SIZES,
+        "mobile": _CARTESIAN_MOBILE_SIZES,
     },
     "line": {
-        "desktop": frozenset(
-            {(6, 2), (8, 2), (12, 2), (6, 3), (8, 3), (12, 3)}
-        ),
-        "tablet": frozenset({(6, 2), (6, 3)}),
-        "mobile": frozenset({(1, 2), (1, 3)}),
+        "desktop": _CARTESIAN_DESKTOP_SIZES,
+        "tablet": _CARTESIAN_TABLET_SIZES,
+        "mobile": _CARTESIAN_MOBILE_SIZES,
     },
     "area": {
-        "desktop": frozenset(
-            {(6, 2), (8, 2), (12, 2), (6, 3), (8, 3), (12, 3)}
-        ),
-        "tablet": frozenset({(6, 2), (6, 3)}),
-        "mobile": frozenset({(1, 2), (1, 3)}),
+        "desktop": _CARTESIAN_DESKTOP_SIZES,
+        "tablet": _CARTESIAN_TABLET_SIZES,
+        "mobile": _CARTESIAN_MOBILE_SIZES,
     },
     "stacked_bar": {
-        "desktop": frozenset(
-            {(6, 2), (8, 2), (12, 2), (6, 3), (8, 3), (12, 3)}
-        ),
-        "tablet": frozenset({(6, 2), (6, 3)}),
-        "mobile": frozenset({(1, 2), (1, 3)}),
+        "desktop": _CARTESIAN_DESKTOP_SIZES,
+        "tablet": _CARTESIAN_TABLET_SIZES,
+        "mobile": _CARTESIAN_MOBILE_SIZES,
     },
     "table": {
         "desktop": frozenset(
-            {(6, 3), (8, 3), (12, 3), (6, 4), (8, 4), (12, 4)}
+            {
+                (4, 2),
+                (4, 3),
+                (4, 4),
+                (6, 2),
+                (6, 3),
+                (6, 4),
+                (8, 2),
+                (8, 3),
+                (8, 4),
+                (12, 2),
+                (12, 3),
+                (12, 4),
+            }
         ),
-        "tablet": frozenset({(6, 3), (6, 4)}),
-        "mobile": frozenset({(1, 3), (1, 4)}),
+        "tablet": frozenset(
+            {
+                (3, 2),
+                (3, 3),
+                (3, 4),
+                (4, 2),
+                (4, 3),
+                (4, 4),
+                (6, 2),
+                (6, 3),
+                (6, 4),
+            }
+        ),
+        "mobile": frozenset({(1, 2), (1, 3), (1, 4)}),
     },
     "status_list": {
-        "desktop": frozenset({(4, 2), (6, 2), (8, 2), (6, 3)}),
-        "tablet": frozenset({(4, 2), (6, 2), (6, 3)}),
+        "desktop": frozenset(
+            {(4, 2), (4, 3), (6, 2), (6, 3), (8, 2), (8, 3), (8, 4), (12, 4)}
+        ),
+        "tablet": frozenset({(4, 2), (4, 3), (6, 2), (6, 3), (6, 4)}),
         "mobile": frozenset({(1, 2), (1, 3)}),
     },
 }
