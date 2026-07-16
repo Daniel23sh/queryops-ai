@@ -562,11 +562,16 @@ async function dashboardDetail(response: Response) {
 
 async function readCurrentDashboardDetail(page: Page) {
   const dashboardId = decodeURIComponent(new URL(page.url()).pathname.split("/").pop() ?? "");
+  const apiBaseUrl = process.env.VITE_API_BASE_URL ?? "http://localhost:8000";
   const response = await page.request.get(
-    `http://localhost:8000/api/v1/dashboards/${encodeURIComponent(dashboardId)}`
+    new URL(`/api/v1/dashboards/${encodeURIComponent(dashboardId)}`, apiBaseUrl).toString()
   );
-  expect(response.ok()).toBeTruthy();
-  return response.json() as Promise<DashboardDetailEnvelope>;
+  const body = await response.text();
+  expect(
+    response.ok(),
+    `Dashboard detail request failed with ${response.status()}: ${body}`
+  ).toBeTruthy();
+  return JSON.parse(body) as DashboardDetailEnvelope;
 }
 
 function expectStatusListSize(
