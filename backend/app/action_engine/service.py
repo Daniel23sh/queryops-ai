@@ -709,12 +709,21 @@ def _approval_decision_allowed(
     policy = action_request.policy_flags_json
     requires_policy_override = (
         isinstance(policy, dict)
-        and policy.get("requires_policy_override") is True
+        and (
+            policy.get("requires_policy_override") is True
+            or policy.get("revalidation_requires_policy_override") is True
+        )
     )
     crosses_scopes = (
-        action_request.requires_admin
-        or action_request.scope_type == "global"
-        or (isinstance(policy, dict) and policy.get("crosses_scopes") is True)
+        action_request.scope_type == "global"
+        or action_request.record_count > 20
+        or (
+            isinstance(policy, dict)
+            and (
+                policy.get("crosses_scopes") is True
+                or policy.get("revalidation_crosses_scopes") is True
+            )
+        )
     )
     decision = evaluate_action_approval(
         access_context,

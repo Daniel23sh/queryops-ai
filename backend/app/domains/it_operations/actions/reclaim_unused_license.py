@@ -101,10 +101,6 @@ class ReclaimPreviewTooLargeError(ReclaimPreviewError):
     pass
 
 
-class ActionExecutionUnavailableError(ReclaimPreviewError):
-    pass
-
-
 @dataclass(frozen=True, kw_only=True)
 class ReclaimCandidateRow:
     assignment_id: uuid.UUID
@@ -378,35 +374,46 @@ class ReclaimUnusedLicenseHandler:
         self,
         *,
         db: Session,
-        preview: ActionPreview,
+        action_request,
         approver: UserAccessContext,
         now: datetime,
     ) -> RevalidationResult:
-        del db, preview, approver, now
-        raise ActionExecutionUnavailableError(
-            "Revalidation is not available in M8 PR2."
+        from app.action_engine.revalidation import revalidate_reclaim_targets
+
+        return revalidate_reclaim_targets(
+            db,
+            action_request=action_request,
+            approver=approver,
+            now=now,
         )
 
     def execute(
         self,
         *,
         db: Session,
-        action_request_id: uuid.UUID,
+        action_request,
         approved_by_app_user_id: uuid.UUID,
         revalidation: RevalidationResult,
-        idempotency_key: str,
         now: datetime,
     ) -> ExecutionResult:
-        del (
+        from app.action_engine.executor import execute_reclaim
+        from app.action_engine.revalidation import ReclaimRevalidation
+
+        if not isinstance(revalidation, ReclaimRevalidation):
+            raise TypeError("Reclaim execution requires a reclaim revalidation result.")
+        outcome = execute_reclaim(
             db,
-            action_request_id,
-            approved_by_app_user_id,
-            revalidation,
-            idempotency_key,
-            now,
+            action_request_id=action_request.id,
+            approver_app_user_id=approved_by_app_user_id,
+            revalidation=revalidation,
+            execution_time=now,
         )
-        raise ActionExecutionUnavailableError(
-            "Execution is not available in M8 PR2."
+        return ExecutionResult(
+            action_request_id=action_request.id,
+            executed_record_ids=outcome.executed_assignment_ids,
+            skipped_records=tuple(),
+            completed_at=outcome.completed_at,
+            idempotency_key=action_request.idempotency_key,
         )
 
 

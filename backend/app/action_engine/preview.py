@@ -225,7 +225,10 @@ def validate_reclaim_snapshot(action_request: ActionRequest) -> None:
         raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
     if policy.get("requires_admin") is not bool(expected_flag_codes):
         raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
-    if action_request.requires_admin is not bool(expected_flag_codes):
+    revalidation_requires_admin = policy.get("revalidation_requires_admin") is True
+    if action_request.requires_admin is not (
+        bool(expected_flag_codes) or revalidation_requires_admin
+    ):
         raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
     if policy.get("requires_policy_override") is not bool(overrides):
         raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
@@ -263,7 +266,10 @@ def safe_reclaim_preview(action_request: ActionRequest) -> dict[str, Any]:
                 "code": str(flag.get("code", "unknown")),
                 "reason": str(flag.get("reason", "Review is required.")),
             }
-            for flag in policy.get("flags", [])
+            for flag in [
+                *policy.get("flags", []),
+                *policy.get("revalidation_flags", []),
+            ]
             if isinstance(flag, dict)
         ],
     }
@@ -274,7 +280,10 @@ def safe_policy_details(action_request: ActionRequest) -> dict[str, Any]:
     policy = action_request.policy_flags_json
     return {
         "crosses_scopes": policy.get("crosses_scopes") is True,
-        "requires_policy_override": policy.get("requires_policy_override") is True,
+        "requires_policy_override": (
+            policy.get("requires_policy_override") is True
+            or policy.get("revalidation_requires_policy_override") is True
+        ),
         "record_count_over_analyst_threshold": any(
             isinstance(flag, dict)
             and flag.get("code") == "record_count_over_analyst_threshold"
