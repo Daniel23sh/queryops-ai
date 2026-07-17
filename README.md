@@ -462,6 +462,14 @@ RLS runtime model:
 * The runtime role has SELECT-only grants for allowed queryable tables and cannot access non-queryable `it_audit_events`.
 * Query execution uses validator `sanitized_sql`, transaction-local RLS context, PostgreSQL RLS, read-only transaction mode, statement timeout, and row caps.
 
+Action approval runtime model:
+
+* `reclaim_unused_license` approvals revalidate current rows and execute synchronously through the non-owner `queryops_action_runtime` role.
+* The action role is `NOLOGIN`, `NOBYPASSRLS`, and granted to the explicit application login role from `QUERYOPS_APP_DATABASE_ROLE` with inheritance disabled; action code must use `SET LOCAL ROLE`.
+* Its grants are limited to required reads, three `license_assignments` update columns, and scoped `it_audit_events` inserts. PostgreSQL UPDATE/INSERT policies apply only to the action role.
+* Approval, mutation, application/domain audit, and database notifications commit atomically. Failure state is recorded separately after a rollback.
+* Backend APIs provide pending approval review/decisions, current-recipient notification reads, and permission-scoped audit reads. No action or approval frontend is included yet.
+
 Current Query Engine limitations:
 
 * User-supplied template parameters are not supported through the public API.
@@ -470,7 +478,7 @@ Current Query Engine limitations:
 * Query detail endpoints return only the authenticated user's own runs.
 * Scope-aware query history requires assigned access scopes and the appropriate history permission.
 * Full domain pack expansion to 36 templates / 40 evaluation cases is not implemented.
-* Scheduled card refresh, actions, approvals, and notifications are not implemented.
+* Scheduled card refresh, scheduled/background actions, external notification delivery, and action/approval frontend screens are not implemented.
 
 ### Role-Aware Home and Dashboard Browser
 
@@ -705,6 +713,7 @@ POSTGRES_DB=queryops
 POSTGRES_USER=queryops
 POSTGRES_PASSWORD=queryops
 POSTGRES_PORT=5432
+QUERYOPS_APP_DATABASE_ROLE=queryops
 BACKEND_PORT=8000
 FRONTEND_PORT=5173
 DATABASE_URL=postgresql+psycopg://queryops:queryops@postgres:5432/queryops

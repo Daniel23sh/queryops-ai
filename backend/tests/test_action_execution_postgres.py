@@ -6,6 +6,7 @@ from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from threading import Event
 
 import pytest
 from alembic import command
@@ -18,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from app.api.routes import actions as actions_routes
 from app.api.routes import approvals as approvals_routes
+from app.action_engine.approval import _expire_one, _persist_execution_failure
 from app.db.base import Base
 from app.db.session import get_db
 from app.domains.it_operations.models import DirectoryUser, ItAuditEvent, LicenseAssignment
@@ -51,6 +53,18 @@ def test_action_runtime_role_has_minimal_attributes_grants_and_policies(
             {"role": ACTION_ROLE},
         ).one()
         assert role == (False, False, False, False, False, False)
+        membership = connection.execute(
+            text(
+                "SELECT membership.inherit_option, membership.set_option "
+                "FROM pg_auth_members membership "
+                "JOIN pg_roles granted_role ON granted_role.oid = membership.roleid "
+                "JOIN pg_roles member_role ON member_role.oid = membership.member "
+                "WHERE granted_role.rolname = :runtime_role "
+                "AND member_role.rolname = 'queryops'"
+            ),
+            {"runtime_role": ACTION_ROLE},
+        ).one()
+        assert membership == (False, True)
         grants = connection.execute(
             text(
                 "SELECT table_name, privilege_type FROM information_schema.role_table_grants "
@@ -74,14 +88,26 @@ def test_action_runtime_role_has_minimal_attributes_grants_and_policies(
         assert columns == ["reclaimed_at", "reclaimed_by_app_user_id", "status"]
         policies = connection.execute(
             text(
-                "SELECT tablename, cmd, qual, with_check FROM pg_policies "
+                "SELECT tablename, cmd, roles, qual, with_check FROM pg_policies "
                 "WHERE policyname IN ('qo_license_assignments_action_scope_update', "
                 "'qo_it_audit_events_action_scope_insert') ORDER BY tablename"
             )
         ).all()
         assert len(policies) == 2
-        assert any(row.tablename == "license_assignments" and row.cmd == "UPDATE" and row.qual and row.with_check for row in policies)
-        assert any(row.tablename == "it_audit_events" and row.cmd == "INSERT" and row.with_check for row in policies)
+        assert all(row.roles == [ACTION_ROLE] for row in policies)
+        assert any(
+            row.tablename == "license_assignments"
+            and row.cmd == "UPDATE"
+            and row.qual
+            and row.with_check
+            for row in policies
+        )
+        assert any(
+            row.tablename == "it_audit_events"
+            and row.cmd == "INSERT"
+            and row.with_check
+            for row in policies
+        )
 
 
 def test_action_runtime_role_cannot_mutate_unapproved_columns_or_tables(
@@ -327,6 +353,57 @@ def test_revalidation_skips_ineligible_record_and_completes_noop(
         assert action.skipped_records_json["records"][-1]["reason_code"] == expected_reason
 
 
+def test_completion_reports_preview_and_revalidation_skips_together(
+    client: TestClient,
+    postgres_engine: Engine,
+) -> None:
+    _assign_finance_scope(postgres_engine)
+    assignment_id, approval_id, action_id = _manager_finance_request(
+        client, postgres_engine
+    )
+    with Session(postgres_engine) as session:
+        action = session.get(ActionRequest, action_id)
+        assignment = session.get(LicenseAssignment, assignment_id)
+        assert action is not None and assignment is not None
+        prior_skip = {
+            **action.preview_json["eligible_records"][0],
+            "record_id": str(uuid.uuid4()),
+            "license_assignment_id": None,
+            "record_type": "directory_user",
+            "monthly_cost_usd": None,
+            "reason_code": "recent_usage",
+            "reason": "The license was used within the last 60 days.",
+            "high_confidence": False,
+        }
+        action.skipped_records_json = {
+            "records": [prior_skip],
+            "exclusions_by_reason": [{"reason_code": "recent_usage", "count": 1}],
+        }
+        action.skipped_count = 1
+        action.preview_json = {
+            **action.preview_json,
+            "summary": {**action.preview_json["summary"], "skipped_count": 1},
+        }
+        assignment.last_used_at = NOW
+        session.commit()
+
+    response = _approve_request(client, approval_id)
+    assert response.status_code == 200, response.json()
+    assert response.json()["data"]["executed_records_count"] == 0
+    assert response.json()["data"]["skipped_records_count"] == 2
+    with Session(postgres_engine) as session:
+        action = session.get(ActionRequest, action_id)
+        assert action is not None and action.skipped_count == 2
+        audit = session.scalar(
+            select(AppAuditLog).where(
+                AppAuditLog.action_request_id == action_id,
+                AppAuditLog.event_type == "action_executed",
+            )
+        )
+        assert audit is not None
+        assert audit.audit_metadata["skipped_count"] == 2
+
+
 @pytest.mark.parametrize(
     "override_state",
     ["mandatory_license", "exception_assignment", "service_account"],
@@ -419,6 +496,76 @@ def test_approver_authorization_is_rechecked_before_execution(
         assert session.get(ActionRequest, action_id).status == "pending_approval"
 
 
+def test_related_user_change_waits_for_revalidation_and_execution_transaction(
+    client: TestClient,
+    postgres_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.domains.it_operations.actions.reclaim_unused_license import (
+        ReclaimUnusedLicenseHandler,
+    )
+
+    _assign_finance_scope(postgres_engine)
+    assignment_id, approval_id, _action_id = _manager_finance_request(
+        client, postgres_engine
+    )
+    with Session(postgres_engine) as session:
+        assignment = session.get(LicenseAssignment, assignment_id)
+        assert assignment is not None
+        directory_user_id = assignment.user_id
+
+    execution_ready = Event()
+    allow_execution = Event()
+    real_execute = ReclaimUnusedLicenseHandler.execute
+
+    def pause_before_execute(*args, **kwargs):
+        execution_ready.set()
+        assert allow_execution.wait(timeout=5)
+        return real_execute(*args, **kwargs)
+
+    monkeypatch.setattr(ReclaimUnusedLicenseHandler, "execute", pause_before_execute)
+
+    def approve() -> tuple[int, dict]:
+        with TestClient(app) as concurrent_client:
+            response = _approve_request(concurrent_client, approval_id)
+            return response.status_code, response.json()
+
+    def attempt_related_user_change() -> str:
+        with Session(postgres_engine) as session:
+            session.execute(text("SET LOCAL lock_timeout = '200ms'"))
+            try:
+                session.execute(
+                    update(DirectoryUser)
+                    .where(DirectoryUser.id == directory_user_id)
+                    .values(account_type="service")
+                )
+                session.commit()
+            except DBAPIError:
+                session.rollback()
+                return "blocked"
+            return "changed"
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        approval_future = executor.submit(approve)
+        assert execution_ready.wait(timeout=5)
+        update_future = executor.submit(attempt_related_user_change)
+        try:
+            assert update_future.result(timeout=5) == "blocked"
+        finally:
+            allow_execution.set()
+        status_code, payload = approval_future.result(timeout=5)
+
+    assert status_code == 200, payload
+    assert payload["data"]["executed_records_count"] == 1
+    with Session(postgres_engine) as session:
+        user = session.get(DirectoryUser, directory_user_id)
+        assert user is not None and user.account_type == "human"
+        user.account_type = "service"
+        session.commit()
+        assert session.get(LicenseAssignment, assignment_id).status == "reclaimed"
+        assert session.get(DirectoryUser, directory_user_id).account_type == "service"
+
+
 def test_execution_failure_rolls_back_success_and_persists_failure_separately(
     client: TestClient,
     postgres_engine: Engine,
@@ -452,7 +599,7 @@ def test_execution_failure_rolls_back_success_and_persists_failure_separately(
         approval = session.get(ApprovalRequest, approval_id)
         assert action.status == "failed"
         assert action.failure_reason_user_safe == "The action could not be completed safely."
-        assert action.failure_reason_internal == "execution:RuntimeError"
+        assert action.failure_reason_internal == "execution:execution_failed"
         assert approval.status == "approved"
         assert session.scalar(
             select(ItAuditEvent).where(
@@ -471,6 +618,100 @@ def test_execution_failure_rolls_back_success_and_persists_failure_separately(
                 Notification.notification_type == "action_failed",
             )
         ) is not None
+
+
+def test_expiration_claim_preserves_concurrent_terminal_winner(
+    client: TestClient,
+    postgres_engine: Engine,
+) -> None:
+    _assign_finance_scope(postgres_engine)
+    _assignment_id, approval_id, action_id = _manager_finance_request(
+        client, postgres_engine
+    )
+    stale = Session(postgres_engine)
+    try:
+        action = stale.get(ActionRequest, action_id)
+        approval = stale.get(ApprovalRequest, approval_id)
+        actor = _user(stale, "demo.admin@queryops.local")
+        assert action is not None and approval is not None
+        with Session(postgres_engine) as winner:
+            winning_action = winner.get(ActionRequest, action_id)
+            winning_approval = winner.get(ApprovalRequest, approval_id)
+            assert winning_action is not None and winning_approval is not None
+            winning_action.status = "completed"
+            winning_action.completed_at = NOW
+            winning_action.expires_at = NOW - timedelta(seconds=1)
+            winning_approval.status = "approved"
+            winning_approval.decided_at = NOW
+            winning_approval.expires_at = NOW - timedelta(seconds=1)
+            winner.commit()
+
+        assert _expire_one(
+            stale,
+            actor=actor,
+            action=action,
+            approval=approval,
+            now=NOW,
+        ) is False
+    finally:
+        stale.close()
+
+    with Session(postgres_engine) as session:
+        assert session.get(ActionRequest, action_id).status == "completed"
+        assert session.get(ApprovalRequest, approval_id).status == "approved"
+        assert session.scalar(
+            select(AppAuditLog).where(
+                AppAuditLog.action_request_id == action_id,
+                AppAuditLog.event_type == "action_expired",
+            )
+        ) is None
+
+
+def test_failure_persistence_preserves_concurrent_terminal_winner(
+    client: TestClient,
+    postgres_engine: Engine,
+) -> None:
+    _assign_finance_scope(postgres_engine)
+    _assignment_id, approval_id, action_id = _manager_finance_request(
+        client, postgres_engine
+    )
+    stale = Session(postgres_engine)
+    try:
+        actor = _user(stale, "demo.analyst@queryops.local")
+        stale.get(ActionRequest, action_id)
+        stale.get(ApprovalRequest, approval_id)
+        with Session(postgres_engine) as winner:
+            winning_action = winner.get(ActionRequest, action_id)
+            winning_approval = winner.get(ApprovalRequest, approval_id)
+            assert winning_action is not None and winning_approval is not None
+            winning_action.status = "completed"
+            winning_action.completed_at = NOW
+            winning_approval.status = "approved"
+            winning_approval.decided_at = NOW
+            winner.commit()
+
+        assert _persist_execution_failure(
+            stale,
+            actor=actor,
+            action_request_id=action_id,
+            approval_request_id=approval_id,
+            decision_reason="A concurrent winner already completed this action.",
+            now=NOW,
+            failure_category="execution_failed",
+        ) is False
+    finally:
+        stale.close()
+
+    with Session(postgres_engine) as session:
+        action = session.get(ActionRequest, action_id)
+        assert action is not None and action.status == "completed"
+        assert action.failure_reason_internal is None
+        assert session.scalar(
+            select(AppAuditLog).where(
+                AppAuditLog.action_request_id == action_id,
+                AppAuditLog.event_type == "action_failed",
+            )
+        ) is None
 
 
 def test_persisted_preview_tampering_fails_closed_without_domain_mutation(
@@ -506,7 +747,7 @@ def test_persisted_preview_tampering_fails_closed_without_domain_mutation(
         assert session.get(LicenseAssignment, assignment_id).status == "active"
         action = session.get(ActionRequest, action_id)
         assert action is not None and action.status == "failed"
-        assert action.failure_reason_internal == "execution:InvalidPreviewSnapshotError"
+        assert action.failure_reason_internal == "execution:validation_failed"
         assert session.scalar(
             select(ItAuditEvent).where(
                 ItAuditEvent.resource_id == assignment_id,
@@ -825,6 +1066,15 @@ def _login(client: TestClient, email: str) -> str:
     response = client.post("/api/v1/demo/login", json={"email": email})
     assert response.status_code == 200
     return str(response.json()["data"]["csrf_token"])
+
+
+def _approve_request(client: TestClient, approval_id: uuid.UUID):
+    csrf = _login(client, "demo.analyst@queryops.local")
+    return client.post(
+        f"/api/v1/approvals/{approval_id}/approve",
+        headers={"X-CSRF-Token": csrf},
+        json={"decision_reason": "Current state reviewed for secure execution."},
+    )
 
 
 def _set_department_rls_context(connection, department_id: uuid.UUID) -> None:

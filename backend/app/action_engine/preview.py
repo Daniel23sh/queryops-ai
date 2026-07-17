@@ -279,7 +279,10 @@ def safe_policy_details(action_request: ActionRequest) -> dict[str, Any]:
     validate_reclaim_snapshot(action_request)
     policy = action_request.policy_flags_json
     return {
-        "crosses_scopes": policy.get("crosses_scopes") is True,
+        "crosses_scopes": (
+            policy.get("crosses_scopes") is True
+            or policy.get("revalidation_crosses_scopes") is True
+        ),
         "requires_policy_override": (
             policy.get("requires_policy_override") is True
             or policy.get("revalidation_requires_policy_override") is True

@@ -5,9 +5,9 @@ Revises: 0008_action_engine_foundation
 Create Date: 2026-07-17
 """
 
+import os
 from typing import Sequence, Union
 
-import sqlalchemy as sa
 from alembic import op
 
 
@@ -18,6 +18,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 ACTION_RUNTIME_ROLE = "queryops_action_runtime"
+APPLICATION_LOGIN_ROLE = os.getenv("QUERYOPS_APP_DATABASE_ROLE", "queryops")
 LICENSE_UPDATE_POLICY = "qo_license_assignments_action_scope_update"
 AUDIT_INSERT_POLICY = "qo_it_audit_events_action_scope_insert"
 SCOPE_EXPRESSION = """
@@ -41,8 +42,8 @@ def upgrade() -> None:
     if not _is_postgresql():
         return
 
-    app_role = _current_database_role()
     runtime_role = _quote_identifier(ACTION_RUNTIME_ROLE)
+    app_role = _quote_identifier(APPLICATION_LOGIN_ROLE)
     op.execute(
         f"""
         DO $$
@@ -84,14 +85,16 @@ def upgrade() -> None:
     )
     op.execute(f"GRANT INSERT ON it_audit_events TO {runtime_role}")
 
-    if app_role and app_role != ACTION_RUNTIME_ROLE:
-        op.execute(f"GRANT {runtime_role} TO {_quote_identifier(app_role)}")
+    op.execute(
+        f"GRANT {runtime_role} TO {app_role} WITH INHERIT FALSE, SET TRUE"
+    )
 
     op.execute(
         f"""
         CREATE POLICY {_quote_identifier(LICENSE_UPDATE_POLICY)}
         ON license_assignments
         FOR UPDATE
+        TO {runtime_role}
         USING {SCOPE_EXPRESSION}
         WITH CHECK {SCOPE_EXPRESSION}
         """
@@ -101,6 +104,7 @@ def upgrade() -> None:
         CREATE POLICY {_quote_identifier(AUDIT_INSERT_POLICY)}
         ON it_audit_events
         FOR INSERT
+        TO {runtime_role}
         WITH CHECK {SCOPE_EXPRESSION}
         """
     )
@@ -110,8 +114,8 @@ def downgrade() -> None:
     if not _is_postgresql():
         return
 
-    app_role = _current_database_role()
     runtime_role = _quote_identifier(ACTION_RUNTIME_ROLE)
+    app_role = _quote_identifier(APPLICATION_LOGIN_ROLE)
     op.execute(
         f"DROP POLICY IF EXISTS {_quote_identifier(AUDIT_INSERT_POLICY)} "
         "ON it_audit_events"
@@ -120,8 +124,7 @@ def downgrade() -> None:
         f"DROP POLICY IF EXISTS {_quote_identifier(LICENSE_UPDATE_POLICY)} "
         "ON license_assignments"
     )
-    if app_role and app_role != ACTION_RUNTIME_ROLE:
-        op.execute(f"REVOKE {runtime_role} FROM {_quote_identifier(app_role)}")
+    op.execute(f"REVOKE {runtime_role} FROM {app_role}")
     op.execute(f"REVOKE INSERT ON it_audit_events FROM {runtime_role}")
     op.execute(
         "REVOKE UPDATE (status, reclaimed_at, reclaimed_by_app_user_id) "
@@ -133,10 +136,6 @@ def downgrade() -> None:
     )
     op.execute(f"REVOKE USAGE ON SCHEMA public FROM {runtime_role}")
     op.execute(f"DROP ROLE IF EXISTS {runtime_role}")
-
-
-def _current_database_role() -> str | None:
-    return op.get_bind().execute(sa.text("SELECT current_user")).scalar_one_or_none()
 
 
 def _is_postgresql() -> bool:

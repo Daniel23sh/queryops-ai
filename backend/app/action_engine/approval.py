@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -20,6 +21,7 @@ from app.action_engine.policy import evaluate_action_approval
 from app.action_engine.preview import safe_reclaim_preview, validate_reclaim_snapshot
 from app.action_engine.revalidation import (
     ReclaimRevalidation,
+    lock_reclaim_dependencies,
     safe_revalidation_flags,
 )
 from app.action_engine.registry import ActionRegistry, build_default_action_registry
@@ -49,6 +51,7 @@ APPROVAL_PERMISSIONS = frozenset(
         "can_approve_policy_override",
     }
 )
+LOGGER = logging.getLogger(__name__)
 @dataclass(frozen=True)
 class ApprovalServiceError(Exception):
     code: str
@@ -140,7 +143,25 @@ class ApprovalLifecycleService:
             action.status == ActionRequestStatus.PENDING_APPROVAL.value
             and _expired(action, approval, now)
         ):
-            _expire_one(db, actor=current_user, action=action, approval=approval, now=now)
+            action, approval = _locked_pair(db, approval_id)
+            if (
+                action.status == ActionRequestStatus.PENDING_APPROVAL.value
+                and approval.status == ApprovalStatus.PENDING.value
+                and _expired(action, approval, now)
+            ):
+                expired = _expire_one(
+                    db,
+                    actor=current_user,
+                    action=action,
+                    approval=approval,
+                    now=now,
+                )
+                if not expired:
+                    refreshed = db.get(ApprovalRequest, approval_id)
+                    if refreshed is None or refreshed.action_request is None:
+                        raise _not_found()
+                    approval = refreshed
+                    action = refreshed.action_request
         return _serialize_approval_detail(
             db,
             approval=approval,
@@ -165,7 +186,14 @@ class ApprovalLifecycleService:
             and approval.status == ApprovalStatus.PENDING.value
             and _expired(action, approval, now)
         ):
-            _expire_one(db, actor=current_user, action=action, approval=approval, now=now)
+            if not _expire_one(
+                db,
+                actor=current_user,
+                action=action,
+                approval=approval,
+                now=now,
+            ):
+                raise _already_processed()
             raise _expired_error()
         _require_pending(action, approval, now)
         decision = _approval_decision(action, context)
@@ -257,16 +285,35 @@ class ApprovalLifecycleService:
             and approval.status == ApprovalStatus.PENDING.value
             and _expired(action, approval, now)
         ):
-            _expire_one(db, actor=current_user, action=action, approval=approval, now=now)
+            if not _expire_one(
+                db,
+                actor=current_user,
+                action=action,
+                approval=approval,
+                now=now,
+            ):
+                raise _already_processed()
             raise _expired_error()
         _require_pending(action, approval, now)
         initial_decision = _approval_decision(action, context)
         if not initial_decision.allowed:
             raise _not_found()
+        failure_category = "validation_failed"
         try:
             validate_reclaim_snapshot(action)
             handler = self._registry.get(action.action_type)
             set_rls_context(db, build_rls_context(context))
+            set_action_runtime_role(db)
+            revalidation = handler.revalidate(
+                db=db,
+                action_request=action,
+                approver=context,
+                now=now,
+            )
+            if not isinstance(revalidation, ReclaimRevalidation):
+                raise TypeError("The action handler returned an invalid revalidation result.")
+            reset_action_runtime_role(db)
+            lock_reclaim_dependencies(db, revalidation)
             set_action_runtime_role(db)
             revalidation = handler.revalidate(
                 db=db,
@@ -306,6 +353,7 @@ class ApprovalLifecycleService:
                     )
                 raise _forbidden()
 
+            failure_category = "execution_failed"
             claim = db.execute(
                 update(ActionRequest)
                 .where(
@@ -350,24 +398,29 @@ class ApprovalLifecycleService:
                 "action_request_id": str(action.id),
                 "status": ActionRequestStatus.COMPLETED.value,
                 "executed_records_count": len(outcome.executed_record_ids),
-                "skipped_records_count": len(revalidation.skipped_records),
+                "skipped_records_count": action.skipped_count,
                 "self_approved": current_decision.self_approved,
                 "override_used": revalidation.requires_policy_override,
                 "completed_at": _timestamp(now),
             }
         except ApprovalServiceError:
             raise
-        except Exception as exc:
+        except Exception:
             db.rollback()
+            LOGGER.exception(
+                "Action approval failed during %s for action %s.",
+                failure_category,
+                action.id,
+            )
             try:
-                _persist_execution_failure(
+                persisted = _persist_execution_failure(
                     db,
                     actor=current_user,
                     action_request_id=action.id,
                     approval_request_id=approval.id,
                     decision_reason=decision_reason,
                     now=now,
-                    failure_category=type(exc).__name__,
+                    failure_category=failure_category,
                 )
             except Exception as failure_exc:
                 db.rollback()
@@ -376,6 +429,8 @@ class ApprovalLifecycleService:
                     message="The action could not be completed safely.",
                     status_code=500,
                 ) from failure_exc
+            if not persisted:
+                raise _already_processed()
             return {
                 "approval_id": str(approval.id),
                 "action_request_id": str(action.id),
@@ -418,11 +473,13 @@ def _locked_pair(
         select(ActionRequest)
         .where(ActionRequest.id == probe.action_request_id)
         .with_for_update()
+        .execution_options(populate_existing=True)
     )
     approval = db.scalar(
         select(ApprovalRequest)
         .where(ApprovalRequest.id == approval_id)
         .with_for_update()
+        .execution_options(populate_existing=True)
     )
     if action is None or approval is None or approval.action_request_id != action.id:
         raise _not_found()
@@ -523,7 +580,40 @@ def _expire_one(
     action: ActionRequest,
     approval: ApprovalRequest,
     now: datetime,
-) -> None:
+) -> bool:
+    action_result = db.execute(
+        update(ActionRequest)
+        .where(
+            ActionRequest.id == action.id,
+            ActionRequest.status == ActionRequestStatus.PENDING_APPROVAL.value,
+            or_(
+                ActionRequest.expires_at.is_(None),
+                ActionRequest.expires_at <= now,
+            ),
+        )
+        .values(status=ActionRequestStatus.EXPIRED.value)
+        .execution_options(synchronize_session=False)
+    )
+    approval_result = db.execute(
+        update(ApprovalRequest)
+        .where(
+            ApprovalRequest.id == approval.id,
+            ApprovalRequest.action_request_id == action.id,
+            ApprovalRequest.status == ApprovalStatus.PENDING.value,
+            or_(
+                ApprovalRequest.expires_at.is_(None),
+                ApprovalRequest.expires_at <= now,
+            ),
+        )
+        .values(
+            status=ApprovalStatus.EXPIRED.value,
+            decided_at=now,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    if action_result.rowcount != 1 or approval_result.rowcount != 1:
+        db.rollback()
+        return False
     action.status = ActionRequestStatus.EXPIRED.value
     approval.status = ApprovalStatus.EXPIRED.value
     approval.decided_at = now
@@ -542,6 +632,7 @@ def _expire_one(
         )
     )
     _commit(db, "The expired approval could not be updated safely.")
+    return True
 
 
 def _persist_escalation(
@@ -640,7 +731,7 @@ def _complete_success(
     }
     common_metadata = {
         "executed_count": len(executed_assignment_ids),
-        "skipped_count": len(revalidation.skipped_records),
+        "skipped_count": action.skipped_count,
         "override_used": revalidation.requires_policy_override,
     }
     approved_audit = build_action_audit_log(
@@ -726,17 +817,62 @@ def _persist_execution_failure(
     decision_reason: str,
     now: datetime,
     failure_category: str,
-) -> None:
+) -> bool:
     action = db.scalar(
-        select(ActionRequest).where(ActionRequest.id == action_request_id).with_for_update()
+        select(ActionRequest)
+        .where(ActionRequest.id == action_request_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
     )
     approval = db.scalar(
         select(ApprovalRequest)
         .where(ApprovalRequest.id == approval_request_id)
         .with_for_update()
+        .execution_options(populate_existing=True)
     )
     if action is None or approval is None:
         raise RuntimeError("Failure persistence target is unavailable.")
+    if (
+        action.status != ActionRequestStatus.PENDING_APPROVAL.value
+        or approval.status != ApprovalStatus.PENDING.value
+    ):
+        db.rollback()
+        return False
+    claim = db.execute(
+        update(ActionRequest)
+        .where(
+            ActionRequest.id == action_request_id,
+            ActionRequest.status == ActionRequestStatus.PENDING_APPROVAL.value,
+        )
+        .values(
+            status=ActionRequestStatus.FAILED.value,
+            failure_reason_user_safe="The action could not be completed safely.",
+            failure_reason_internal=f"execution:{failure_category}",
+            completed_at=now,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    if claim.rowcount != 1:
+        db.rollback()
+        return False
+    approval_claim = db.execute(
+        update(ApprovalRequest)
+        .where(
+            ApprovalRequest.id == approval_request_id,
+            ApprovalRequest.action_request_id == action_request_id,
+            ApprovalRequest.status == ApprovalStatus.PENDING.value,
+        )
+        .values(
+            status=ApprovalStatus.APPROVED.value,
+            decided_by_user_id=actor.id,
+            decision_reason=decision_reason,
+            decided_at=now,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    if approval_claim.rowcount != 1:
+        db.rollback()
+        return False
     action.status = ActionRequestStatus.FAILED.value
     action.failure_reason_user_safe = "The action could not be completed safely."
     action.failure_reason_internal = f"execution:{failure_category}"
@@ -774,6 +910,7 @@ def _persist_execution_failure(
     notifications = _active_notifications(db, notifications)
     db.add_all([action, approval, audit, *notifications])
     db.commit()
+    return True
 
 
 def _serialize_pending_item(approval: ApprovalRequest) -> dict[str, Any]:

@@ -48,6 +48,7 @@ SAFE_OVERRIDE_REASONS = {
 class RevalidatedReclaimRecord(EligibleRecordDescriptor):
     assignment_id: uuid.UUID
     directory_user_id: uuid.UUID
+    license_id: uuid.UUID
     department_id: uuid.UUID
     scope_type: str
     scope_key: str
@@ -96,6 +97,7 @@ def revalidate_reclaim_targets(
         select(
             LicenseAssignment.id,
             LicenseAssignment.user_id,
+            LicenseAssignment.license_id,
             LicenseAssignment.department_id,
             LicenseAssignment.status,
             LicenseAssignment.last_used_at,
@@ -175,6 +177,7 @@ def revalidate_reclaim_targets(
                 safe_summary=None,
                 assignment_id=target_id,
                 directory_user_id=row["directory_user_id"],
+                license_id=row["license_id"],
                 department_id=department_id,
                 scope_type="department",
                 scope_key=scope_key or "global",
@@ -215,6 +218,43 @@ def revalidate_reclaim_targets(
         crosses_scopes=crosses_scopes,
         revalidated_at=_as_utc(now),
     )
+
+
+def lock_reclaim_dependencies(
+    db: Session,
+    revalidation: ReclaimRevalidation,
+) -> None:
+    """Lock related eligibility rows before the final action-role revalidation.
+
+    PostgreSQL requires UPDATE privilege for joined ``SELECT FOR UPDATE`` rows.
+    The action role intentionally has no UPDATE grant on users or licenses, so
+    the application role locks only the exact dependency IDs already admitted
+    by the action-role/RLS pass. A second action-role pass then reads their
+    locked current state before mutation.
+    """
+
+    directory_user_ids = sorted(
+        {record.directory_user_id for record in revalidation.executable_records},
+        key=str,
+    )
+    license_ids = sorted(
+        {record.license_id for record in revalidation.executable_records},
+        key=str,
+    )
+    if directory_user_ids:
+        db.scalars(
+            select(DirectoryUser.id)
+            .where(DirectoryUser.id.in_(directory_user_ids))
+            .order_by(DirectoryUser.id)
+            .with_for_update()
+        ).all()
+    if license_ids:
+        db.scalars(
+            select(License.id)
+            .where(License.id.in_(license_ids))
+            .order_by(License.id)
+            .with_for_update()
+        ).all()
 
 
 def safe_revalidation_flags(result: ReclaimRevalidation) -> list[dict[str, object]]:

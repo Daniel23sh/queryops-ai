@@ -126,6 +126,25 @@ def test_scoped_analyst_sees_matching_approval_and_safe_detail(
     assert "generated_sql" not in str(data)
 
 
+def test_action_policy_details_include_revalidated_cross_scope_state(
+    client: TestClient, db_session: Session
+) -> None:
+    manager_csrf = _login(client, "demo.manager@queryops.local")
+    approval = _create_pending(client, db_session, manager_csrf, "finance")
+    action = approval.action_request
+    assert action is not None
+    action.policy_flags_json = {
+        **action.policy_flags_json,
+        "revalidation_crosses_scopes": True,
+    }
+    db_session.commit()
+
+    _login(client, "demo.admin@queryops.local")
+    response = client.get(f"/api/v1/actions/{action.id}")
+    assert response.status_code == 200
+    assert response.json()["data"]["policy_details"]["crosses_scopes"] is True
+
+
 def test_scoped_analyst_cannot_see_foreign_scope_or_own_request(
     client: TestClient, db_session: Session
 ) -> None:

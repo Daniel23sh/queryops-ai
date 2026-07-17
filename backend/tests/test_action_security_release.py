@@ -384,7 +384,7 @@ def test_action_security_17_user_safe_failure_does_not_leak_internals(
         action = session.get(ActionRequest, action_id)
         assert action is not None
         assert action.failure_reason_user_safe == "The action could not be completed safely."
-        assert action.failure_reason_internal == "execution:RuntimeError"
+        assert action.failure_reason_internal == "execution:execution_failed"
 
 
 def test_action_security_18_llm_cannot_choose_execution_records(
