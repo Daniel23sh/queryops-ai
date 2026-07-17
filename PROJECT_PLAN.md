@@ -16,7 +16,7 @@ Current PR scope:
 
 `M7 PR4 — Ask Data Redesign & Final UX Hardening` is complete and merged into `main` through PR #28. Milestone 7 is complete.
 
-`Milestone 8 — Actions, Approvals & Audit` is active. `M8 PR1 — Action Persistence & Engine Contracts` is the only active PR and is in progress on `feature/m8-action-engine-foundation`.
+`Milestone 8 — Actions, Approvals & Audit` is active. `M8 PR1 — Action Persistence & Engine Contracts` is implementation-complete on `feature/m8-action-engine-foundation` and is not merged. M8 PR2 is next but has not started.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
@@ -440,7 +440,7 @@ The latest PR status is:
 
 `M7 PR2 — Role-Aware Home & Dashboard Browser` is complete and merged through PR #26. `M7 PR3 — Dashboard Editor, Grid & Visualizations` is complete and merged through PR #27. `M7 PR4 — Ask Data Redesign & Final UX Hardening` is complete and merged through PR #28.
 
-`Milestone 8 — Actions, Approvals & Audit` is active. Only `M8 PR1 — Action Persistence & Engine Contracts` is active; M8 PR2 through PR7 have not started.
+`Milestone 8 — Actions, Approvals & Audit` is active. `M8 PR1 — Action Persistence & Engine Contracts` is implementation-complete and not merged. M8 PR2 through PR7 have not started.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -944,7 +944,7 @@ Milestone 8 is split into seven approved PRs:
 6. `M8 PR6 — Approvals, Audit & Notifications UX`
 7. `M8 PR7 — M8 E2E, Security Hardening & Completion`
 
-Only M8 PR1 is active. M8 PR2 through PR7 have not started.
+M8 PR1 is implementation-complete and not merged. M8 PR2 is next but has not started; M8 PR3 through PR7 have also not started.
 
 ### M8 PR1 — Action Persistence & Engine Contracts
 
@@ -954,7 +954,7 @@ Branch:
 feature/m8-action-engine-foundation
 ```
 
-Status: active and in progress.
+Status: implementation-complete on `feature/m8-action-engine-foundation`; not merged.
 
 Goal: establish the non-destructive database foundation and typed deterministic backend contracts required by later Milestone 8 work without exposing or executing an action workflow.
 
@@ -1004,3 +1004,28 @@ Explicit exclusions:
 - RLS-policy changes, Supabase Auth, real LLM providers, full ABAC, ReBAC, policy languages, or policy-builder UI
 - the complete release-blocking 20-action workflow suite, which is completed across M8 PR3, PR4, and PR7
 - any M8 PR2 or later implementation
+
+Delivered implementation:
+
+- Migration `0008_action_engine_foundation` adds the `action_requests` lifecycle table with the two supported action types, eight locked statuses, three priorities, generic scope plus Department compatibility, access/decision/preview/policy/skipped snapshots, guarded non-negative counts, unique idempotency, failure details, timestamps, foreign keys, and targeted indexes.
+- `approval_requests` retains every legacy column and QueryRun relationship while adding nullable `action_request_id`, `required_approver_role`, `expires_at`, one-approval-per-action uniqueness, and the `expired` status.
+- `app_audit_logs` retains generic `audit_metadata` and existing writers while adding nullable action/approval, Department/scope, severity, changed-field before/after, and self-approval fields with useful lookup indexes.
+- `it_audit_events.actor_user_id` remains a nullable `directory_users` foreign key; the separate nullable `actor_app_user_id` points to `app_users` for future QueryOps actors.
+- The existing notifications schema was retained unchanged and is tested for recipient, notification type, title/body, generic related action/approval, unread/read status, and created/read timestamps.
+- SQLAlchemy adds dedicated action type, action request status, priority, and approval status enums plus explicit requester, source QueryRun, scope, Department, approval, audit, and reverse relationships. Seed reset includes action requests in dependency-safe deletion order.
+- `app/action_engine` adds immutable typed preview/revalidation/execution descriptors, a three-stage `ActionHandler` protocol, an explicit empty fail-closed allowlist registry, and pure structured request/approval policy decisions.
+- The access policy vocabulary now covers action request, scoped/global/override approval, and scoped/global audit. Scoped action and audit decisions require an exact scope key and cannot use a scope-less reference resource as authorization.
+
+Completion evidence:
+
+- Focused action persistence, registry, policy, access, and product-schema suite: 71 passed.
+- Default backend suite: 606 passed, 77 PostgreSQL-only tests skipped.
+- PostgreSQL-backed full backend suite: 683 passed with no skips or failures.
+- Alembic upgraded `0007_dashboard_layout_version` to `0008_action_engine_foundation`; `alembic check` reported no new upgrade operations.
+- The dedicated SQLite preservation test upgrades 0007 to head and downgrades head to 0007 while preserving pre-existing approval, notification, and application-audit rows and enforcing one approval per action request.
+- A fresh temporary PostgreSQL database passed base-to-head upgrade, head-to-0007 downgrade, re-upgrade to head, and a no-diff Alembic check. The temporary database was removed; the existing user database was not downgraded, reset, or reseeded.
+- Frontend regression suite: 188 passed across 28 files.
+- Frontend TypeScript checks and production Vite build passed; only the existing large-chunk advisory was emitted.
+- `git diff --check` and the full scope/security review passed.
+
+No action endpoint, action suggestion, real preview, approval execution, notification delivery, audit writer, operational mutation, QueryRun result-row persistence, frontend behavior, or RLS-policy change exists in M8 PR1. The complete release-blocking 20-action workflow suite is not claimed complete. M8 PR2 — Reclaim License Preview & Request Flow is next and has not started.
