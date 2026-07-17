@@ -39,7 +39,12 @@ from app.domains.it_operations.models import (
     License,
     LicenseAssignment,
 )
-from app.models.product import AccessScope, DataResource, SupportedActionType
+from app.models.product import (
+    AccessScope,
+    ActionRequest,
+    DataResource,
+    SupportedActionType,
+)
 from app.query_engine.runtime_role import QUERY_RUNTIME_ROLE, set_query_runtime_role
 
 
@@ -374,7 +379,7 @@ class ReclaimUnusedLicenseHandler:
         self,
         *,
         db: Session,
-        action_request,
+        action_request: ActionRequest,
         approver: UserAccessContext,
         now: datetime,
     ) -> RevalidationResult:
@@ -391,7 +396,7 @@ class ReclaimUnusedLicenseHandler:
         self,
         *,
         db: Session,
-        action_request,
+        action_request: ActionRequest,
         approved_by_app_user_id: uuid.UUID,
         revalidation: RevalidationResult,
         now: datetime,
@@ -411,7 +416,7 @@ class ReclaimUnusedLicenseHandler:
         return ExecutionResult(
             action_request_id=action_request.id,
             executed_record_ids=outcome.executed_assignment_ids,
-            skipped_records=tuple(),
+            skipped_records=revalidation.skipped_records,
             completed_at=outcome.completed_at,
             idempotency_key=action_request.idempotency_key,
         )

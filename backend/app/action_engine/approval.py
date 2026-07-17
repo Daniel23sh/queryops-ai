@@ -49,13 +49,6 @@ APPROVAL_PERMISSIONS = frozenset(
         "can_approve_policy_override",
     }
 )
-PRIORITY_ORDER = {
-    ActionPriority.URGENT.value: 0,
-    ActionPriority.HIGH.value: 1,
-    ActionPriority.NORMAL.value: 2,
-}
-
-
 @dataclass(frozen=True)
 class ApprovalServiceError(Exception):
     code: str
@@ -85,7 +78,12 @@ class ApprovalLifecycleService:
         if not APPROVAL_PERMISSIONS.intersection(context.permissions):
             raise _forbidden()
         now = _as_utc(self._clock())
-        _expire_pending_requests(db, actor=current_user, now=now)
+        _expire_pending_requests(
+            db,
+            actor=current_user,
+            context=context,
+            now=now,
+        )
         candidates = db.scalars(
             select(ApprovalRequest)
             .join(ActionRequest, ActionRequest.id == ApprovalRequest.action_request_id)
@@ -233,7 +231,8 @@ class ApprovalLifecycleService:
             action_request=action,
             approval_request=approval,
         )
-        db.add_all([audit, notification])
+        db.add(audit)
+        db.add_all(_active_notifications(db, [notification]))
         _commit(db, "The approval decision could not be saved safely.")
         return {
             "approval_id": str(approval.id),
@@ -453,18 +452,31 @@ def _expired(action: ActionRequest, approval: ApprovalRequest, now: datetime) ->
     )
 
 
-def _expire_pending_requests(db: Session, *, actor: AppUser, now: datetime) -> None:
+def _expire_pending_requests(
+    db: Session,
+    *,
+    actor: AppUser,
+    context: UserAccessContext,
+    now: datetime,
+) -> None:
     rows = db.execute(
         select(ActionRequest, ApprovalRequest)
         .join(ApprovalRequest, ApprovalRequest.action_request_id == ActionRequest.id)
         .where(
             ActionRequest.status == ActionRequestStatus.PENDING_APPROVAL.value,
             ApprovalRequest.status == ApprovalStatus.PENDING.value,
-            or_(ActionRequest.expires_at <= now, ApprovalRequest.expires_at <= now),
+            or_(
+                ActionRequest.expires_at.is_(None),
+                ApprovalRequest.expires_at.is_(None),
+                ActionRequest.expires_at <= now,
+                ApprovalRequest.expires_at <= now,
+            ),
         )
     ).all()
     changed = False
     for action, approval in rows:
+        if not _approval_decision(action, context).allowed:
+            continue
         result = db.execute(
             update(ActionRequest)
             .where(
@@ -701,7 +713,8 @@ def _complete_success(
                     approval_request=approval,
                 )
             )
-    db.add_all([approval, action, approved_audit, executed_audit, *_dedupe_notifications(notifications)])
+    notifications = _active_notifications(db, _dedupe_notifications(notifications))
+    db.add_all([approval, action, approved_audit, executed_audit, *notifications])
 
 
 def _persist_execution_failure(
@@ -758,6 +771,7 @@ def _persist_execution_failure(
         )
         for recipient_id in sorted(recipients, key=str)
     ]
+    notifications = _active_notifications(db, notifications)
     db.add_all([action, approval, audit, *notifications])
     db.commit()
 
@@ -883,6 +897,24 @@ def _dedupe_notifications(items: list[Notification]) -> list[Notification]:
     for item in items:
         by_key[(item.recipient_user_id, item.notification_type, item.related_resource_id)] = item
     return list(by_key.values())
+
+
+def _active_notifications(
+    db: Session,
+    items: list[Notification],
+) -> list[Notification]:
+    recipient_ids = {item.recipient_user_id for item in items}
+    if not recipient_ids:
+        return []
+    active_recipient_ids = set(
+        db.scalars(
+            select(AppUser.id).where(
+                AppUser.id.in_(recipient_ids),
+                AppUser.status == UserStatus.ACTIVE.value,
+            )
+        ).all()
+    )
+    return [item for item in items if item.recipient_user_id in active_recipient_ids]
 
 
 def _commit(db: Session, message: str) -> None:

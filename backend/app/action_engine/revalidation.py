@@ -10,7 +10,9 @@ from sqlalchemy.orm import Session
 
 from app.action_engine.preview import validate_reclaim_snapshot
 from app.action_engine.base import (
+    AdminOverrideRecordDescriptor,
     EligibleRecordDescriptor,
+    PolicyFlag,
     RevalidationResult,
     SkippedRecordDescriptor,
 )
@@ -180,11 +182,34 @@ def revalidate_reclaim_targets(
             )
         )
 
+    override_records = tuple(
+        AdminOverrideRecordDescriptor(
+            record_type=record.record_type,
+            record_id=record.record_id,
+            scope_type=record.scope_type,
+            scope_key=record.scope_key,
+            reason_code=record.override_reason_codes[0],
+            reason=SAFE_OVERRIDE_REASONS[record.override_reason_codes[0]],
+        )
+        for record in executable
+        if record.override_reason_codes
+    )
+    policy_flags = tuple(
+        PolicyFlag(
+            code=code,
+            reason=SAFE_OVERRIDE_REASONS[code],
+            requires_admin=True,
+            admin_overridable=True,
+        )
+        for code in sorted(override_codes)
+    )
     return ReclaimRevalidation(
-        eligible_records=tuple(executable),
+        eligible_records=tuple(
+            record for record in executable if not record.override_reason_codes
+        ),
         skipped_records=tuple(skipped),
-        admin_override_records=tuple(),
-        policy_flags=tuple(),
+        admin_override_records=override_records,
+        policy_flags=policy_flags,
         executable_records=tuple(executable),
         override_reason_codes=tuple(sorted(override_codes)),
         crosses_scopes=crosses_scopes,

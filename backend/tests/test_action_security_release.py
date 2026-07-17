@@ -33,10 +33,8 @@ from test_action_execution_postgres import (
 )
 
 
-# These fixture imports intentionally make this a standalone, clearly named,
-# PostgreSQL-backed release gate. The suite is skipped when the explicitly
-# disposable POSTGRES_TEST_DATABASE_URL is not supplied.
-assert client and postgres_engine and reset_seed
+# The imported fixtures make this a standalone PostgreSQL-backed release gate.
+# It skips when an explicitly disposable POSTGRES_TEST_DATABASE_URL is absent.
 
 
 def test_action_security_01_user_cannot_create_action_request(

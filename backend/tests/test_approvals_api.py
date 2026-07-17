@@ -196,6 +196,35 @@ def test_pending_list_sorts_by_priority_and_admin_sees_authorized_scopes(
     assert ids == [str(approvals[1].id), str(approvals[2].id), str(approvals[0].id)]
 
 
+def test_scoped_pending_list_does_not_expire_foreign_scope_requests(
+    client: TestClient, db_session: Session
+) -> None:
+    finance_analyst = _add_finance_analyst(db_session)
+    manager_csrf = _login(client, "demo.manager@queryops.local")
+    visible = _create_pending(client, db_session, manager_csrf, "finance")
+    foreign = _create_pending(client, db_session, manager_csrf, "finance")
+    sales = _scope(db_session, "sales")
+    assert visible.action_request is not None and foreign.action_request is not None
+    foreign.action_request.scope_id = sales.id
+    foreign.action_request.scope_type = sales.scope_type
+    foreign.action_request.scope_key = sales.scope_key
+    foreign.action_request.department_id = sales.department_id
+    for approval in (visible, foreign):
+        assert approval.action_request is not None
+        approval.expires_at = NOW - timedelta(seconds=1)
+        approval.action_request.expires_at = NOW - timedelta(seconds=1)
+    db_session.commit()
+
+    _login(client, finance_analyst.email)
+    response = client.get("/api/v1/approvals/pending")
+    assert response.status_code == 200
+    db_session.expire_all()
+    assert db_session.get(ApprovalRequest, visible.id).status == "expired"
+    assert db_session.get(ActionRequest, visible.action_request_id).status == "expired"
+    assert db_session.get(ApprovalRequest, foreign.id).status == "pending"
+    assert db_session.get(ActionRequest, foreign.action_request_id).status == "pending_approval"
+
+
 def test_reject_requires_csrf_and_strict_bounded_reason(
     client: TestClient, db_session: Session
 ) -> None:
@@ -267,7 +296,6 @@ def test_rejection_is_atomic_and_second_decision_conflicts(
             Notification.notification_type == "action_rejected",
         )
     ) is not None
-
     second = client.post(
         f"/api/v1/approvals/{approval.id}/reject",
         headers={"X-CSRF-Token": csrf},
@@ -275,6 +303,42 @@ def test_rejection_is_atomic_and_second_decision_conflicts(
     )
     assert second.status_code == 409
     assert second.json()["error"]["code"] == "ACTION_ALREADY_PROCESSED"
+    _login(client, manager.email)
+    detail = client.get(f"/api/v1/actions/{action_id}")
+    assert detail.status_code == 200
+    rejected_event = next(
+        item
+        for item in detail.json()["data"]["timeline"]
+        if item["event_type"] == "action_rejected"
+    )
+    assert rejected_event["actor"]["id"] == str(finance_analyst.id)
+    assert rejected_event["timestamp"].endswith("Z")
+    assert "self_approved" not in rejected_event
+
+
+def test_rejection_does_not_notify_disabled_requester(
+    client: TestClient, db_session: Session
+) -> None:
+    finance_analyst = _add_finance_analyst(db_session)
+    manager = _user(db_session, "demo.manager@queryops.local")
+    manager_csrf = _login(client, manager.email)
+    approval = _create_pending(client, db_session, manager_csrf, "finance")
+    manager.status = "disabled"
+    db_session.commit()
+
+    csrf = _login(client, finance_analyst.email)
+    response = client.post(
+        f"/api/v1/approvals/{approval.id}/reject",
+        headers={"X-CSRF-Token": csrf},
+        json={"decision_reason": "Requester is no longer an active recipient."},
+    )
+    assert response.status_code == 200
+    assert db_session.scalar(
+        select(Notification).where(
+            Notification.recipient_user_id == manager.id,
+            Notification.notification_type == "action_rejected",
+        )
+    ) is None
 
 
 def test_expired_pending_approval_is_persisted_and_cannot_be_decided(

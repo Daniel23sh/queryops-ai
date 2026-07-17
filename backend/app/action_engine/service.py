@@ -390,6 +390,9 @@ class ActionLifecycleService:
                 now=now,
                 include_reason=True,
                 include_policy_details=access_context.has_permission("can_view_sql"),
+                include_global_audit_details=access_context.has_permission(
+                    "can_view_global_audit"
+                ),
                 approval=action_request.approval_request,
                 timeline=tuple(timeline),
             )
@@ -743,6 +746,7 @@ def _serialize_action_request(
     now: datetime,
     include_reason: bool,
     include_policy_details: bool,
+    include_global_audit_details: bool = False,
     approval: ApprovalRequest | None = None,
     timeline: tuple[AppAuditLog, ...] = (),
 ) -> dict[str, Any]:
@@ -797,7 +801,21 @@ def _serialize_action_request(
                 "event_type": event.event_type,
                 "status": event.status,
                 "summary": event.summary,
+                "timestamp": _timestamp(event.created_at),
                 "created_at": _timestamp(event.created_at),
+                "actor": (
+                    {
+                        "id": str(event.actor_user_id),
+                        "display_name": event.actor.full_name,
+                    }
+                    if event.actor is not None
+                    else None
+                ),
+                **(
+                    {"self_approved": event.self_approved is True}
+                    if include_global_audit_details
+                    else {}
+                ),
             }
             for event in timeline
         ]
