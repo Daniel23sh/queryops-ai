@@ -16,7 +16,7 @@ Current PR scope:
 
 `M7 PR4 — Ask Data Redesign & Final UX Hardening` is complete and merged into `main` through PR #28. Milestone 7 is complete.
 
-`Milestone 8 — Actions, Approvals & Audit` is active. `M8 PR1 — Action Persistence & Engine Contracts` is complete and merged into `main` through PR #29. `M8 PR2 — Reclaim License Preview & Request Flow` is active on `feature/m8-reclaim-preview-request`.
+`Milestone 8 — Actions, Approvals & Audit` is active. `M8 PR1 — Action Persistence & Engine Contracts` is complete and merged into `main` through PR #29. `M8 PR2 — Reclaim License Preview & Request Flow` is implementation-complete on `feature/m8-reclaim-preview-request` but is not merged. M8 PR3 is next and has not started.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
@@ -440,7 +440,7 @@ The latest PR status is:
 
 `M7 PR2 — Role-Aware Home & Dashboard Browser` is complete and merged through PR #26. `M7 PR3 — Dashboard Editor, Grid & Visualizations` is complete and merged through PR #27. `M7 PR4 — Ask Data Redesign & Final UX Hardening` is complete and merged through PR #28.
 
-`Milestone 8 — Actions, Approvals & Audit` is active. `M8 PR1 — Action Persistence & Engine Contracts` is complete and merged through PR #29. `M8 PR2 — Reclaim License Preview & Request Flow` is active. M8 PR3 through PR7 have not started.
+`Milestone 8 — Actions, Approvals & Audit` is active. `M8 PR1 — Action Persistence & Engine Contracts` is complete and merged through PR #29. `M8 PR2 — Reclaim License Preview & Request Flow` is implementation-complete but is not merged. M8 PR3 is next and has not started; M8 PR4 through PR7 have not started.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -944,7 +944,7 @@ Milestone 8 is split into seven approved PRs:
 6. `M8 PR6 — Approvals, Audit & Notifications UX`
 7. `M8 PR7 — M8 E2E, Security Hardening & Completion`
 
-M8 PR1 is complete and merged through PR #29. M8 PR2 is active; M8 PR3 through PR7 have not started.
+M8 PR1 is complete and merged through PR #29. M8 PR2 is implementation-complete but is not merged. M8 PR3 is next and has not started; M8 PR4 through PR7 have not started.
 
 ### M8 PR1 — Action Persistence & Engine Contracts
 
@@ -1028,7 +1028,7 @@ Completion evidence:
 - Frontend TypeScript checks and production Vite build passed; only the existing large-chunk advisory was emitted.
 - `git diff --check` and the full scope/security review passed.
 
-No action endpoint, action suggestion, real preview, approval execution, notification delivery, audit writer, operational mutation, QueryRun result-row persistence, frontend behavior, or RLS-policy change exists in M8 PR1. The complete release-blocking 20-action workflow suite is not claimed complete. M8 PR2 — Reclaim License Preview & Request Flow is now active under the separate scope below.
+No action endpoint, action suggestion, real preview, approval execution, notification delivery, audit writer, operational mutation, QueryRun result-row persistence, frontend behavior, or RLS-policy change exists in M8 PR1. The complete release-blocking 20-action workflow suite is not claimed complete. M8 PR2 — Reclaim License Preview & Request Flow was activated under the separate scope below and is now implementation-complete but not merged.
 
 ### M8 PR2 — Reclaim License Preview & Request Flow
 
@@ -1038,7 +1038,7 @@ Branch:
 feature/m8-reclaim-preview-request
 ```
 
-Status: active.
+Status: implementation-complete on `feature/m8-reclaim-preview-request`; not merged.
 
 Goal: deliver the requester-side backend lifecycle for `reclaim_unused_license` through deterministic preview, persisted draft, submission, safe detail, pending-request cancellation, audit, approver notifications, and current-viewer PostgreSQL RLS without implementing approval decisions or operational execution.
 
@@ -1095,3 +1095,21 @@ Explicit exclusions:
 - notification delivery/list/read behavior or completion/decision notifications
 - requester or approver frontend, navigation, suggested-action UI, or audit screens
 - `disable_inactive_user`, M8 PR3 or later work, queues, schedulers, Redis, rollback actions, real LLM providers, or Supabase Auth
+
+Completion evidence:
+
+- The explicit registry now contains only the deterministic `ReclaimUnusedLicenseHandler`; `revalidate()` and `execute()` fail closed and no API can invoke them.
+- The four requester-side endpoints deliver preview, submit, safe detail, and pending-request cancellation with strict schemas, standardized errors, authentication/CSRF, effective permission checks, exact scope authorization, safe ownership/not-found behavior, frozen 30-minute preview expiration, and 24-hour pending expiration.
+- The handler re-queries current rows, classifies each examined record exactly once, treats null usage as eligible/high-confidence, uses strict older-than-60/90-day boundaries, separates Admin-override records, applies the over-20 rule at request level, and normalizes Decimal costs with half-up precision.
+- Persisted snapshots are explicitly constructed and structurally validated before lifecycle writes. They contain no QueryRun rows, generated/executed SQL, raw email, complete Directory User row, session data, permission catalog, arbitrary request JSON, or internal database failure detail.
+- Preview creation plus audit, submission plus one approval/eligible-approver notifications/audit, and cancellation plus approval cancellation/audit commit atomically. Duplicate submit produces no duplicate approval, notification, or audit side effect.
+- Real PostgreSQL tests prove independent `directory_users`, `license_assignments`, and `licenses` authorization, Manager/Analyst scope isolation, foreign-selector nondisclosure, Admin global cross-scope classification, `queryops_query_runtime`, read-only transactions, transaction-local RLS without context leakage, product/domain RLS separation, and no `app_user`/`directory_user` identity inference.
+- Focused reclaim handler suite: 19 passed. Focused actions API suite: 35 passed. Focused action PostgreSQL/RLS suite: 9 passed.
+- Final default backend suite: 660 passed and 86 PostgreSQL-only tests skipped. Final disposable-PostgreSQL backend suite: 746 passed with no skips or failures.
+- Alembic upgraded the disposable database to head and `alembic check` reported `No new upgrade operations detected`; PR2 adds no migration and the existing user database was not reset or reseeded.
+- Frontend regression: 188 passed across 28 files. TypeScript checks and the production Vite build passed; only the existing large-chunk advisory was emitted.
+- `git diff --check`, complete-diff inspection, and the required suspicious-pattern searches passed after fixes.
+- Review method: **Manual CodeRabbit-style self-review — not a CodeRabbit result.** CodeRabbit CLI 0.6.5 was installed, but `coderabbit auth status --agent` reported unauthenticated; automatic login then timed out and the supported fallback remained blocked waiting for a manually copied browser token. Therefore no CodeRabbit issue count is claimed.
+- The manual review found and fixed two Major issues: count-only persisted-snapshot validation that could permit a lifecycle write before serialization failed, and unexpected SQLAlchemy failures bypassing the standardized safe action error envelope. It also fixed one Minor issue: inconsistent per-record versus aggregate Decimal rounding. Regression tests cover all three. The repeated full review found no unresolved Critical, Major, or actionable in-scope Minor issue.
+
+Known limitations remain intentional: there is no approval list/decision, revalidation, execution, license mutation, domain audit write, notification delivery/read API, action frontend, or background worker. PR2 is not marked merged. M8 PR3 — Approval Execution, Audit & Notifications is next but has not started.
