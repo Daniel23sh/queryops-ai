@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import os
 import uuid
 from collections import Counter
@@ -1284,7 +1285,12 @@ def _required_disposable_database_url() -> str:
 
 
 def _database_identity(database_url) -> tuple[str | None, int, str | None]:
-    host = database_url.host.lower() if database_url.host else None
-    if host in {"127.0.0.1", "::1"}:
-        host = "localhost"
+    host = (database_url.host or "localhost").rstrip(".").lower()
+    if not host:
+        pytest.fail("Could not determine the destructive test database endpoint.")
+    try:
+        if ipaddress.ip_address(host).is_loopback:
+            host = "localhost"
+    except ValueError:
+        pass
     return host, database_url.port or 5432, database_url.database

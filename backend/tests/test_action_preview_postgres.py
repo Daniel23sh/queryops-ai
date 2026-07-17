@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import json
 import os
 import uuid
@@ -439,9 +440,14 @@ def _validated_disposable_url(database_url: str) -> str:
 
 
 def _database_identity(database_url) -> tuple[str | None, int, str | None]:
-    host = database_url.host.lower() if database_url.host else None
-    if host in {"127.0.0.1", "::1"}:
-        host = "localhost"
+    host = (database_url.host or "localhost").rstrip(".").lower()
+    if not host:
+        pytest.fail("Could not determine the destructive test database endpoint.")
+    try:
+        if ipaddress.ip_address(host).is_loopback:
+            host = "localhost"
+    except ValueError:
+        pass
     return host, database_url.port or 5432, database_url.database
 
 
@@ -494,7 +500,11 @@ def test_validated_disposable_url_rejects_postgres_db(monkeypatch) -> None:
         _validated_disposable_url(database_url)
 
 
-def test_validated_disposable_url_rejects_database_url_identity(monkeypatch) -> None:
+@pytest.mark.parametrize("application_host", ["127.0.0.1", "localhost."])
+def test_validated_disposable_url_rejects_database_url_identity(
+    monkeypatch,
+    application_host: str,
+) -> None:
     database_url = (
         "postgresql+psycopg://queryops:queryops@localhost:5432/queryops_test"
     )
@@ -502,7 +512,7 @@ def test_validated_disposable_url_rejects_database_url_identity(monkeypatch) -> 
     monkeypatch.delenv("POSTGRES_DB", raising=False)
     monkeypatch.setenv(
         "DATABASE_URL",
-        "postgresql+psycopg://other:secret@127.0.0.1:5432/queryops_test",
+        f"postgresql+psycopg://other:secret@{application_host}:5432/queryops_test",
     )
 
     with pytest.raises(pytest.fail.Exception, match="Refusing to use DATABASE_URL"):
