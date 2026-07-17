@@ -92,12 +92,22 @@ def test_rls_is_enabled_and_policies_exist_on_domain_tables(
         ).all()
 
     assert set(rls_rows) == PROTECTED_TABLES
-    assert {
-        (row.tablename, row.policyname) for row in policy_rows
-    } == {
+    expected_policies = {
         (table_name, f"qo_{table_name}_department_scope_select")
         for table_name in PROTECTED_TABLES
     }
+    expected_policies.update(
+        {
+            (
+                "license_assignments",
+                "qo_license_assignments_action_scope_update",
+            ),
+            ("it_audit_events", "qo_it_audit_events_action_scope_insert"),
+        }
+    )
+    assert {
+        (row.tablename, row.policyname) for row in policy_rows
+    } == expected_policies
     assert rls_reader_role == RLS_TEST_ROLE
 
 
