@@ -264,10 +264,9 @@ class ApprovalLifecycleService:
         initial_decision = _approval_decision(action, context)
         if not initial_decision.allowed:
             raise _not_found()
-        validate_reclaim_snapshot(action)
-        handler = self._registry.get(action.action_type)
-
         try:
+            validate_reclaim_snapshot(action)
+            handler = self._registry.get(action.action_type)
             set_rls_context(db, build_rls_context(context))
             set_action_runtime_role(db)
             revalidation = handler.revalidate(

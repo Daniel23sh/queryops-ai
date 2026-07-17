@@ -1,0 +1,892 @@
+from __future__ import annotations
+
+import os
+import uuid
+from collections.abc import Generator
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime, timedelta
+from pathlib import Path
+
+import pytest
+from alembic import command
+from alembic.config import Config
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, select, text, update
+from sqlalchemy.engine import Engine
+from sqlalchemy.exc import DBAPIError, OperationalError
+from sqlalchemy.orm import Session
+
+from app.api.routes import actions as actions_routes
+from app.api.routes import approvals as approvals_routes
+from app.db.base import Base
+from app.db.session import get_db
+from app.domains.it_operations.models import DirectoryUser, ItAuditEvent, LicenseAssignment
+from app.domains.it_operations.seed import seed_database
+from app.main import app
+from app.models.product import (
+    AccessScope,
+    ActionRequest,
+    AppAuditLog,
+    AppUser,
+    ApprovalRequest,
+    Notification,
+    QueryRun,
+    UserAccessScope,
+)
+
+
+NOW = datetime(2026, 6, 28, 12, 0, tzinfo=UTC)
+ACTION_ROLE = "queryops_action_runtime"
+
+
+def test_action_runtime_role_has_minimal_attributes_grants_and_policies(
+    postgres_engine: Engine,
+) -> None:
+    with postgres_engine.connect() as connection:
+        role = connection.execute(
+            text(
+                "SELECT rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, "
+                "rolinherit, rolbypassrls FROM pg_roles WHERE rolname = :role"
+            ),
+            {"role": ACTION_ROLE},
+        ).one()
+        assert role == (False, False, False, False, False, False)
+        grants = connection.execute(
+            text(
+                "SELECT table_name, privilege_type FROM information_schema.role_table_grants "
+                "WHERE grantee = :role ORDER BY table_name, privilege_type"
+            ),
+            {"role": ACTION_ROLE},
+        ).all()
+        assert ("directory_users", "SELECT") in grants
+        assert ("licenses", "SELECT") in grants
+        assert ("license_assignments", "SELECT") in grants
+        assert ("it_audit_events", "INSERT") in grants
+        assert not any(privilege == "DELETE" for _, privilege in grants)
+        columns = connection.execute(
+            text(
+                "SELECT column_name FROM information_schema.role_column_grants "
+                "WHERE grantee = :role AND table_name = 'license_assignments' "
+                "AND privilege_type = 'UPDATE' ORDER BY column_name"
+            ),
+            {"role": ACTION_ROLE},
+        ).scalars().all()
+        assert columns == ["reclaimed_at", "reclaimed_by_app_user_id", "status"]
+        policies = connection.execute(
+            text(
+                "SELECT tablename, cmd, qual, with_check FROM pg_policies "
+                "WHERE policyname IN ('qo_license_assignments_action_scope_update', "
+                "'qo_it_audit_events_action_scope_insert') ORDER BY tablename"
+            )
+        ).all()
+        assert len(policies) == 2
+        assert any(row.tablename == "license_assignments" and row.cmd == "UPDATE" and row.qual and row.with_check for row in policies)
+        assert any(row.tablename == "it_audit_events" and row.cmd == "INSERT" and row.with_check for row in policies)
+
+
+def test_action_runtime_role_cannot_mutate_unapproved_columns_or_tables(
+    postgres_engine: Engine,
+) -> None:
+    with Session(postgres_engine) as session:
+        assignment = session.scalar(select(LicenseAssignment).order_by(LicenseAssignment.id))
+        user = session.scalar(select(DirectoryUser).order_by(DirectoryUser.id))
+        assert assignment is not None and user is not None
+        assignment_id, user_id = assignment.id, user.id
+    for statement, parameters in (
+        (
+            "UPDATE license_assignments SET is_mandatory = true WHERE id = :id",
+            {"id": assignment_id},
+        ),
+        (
+            "UPDATE directory_users SET account_status = 'disabled' WHERE id = :id",
+            {"id": user_id},
+        ),
+        (
+            "DELETE FROM license_assignments WHERE id = :id",
+            {"id": assignment_id},
+        ),
+        (
+            "INSERT INTO license_assignments "
+            "(id, user_id, license_id, department_id, assigned_at, status, is_mandatory, is_exception) "
+            "SELECT gen_random_uuid(), user_id, license_id, department_id, now(), 'active', false, false "
+            "FROM license_assignments LIMIT 1",
+            {},
+        ),
+    ):
+        with postgres_engine.connect() as connection:
+            with pytest.raises(DBAPIError):
+                with connection.begin():
+                    connection.execute(text(f'SET LOCAL ROLE "{ACTION_ROLE}"'))
+                    connection.execute(text(statement), parameters)
+
+
+def test_action_runtime_audit_insert_is_scope_checked_and_context_does_not_leak(
+    postgres_engine: Engine,
+) -> None:
+    with Session(postgres_engine) as session:
+        finance = _scope(session, "finance")
+        sales = _scope(session, "sales")
+        actor = _user(session, "demo.analyst@queryops.local")
+        target = session.scalar(
+            select(DirectoryUser).where(DirectoryUser.department_id == finance.department_id)
+        )
+        assert target is not None
+
+    statement = text(
+        "INSERT INTO it_audit_events "
+        "(id, actor_app_user_id, target_user_id, department_id, event_type, "
+        "resource_type, resource_id, description, occurred_at, metadata) "
+        "VALUES (:id, :actor_id, :target_id, :department_id, 'license_removed', "
+        "'license_assignment', :resource_id, 'Safe test event.', :occurred_at, "
+        "CAST(:metadata AS json))"
+    )
+    with postgres_engine.connect() as connection:
+        with connection.begin():
+            _set_department_rls_context(connection, finance.department_id)
+            connection.execute(text(f'SET LOCAL ROLE "{ACTION_ROLE}"'))
+            connection.execute(
+                statement,
+                {
+                    "id": uuid.uuid4(),
+                    "actor_id": actor.id,
+                    "target_id": target.id,
+                    "department_id": finance.department_id,
+                    "resource_id": uuid.uuid4(),
+                    "occurred_at": NOW,
+                    "metadata": "{}",
+                },
+            )
+
+    with postgres_engine.connect() as connection:
+        with pytest.raises(DBAPIError):
+            with connection.begin():
+                _set_department_rls_context(connection, finance.department_id)
+                connection.execute(text(f'SET LOCAL ROLE "{ACTION_ROLE}"'))
+                connection.execute(
+                    statement,
+                    {
+                        "id": uuid.uuid4(),
+                        "actor_id": actor.id,
+                        "target_id": target.id,
+                        "department_id": sales.department_id,
+                        "resource_id": uuid.uuid4(),
+                        "occurred_at": NOW,
+                        "metadata": "{}",
+                    },
+                )
+
+    with postgres_engine.connect() as connection:
+        with connection.begin():
+            connection.execute(text(f'SET LOCAL ROLE "{ACTION_ROLE}"'))
+            assert connection.execute(text("SELECT count(*) FROM license_assignments")).scalar_one() == 0
+
+
+def test_query_runtime_remains_read_only_for_action_columns(
+    postgres_engine: Engine,
+) -> None:
+    with Session(postgres_engine) as session:
+        assignment = session.scalar(select(LicenseAssignment).order_by(LicenseAssignment.id))
+        assert assignment is not None
+        assignment_id = assignment.id
+    with postgres_engine.connect() as connection:
+        with pytest.raises(DBAPIError):
+            with connection.begin():
+                connection.execute(text('SET LOCAL ROLE "queryops_query_runtime"'))
+                connection.execute(
+                    text(
+                        "UPDATE license_assignments SET status = 'reclaimed' WHERE id = :id"
+                    ),
+                    {"id": assignment_id},
+                )
+
+
+def test_scoped_analyst_approve_executes_once_with_audit_and_notifications(
+    client: TestClient,
+    postgres_engine: Engine,
+) -> None:
+    _assign_finance_scope(postgres_engine)
+    assignment_id, approval_id, action_id = _manager_finance_request(client, postgres_engine)
+    analyst_csrf = _login(client, "demo.analyst@queryops.local")
+
+    response = client.post(
+        f"/api/v1/approvals/{approval_id}/approve",
+        headers={"X-CSRF-Token": analyst_csrf},
+        json={"decision_reason": "Preview and current state reviewed."},
+    )
+    assert response.status_code == 200, response.json()
+    data = response.json()["data"]
+    assert data["status"] == "completed"
+    assert data["executed_records_count"] == 1
+    assert data["self_approved"] is False
+
+    with Session(postgres_engine) as session:
+        assignment = session.get(LicenseAssignment, assignment_id)
+        action = session.get(ActionRequest, action_id)
+        approval = session.get(ApprovalRequest, approval_id)
+        analyst = _user(session, "demo.analyst@queryops.local")
+        assert assignment is not None and assignment.status == "reclaimed"
+        assert assignment.reclaimed_at is not None
+        assert assignment.reclaimed_by_app_user_id == analyst.id
+        assert action is not None and action.status == "completed"
+        assert approval is not None and approval.status == "approved"
+        app_events = session.scalars(
+            select(AppAuditLog.event_type).where(AppAuditLog.action_request_id == action_id)
+        ).all()
+        assert app_events.count("action_approved") == 1
+        assert app_events.count("action_executed") == 1
+        domain_events = session.scalars(
+            select(ItAuditEvent).where(
+                ItAuditEvent.resource_id == assignment_id,
+                ItAuditEvent.event_type == "license_removed",
+            )
+        ).all()
+        assert len(domain_events) == 1
+        assert domain_events[0].actor_app_user_id == analyst.id
+        assert domain_events[0].actor_user_id is None
+        notification_types = session.scalars(
+            select(Notification.notification_type).where(
+                Notification.related_resource_id == action_id
+            )
+        ).all()
+        assert "action_approved" in notification_types
+        assert notification_types.count("action_completed") >= 2
+
+    repeated = client.post(
+        f"/api/v1/approvals/{approval_id}/approve",
+        headers={"X-CSRF-Token": analyst_csrf},
+        json={"decision_reason": "Repeated click."},
+    )
+    assert repeated.status_code == 409
+    with Session(postgres_engine) as session:
+        assert session.scalar(
+            select(text("count(*)")).select_from(ItAuditEvent).where(
+                ItAuditEvent.resource_id == assignment_id,
+                ItAuditEvent.event_type == "license_removed",
+            )
+        ) == 1
+
+
+@pytest.mark.parametrize(
+    ("current_state", "expected_reason"),
+    [
+        ("recent_usage", "recent_usage"),
+        ("already_reclaimed", "already_reclaimed"),
+        ("suspended", "assignment_suspended"),
+        ("missing", "record_unavailable"),
+        ("invalid_cost", "invalid_current_state"),
+    ],
+)
+def test_revalidation_skips_ineligible_record_and_completes_noop(
+    client: TestClient,
+    postgres_engine: Engine,
+    current_state: str,
+    expected_reason: str,
+) -> None:
+    _assign_finance_scope(postgres_engine)
+    assignment_id, approval_id, action_id = _manager_finance_request(client, postgres_engine)
+    with Session(postgres_engine) as session:
+        assignment = session.get(LicenseAssignment, assignment_id)
+        assert assignment is not None
+        if current_state == "recent_usage":
+            assignment.last_used_at = NOW
+        elif current_state == "already_reclaimed":
+            assignment.status = "reclaimed"
+        elif current_state == "suspended":
+            assignment.status = "suspended"
+        elif current_state == "missing":
+            session.delete(assignment)
+        elif current_state == "invalid_cost":
+            session.execute(
+                text("UPDATE licenses SET monthly_cost_usd = 'NaN' WHERE id = :id"),
+                {"id": assignment.license_id},
+            )
+        else:  # pragma: no cover - parametrization is locked above.
+            raise AssertionError(f"Unexpected state: {current_state}")
+        session.commit()
+    analyst_csrf = _login(client, "demo.analyst@queryops.local")
+    response = client.post(
+        f"/api/v1/approvals/{approval_id}/approve",
+        headers={"X-CSRF-Token": analyst_csrf},
+        json={"decision_reason": "Current state reviewed."},
+    )
+    assert response.status_code == 200, response.json()
+    assert response.json()["data"]["executed_records_count"] == 0
+    assert response.json()["data"]["skipped_records_count"] == 1
+    with Session(postgres_engine) as session:
+        assignment = session.get(LicenseAssignment, assignment_id)
+        if current_state == "missing":
+            assert assignment is None
+        elif current_state == "already_reclaimed":
+            assert assignment is not None and assignment.status == "reclaimed"
+        elif current_state == "suspended":
+            assert assignment is not None and assignment.status == "suspended"
+        else:
+            assert assignment is not None and assignment.status == "active"
+        action = session.get(ActionRequest, action_id)
+        assert action is not None and action.status == "completed"
+        assert action.skipped_records_json["records"][-1]["reason_code"] == expected_reason
+
+
+@pytest.mark.parametrize(
+    "override_state",
+    ["mandatory_license", "exception_assignment", "service_account"],
+)
+def test_new_override_escalates_without_mutation_then_admin_can_execute(
+    client: TestClient,
+    postgres_engine: Engine,
+    override_state: str,
+) -> None:
+    _assign_finance_scope(postgres_engine)
+    assignment_id, approval_id, action_id = _manager_finance_request(client, postgres_engine)
+    with Session(postgres_engine) as session:
+        assignment = session.get(LicenseAssignment, assignment_id)
+        assert assignment is not None
+        if override_state == "mandatory_license":
+            assignment.is_mandatory = True
+        elif override_state == "exception_assignment":
+            assignment.is_exception = True
+        elif override_state == "service_account":
+            user = session.get(DirectoryUser, assignment.user_id)
+            assert user is not None
+            user.account_type = "service"
+        else:  # pragma: no cover - parametrization is locked above.
+            raise AssertionError(f"Unexpected override: {override_state}")
+        session.commit()
+    analyst_csrf = _login(client, "demo.analyst@queryops.local")
+    blocked = client.post(
+        f"/api/v1/approvals/{approval_id}/approve",
+        headers={"X-CSRF-Token": analyst_csrf},
+        json={"decision_reason": "Reviewed."},
+    )
+    assert blocked.status_code == 422, blocked.json()
+    assert blocked.json()["error"]["code"] == "POLICY_OVERRIDE_REQUIRED"
+    with Session(postgres_engine) as session:
+        assert session.get(LicenseAssignment, assignment_id).status == "active"
+        assert session.get(ActionRequest, action_id).status == "pending_approval"
+        assert session.get(ActionRequest, action_id).requires_admin is True
+        assert session.get(ApprovalRequest, approval_id).status == "pending"
+
+    admin_csrf = _login(client, "demo.admin@queryops.local")
+    approved = client.post(
+        f"/api/v1/approvals/{approval_id}/approve",
+        headers={"X-CSRF-Token": admin_csrf},
+        json={"decision_reason": "Admin override reviewed and approved."},
+    )
+    assert approved.status_code == 200, approved.json()
+    assert approved.json()["data"]["override_used"] is True
+    with Session(postgres_engine) as session:
+        assert session.get(LicenseAssignment, assignment_id).status == "reclaimed"
+
+
+@pytest.mark.parametrize("authorization_loss", ["scope", "permission"])
+def test_approver_authorization_is_rechecked_before_execution(
+    client: TestClient,
+    postgres_engine: Engine,
+    authorization_loss: str,
+) -> None:
+    _assign_finance_scope(postgres_engine)
+    assignment_id, approval_id, action_id = _manager_finance_request(
+        client, postgres_engine
+    )
+    with Session(postgres_engine) as session:
+        analyst = _user(session, "demo.analyst@queryops.local")
+        if authorization_loss == "scope":
+            finance = _scope(session, "finance")
+            assigned = session.get(UserAccessScope, (analyst.id, finance.id))
+            assert assigned is not None
+            session.delete(assigned)
+        else:
+            session.execute(
+                text(
+                    "DELETE FROM role_permissions WHERE role_id = :role_id AND "
+                    "permission_id = (SELECT id FROM permissions "
+                    "WHERE key = 'can_approve_scoped_action')"
+                ),
+                {"role_id": analyst.role_id},
+            )
+        session.commit()
+
+    csrf = _login(client, "demo.analyst@queryops.local")
+    response = client.post(
+        f"/api/v1/approvals/{approval_id}/approve",
+        headers={"X-CSRF-Token": csrf},
+        json={"decision_reason": "Authorization was changed before approval."},
+    )
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "APPROVAL_NOT_FOUND"
+    with Session(postgres_engine) as session:
+        assert session.get(LicenseAssignment, assignment_id).status == "active"
+        assert session.get(ActionRequest, action_id).status == "pending_approval"
+
+
+def test_execution_failure_rolls_back_success_and_persists_failure_separately(
+    client: TestClient,
+    postgres_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.domains.it_operations.actions.reclaim_unused_license import (
+        ReclaimUnusedLicenseHandler,
+    )
+
+    _assign_finance_scope(postgres_engine)
+    assignment_id, approval_id, action_id = _manager_finance_request(client, postgres_engine)
+    real_execute = ReclaimUnusedLicenseHandler.execute
+
+    def fail_after_mutation(*args, **kwargs):
+        real_execute(*args, **kwargs)
+        raise RuntimeError("forced-safe-test-failure")
+
+    monkeypatch.setattr(ReclaimUnusedLicenseHandler, "execute", fail_after_mutation)
+    analyst_csrf = _login(client, "demo.analyst@queryops.local")
+    response = client.post(
+        f"/api/v1/approvals/{approval_id}/approve",
+        headers={"X-CSRF-Token": analyst_csrf},
+        json={"decision_reason": "Reviewed before forced failure."},
+    )
+    assert response.status_code == 200, response.json()
+    assert response.json()["data"]["status"] == "failed"
+    assert "forced" not in str(response.json())
+    with Session(postgres_engine) as session:
+        assert session.get(LicenseAssignment, assignment_id).status == "active"
+        action = session.get(ActionRequest, action_id)
+        approval = session.get(ApprovalRequest, approval_id)
+        assert action.status == "failed"
+        assert action.failure_reason_user_safe == "The action could not be completed safely."
+        assert action.failure_reason_internal == "execution:RuntimeError"
+        assert approval.status == "approved"
+        assert session.scalar(
+            select(ItAuditEvent).where(
+                ItAuditEvent.resource_id == assignment_id,
+                ItAuditEvent.event_type == "license_removed",
+            )
+        ) is None
+        events = session.scalars(
+            select(AppAuditLog.event_type).where(AppAuditLog.action_request_id == action_id)
+        ).all()
+        assert "action_failed" in events
+        assert "action_executed" not in events
+        assert session.scalar(
+            select(Notification).where(
+                Notification.related_resource_id == action_id,
+                Notification.notification_type == "action_failed",
+            )
+        ) is not None
+
+
+def test_persisted_preview_tampering_fails_closed_without_domain_mutation(
+    client: TestClient,
+    postgres_engine: Engine,
+) -> None:
+    _assign_finance_scope(postgres_engine)
+    assignment_id, approval_id, action_id = _manager_finance_request(
+        client, postgres_engine
+    )
+    with Session(postgres_engine) as session:
+        action = session.get(ActionRequest, action_id)
+        assert action is not None
+        tampered = dict(action.preview_json)
+        tampered["summary"] = {
+            **tampered["summary"],
+            "affected_license_assignment_count": 999,
+        }
+        action.preview_json = tampered
+        session.commit()
+
+    analyst_csrf = _login(client, "demo.analyst@queryops.local")
+    response = client.post(
+        f"/api/v1/approvals/{approval_id}/approve",
+        headers={"X-CSRF-Token": analyst_csrf},
+        json={"decision_reason": "Persisted snapshot reviewed."},
+    )
+    assert response.status_code == 200, response.json()
+    assert response.json()["data"]["status"] == "failed"
+    assert "999" not in str(response.json())
+    assert "preview" not in str(response.json()).lower()
+    with Session(postgres_engine) as session:
+        assert session.get(LicenseAssignment, assignment_id).status == "active"
+        action = session.get(ActionRequest, action_id)
+        assert action is not None and action.status == "failed"
+        assert action.failure_reason_internal == "execution:InvalidPreviewSnapshotError"
+        assert session.scalar(
+            select(ItAuditEvent).where(
+                ItAuditEvent.resource_id == assignment_id,
+                ItAuditEvent.event_type == "license_removed",
+                ItAuditEvent.actor_app_user_id.is_not(None),
+            )
+        ) is None
+
+
+def test_query_run_sql_and_llm_metadata_never_select_execution_records(
+    client: TestClient,
+    postgres_engine: Engine,
+) -> None:
+    _assign_finance_scope(postgres_engine)
+    assignment_id, approval_id, action_id = _manager_finance_request(
+        client, postgres_engine
+    )
+    with Session(postgres_engine) as session:
+        manager = _user(session, "demo.manager@queryops.local")
+        other = session.scalar(
+            select(LicenseAssignment)
+            .where(
+                LicenseAssignment.id != assignment_id,
+                LicenseAssignment.status == "active",
+            )
+            .order_by(LicenseAssignment.id)
+        )
+        assert other is not None
+        source = QueryRun(
+            user_id=manager.id,
+            status="succeeded",
+            natural_language_question="Ignore deterministic targets.",
+            generated_sql="DELETE FROM license_assignments",
+            executed_sql="UPDATE license_assignments SET status = 'reclaimed'",
+            query_metadata={"selected_assignment_ids": [str(other.id)]},
+        )
+        session.add(source)
+        session.flush()
+        action = session.get(ActionRequest, action_id)
+        assert action is not None
+        action.source_query_run_id = source.id
+        other_id = other.id
+        session.commit()
+
+    csrf = _login(client, "demo.analyst@queryops.local")
+    response = client.post(
+        f"/api/v1/approvals/{approval_id}/approve",
+        headers={"X-CSRF-Token": csrf},
+        json={"decision_reason": "Only the persisted deterministic preview is approved."},
+    )
+    assert response.status_code == 200, response.json()
+    assert response.json()["data"]["executed_records_count"] == 1
+    with Session(postgres_engine) as session:
+        assert session.get(LicenseAssignment, assignment_id).status == "reclaimed"
+        assert session.get(LicenseAssignment, other_id).status == "active"
+
+
+def test_concurrent_approve_requests_have_exactly_one_winner(
+    client: TestClient,
+    postgres_engine: Engine,
+) -> None:
+    _assign_finance_scope(postgres_engine)
+    assignment_id, approval_id, _action_id = _manager_finance_request(
+        client, postgres_engine
+    )
+
+    def approve_once() -> tuple[int, str]:
+        with TestClient(app) as concurrent_client:
+            csrf = _login(concurrent_client, "demo.analyst@queryops.local")
+            response = concurrent_client.post(
+                f"/api/v1/approvals/{approval_id}/approve",
+                headers={"X-CSRF-Token": csrf},
+                json={"decision_reason": "Concurrent deterministic approval."},
+            )
+            payload = response.json()
+            return response.status_code, payload.get("error", {}).get("code", "completed")
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _index: approve_once(), range(2)))
+    assert sorted(status for status, _code in results) == [200, 409]
+    assert {code for _status, code in results} == {"completed", "ACTION_ALREADY_PROCESSED"}
+    with Session(postgres_engine) as session:
+        assert session.get(LicenseAssignment, assignment_id).status == "reclaimed"
+        assert len(
+            session.scalars(
+                select(ItAuditEvent).where(
+                    ItAuditEvent.resource_id == assignment_id,
+                    ItAuditEvent.event_type == "license_removed",
+                )
+            ).all()
+        ) == 1
+
+
+def test_concurrent_approve_and_reject_have_one_winner(
+    client: TestClient,
+    postgres_engine: Engine,
+) -> None:
+    _assign_finance_scope(postgres_engine)
+    _assignment_id, approval_id, action_id = _manager_finance_request(
+        client, postgres_engine
+    )
+
+    def decide(path: str) -> int:
+        with TestClient(app) as concurrent_client:
+            csrf = _login(concurrent_client, "demo.analyst@queryops.local")
+            return concurrent_client.post(
+                f"/api/v1/approvals/{approval_id}/{path}",
+                headers={"X-CSRF-Token": csrf},
+                json={"decision_reason": f"Concurrent {path} decision."},
+            ).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        statuses = sorted(executor.map(decide, ("approve", "reject")))
+    assert statuses == [200, 409]
+    with Session(postgres_engine) as session:
+        assert session.get(ActionRequest, action_id).status in {"completed", "rejected"}
+
+
+def test_concurrent_approve_and_cancel_have_one_winner(
+    client: TestClient,
+    postgres_engine: Engine,
+) -> None:
+    _assign_finance_scope(postgres_engine)
+    _assignment_id, approval_id, action_id = _manager_finance_request(
+        client, postgres_engine
+    )
+
+    def approve() -> int:
+        with TestClient(app) as concurrent_client:
+            csrf = _login(concurrent_client, "demo.analyst@queryops.local")
+            return concurrent_client.post(
+                f"/api/v1/approvals/{approval_id}/approve",
+                headers={"X-CSRF-Token": csrf},
+                json={"decision_reason": "Concurrent approval decision."},
+            ).status_code
+
+    def cancel() -> int:
+        with TestClient(app) as concurrent_client:
+            csrf = _login(concurrent_client, "demo.manager@queryops.local")
+            return concurrent_client.post(
+                f"/api/v1/actions/{action_id}/cancel",
+                headers={"X-CSRF-Token": csrf},
+                json={"reason": "Concurrent requester cancellation."},
+            ).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = (executor.submit(approve), executor.submit(cancel))
+        statuses = sorted(future.result() for future in futures)
+    assert statuses == [200, 409]
+    with Session(postgres_engine) as session:
+        assert session.get(ActionRequest, action_id).status in {"completed", "cancelled"}
+
+
+def test_admin_self_approval_is_explicitly_audited(
+    client: TestClient,
+    postgres_engine: Engine,
+) -> None:
+    assignment_id, approval_id, action_id = _admin_global_request(client, postgres_engine)
+    csrf = _login(client, "demo.admin@queryops.local")
+    response = client.post(
+        f"/api/v1/approvals/{approval_id}/approve",
+        headers={"X-CSRF-Token": csrf},
+        json={"decision_reason": "Admin self-approval reviewed under policy."},
+    )
+    assert response.status_code == 200, response.json()
+    assert response.json()["data"]["self_approved"] is True
+    with Session(postgres_engine) as session:
+        assert session.get(LicenseAssignment, assignment_id).status == "reclaimed"
+        events = session.scalars(
+            select(AppAuditLog).where(
+                AppAuditLog.action_request_id == action_id,
+                AppAuditLog.event_type.in_(("action_approved", "action_executed")),
+            )
+        ).all()
+        assert len(events) == 2
+        assert all(event.self_approved is True for event in events)
+
+
+def _manager_finance_request(
+    client: TestClient, engine: Engine
+) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
+    with Session(engine) as session:
+        scope = _scope(session, "finance")
+        assignment = session.scalar(
+            select(LicenseAssignment)
+            .join(DirectoryUser, DirectoryUser.id == LicenseAssignment.user_id)
+            .where(
+                LicenseAssignment.department_id == scope.department_id,
+                LicenseAssignment.status == "active",
+                LicenseAssignment.last_used_at < NOW - timedelta(days=60),
+                LicenseAssignment.is_mandatory.is_(False),
+                LicenseAssignment.is_exception.is_(False),
+                DirectoryUser.account_type == "human",
+            )
+            .order_by(LicenseAssignment.id)
+        )
+        assert assignment is not None
+        assignment_id = assignment.id
+    csrf = _login(client, "demo.manager@queryops.local")
+    preview = client.post(
+        "/api/v1/actions/preview",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "action_type": "reclaim_unused_license",
+            "scope_id": str(scope.id),
+            "department_id": str(scope.department_id),
+            "license_assignment_ids": [str(assignment_id)],
+            "reason": "Deterministic PostgreSQL execution preview.",
+        },
+    )
+    assert preview.status_code == 201, preview.json()
+    action_id = uuid.UUID(preview.json()["data"]["action_request_id"])
+    submitted = client.post(
+        "/api/v1/actions/request",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "action_request_id": str(action_id),
+            "reason": "Approve this deterministic reclaim action.",
+        },
+    )
+    assert submitted.status_code == 200, submitted.json()
+    with Session(engine) as session:
+        approval = session.scalar(
+            select(ApprovalRequest).where(ApprovalRequest.action_request_id == action_id)
+        )
+        assert approval is not None
+        return assignment_id, approval.id, action_id
+
+
+def _admin_global_request(
+    client: TestClient, engine: Engine
+) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
+    with Session(engine) as session:
+        scope = session.scalar(
+            select(AccessScope).where(
+                AccessScope.scope_type == "global", AccessScope.scope_key == "global"
+            )
+        )
+        assignment = session.scalar(
+            select(LicenseAssignment)
+            .join(DirectoryUser, DirectoryUser.id == LicenseAssignment.user_id)
+            .where(
+                LicenseAssignment.status == "active",
+                LicenseAssignment.last_used_at < NOW - timedelta(days=60),
+                LicenseAssignment.is_mandatory.is_(False),
+                LicenseAssignment.is_exception.is_(False),
+                DirectoryUser.account_type == "human",
+            )
+            .order_by(LicenseAssignment.id)
+        )
+        assert scope is not None and assignment is not None
+        assignment_id = assignment.id
+    csrf = _login(client, "demo.admin@queryops.local")
+    preview = client.post(
+        "/api/v1/actions/preview",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "action_type": "reclaim_unused_license",
+            "scope_id": str(scope.id),
+            "license_assignment_ids": [str(assignment_id)],
+            "reason": "Admin global deterministic preview.",
+        },
+    )
+    assert preview.status_code == 201, preview.json()
+    action_id = uuid.UUID(preview.json()["data"]["action_request_id"])
+    submitted = client.post(
+        "/api/v1/actions/request",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "action_request_id": str(action_id),
+            "reason": "Admin global deterministic request.",
+        },
+    )
+    assert submitted.status_code == 200, submitted.json()
+    with Session(engine) as session:
+        approval = session.scalar(
+            select(ApprovalRequest).where(ApprovalRequest.action_request_id == action_id)
+        )
+        assert approval is not None
+        return assignment_id, approval.id, action_id
+
+
+def _assign_finance_scope(engine: Engine) -> None:
+    with Session(engine) as session:
+        analyst = _user(session, "demo.analyst@queryops.local")
+        scope = _scope(session, "finance")
+        if session.get(UserAccessScope, (analyst.id, scope.id)) is None:
+            session.add(
+                UserAccessScope(
+                    user_id=analyst.id,
+                    scope_id=scope.id,
+                    access_level="manage",
+                    is_default=False,
+                )
+            )
+            session.commit()
+
+
+def _scope(session: Session, key: str) -> AccessScope:
+    scope = session.scalar(
+        select(AccessScope).where(
+            AccessScope.scope_type == "department", AccessScope.scope_key == key
+        )
+    )
+    assert scope is not None and scope.department_id is not None
+    return scope
+
+
+def _user(session: Session, email: str) -> AppUser:
+    user = session.scalar(select(AppUser).where(AppUser.email == email))
+    assert user is not None
+    return user
+
+
+def _login(client: TestClient, email: str) -> str:
+    response = client.post("/api/v1/demo/login", json={"email": email})
+    assert response.status_code == 200
+    return str(response.json()["data"]["csrf_token"])
+
+
+def _set_department_rls_context(connection, department_id: uuid.UUID) -> None:
+    settings = {
+        "app.current_scope_type": "department",
+        "app.current_scope_keys": str(department_id),
+        "app.has_global_scope": "false",
+    }
+    for name, value in settings.items():
+        connection.execute(
+            text("SELECT set_config(:name, :value, true)"),
+            {"name": name, "value": value},
+        )
+
+
+@pytest.fixture
+def client(postgres_engine: Engine) -> Generator[TestClient, None, None]:
+    def override_get_db() -> Generator[Session, None, None]:
+        with Session(postgres_engine) as session:
+            yield session
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[actions_routes.get_action_clock] = lambda: (lambda: NOW)
+    app.dependency_overrides[approvals_routes.get_approval_clock] = lambda: (lambda: NOW)
+    try:
+        with TestClient(app) as test_client:
+            yield test_client
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.fixture(autouse=True)
+def reset_seed(postgres_engine: Engine) -> None:
+    with Session(postgres_engine) as session:
+        seed_database(session, profile_name="small", reset=True)
+        session.commit()
+
+
+@pytest.fixture(scope="module")
+def postgres_engine() -> Generator[Engine, None, None]:
+    database_url = os.environ.get("POSTGRES_TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("Action execution PostgreSQL tests require a disposable database URL.")
+    engine = create_engine(database_url, pool_pre_ping=True)
+    try:
+        with engine.connect() as connection:
+            connection.execute(text("SELECT 1"))
+    except OperationalError as exc:
+        engine.dispose()
+        pytest.skip(f"PostgreSQL test database is unavailable: {exc}")
+    config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    previous_url = os.environ.get("DATABASE_URL")
+    os.environ["DATABASE_URL"] = database_url
+    try:
+        command.upgrade(config, "head")
+    finally:
+        if previous_url is None:
+            os.environ.pop("DATABASE_URL", None)
+        else:
+            os.environ["DATABASE_URL"] = previous_url
+    Base.metadata.create_all(engine)
+    try:
+        yield engine
+    finally:
+        engine.dispose()
