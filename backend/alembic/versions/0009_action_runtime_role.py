@@ -36,6 +36,14 @@ SCOPE_EXPRESSION = """
     )
 )
 """
+AUDIT_SCOPE_EXPRESSION = f"""
+(
+    {SCOPE_EXPRESSION}
+    AND actor_app_user_id IS NOT NULL
+    AND actor_app_user_id::text =
+        current_setting('app.current_user_id', true)
+)
+"""
 
 
 def upgrade() -> None:
@@ -48,9 +56,12 @@ def upgrade() -> None:
         f"""
         DO $$
         BEGIN
-            IF NOT EXISTS (
+            IF EXISTS (
                 SELECT 1 FROM pg_roles WHERE rolname = '{ACTION_RUNTIME_ROLE}'
             ) THEN
+                RAISE EXCEPTION
+                    'Role {ACTION_RUNTIME_ROLE} already exists; refusing to modify it';
+            ELSE
                 CREATE ROLE {runtime_role}
                     NOLOGIN
                     NOSUPERUSER
@@ -61,17 +72,6 @@ def upgrade() -> None:
             END IF;
         END
         $$;
-        """
-    )
-    op.execute(
-        f"""
-        ALTER ROLE {runtime_role}
-            NOLOGIN
-            NOSUPERUSER
-            NOCREATEDB
-            NOCREATEROLE
-            NOINHERIT
-            NOBYPASSRLS
         """
     )
     op.execute(f"GRANT USAGE ON SCHEMA public TO {runtime_role}")
@@ -105,7 +105,7 @@ def upgrade() -> None:
         ON it_audit_events
         FOR INSERT
         TO {runtime_role}
-        WITH CHECK {SCOPE_EXPRESSION}
+        WITH CHECK {AUDIT_SCOPE_EXPRESSION}
         """
     )
 

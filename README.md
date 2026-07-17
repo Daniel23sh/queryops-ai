@@ -665,17 +665,21 @@ DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .ven
 DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/pytest tests/test_rls_postgres.py -q
 ```
 
-Run the full backend suite with PostgreSQL-specific Query Engine tests enabled:
+Run the full backend suite with PostgreSQL-specific tests against a separate disposable database. Action tests refuse the configured application database and require an explicit destructive-test opt-in:
 
 ```bash
 docker compose up -d postgres
+docker compose exec postgres createdb -U queryops queryops_test
 cd backend
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic upgrade head
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic check
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/pytest tests/test_exports_postgres.py -q -rs
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/pytest tests/test_card_refresh_postgres.py -q -rs
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/pytest
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_test .venv/bin/alembic upgrade head
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_test .venv/bin/alembic check
+POSTGRES_TEST_DATABASE_DISPOSABLE=1 \
+POSTGRES_TEST_DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_test \
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_test \
+  .venv/bin/pytest
 ```
+
+Never point `POSTGRES_TEST_DATABASE_URL` at the normal `POSTGRES_DB`. The action PostgreSQL fixtures run Alembic and reset deterministic seed data.
 
 ### Frontend
 
@@ -714,6 +718,7 @@ POSTGRES_USER=queryops
 POSTGRES_PASSWORD=queryops
 POSTGRES_PORT=5432
 QUERYOPS_APP_DATABASE_ROLE=queryops
+POSTGRES_TEST_DATABASE_DISPOSABLE=0
 BACKEND_PORT=8000
 FRONTEND_PORT=5173
 DATABASE_URL=postgresql+psycopg://queryops:queryops@postgres:5432/queryops

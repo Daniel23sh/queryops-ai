@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import uuid
+from collections import Counter
 from collections.abc import Generator
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
@@ -13,14 +14,13 @@ from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select, text, update
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Engine, make_url
 from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.orm import Session
 
 from app.api.routes import actions as actions_routes
 from app.api.routes import approvals as approvals_routes
 from app.action_engine.approval import _expire_one, _persist_execution_failure
-from app.db.base import Base
 from app.db.session import get_db
 from app.domains.it_operations.models import DirectoryUser, ItAuditEvent, LicenseAssignment
 from app.domains.it_operations.seed import seed_database
@@ -72,11 +72,23 @@ def test_action_runtime_role_has_minimal_attributes_grants_and_policies(
             ),
             {"role": ACTION_ROLE},
         ).all()
-        assert ("directory_users", "SELECT") in grants
-        assert ("licenses", "SELECT") in grants
-        assert ("license_assignments", "SELECT") in grants
-        assert ("it_audit_events", "INSERT") in grants
-        assert not any(privilege == "DELETE" for _, privilege in grants)
+        assert grants == [
+            ("directory_users", "SELECT"),
+            ("it_audit_events", "INSERT"),
+            ("license_assignments", "SELECT"),
+            ("licenses", "SELECT"),
+        ]
+        schema_grants = connection.execute(
+            text(
+                "SELECT acl.privilege_type FROM pg_namespace namespace "
+                "CROSS JOIN LATERAL aclexplode(namespace.nspacl) acl "
+                "JOIN pg_roles grantee ON grantee.oid = acl.grantee "
+                "WHERE namespace.nspname = 'public' AND grantee.rolname = :role "
+                "ORDER BY acl.privilege_type"
+            ),
+            {"role": ACTION_ROLE},
+        ).scalars().all()
+        assert schema_grants == ["USAGE"]
         columns = connection.execute(
             text(
                 "SELECT column_name FROM information_schema.role_column_grants "
@@ -89,12 +101,27 @@ def test_action_runtime_role_has_minimal_attributes_grants_and_policies(
         policies = connection.execute(
             text(
                 "SELECT tablename, cmd, roles, qual, with_check FROM pg_policies "
-                "WHERE policyname IN ('qo_license_assignments_action_scope_update', "
-                "'qo_it_audit_events_action_scope_insert') ORDER BY tablename"
-            )
+                "WHERE CAST(:role AS name) = ANY(roles) "
+                "AND cmd IN ('INSERT', 'UPDATE', 'DELETE', 'ALL') "
+                "ORDER BY tablename, policyname"
+            ),
+            {"role": ACTION_ROLE},
         ).all()
         assert len(policies) == 2
         assert all(row.roles == [ACTION_ROLE] for row in policies)
+        assert {
+            (row.tablename, row.cmd)
+            for row in policies
+        } == {
+            ("license_assignments", "UPDATE"),
+            ("it_audit_events", "INSERT"),
+        }
+        assert all(
+            predicate is None
+            or predicate.strip().lower() not in {"true", "(true)"}
+            for row in policies
+            for predicate in (row.qual, row.with_check)
+        )
         assert any(
             row.tablename == "license_assignments"
             and row.cmd == "UPDATE"
@@ -153,6 +180,7 @@ def test_action_runtime_audit_insert_is_scope_checked_and_context_does_not_leak(
         finance = _scope(session, "finance")
         sales = _scope(session, "sales")
         actor = _user(session, "demo.analyst@queryops.local")
+        other_actor = _user(session, "demo.admin@queryops.local")
         target = session.scalar(
             select(DirectoryUser).where(DirectoryUser.department_id == finance.department_id)
         )
@@ -168,7 +196,11 @@ def test_action_runtime_audit_insert_is_scope_checked_and_context_does_not_leak(
     )
     with postgres_engine.connect() as connection:
         with connection.begin():
-            _set_department_rls_context(connection, finance.department_id)
+            _set_department_rls_context(
+                connection,
+                department_id=finance.department_id,
+                app_user_id=actor.id,
+            )
             connection.execute(text(f'SET LOCAL ROLE "{ACTION_ROLE}"'))
             connection.execute(
                 statement,
@@ -183,23 +215,31 @@ def test_action_runtime_audit_insert_is_scope_checked_and_context_does_not_leak(
                 },
             )
 
-    with postgres_engine.connect() as connection:
-        with pytest.raises(DBAPIError):
-            with connection.begin():
-                _set_department_rls_context(connection, finance.department_id)
-                connection.execute(text(f'SET LOCAL ROLE "{ACTION_ROLE}"'))
-                connection.execute(
-                    statement,
-                    {
-                        "id": uuid.uuid4(),
-                        "actor_id": actor.id,
-                        "target_id": target.id,
-                        "department_id": sales.department_id,
-                        "resource_id": uuid.uuid4(),
-                        "occurred_at": NOW,
-                        "metadata": "{}",
-                    },
-                )
+    for actor_id, department_id in (
+        (actor.id, sales.department_id),
+        (other_actor.id, finance.department_id),
+    ):
+        with postgres_engine.connect() as connection:
+            with pytest.raises(DBAPIError):
+                with connection.begin():
+                    _set_department_rls_context(
+                        connection,
+                        department_id=finance.department_id,
+                        app_user_id=actor.id,
+                    )
+                    connection.execute(text(f'SET LOCAL ROLE "{ACTION_ROLE}"'))
+                    connection.execute(
+                        statement,
+                        {
+                            "id": uuid.uuid4(),
+                            "actor_id": actor_id,
+                            "target_id": target.id,
+                            "department_id": department_id,
+                            "resource_id": uuid.uuid4(),
+                            "occurred_at": NOW,
+                            "metadata": "{}",
+                        },
+                    )
 
     with postgres_engine.connect() as connection:
         with connection.begin():
@@ -250,6 +290,8 @@ def test_scoped_analyst_approve_executes_once_with_audit_and_notifications(
         action = session.get(ActionRequest, action_id)
         approval = session.get(ApprovalRequest, approval_id)
         analyst = _user(session, "demo.analyst@queryops.local")
+        manager = _user(session, "demo.manager@queryops.local")
+        admin = _user(session, "demo.admin@queryops.local")
         assert assignment is not None and assignment.status == "reclaimed"
         assert assignment.reclaimed_at is not None
         assert assignment.reclaimed_by_app_user_id == analyst.id
@@ -269,13 +311,25 @@ def test_scoped_analyst_approve_executes_once_with_audit_and_notifications(
         assert len(domain_events) == 1
         assert domain_events[0].actor_app_user_id == analyst.id
         assert domain_events[0].actor_user_id is None
-        notification_types = session.scalars(
-            select(Notification.notification_type).where(
+        notification_pairs = session.execute(
+            select(
+                Notification.recipient_user_id,
+                Notification.notification_type,
+            ).where(
                 Notification.related_resource_id == action_id
             )
         ).all()
-        assert "action_approved" in notification_types
-        assert notification_types.count("action_completed") >= 2
+        expected_notifications = Counter(
+            {
+                (analyst.id, "action_pending_approval"): 1,
+                (admin.id, "action_pending_approval"): 1,
+                (manager.id, "action_approved"): 1,
+                (manager.id, "action_completed"): 1,
+                (analyst.id, "action_completed"): 1,
+            }
+        )
+        notification_multiset = Counter(notification_pairs)
+        assert notification_multiset == expected_notifications
 
     repeated = client.post(
         f"/api/v1/approvals/{approval_id}/approve",
@@ -290,6 +344,15 @@ def test_scoped_analyst_approve_executes_once_with_audit_and_notifications(
                 ItAuditEvent.event_type == "license_removed",
             )
         ) == 1
+        repeated_notification_multiset = Counter(
+            session.execute(
+                select(
+                    Notification.recipient_user_id,
+                    Notification.notification_type,
+                ).where(Notification.related_resource_id == action_id)
+            ).all()
+        )
+        assert repeated_notification_multiset == notification_multiset
 
 
 @pytest.mark.parametrize(
@@ -846,24 +909,74 @@ def test_concurrent_approve_and_reject_have_one_winner(
     postgres_engine: Engine,
 ) -> None:
     _assign_finance_scope(postgres_engine)
-    _assignment_id, approval_id, action_id = _manager_finance_request(
+    assignment_id, approval_id, action_id = _manager_finance_request(
         client, postgres_engine
     )
 
-    def decide(path: str) -> int:
+    def decide(path: str) -> tuple[str, int]:
         with TestClient(app) as concurrent_client:
             csrf = _login(concurrent_client, "demo.analyst@queryops.local")
-            return concurrent_client.post(
+            response = concurrent_client.post(
                 f"/api/v1/approvals/{approval_id}/{path}",
                 headers={"X-CSRF-Token": csrf},
                 json={"decision_reason": f"Concurrent {path} decision."},
-            ).status_code
+            )
+            return path, response.status_code
 
     with ThreadPoolExecutor(max_workers=2) as executor:
-        statuses = sorted(executor.map(decide, ("approve", "reject")))
-    assert statuses == [200, 409]
+        results = dict(executor.map(decide, ("approve", "reject")))
+    assert sorted(results.values()) == [200, 409]
+    winner = next(operation for operation, status in results.items() if status == 200)
     with Session(postgres_engine) as session:
-        assert session.get(ActionRequest, action_id).status in {"completed", "rejected"}
+        action = session.get(ActionRequest, action_id)
+        approval = session.get(ApprovalRequest, approval_id)
+        assignment = session.get(LicenseAssignment, assignment_id)
+        assert action is not None and approval is not None and assignment is not None
+        lifecycle_events = Counter(
+            session.scalars(
+                select(AppAuditLog.event_type).where(
+                    AppAuditLog.action_request_id == action_id,
+                    AppAuditLog.event_type.in_(
+                        ("action_approved", "action_executed", "action_rejected")
+                    ),
+                )
+            ).all()
+        )
+        decision_notifications = Counter(
+            session.scalars(
+                select(Notification.notification_type).where(
+                    Notification.related_resource_id == action_id,
+                    Notification.notification_type.in_(
+                        ("action_approved", "action_completed", "action_rejected")
+                    ),
+                )
+            ).all()
+        )
+        domain_events = session.scalars(
+            select(ItAuditEvent).where(
+                ItAuditEvent.resource_id == assignment_id,
+                ItAuditEvent.event_type == "license_removed",
+                ItAuditEvent.actor_app_user_id.is_not(None),
+            )
+        ).all()
+        if winner == "approve":
+            assert action.status == "completed"
+            assert approval.status == "approved"
+            assert assignment.status == "reclaimed"
+            assert lifecycle_events == Counter(
+                {"action_approved": 1, "action_executed": 1}
+            )
+            assert decision_notifications == Counter(
+                {"action_approved": 1, "action_completed": 2}
+            )
+            assert len(domain_events) == 1
+        else:
+            assert action.status == "rejected"
+            assert approval.status == "rejected"
+            assert assignment.status == "active"
+            assert lifecycle_events == Counter({"action_rejected": 1})
+            assert decision_notifications == Counter({"action_rejected": 1})
+            assert domain_events == []
 
 
 def test_concurrent_approve_and_cancel_have_one_winner(
@@ -1077,8 +1190,14 @@ def _approve_request(client: TestClient, approval_id: uuid.UUID):
     )
 
 
-def _set_department_rls_context(connection, department_id: uuid.UUID) -> None:
+def _set_department_rls_context(
+    connection,
+    *,
+    department_id: uuid.UUID,
+    app_user_id: uuid.UUID,
+) -> None:
     settings = {
+        "app.current_user_id": str(app_user_id),
         "app.current_scope_type": "department",
         "app.current_scope_keys": str(department_id),
         "app.has_global_scope": "false",
@@ -1115,9 +1234,7 @@ def reset_seed(postgres_engine: Engine) -> None:
 
 @pytest.fixture(scope="module")
 def postgres_engine() -> Generator[Engine, None, None]:
-    database_url = os.environ.get("POSTGRES_TEST_DATABASE_URL")
-    if not database_url:
-        pytest.skip("Action execution PostgreSQL tests require a disposable database URL.")
+    database_url = _required_disposable_database_url()
     engine = create_engine(database_url, pool_pre_ping=True)
     try:
         with engine.connect() as connection:
@@ -1135,8 +1252,27 @@ def postgres_engine() -> Generator[Engine, None, None]:
             os.environ.pop("DATABASE_URL", None)
         else:
             os.environ["DATABASE_URL"] = previous_url
-    Base.metadata.create_all(engine)
     try:
         yield engine
     finally:
         engine.dispose()
+
+
+def _required_disposable_database_url() -> str:
+    database_url = os.environ.get("POSTGRES_TEST_DATABASE_URL")
+    if not database_url:
+        pytest.skip("Action execution PostgreSQL tests require a disposable database URL.")
+    if os.environ.get("POSTGRES_TEST_DATABASE_DISPOSABLE") != "1":
+        pytest.fail(
+            "Set POSTGRES_TEST_DATABASE_DISPOSABLE=1 to permit destructive action tests."
+        )
+    parsed = make_url(database_url)
+    database_name = parsed.database
+    application_database_name = os.environ.get("POSTGRES_DB", "queryops")
+    if parsed.get_backend_name() != "postgresql" or not database_name:
+        pytest.fail("Action execution tests require an explicit PostgreSQL database.")
+    if database_name == application_database_name:
+        pytest.fail("Refusing to use the configured application database for destructive tests.")
+    if "test" not in database_name.lower() and "dev" not in database_name.lower():
+        pytest.fail("The destructive test database name must identify it as test or dev.")
+    return database_url

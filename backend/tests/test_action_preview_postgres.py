@@ -18,7 +18,6 @@ from sqlalchemy.orm import Session
 
 from app.api.routes import actions as actions_routes
 from app.core.rls import build_rls_context, set_rls_context
-from app.db.base import Base
 from app.db.session import get_db
 from app.domains.it_operations.models import (
     Department,
@@ -401,7 +400,6 @@ def postgres_engine() -> Generator[Engine, None, None]:
         pytest.skip(f"PostgreSQL test database is unavailable: {exc}")
 
     _run_alembic_upgrade(database_url)
-    Base.metadata.create_all(engine)
     with Session(engine) as session:
         seed_database(session, profile_name="small", reset=True)
         session.commit()
@@ -414,7 +412,7 @@ def postgres_engine() -> Generator[Engine, None, None]:
 def _postgres_test_database_url() -> str | None:
     explicit_url = os.environ.get("POSTGRES_TEST_DATABASE_URL")
     if explicit_url:
-        return explicit_url
+        return _validated_disposable_url(explicit_url)
     database_url = os.environ.get("DATABASE_URL")
     if not database_url:
         return None
@@ -424,8 +422,25 @@ def _postgres_test_database_url() -> str | None:
         and parsed_url.database is not None
         and parsed_url.database.startswith("queryops_m8_pr2_verify_")
     ):
-        return database_url
+        return _validated_disposable_url(database_url)
     return None
+
+
+def _validated_disposable_url(database_url: str) -> str:
+    if os.environ.get("POSTGRES_TEST_DATABASE_DISPOSABLE") != "1":
+        pytest.fail(
+            "Set POSTGRES_TEST_DATABASE_DISPOSABLE=1 to permit destructive action tests."
+        )
+    parsed_url = make_url(database_url)
+    database_name = parsed_url.database
+    application_database_name = os.environ.get("POSTGRES_DB", "queryops")
+    if parsed_url.get_backend_name() != "postgresql" or not database_name:
+        pytest.fail("Action preview tests require an explicit PostgreSQL database.")
+    if database_name == application_database_name:
+        pytest.fail("Refusing to use the configured application database for destructive tests.")
+    if "test" not in database_name.lower() and "dev" not in database_name.lower():
+        pytest.fail("The destructive test database name must identify it as test or dev.")
+    return database_url
 
 
 def _run_alembic_upgrade(database_url: str) -> None:
