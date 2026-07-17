@@ -66,15 +66,28 @@ Prefer boring, maintainable structure over clever abstractions.
 
 The milestone status is defined in `PROJECT_PLAN.md`.
 
-At the time this file was updated, the latest checkpoint-complete target is:
+At the time this file was updated, the active target is:
 
 ```txt
-M7 PR4 — Ask Data Redesign & Final UX Hardening
+M8 PR1 — Action Persistence & Engine Contracts
 ```
 
 Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, Milestone 3, Milestone 4, and Milestone 5 are complete under the previous scopes. Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete.
 
-Milestone 6 is complete and merged into `main`. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, `M6 PR3 — CSV Export Backend`, `M6 PR4 — Card Refresh & CSV Export UI`, and `M6 PR5 — Card Reordering & Layout Persistence` plus the final Admin restricted-export policy are complete. PR #24 merged PR5. Milestone 7 — Product UX & Dashboard Redesign is complete. M7 PR1 is complete and merged through PR #25. M7 PR2 is complete and merged through PR #26. M7 PR3 — Dashboard Editor, Grid & Visualizations is complete and merged through PR #27. M7 PR4 — Ask Data Redesign & Final UX Hardening is implementation-complete on `feature/m7-ask-data-responsive-polish`. Milestone 8 is next and has not started.
+Milestone 6 is complete and merged into `main`. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, `M6 PR3 — CSV Export Backend`, `M6 PR4 — Card Refresh & CSV Export UI`, and `M6 PR5 — Card Reordering & Layout Persistence` plus the final Admin restricted-export policy are complete. PR #24 merged PR5. Milestone 7 — Product UX & Dashboard Redesign is complete. M7 PR1 is complete and merged through PR #25. M7 PR2 is complete and merged through PR #26. M7 PR3 — Dashboard Editor, Grid & Visualizations is complete and merged through PR #27. M7 PR4 — Ask Data Redesign & Final UX Hardening is complete and merged through PR #28. Milestone 8 — Actions, Approvals & Audit is active only for M8 PR1 on `feature/m8-action-engine-foundation`; M8 PR2 through PR7 have not started.
+
+M8 PR1 may add only the action persistence foundation, SQLAlchemy relationships/enums, typed deterministic Action Engine contracts, explicit fail-closed registry, pure permission/scope policy decisions, the minimum stable access-action vocabulary, and focused foundation tests.
+
+M8 PR1 guardrails:
+
+* Do not add action API routes, frontend code, action suggestions, real previews, approval execution, domain mutations, audit writers, notification delivery, queues, Redis, background jobs, automatic rollback, or later M8 behavior.
+* Preserve existing approvals and QueryRun compatibility, notifications, role-request audits, CSV export audits, seed reset behavior, query/dashboard/export behavior, and PostgreSQL RLS policies.
+* Never infer identity between `app_users` and `directory_users`. Keep `it_audit_events.actor_user_id` for directory actors and use only the new nullable `actor_app_user_id` for future QueryOps actors.
+* Base policy on effective permission keys and assigned scopes, not only role names. Scoped action decisions require an exact scope key and fail closed when it is absent or unmatched.
+* Keep the registry explicit and typed. Do not dynamically import user-controlled modules or accept LLM-selected records, arbitrary callables, or mutation SQL.
+* Do not mutate operational rows or persist QueryRun result rows. `preview_json` is schema only in PR1.
+* Migration `0008_action_engine_foundation` must upgrade from and downgrade to 0007 non-destructively, preserve existing rows, avoid RLS changes, and avoid any database reset or reseed.
+* The complete 20-case action workflow suite is not a PR1 completion claim; it is completed across M8 PR3, PR4, and PR7.
 
 Milestone 2.5 introduced `access_scopes`, `user_access_scopes`, `data_resources`, `UserAccessContext`, `AccessDecision`, and `evaluate_access(subject, action, resource, context)`.
 
