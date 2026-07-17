@@ -99,6 +99,7 @@ def test_it_operations_schema_has_key_foreign_keys() -> None:
         "directory_users",
     }
     assert _foreign_key_targets(metadata.tables["it_audit_events"]) == {
+        "app_users",
         "departments",
         "directory_users",
     }

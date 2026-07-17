@@ -21,6 +21,7 @@ PRODUCT_TABLES = {
     "dashboard_cards",
     "saved_queries",
     "query_runs",
+    "action_requests",
     "approval_requests",
     "notifications",
     "evaluation_runs",
@@ -81,6 +82,7 @@ def test_product_schema_has_key_foreign_keys() -> None:
         "saved_queries",
     }
     assert _foreign_key_targets(metadata.tables["approval_requests"]) == {
+        "action_requests",
         "app_users",
         "query_runs",
     }
