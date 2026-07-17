@@ -1,0 +1,1 @@
+"""Strict API request schemas."""

@@ -56,3 +56,15 @@ class ActionRegistry:
     @property
     def registered_action_types(self) -> tuple[SupportedActionType, ...]:
         return tuple(sorted(self._handlers, key=lambda action_type: action_type.value))
+
+
+def build_default_action_registry() -> ActionRegistry:
+    """Build the explicit V1 registry without reflection or plugin discovery."""
+
+    from app.domains.it_operations.actions.reclaim_unused_license import (
+        ReclaimUnusedLicenseHandler,
+    )
+
+    registry = ActionRegistry()
+    registry.register(ReclaimUnusedLicenseHandler())
+    return registry

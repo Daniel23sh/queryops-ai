@@ -279,6 +279,17 @@ suggested
 
 The LLM may suggest an action type, but it does not choose final records, approve changes, or mutate the database. The backend calculates the preview, checks eligibility, enforces policy, executes the operation, and writes audit logs.
 
+M8 PR2 implements the requester-side backend flow for `reclaim_unused_license`:
+
+```txt
+POST /api/v1/actions/preview
+POST /api/v1/actions/request
+GET  /api/v1/actions/{action_request_id}
+POST /api/v1/actions/{action_request_id}/cancel
+```
+
+The backend deterministically reads current license data through `queryops_query_runtime`, a read-only transaction, transaction-local RLS context, and PostgreSQL RLS. Draft previews expire after 30 minutes; submitted pending approvals expire after 24 hours. Preview, request, and cancellation events are audited, and submit creates notification records for currently eligible approvers. PR2 does not add approval decisions, execution, license mutations, notification delivery/read APIs, or frontend action UI.
+
 ## Evaluation and Testing
 
 The project should include evaluation and testing for both regular software behavior and AI-assisted behavior.
@@ -329,7 +340,7 @@ Default local URLs:
 * Backend health endpoint: `http://localhost:8000/health`
 * PostgreSQL: `localhost:5432`
 
-PostgreSQL is included for the local development environment. Milestones 0 through 6 are complete and merged into `main`. Milestone 7 implementation is complete: PR1 through PR3 are merged, and PR4 is implementation-complete on `feature/m7-ask-data-responsive-polish`. The current application includes the governed Query Engine, command-first Ask Data, dashboards and saved cards, controlled CSV export, current-viewer card refresh, a responsive dashboard editor, safe visualizations, and final responsive/accessibility hardening. Milestone 8 features—including Actions, approvals, audit UI, and notifications—have not started.
+PostgreSQL is included for the local development environment. Milestones 0 through 7 are complete and merged into `main` through PR #28. M8 PR1 is merged through PR #29, and M8 PR2 is implementation-complete on `feature/m8-reclaim-preview-request`. The current application includes the governed Query Engine, command-first Ask Data, dashboards and saved cards, controlled CSV export, current-viewer card refresh, the responsive dashboard editor, and the requester-side reclaim-license backend flow. Approval decisions, action execution, operational mutations, notification delivery/read APIs, audit screens, and action frontend behavior remain deferred.
 
 Stop the stack:
 
