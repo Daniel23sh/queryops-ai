@@ -179,6 +179,10 @@ def test_allowed_requesters_create_persisted_preview_with_locked_priority(
         {"scope_id": "not-a-uuid"},
         {"reason": "x" * 1001},
         {"license_assignment_ids": [str(uuid.uuid4()) for _ in range(101)]},
+        {
+            "target_user_ids": [str(uuid.uuid4()) for _ in range(51)],
+            "license_assignment_ids": [str(uuid.uuid4()) for _ in range(50)],
+        },
     ],
 )
 def test_preview_rejects_unsupported_or_invalid_payloads(
@@ -337,6 +341,39 @@ def test_foreign_or_incompatible_query_run_fails_safely(
         assert "sql" not in json.dumps(response.json()).lower()
 
 
+def test_compatible_free_query_run_is_accepted_as_provenance_only(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    manager = _user(db_session, "demo.manager@queryops.local")
+    source = QueryRun(
+        user_id=manager.id,
+        status=RunStatus.SUCCEEDED.value,
+        generated_sql="SELECT free_query_secret",
+        executed_sql="SELECT free_query_execution_secret",
+        query_metadata={
+            "provider": "mock",
+            "template_id": "unused_licenses_by_department",
+            "referenced_tables": ["license_assignments", "licenses"],
+        },
+    )
+    db_session.add(source)
+    db_session.commit()
+    csrf_token = _login(client, manager.email)
+    payload = _preview_payload(db_session, "finance")
+    payload["source_query_run_id"] = str(source.id)
+
+    response = _preview(client, csrf_token, payload)
+
+    assert response.status_code == 201
+    action = db_session.get(ActionRequest, uuid.UUID(response.json()["data"]["id"]))
+    assert action is not None
+    assert action.source_query_run_id == source.id
+    serialized = json.dumps(response.json()) + json.dumps(action.preview_json)
+    assert "free_query_secret" not in serialized
+    assert "free_query_execution_secret" not in serialized
+
+
 def test_submit_requires_csrf_and_request_permission(
     client: TestClient,
     db_session: Session,
@@ -471,6 +508,28 @@ def test_expired_draft_transitions_without_creating_approval(
     assert _audit_count(db_session, action_id, "action_expired") == 1
 
 
+def test_submit_rejects_a_structurally_invalid_persisted_preview(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    manager_token = _login(client, "demo.manager@queryops.local")
+    action_id = _create_preview_id(client, db_session, manager_token, "finance")
+    action = db_session.get(ActionRequest, action_id)
+    assert action is not None
+    corrupted = dict(action.preview_json)
+    corrupted_summary = dict(corrupted["summary"])
+    corrupted_summary["affected_license_assignment_count"] += 1
+    corrupted["summary"] = corrupted_summary
+    action.preview_json = corrupted
+    db_session.commit()
+
+    response = _submit(client, manager_token, action_id)
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "ACTION_PREVIEW_UNAVAILABLE"
+    assert _approval_count(db_session, action_id) == 0
+
+
 def test_requester_and_eligible_approver_can_get_safe_detail(
     client: TestClient,
     db_session: Session,
@@ -542,13 +601,23 @@ def test_requester_can_cancel_pending_request_and_related_approval_atomically(
     assert _audit_count(db_session, action_id, "action_cancelled") == 1
 
 
-def test_non_requester_cannot_cancel_and_terminal_requests_fail_safely(
+def test_user_and_non_requester_cannot_cancel(
     client: TestClient,
     db_session: Session,
 ) -> None:
     manager_token = _login(client, "demo.manager@queryops.local")
     action_id = _create_preview_id(client, db_session, manager_token, "finance")
     assert _submit(client, manager_token, action_id).status_code == 200
+    user_token = _login(client, "demo.user@queryops.local")
+
+    user_response = client.post(
+        f"/api/v1/actions/{action_id}/cancel",
+        headers={"X-CSRF-Token": user_token},
+        json={"reason": "Attempted cancellation"},
+    )
+    assert user_response.status_code == 403
+    assert user_response.json()["error"]["code"] == "FORBIDDEN"
+
     analyst_token = _login(client, "demo.analyst@queryops.local")
 
     non_requester = client.post(
@@ -558,12 +627,31 @@ def test_non_requester_cannot_cancel_and_terminal_requests_fail_safely(
     )
     assert non_requester.status_code == 404
 
+
+@pytest.mark.parametrize(
+    ("action_status", "approval_status"),
+    [
+        (ActionRequestStatus.COMPLETED.value, ApprovalStatus.APPROVED.value),
+        (ActionRequestStatus.REJECTED.value, ApprovalStatus.REJECTED.value),
+        (ActionRequestStatus.EXPIRED.value, ApprovalStatus.EXPIRED.value),
+        (ActionRequestStatus.CANCELLED.value, ApprovalStatus.CANCELLED.value),
+    ],
+)
+def test_terminal_requests_cannot_be_cancelled(
+    client: TestClient,
+    db_session: Session,
+    action_status: str,
+    approval_status: str,
+) -> None:
+    manager_token = _login(client, "demo.manager@queryops.local")
+    action_id = _create_preview_id(client, db_session, manager_token, "finance")
+    assert _submit(client, manager_token, action_id).status_code == 200
+
     action = db_session.get(ActionRequest, action_id)
     assert action is not None
-    action.status = ActionRequestStatus.REJECTED.value
-    action.approval_request.status = ApprovalStatus.REJECTED.value
+    action.status = action_status
+    action.approval_request.status = approval_status
     db_session.commit()
-    manager_token = _login(client, "demo.manager@queryops.local")
     late = client.post(
         f"/api/v1/actions/{action_id}/cancel",
         headers={"X-CSRF-Token": manager_token},

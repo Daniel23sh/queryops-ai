@@ -218,6 +218,7 @@ class ActionLifecycleService:
                     now=now,
                     expiration_kind="pending_approval",
                 )
+            _require_valid_snapshot(action_request)
             approval = action_request.approval_request
             if approval is None:
                 raise _conflict("The action request is not in a valid state.")
@@ -239,14 +240,7 @@ class ActionLifecycleService:
                 now=now,
                 expiration_kind="draft_preview",
             )
-        try:
-            validate_reclaim_snapshot(action_request)
-        except InvalidPreviewSnapshotError as exc:
-            raise ActionServiceError(
-                code="ACTION_PREVIEW_UNAVAILABLE",
-                message="The stored action preview is unavailable.",
-                status_code=409,
-            ) from exc
+        _require_valid_snapshot(action_request)
         if action_request.record_count <= 0:
             raise ActionServiceError(
                 code="ACTION_NOT_ELIGIBLE",
@@ -433,6 +427,7 @@ class ActionLifecycleService:
                 message="The action request can no longer be cancelled.",
                 status_code=409,
             )
+        _require_valid_snapshot(action_request)
         approval = action_request.approval_request
         if approval is None or approval.status != ApprovalStatus.PENDING.value:
             raise _conflict("The action request is not in a valid state.")
@@ -565,13 +560,11 @@ def _validate_source_query_run(
     ):
         raise _invalid_source_query()
 
-    template_id = metadata.get("template_id")
-    if template_id is not None:
-        if (
-            template_id != RECLAIM_TEMPLATE_ID
-            or metadata.get("provider") != "domain_pack_template"
-        ):
-            raise _invalid_source_query()
+    if (
+        metadata.get("provider") == "domain_pack_template"
+        and metadata.get("template_id") != RECLAIM_TEMPLATE_ID
+    ):
+        raise _invalid_source_query()
     return query_run
 
 
@@ -820,6 +813,17 @@ def _policy_flag_codes(action_request: ActionRequest) -> list[str]:
             if isinstance(flag, dict) and isinstance(flag.get("code"), str)
         }
     )
+
+
+def _require_valid_snapshot(action_request: ActionRequest) -> None:
+    try:
+        validate_reclaim_snapshot(action_request)
+    except InvalidPreviewSnapshotError as exc:
+        raise ActionServiceError(
+            code="ACTION_PREVIEW_UNAVAILABLE",
+            message="The stored action preview is unavailable.",
+            status_code=409,
+        ) from exc
 
 
 def _default_priority(access_context: UserAccessContext) -> str:
