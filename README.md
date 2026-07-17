@@ -669,13 +669,13 @@ Run the full backend suite with PostgreSQL-specific tests against a separate dis
 
 ```bash
 docker compose up -d postgres
+docker compose exec postgres dropdb --if-exists -U queryops queryops_test
 docker compose exec postgres createdb -U queryops queryops_test
 cd backend
 DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_test .venv/bin/alembic upgrade head
 DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_test .venv/bin/alembic check
 POSTGRES_TEST_DATABASE_DISPOSABLE=1 \
 POSTGRES_TEST_DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_test \
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_test \
   .venv/bin/pytest
 ```
 

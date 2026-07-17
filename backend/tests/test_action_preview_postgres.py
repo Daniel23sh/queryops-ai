@@ -413,16 +413,6 @@ def _postgres_test_database_url() -> str | None:
     explicit_url = os.environ.get("POSTGRES_TEST_DATABASE_URL")
     if explicit_url:
         return _validated_disposable_url(explicit_url)
-    database_url = os.environ.get("DATABASE_URL")
-    if not database_url:
-        return None
-    parsed_url = make_url(database_url)
-    if (
-        parsed_url.drivername.startswith("postgresql")
-        and parsed_url.database is not None
-        and parsed_url.database.startswith("queryops_m8_pr2_verify_")
-    ):
-        return _validated_disposable_url(database_url)
     return None
 
 
@@ -436,11 +426,102 @@ def _validated_disposable_url(database_url: str) -> str:
     application_database_name = os.environ.get("POSTGRES_DB", "queryops")
     if parsed_url.get_backend_name() != "postgresql" or not database_name:
         pytest.fail("Action preview tests require an explicit PostgreSQL database.")
+    application_url = os.environ.get("DATABASE_URL")
+    if application_url and _database_identity(make_url(application_url)) == _database_identity(
+        parsed_url
+    ):
+        pytest.fail("Refusing to use DATABASE_URL for destructive action tests.")
     if database_name == application_database_name:
         pytest.fail("Refusing to use the configured application database for destructive tests.")
     if "test" not in database_name.lower() and "dev" not in database_name.lower():
         pytest.fail("The destructive test database name must identify it as test or dev.")
     return database_url
+
+
+def _database_identity(database_url) -> tuple[str | None, int, str | None]:
+    host = database_url.host.lower() if database_url.host else None
+    if host in {"127.0.0.1", "::1"}:
+        host = "localhost"
+    return host, database_url.port or 5432, database_url.database
+
+
+def test_validated_disposable_url_requires_explicit_opt_in(monkeypatch) -> None:
+    monkeypatch.delenv("POSTGRES_TEST_DATABASE_DISPOSABLE", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    with pytest.raises(pytest.fail.Exception, match="POSTGRES_TEST_DATABASE_DISPOSABLE=1"):
+        _validated_disposable_url(
+            "postgresql+psycopg://queryops:queryops@localhost:5432/queryops_test"
+        )
+
+
+@pytest.mark.parametrize(
+    ("database_url", "expected_message"),
+    [
+        ("sqlite:///queryops_test.db", "explicit PostgreSQL database"),
+        (
+            "postgresql+psycopg://queryops:queryops@localhost:5432",
+            "explicit PostgreSQL database",
+        ),
+        (
+            "postgresql+psycopg://queryops:queryops@localhost:5432/queryops_ci",
+            "must identify it as test or dev",
+        ),
+    ],
+)
+def test_validated_disposable_url_rejects_unsafe_targets(
+    monkeypatch,
+    database_url: str,
+    expected_message: str,
+) -> None:
+    monkeypatch.setenv("POSTGRES_TEST_DATABASE_DISPOSABLE", "1")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("POSTGRES_DB", raising=False)
+
+    with pytest.raises(pytest.fail.Exception, match=expected_message):
+        _validated_disposable_url(database_url)
+
+
+def test_validated_disposable_url_rejects_postgres_db(monkeypatch) -> None:
+    database_url = (
+        "postgresql+psycopg://queryops:queryops@localhost:5432/queryops_test"
+    )
+    monkeypatch.setenv("POSTGRES_TEST_DATABASE_DISPOSABLE", "1")
+    monkeypatch.setenv("POSTGRES_DB", "queryops_test")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    with pytest.raises(pytest.fail.Exception, match="configured application database"):
+        _validated_disposable_url(database_url)
+
+
+def test_validated_disposable_url_rejects_database_url_identity(monkeypatch) -> None:
+    database_url = (
+        "postgresql+psycopg://queryops:queryops@localhost:5432/queryops_test"
+    )
+    monkeypatch.setenv("POSTGRES_TEST_DATABASE_DISPOSABLE", "1")
+    monkeypatch.delenv("POSTGRES_DB", raising=False)
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+psycopg://other:secret@127.0.0.1:5432/queryops_test",
+    )
+
+    with pytest.raises(pytest.fail.Exception, match="Refusing to use DATABASE_URL"):
+        _validated_disposable_url(database_url)
+
+
+@pytest.mark.parametrize("database_name", ["queryops_test", "queryops_m8_dev"])
+def test_validated_disposable_url_accepts_test_and_dev_names(
+    monkeypatch,
+    database_name: str,
+) -> None:
+    database_url = (
+        "postgresql+psycopg://queryops:queryops@localhost:5432/" + database_name
+    )
+    monkeypatch.setenv("POSTGRES_TEST_DATABASE_DISPOSABLE", "1")
+    monkeypatch.delenv("POSTGRES_DB", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    assert _validated_disposable_url(database_url) == database_url
 
 
 def _run_alembic_upgrade(database_url: str) -> None:

@@ -1271,8 +1271,20 @@ def _required_disposable_database_url() -> str:
     application_database_name = os.environ.get("POSTGRES_DB", "queryops")
     if parsed.get_backend_name() != "postgresql" or not database_name:
         pytest.fail("Action execution tests require an explicit PostgreSQL database.")
+    application_url = os.environ.get("DATABASE_URL")
+    if application_url and _database_identity(make_url(application_url)) == _database_identity(
+        parsed
+    ):
+        pytest.fail("Refusing to use DATABASE_URL for destructive action tests.")
     if database_name == application_database_name:
         pytest.fail("Refusing to use the configured application database for destructive tests.")
     if "test" not in database_name.lower() and "dev" not in database_name.lower():
         pytest.fail("The destructive test database name must identify it as test or dev.")
     return database_url
+
+
+def _database_identity(database_url) -> tuple[str | None, int, str | None]:
+    host = database_url.host.lower() if database_url.host else None
+    if host in {"127.0.0.1", "::1"}:
+        host = "localhost"
+    return host, database_url.port or 5432, database_url.database
