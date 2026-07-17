@@ -8,6 +8,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, Request
 from pydantic import BaseModel, ValidationError
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.action_engine.registry import ActionRegistry, build_default_action_registry
@@ -59,6 +60,8 @@ def create_action_preview(
         )
     except ActionServiceError as exc:
         return _service_error_response(exc)
+    except SQLAlchemyError:
+        return _database_error_response(db)
     return success_response(data, status_code=201)
 
 
@@ -85,6 +88,8 @@ def submit_action_request(
         )
     except ActionServiceError as exc:
         return _service_error_response(exc)
+    except SQLAlchemyError:
+        return _database_error_response(db)
     return success_response(data)
 
 
@@ -104,6 +109,8 @@ def get_action_request_detail(
         )
     except ActionServiceError as exc:
         return _service_error_response(exc)
+    except SQLAlchemyError:
+        return _database_error_response(db)
     return success_response(data)
 
 
@@ -132,6 +139,8 @@ def cancel_action_request(
         )
     except ActionServiceError as exc:
         return _service_error_response(exc)
+    except SQLAlchemyError:
+        return _database_error_response(db)
     return success_response(data)
 
 
@@ -170,4 +179,16 @@ def _service_error_response(error: ActionServiceError):
         code=error.code,
         message=error.message,
         status_code=error.status_code,
+    )
+
+
+def _database_error_response(db: Session):
+    try:
+        db.rollback()
+    except SQLAlchemyError:
+        pass
+    return error_response(
+        code="INTERNAL_ERROR",
+        message="The action request could not be processed safely.",
+        status_code=500,
     )

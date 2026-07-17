@@ -9,6 +9,7 @@ from decimal import Decimal
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event, or_, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -273,6 +274,32 @@ def test_preview_creation_persists_safe_snapshot_and_audit(
     assert "@queryops.local" not in serialized
 
 
+def test_preview_database_failure_returns_standardized_safe_error(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    def failing_reader(*_args, **_kwargs):
+        raise SQLAlchemyError("sensitive database failure detail")
+
+    registry = ActionRegistry()
+    registry.register(ReclaimUnusedLicenseHandler(candidate_reader=failing_reader))
+    original_override = app.dependency_overrides[actions_routes.get_action_registry]
+    app.dependency_overrides[actions_routes.get_action_registry] = lambda: registry
+    try:
+        csrf_token = _login(client, "demo.manager@queryops.local")
+        response = _preview(
+            client,
+            csrf_token,
+            _preview_payload(db_session, "finance"),
+        )
+    finally:
+        app.dependency_overrides[actions_routes.get_action_registry] = original_override
+
+    assert response.status_code == 500
+    assert response.json()["error"]["code"] == "INTERNAL_ERROR"
+    assert "sensitive database failure detail" not in json.dumps(response.json())
+
+
 def test_source_query_run_is_owned_succeeded_compatible_provenance_only(
     client: TestClient,
     db_session: Session,
@@ -527,6 +554,34 @@ def test_submit_rejects_a_structurally_invalid_persisted_preview(
 
     assert response.status_code == 409
     assert response.json()["error"]["code"] == "ACTION_PREVIEW_UNAVAILABLE"
+    assert _approval_count(db_session, action_id) == 0
+
+
+def test_submit_does_not_transition_when_a_persisted_record_is_malformed(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    manager_token = _login(client, "demo.manager@queryops.local")
+    action_id = _create_preview_id(client, db_session, manager_token, "finance")
+    action = db_session.get(ActionRequest, action_id)
+    assert action is not None
+    corrupted = dict(action.preview_json)
+    eligible = list(corrupted["eligible_records"])
+    overrides = list(corrupted["override_required_records"])
+    target_records = eligible if eligible else overrides
+    assert target_records
+    target_records[0] = "malformed persisted record"
+    corrupted["eligible_records"] = eligible
+    corrupted["override_required_records"] = overrides
+    action.preview_json = corrupted
+    db_session.commit()
+
+    response = _submit(client, manager_token, action_id)
+
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "ACTION_PREVIEW_UNAVAILABLE"
+    db_session.refresh(action)
+    assert action.status == ActionRequestStatus.DRAFT_PREVIEW.value
     assert _approval_count(db_session, action_id) == 0
 
 

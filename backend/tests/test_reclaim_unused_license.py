@@ -24,6 +24,7 @@ from app.domains.it_operations.actions.reclaim_unused_license import (
     OVERRIDE_EXCEPTION,
     OVERRIDE_MANDATORY,
     OVERRIDE_SERVICE_ACCOUNT,
+    SKIP_INVALID,
     SKIP_RECENT,
     SKIP_RECLAIMED,
     SKIP_SUSPENDED,
@@ -220,6 +221,24 @@ def test_normal_human_assignment_is_eligible(
     assert preview.skipped_records == ()
 
 
+def test_negative_monthly_cost_is_structurally_invalid_and_not_exposed(
+    db_session: Session,
+    context: UserAccessContext,
+    finance_scope: AccessScope,
+) -> None:
+    preview = _preview(
+        db_session,
+        context,
+        finance_scope,
+        [_row(finance_scope, monthly_cost_usd=Decimal("-1.00"))],
+    )
+
+    assert preview.eligible_records == ()
+    assert preview.admin_override_records == ()
+    assert preview.skipped_records[0].reason_code == SKIP_INVALID
+    assert preview.skipped_records[0].monthly_cost_usd is None
+
+
 def test_estimated_savings_uses_decimal_without_float_rounding(
     db_session: Session,
     context: UserAccessContext,
@@ -242,6 +261,28 @@ def test_estimated_savings_uses_decimal_without_float_rounding(
 
     assert preview.estimated_monthly_savings == Decimal("0.30")
     assert preview.override_estimated_monthly_savings == Decimal("0.34")
+
+
+def test_candidate_costs_use_the_same_half_up_precision_as_the_aggregate(
+    db_session: Session,
+    context: UserAccessContext,
+    finance_scope: AccessScope,
+) -> None:
+    preview = _preview(
+        db_session,
+        context,
+        finance_scope,
+        [
+            _row(finance_scope, monthly_cost_usd=Decimal("0.335")),
+            _row(finance_scope, monthly_cost_usd=Decimal("0.335")),
+        ],
+    )
+
+    assert [record.monthly_cost_usd for record in preview.eligible_records] == [
+        Decimal("0.34"),
+        Decimal("0.34"),
+    ]
+    assert preview.estimated_monthly_savings == Decimal("0.68")
 
 
 def test_duplicated_requested_ids_do_not_duplicate_preview_rows(

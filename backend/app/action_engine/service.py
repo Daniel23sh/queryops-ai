@@ -164,6 +164,14 @@ class ActionLifecycleService:
             preview_expires_at=preview.timestamps.expires_at,
             expires_at=preview.timestamps.expires_at,
         )
+        try:
+            validate_reclaim_snapshot(action_request)
+        except InvalidPreviewSnapshotError as exc:
+            raise ActionServiceError(
+                code="ACTION_PREVIEW_FAILED",
+                message="The action preview could not be created safely.",
+                status_code=500,
+            ) from exc
         policy_flag_codes = [flag.code for flag in preview.policy_flags]
         audit_metadata: dict[str, Any] = {
             "policy_flag_codes": policy_flag_codes,

@@ -627,6 +627,8 @@ def _classify_records(
             or not row.license_product
             or not row.license_vendor
             or row.monthly_cost_usd is None
+            or not row.monthly_cost_usd.is_finite()
+            or row.monthly_cost_usd < 0
         )
 
         skip_code: str | None = None
@@ -661,6 +663,7 @@ def _classify_records(
         assert row.license_product is not None
         assert row.license_vendor is not None
         assert row.monthly_cost_usd is not None
+        monthly_cost_usd = _money(row.monthly_cost_usd)
 
         override_codes: list[str] = []
         if _is_cross_scope(row, target):
@@ -704,7 +707,7 @@ def _classify_records(
                     license_product=row.license_product,
                     license_vendor=row.license_vendor,
                     last_used_at=row.last_used_at,
-                    monthly_cost_usd=row.monthly_cost_usd,
+                    monthly_cost_usd=monthly_cost_usd,
                     high_confidence=high_confidence,
                     override_reason_codes=tuple(override_codes),
                 )
@@ -725,7 +728,7 @@ def _classify_records(
                 license_product=row.license_product,
                 license_vendor=row.license_vendor,
                 last_used_at=row.last_used_at,
-                monthly_cost_usd=row.monthly_cost_usd,
+                monthly_cost_usd=monthly_cost_usd,
                 reason_code=eligibility_code,
                 high_confidence=high_confidence,
             )
@@ -757,7 +760,7 @@ def _skipped_record(
         license_product=row.license_product,
         license_vendor=row.license_vendor,
         last_used_at=row.last_used_at,
-        monthly_cost_usd=row.monthly_cost_usd,
+        monthly_cost_usd=_safe_monthly_cost(row.monthly_cost_usd),
         high_confidence=high_confidence,
     )
 
@@ -829,6 +832,12 @@ def _sum_costs(records) -> Decimal:
 
 def _money(value: Decimal) -> Decimal:
     return value.quantize(MONEY_QUANTUM, rounding=ROUND_HALF_UP)
+
+
+def _safe_monthly_cost(value: Decimal | None) -> Decimal | None:
+    if value is None or not value.is_finite() or value < 0:
+        return None
+    return value
 
 
 def _as_utc(value: datetime) -> datetime:

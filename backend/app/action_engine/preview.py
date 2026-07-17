@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from typing import Any
 
 from app.domains.it_operations.actions.reclaim_unused_license import (
+    GLOBAL_SCOPE_REQUEST,
+    OVER_THRESHOLD,
+    OVERRIDE_CROSS_SCOPE,
     ReclaimActionPreview,
     ReclaimAdminOverrideRecord,
     ReclaimEligibleRecord,
@@ -169,6 +173,13 @@ def validate_reclaim_snapshot(action_request: ActionRequest) -> None:
     if not isinstance(flags, list):
         raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
 
+    for record in eligible:
+        _validate_record(record, require_actionable_fields=True, require_override=False)
+    for record in overrides:
+        _validate_record(record, require_actionable_fields=True, require_override=True)
+    for record in skipped_records:
+        _validate_record(record, require_actionable_fields=False, require_override=False)
+
     expected_counts = {
         "normal_eligible_count": len(eligible),
         "override_required_count": len(overrides),
@@ -182,7 +193,43 @@ def validate_reclaim_snapshot(action_request: ActionRequest) -> None:
         raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
     if action_request.skipped_count != expected_counts["skipped_count"]:
         raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
-    if (policy.get("requires_admin") is True) != action_request.requires_admin:
+    _validate_summary(summary, expected_counts)
+    if summary["high_confidence_count"] != sum(
+        record["high_confidence"] for record in (*eligible, *overrides)
+    ):
+        raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+    if Decimal(summary["estimated_monthly_savings"]) != sum(
+        (Decimal(record["monthly_cost_usd"]) for record in eligible),
+        Decimal("0"),
+    ):
+        raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+    if Decimal(summary["override_estimated_monthly_savings"]) != sum(
+        (Decimal(record["monthly_cost_usd"]) for record in overrides),
+        Decimal("0"),
+    ):
+        raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+    _validate_exclusions(skipped.get("exclusions_by_reason"))
+
+    override_codes = {
+        code
+        for record in overrides
+        for code in record["override_reason_codes"]
+    }
+    expected_flag_codes = set(override_codes)
+    if expected_counts["affected_license_assignment_count"] > 20:
+        expected_flag_codes.add(OVER_THRESHOLD)
+    if action_request.scope_type == "global":
+        expected_flag_codes.add(GLOBAL_SCOPE_REQUEST)
+    actual_flag_codes = _validate_policy_flags(flags)
+    if actual_flag_codes != expected_flag_codes:
+        raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+    if policy.get("requires_admin") is not bool(expected_flag_codes):
+        raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+    if action_request.requires_admin is not bool(expected_flag_codes):
+        raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+    if policy.get("requires_policy_override") is not bool(overrides):
+        raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+    if policy.get("crosses_scopes") is not (OVERRIDE_CROSS_SCOPE in override_codes):
         raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
 
 
@@ -399,12 +446,182 @@ def _safe_summary(summary: dict[str, Any]) -> dict[str, Any]:
     return safe
 
 
+def _validate_summary(
+    summary: dict[str, Any],
+    expected_counts: dict[str, int],
+) -> None:
+    count_keys = (
+        "affected_license_assignment_count",
+        "affected_user_count",
+        "normal_eligible_count",
+        "skipped_count",
+        "override_required_count",
+        "high_confidence_count",
+    )
+    for key in count_keys:
+        value = summary.get(key)
+        if not isinstance(value, int) or isinstance(value, bool) or value < 0:
+            raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+    affected_count = expected_counts["affected_license_assignment_count"]
+    if summary["affected_user_count"] > affected_count:
+        raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+    if summary["high_confidence_count"] > affected_count:
+        raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+    for key in (
+        "estimated_monthly_savings",
+        "override_estimated_monthly_savings",
+    ):
+        value = summary.get(key)
+        if not isinstance(value, str):
+            raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+        try:
+            amount = Decimal(value)
+        except (InvalidOperation, ValueError) as exc:
+            raise InvalidPreviewSnapshotError(
+                "The stored preview is unavailable."
+            ) from exc
+        if not amount.is_finite() or amount < 0:
+            raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+
+
+def _validate_record(
+    record: Any,
+    *,
+    require_actionable_fields: bool,
+    require_override: bool,
+) -> None:
+    if not isinstance(record, dict):
+        raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+    record_type = record.get("record_type")
+    if record_type not in {"directory_user", "license_assignment"}:
+        raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+    if require_actionable_fields and record_type != "license_assignment":
+        raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+    record_id = _validated_uuid_string(record.get("record_id"))
+    assignment_id = record.get("license_assignment_id")
+    if record_type == "license_assignment":
+        if _validated_uuid_string(assignment_id) != record_id:
+            raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+    elif assignment_id is not None:
+        raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+
+    scope = record.get("scope")
+    if not isinstance(scope, dict):
+        raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+    if not isinstance(scope.get("type"), str) or not scope["type"] or not isinstance(
+        scope.get("key"), str
+    ) or not scope["key"]:
+        raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+    scope_id = scope.get("id")
+    if scope_id is not None:
+        _validated_uuid_string(scope_id)
+
+    for key in (
+        "user_display_label",
+        "license_product",
+        "license_vendor",
+        "last_used_at",
+        "monthly_cost_usd",
+    ):
+        if record.get(key) is not None and not isinstance(record.get(key), str):
+            raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+    if (
+        not isinstance(record.get("reason_code"), str)
+        or not record["reason_code"]
+        or not isinstance(record.get("reason"), str)
+        or not record["reason"]
+    ):
+        raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+    if not isinstance(record.get("high_confidence"), bool):
+        raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+    if require_actionable_fields and (
+        scope_id is None
+        or not all(
+            isinstance(record.get(key), str) and bool(record[key])
+            for key in (
+                "user_display_label",
+                "license_product",
+                "license_vendor",
+                "monthly_cost_usd",
+            )
+        )
+    ):
+        raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+    if record.get("monthly_cost_usd") is not None:
+        try:
+            amount = Decimal(record["monthly_cost_usd"])
+        except (InvalidOperation, ValueError) as exc:
+            raise InvalidPreviewSnapshotError(
+                "The stored preview is unavailable."
+            ) from exc
+        if not amount.is_finite() or amount < 0:
+            raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+
+    override_codes = record.get("override_reason_codes")
+    if require_override:
+        if (
+            not isinstance(override_codes, list)
+            or not override_codes
+            or not all(isinstance(code, str) and code for code in override_codes)
+        ):
+            raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+        if record["reason_code"] != override_codes[0]:
+            raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+    elif override_codes is not None:
+        raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+
+
+def _validate_exclusions(value: Any) -> None:
+    if not isinstance(value, list):
+        raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+    for item in value:
+        if not isinstance(item, dict) or not isinstance(item.get("reason_code"), str):
+            raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+        count = item.get("count")
+        if not isinstance(count, int) or isinstance(count, bool) or count < 0:
+            raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+
+
+def _validate_policy_flags(flags: list[Any]) -> set[str]:
+    codes: list[str] = []
+    for flag in flags:
+        if not isinstance(flag, dict):
+            raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+        code = flag.get("code")
+        if (
+            not isinstance(code, str)
+            or not code
+            or not isinstance(flag.get("reason"), str)
+            or flag.get("requires_admin") is not True
+            or flag.get("admin_overridable") is not True
+        ):
+            raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+        codes.append(code)
+    if len(codes) != len(set(codes)):
+        raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+    return set(codes)
+
+
+def _validated_uuid_string(value: Any) -> str:
+    if not isinstance(value, str):
+        raise InvalidPreviewSnapshotError("The stored preview is unavailable.")
+    try:
+        return str(uuid.UUID(value))
+    except (TypeError, ValueError, AttributeError) as exc:
+        raise InvalidPreviewSnapshotError(
+            "The stored preview is unavailable."
+        ) from exc
+
+
 def _optional_string(value: Any) -> str | None:
     return value if isinstance(value, str) else None
 
 
 def _money_string(value: Decimal) -> str:
-    return format(value, ".2f")
+    return format(
+        value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+        ".2f",
+    )
 
 
 def _timestamp(value: datetime) -> str:
