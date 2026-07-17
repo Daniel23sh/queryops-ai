@@ -30,6 +30,8 @@ class ActionTargetInput:
     targets: tuple[ActionTargetReference, ...]
     reason: str
     source_query_run_id: uuid.UUID | None = None
+    scope_id: uuid.UUID | None = None
+    department_id: uuid.UUID | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -89,6 +91,22 @@ class AccessContextSnapshot:
     permissions: tuple[str, ...]
     assigned_scopes: tuple[str, ...]
     has_global_scope: bool
+    assigned_scope_ids: tuple[uuid.UUID, ...] = ()
+
+
+@dataclass(frozen=True, kw_only=True)
+class ResourceAccessDecisionSnapshot:
+    table_name: str
+    allowed: bool
+    required_permission: str | None
+    matched_scopes: tuple[str, ...]
+
+
+@dataclass(frozen=True, kw_only=True)
+class SafeResourceDescriptor:
+    table_name: str
+    display_name: str
+    sensitivity_level: str
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -97,6 +115,10 @@ class AccessDecisionSnapshot:
     reason: str
     required_permission: str | None
     matched_scopes: tuple[str, ...]
+    resource_decisions: tuple[ResourceAccessDecisionSnapshot, ...] = ()
+    runtime_role: str | None = None
+    transaction_read_only: bool | None = None
+    row_security_enabled: bool | None = None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -111,6 +133,9 @@ class ActionPreview:
     timestamps: PreviewTimestamps
     access_context_snapshot: AccessContextSnapshot
     access_decision_snapshot: AccessDecisionSnapshot
+    requester_scope_ids: tuple[uuid.UUID, ...] = ()
+    target_scope_ids: tuple[uuid.UUID, ...] = ()
+    resource_descriptors: tuple[SafeResourceDescriptor, ...] = ()
 
 
 @dataclass(frozen=True, kw_only=True)
