@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.responses import ApiError, api_error_handler
+from app.api.routes.actions import router as actions_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.dashboards import router as dashboards_router
 from app.api.routes.exports import router as exports_router
@@ -21,6 +22,7 @@ app.add_middleware(
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "X-CSRF-Token"],
 )
+app.include_router(actions_router)
 app.include_router(auth_router)
 app.include_router(dashboards_router)
 app.include_router(exports_router)
