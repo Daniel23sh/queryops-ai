@@ -38,6 +38,36 @@ class RequestStatus(StrEnum):
     CANCELLED = "cancelled"
 
 
+class SupportedActionType(StrEnum):
+    RECLAIM_UNUSED_LICENSE = "reclaim_unused_license"
+    DISABLE_INACTIVE_USER = "disable_inactive_user"
+
+
+class ActionRequestStatus(StrEnum):
+    DRAFT_PREVIEW = "draft_preview"
+    PENDING_APPROVAL = "pending_approval"
+    APPROVED_EXECUTING = "approved_executing"
+    COMPLETED = "completed"
+    REJECTED = "rejected"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+    EXPIRED = "expired"
+
+
+class ActionPriority(StrEnum):
+    NORMAL = "normal"
+    HIGH = "high"
+    URGENT = "urgent"
+
+
+class ApprovalStatus(StrEnum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    CANCELLED = "cancelled"
+    EXPIRED = "expired"
+
+
 class RunStatus(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"
@@ -166,6 +196,12 @@ class AccessScope(Base):
     role_upgrade_requests: Mapped[list[RoleUpgradeRequest]] = relationship(
         back_populates="requested_scope",
     )
+    action_requests: Mapped[list[ActionRequest]] = relationship(
+        back_populates="scope",
+    )
+    action_audit_logs: Mapped[list[AppAuditLog]] = relationship(
+        back_populates="scope",
+    )
 
 
 class AppUser(Base):
@@ -234,6 +270,10 @@ class AppUser(Base):
     dashboards: Mapped[list[Dashboard]] = relationship(back_populates="owner")
     saved_queries: Mapped[list[SavedQuery]] = relationship(back_populates="owner")
     query_runs: Mapped[list[QueryRun]] = relationship(back_populates="user")
+    requested_actions: Mapped[list[ActionRequest]] = relationship(
+        back_populates="requester",
+        foreign_keys="ActionRequest.requested_by_app_user_id",
+    )
     requested_approvals: Mapped[list[ApprovalRequest]] = relationship(
         back_populates="requester",
         foreign_keys="ApprovalRequest.requester_user_id",
@@ -254,6 +294,11 @@ class AppUser(Base):
         back_populates="requested_by_user",
     )
     audit_logs: Mapped[list[AppAuditLog]] = relationship(back_populates="actor")
+    operational_audit_events: Mapped[list[Any]] = relationship(
+        "ItAuditEvent",
+        back_populates="actor_app_user",
+        foreign_keys="ItAuditEvent.actor_app_user_id",
+    )
 
 
 class RolePermission(Base):
@@ -622,8 +667,145 @@ class QueryRun(Base):
     approval_requests: Mapped[list[ApprovalRequest]] = relationship(
         back_populates="query_run",
     )
+    source_action_requests: Mapped[list[ActionRequest]] = relationship(
+        back_populates="source_query_run",
+    )
     evaluation_results: Mapped[list[EvaluationResult]] = relationship(
         back_populates="query_run",
+    )
+
+
+class ActionRequest(Base):
+    __tablename__ = "action_requests"
+    __table_args__ = (
+        CheckConstraint(
+            "action_type in ('reclaim_unused_license', 'disable_inactive_user')",
+            name="ck_action_requests_action_type",
+        ),
+        CheckConstraint(
+            "status in ('draft_preview', 'pending_approval', 'approved_executing', "
+            "'completed', 'rejected', 'failed', 'cancelled', 'expired')",
+            name="ck_action_requests_status",
+        ),
+        CheckConstraint(
+            "priority in ('normal', 'high', 'urgent')",
+            name="ck_action_requests_priority",
+        ),
+        CheckConstraint(
+            "record_count >= 0",
+            name="ck_action_requests_record_count",
+        ),
+        CheckConstraint(
+            "skipped_count >= 0",
+            name="ck_action_requests_skipped_count",
+        ),
+        UniqueConstraint(
+            "idempotency_key",
+            name="uq_action_requests_idempotency_key",
+        ),
+        Index(
+            "ix_action_requests_requested_by_app_user_id",
+            "requested_by_app_user_id",
+        ),
+        Index("ix_action_requests_status", "status"),
+        Index("ix_action_requests_scope_type_scope_key", "scope_type", "scope_key"),
+        Index("ix_action_requests_expires_at", "expires_at"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    action_type: Mapped[str] = mapped_column(String(64), nullable=False)
+    requested_by_app_user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app_users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    source_query_run_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("query_runs.id", ondelete="SET NULL"),
+    )
+    department_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("departments.id", ondelete="SET NULL"),
+    )
+    scope_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("access_scopes.id", ondelete="SET NULL"),
+    )
+    scope_type: Mapped[str | None] = mapped_column(String(64))
+    scope_key: Mapped[str | None] = mapped_column(String(128))
+    access_context_snapshot_json: Mapped[dict[str, Any]] = mapped_column(
+        JSON,
+        nullable=False,
+    )
+    access_decision_snapshot_json: Mapped[dict[str, Any]] = mapped_column(
+        JSON,
+        nullable=False,
+    )
+    preview_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    policy_flags_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    skipped_records_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    status: Mapped[str] = mapped_column(
+        String(32),
+        nullable=False,
+        default=ActionRequestStatus.DRAFT_PREVIEW.value,
+        server_default=ActionRequestStatus.DRAFT_PREVIEW.value,
+    )
+    priority: Mapped[str] = mapped_column(
+        String(16),
+        nullable=False,
+        default=ActionPriority.NORMAL.value,
+        server_default=ActionPriority.NORMAL.value,
+    )
+    reason: Mapped[str | None] = mapped_column(Text)
+    requires_admin: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+    )
+    record_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+    skipped_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0",
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    failure_reason_user_safe: Mapped[str | None] = mapped_column(Text)
+    failure_reason_internal: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = created_at_column()
+    updated_at: Mapped[datetime] = updated_at_column()
+    preview_generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    preview_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    submitted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    executed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    requester: Mapped[AppUser] = relationship(
+        back_populates="requested_actions",
+        foreign_keys=[requested_by_app_user_id],
+    )
+    source_query_run: Mapped[QueryRun | None] = relationship(
+        back_populates="source_action_requests",
+    )
+    scope: Mapped[AccessScope | None] = relationship(back_populates="action_requests")
+    department: Mapped[Any | None] = relationship(
+        "Department",
+        back_populates="action_requests",
+    )
+    approval_request: Mapped[ApprovalRequest | None] = relationship(
+        back_populates="action_request",
+        uselist=False,
+    )
+    audit_logs: Mapped[list[AppAuditLog]] = relationship(
+        back_populates="action_request",
     )
 
 
@@ -631,8 +813,12 @@ class ApprovalRequest(Base):
     __tablename__ = "approval_requests"
     __table_args__ = (
         CheckConstraint(
-            "status in ('pending', 'approved', 'rejected', 'cancelled')",
+            "status in ('pending', 'approved', 'rejected', 'cancelled', 'expired')",
             name="ck_approval_requests_status",
+        ),
+        UniqueConstraint(
+            "action_request_id",
+            name="uq_approval_requests_action_request_id",
         ),
         Index("ix_approval_requests_requester_user_id", "requester_user_id"),
         Index("ix_approval_requests_decided_by_user_id", "decided_by_user_id"),
@@ -653,14 +839,18 @@ class ApprovalRequest(Base):
         Uuid(as_uuid=True),
         ForeignKey("query_runs.id", ondelete="SET NULL"),
     )
+    action_request_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("action_requests.id", ondelete="CASCADE"),
+    )
     request_type: Mapped[str] = mapped_column(String(64), nullable=False)
     title: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(
         String(32),
         nullable=False,
-        default=RequestStatus.PENDING.value,
-        server_default=RequestStatus.PENDING.value,
+        default=ApprovalStatus.PENDING.value,
+        server_default=ApprovalStatus.PENDING.value,
     )
     target_type: Mapped[str | None] = mapped_column(String(64))
     target_id: Mapped[uuid.UUID | None] = mapped_column(Uuid(as_uuid=True))
@@ -668,6 +858,8 @@ class ApprovalRequest(Base):
     policy_snapshot: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     decision_reason: Mapped[str | None] = mapped_column(Text)
     decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    required_approver_role: Mapped[str | None] = mapped_column(String(64))
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = created_at_column()
     updated_at: Mapped[datetime] = updated_at_column()
 
@@ -681,6 +873,12 @@ class ApprovalRequest(Base):
     )
     query_run: Mapped[QueryRun | None] = relationship(
         back_populates="approval_requests",
+    )
+    action_request: Mapped[ActionRequest | None] = relationship(
+        back_populates="approval_request",
+    )
+    audit_logs: Mapped[list[AppAuditLog]] = relationship(
+        back_populates="approval_request",
     )
 
 
@@ -812,6 +1010,11 @@ class AppAuditLog(Base):
         Index("ix_app_audit_logs_actor_user_id", "actor_user_id"),
         Index("ix_app_audit_logs_event_type", "event_type"),
         Index("ix_app_audit_logs_entity_type_entity_id", "entity_type", "entity_id"),
+        Index("ix_app_audit_logs_action_request_id", "action_request_id"),
+        Index("ix_app_audit_logs_approval_request_id", "approval_request_id"),
+        Index("ix_app_audit_logs_department_id", "department_id"),
+        Index("ix_app_audit_logs_scope_id", "scope_id"),
+        Index("ix_app_audit_logs_scope_type_scope_key", "scope_type", "scope_key"),
     )
 
     id: Mapped[uuid.UUID] = uuid_pk()
@@ -819,6 +1022,25 @@ class AppAuditLog(Base):
         Uuid(as_uuid=True),
         ForeignKey("app_users.id", ondelete="SET NULL"),
     )
+    action_request_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("action_requests.id", ondelete="SET NULL"),
+    )
+    approval_request_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("approval_requests.id", ondelete="SET NULL"),
+    )
+    department_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("departments.id", ondelete="SET NULL"),
+    )
+    scope_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("access_scopes.id", ondelete="SET NULL"),
+    )
+    scope_type: Mapped[str | None] = mapped_column(String(64))
+    scope_key: Mapped[str | None] = mapped_column(String(128))
+    severity: Mapped[str | None] = mapped_column(String(32))
     event_type: Mapped[str] = mapped_column(String(64), nullable=False)
     action: Mapped[str | None] = mapped_column(String(64))
     status: Mapped[str | None] = mapped_column(String(32))
@@ -829,6 +1051,22 @@ class AppAuditLog(Base):
     ip_address: Mapped[str | None] = mapped_column(String(64))
     user_agent: Mapped[str | None] = mapped_column(Text)
     audit_metadata: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    before_state_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    after_state_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    self_approved: Mapped[bool | None] = mapped_column(Boolean)
     created_at: Mapped[datetime] = created_at_column()
 
     actor: Mapped[AppUser | None] = relationship(back_populates="audit_logs")
+    action_request: Mapped[ActionRequest | None] = relationship(
+        back_populates="audit_logs",
+    )
+    approval_request: Mapped[ApprovalRequest | None] = relationship(
+        back_populates="audit_logs",
+    )
+    department: Mapped[Any | None] = relationship(
+        "Department",
+        back_populates="app_audit_logs",
+    )
+    scope: Mapped[AccessScope | None] = relationship(
+        back_populates="action_audit_logs",
+    )

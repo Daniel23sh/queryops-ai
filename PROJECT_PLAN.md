@@ -14,7 +14,9 @@ Current PR scope:
 
 `M7 PR3 — Dashboard Editor, Grid & Visualizations` is complete and merged into `main` through PR #27.
 
-`M7 PR4 — Ask Data Redesign & Final UX Hardening` is implementation-complete on branch `feature/m7-ask-data-responsive-polish`. Milestone 7 is complete. Milestone 8 is next and has not started.
+`M7 PR4 — Ask Data Redesign & Final UX Hardening` is complete and merged into `main` through PR #28. Milestone 7 is complete.
+
+`Milestone 8 — Actions, Approvals & Audit` is active. `M8 PR1 — Action Persistence & Engine Contracts` is implementation-complete on `feature/m8-action-engine-foundation` and is not merged. M8 PR2 is next but has not started.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
@@ -118,7 +120,7 @@ Explicitly out of scope for M6 PR5:
 - masking
 - tenant/project/region governance
 
-Actions, approvals, audit UI, notifications, real LLM/API-key support, and Supabase Auth remain deferred unless explicitly requested. The former Actions, Approvals & Audit Milestone 7 is now Milestone 8. Milestone 7 Product UX & Dashboard Redesign is complete; Milestone 8 is next and not started.
+Actions, approvals, audit UI, notifications, real LLM/API-key support, and Supabase Auth remained deferred through Milestone 7. The former Actions, Approvals & Audit Milestone 7 is now Milestone 8 because Product UX & Dashboard Redesign became Milestone 7. Milestone 8 is active only for the approved PR1 persistence and deterministic contract foundation described in Section 17.
 
 ## 2. Product Summary
 
@@ -428,7 +430,7 @@ Milestone 1 should leave the repository ready for auth, permission, and RLS work
 
 The latest completed product milestone is:
 
-`Milestone 7 — Product UX & Dashboard Redesign`, with PR4 implementation-complete on `feature/m7-ask-data-responsive-polish`.
+`Milestone 7 — Product UX & Dashboard Redesign`, complete and merged through PR #28.
 
 The latest PR status is:
 
@@ -436,7 +438,9 @@ The latest PR status is:
 
 `M7 PR1 — Product Shell, Routing & Navigation` is complete and merged into `main` through PR #25.
 
-`M7 PR2 — Role-Aware Home & Dashboard Browser` is complete and merged through PR #26. `M7 PR3 — Dashboard Editor, Grid & Visualizations` is complete and merged through PR #27. `M7 PR4 — Ask Data Redesign & Final UX Hardening` is implementation-complete on `feature/m7-ask-data-responsive-polish`. Milestone 8 is next and has not started.
+`M7 PR2 — Role-Aware Home & Dashboard Browser` is complete and merged through PR #26. `M7 PR3 — Dashboard Editor, Grid & Visualizations` is complete and merged through PR #27. `M7 PR4 — Ask Data Redesign & Final UX Hardening` is complete and merged through PR #28.
+
+`Milestone 8 — Actions, Approvals & Audit` is active. `M8 PR1 — Action Persistence & Engine Contracts` is implementation-complete and not merged. M8 PR2 through PR7 have not started.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -924,4 +928,104 @@ Out of scope:
 
 Completion evidence: 184 frontend tests, the production frontend build, four deterministic Chromium Playwright flows, 639 PostgreSQL-backed backend tests, Alembic no-diff verification, responsive/focus/theme checks, and manual full-diff review all pass. The final CodeRabbit rerun was unavailable because the free CLI rate limit was reached after valid findings from earlier passes were fixed and retested. No backend, migration, seed, permission, RLS, or API-contract changes were made. The local medium seed was restored after QA.
 
-Milestone 7 is complete. Milestone 8 remains next and not started. Do not begin it until explicitly requested and activated.
+Milestone 7 is complete and merged through PR #28.
+
+## 17. Milestone 8 Implementation Plan
+
+The original private planning document numbered Actions, Approvals & Audit as Milestone 7. It is Milestone 8 in this authoritative plan because Product UX & Dashboard Redesign became Milestone 7.
+
+Milestone 8 is split into seven approved PRs:
+
+1. `M8 PR1 — Action Persistence & Engine Contracts`
+2. `M8 PR2 — Reclaim License Preview & Request Flow`
+3. `M8 PR3 — Approval Execution, Audit & Notifications`
+4. `M8 PR4 — Disable Inactive User & Backend Security Completion`
+5. `M8 PR5 — Requester Actions UX`
+6. `M8 PR6 — Approvals, Audit & Notifications UX`
+7. `M8 PR7 — M8 E2E, Security Hardening & Completion`
+
+M8 PR1 is implementation-complete and not merged. M8 PR2 is next but has not started; M8 PR3 through PR7 have also not started.
+
+### M8 PR1 — Action Persistence & Engine Contracts
+
+Branch:
+
+```text
+feature/m8-action-engine-foundation
+```
+
+Status: implementation-complete on `feature/m8-action-engine-foundation`; not merged.
+
+Goal: establish the non-destructive database foundation and typed deterministic backend contracts required by later Milestone 8 work without exposing or executing an action workflow.
+
+In scope:
+
+- Alembic revision `0008_action_engine_foundation` based on `0007_dashboard_layout_version`
+- `action_requests` lifecycle persistence with generic scope snapshots, preview/policy snapshots, guarded statuses, priority, counts, failure details, idempotency, and timestamps
+- non-destructive action-workflow extensions to `approval_requests` while retaining QueryRun compatibility
+- explicit action audit fields on `app_audit_logs` while preserving existing audit writers and generic `audit_metadata`
+- nullable `it_audit_events.actor_app_user_id` alongside the existing directory actor identity
+- verification that the existing notifications schema can represent the locked M8 notification contract
+- SQLAlchemy models, enums, foreign keys, indexes, constraints, and explicit relationships matching the migration
+- typed action handler contracts, a fail-closed explicit registry, and pure permission/scope-based action policy decisions
+- the minimum stable access-action vocabulary for action request/approval and scope/global audit decisions
+- focused SQLite migration/model, registry, policy, permission, seed, and access-policy tests, plus full PostgreSQL regression verification
+
+Guardrails:
+
+- Backend authorization and effective permission keys are authoritative; policy must not rely only on role-name comparisons.
+- Scoped decisions require the exact assigned scope key. A reference resource without a scope key is never sufficient for scoped action authorization.
+- `app_users` and `directory_users` remain separate identity systems. Never infer a mapping using email, name, provider ID, or another heuristic, and never place an app-user ID in `it_audit_events.actor_user_id`.
+- The action registry is an explicit allowlist. It cannot dynamically import user-controlled modules or accept arbitrary mutation SQL or callables from an LLM.
+- No operational rows are mutated, no QueryRun result rows are persisted, and PR1 does not write future preview snapshots.
+- Existing query, dashboard, export, PostgreSQL RLS, role-request audit, CSV export audit, and seed reset behavior must remain compatible.
+- The migration must preserve existing approval, notification, and audit rows, upgrade from 0007, downgrade to 0007, and make no RLS-policy or seed-reset changes.
+- Keep changes backend-only except for committed milestone-control documentation.
+
+Acceptance criteria:
+
+- `action_requests` and all required constraints, indexes, foreign keys, lifecycle fields, scope snapshots, and relationships are present.
+- One approval request per action request is enforced while existing QueryRun approval compatibility remains intact and approval status supports `expired`.
+- Action audit fields and the distinct nullable operational `actor_app_user_id` foreign key are present without breaking existing audit writers.
+- Existing notifications are proven usable for recipient, type, title/body, related action or approval, unread/read state, and created/read timestamps without unnecessary schema replacement.
+- Supported action types, statuses, priorities, and approval statuses have dedicated stable constants/enums.
+- Typed handler registration succeeds; unknown and duplicate registration fail closed; lookup performs no domain work.
+- Request, scoped approval, global/cross-scope approval, override, self-approval, threshold, and exact-scope decisions return stable structured results based on effective permissions.
+- Focused foundation tests and the full backend, PostgreSQL/Alembic, frontend unit, and frontend build regressions pass.
+- Documentation records exact delivered scope and verification before the PR is marked implementation-complete.
+
+Explicit exclusions:
+
+- action API endpoints or response schemas
+- real reclaim or disable previews, eligibility queries, revalidation implementations, or domain handlers
+- approval execution, domain mutations, audit writing, or notification delivery
+- frontend code, action suggestions, navigation, Actions/Approvals/Audit screens, or notification UI
+- execution-log tables, queues, Redis, schedulers, background jobs, or automatic rollback actions
+- RLS-policy changes, Supabase Auth, real LLM providers, full ABAC, ReBAC, policy languages, or policy-builder UI
+- the complete release-blocking 20-action workflow suite, which is completed across M8 PR3, PR4, and PR7
+- any M8 PR2 or later implementation
+
+Delivered implementation:
+
+- Migration `0008_action_engine_foundation` adds the `action_requests` lifecycle table with the two supported action types, eight locked statuses, three priorities, generic scope plus Department compatibility, access/decision/preview/policy/skipped snapshots, guarded non-negative counts, unique idempotency, failure details, timestamps, foreign keys, and targeted indexes.
+- `approval_requests` retains every legacy column and QueryRun relationship while adding nullable `action_request_id`, `required_approver_role`, `expires_at`, one-approval-per-action uniqueness, and the `expired` status.
+- `app_audit_logs` retains generic `audit_metadata` and existing writers while adding nullable action/approval, Department/scope, severity, changed-field before/after, and self-approval fields with useful lookup indexes.
+- `it_audit_events.actor_user_id` remains a nullable `directory_users` foreign key; the separate nullable `actor_app_user_id` points to `app_users` for future QueryOps actors.
+- The existing notifications schema was retained unchanged and is tested for recipient, notification type, title/body, generic related action/approval, unread/read status, and created/read timestamps.
+- SQLAlchemy adds dedicated action type, action request status, priority, and approval status enums plus explicit requester, source QueryRun, scope, Department, approval, audit, and reverse relationships. Seed reset includes action requests in dependency-safe deletion order.
+- `app/action_engine` adds immutable typed preview/revalidation/execution descriptors, a three-stage `ActionHandler` protocol, an explicit empty fail-closed allowlist registry, and pure structured request/approval policy decisions.
+- The access policy vocabulary now covers action request, scoped/global/override approval, and scoped/global audit. Scoped action and audit decisions require an exact scope key and cannot use a scope-less reference resource as authorization.
+
+Completion evidence:
+
+- Focused action persistence, registry, policy, access, and product-schema suite: 71 passed.
+- Default backend suite: 606 passed, 77 PostgreSQL-only tests skipped.
+- PostgreSQL-backed full backend suite: 683 passed with no skips or failures.
+- Alembic upgraded `0007_dashboard_layout_version` to `0008_action_engine_foundation`; `alembic check` reported no new upgrade operations.
+- The dedicated SQLite preservation test upgrades 0007 to head and downgrades head to 0007 while preserving pre-existing approval, notification, and application-audit rows and enforcing one approval per action request.
+- A fresh temporary PostgreSQL database passed base-to-head upgrade, head-to-0007 downgrade, re-upgrade to head, and a no-diff Alembic check. The temporary database was removed; the existing user database was not downgraded, reset, or reseeded.
+- Frontend regression suite: 188 passed across 28 files.
+- Frontend TypeScript checks and production Vite build passed; only the existing large-chunk advisory was emitted.
+- `git diff --check` and the full scope/security review passed.
+
+No action endpoint, action suggestion, real preview, approval execution, notification delivery, audit writer, operational mutation, QueryRun result-row persistence, frontend behavior, or RLS-policy change exists in M8 PR1. The complete release-blocking 20-action workflow suite is not claimed complete. M8 PR2 — Reclaim License Preview & Request Flow is next and has not started.

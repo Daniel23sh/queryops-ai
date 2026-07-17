@@ -21,14 +21,21 @@ ACTION_REQUIRED_PERMISSIONS = {
     "query:product_tables": "can_query_product_tables",
     "dashboard:create_scope": "can_create_scope_dashboard",
     "dashboard:manage_scope": "can_manage_scope_dashboard",
+    "action:request": "can_request_action",
     "action:approve_scoped": "can_approve_scoped_action",
+    "action:approve_global": "can_approve_global_action",
+    "action:approve_override": "can_approve_policy_override",
     "audit:view_scope": "can_view_scope_audit",
+    "audit:view_global": "can_view_global_audit",
     "evaluation:view_scope": "can_view_scope_evaluation",
     "query_history:view_scope": "can_view_query_history_scope",
 }
 
 SCOPED_DATA_ACTIONS = frozenset(
     {APPROVED_TEMPLATE_QUERY_ACTION, "query:scoped_data", "view:scoped_data"}
+)
+EXACT_SCOPE_ACTIONS = frozenset(
+    {"action:request", "action:approve_scoped", "audit:view_scope"}
 )
 QUERY_ACTIONS = frozenset(
     {
@@ -94,6 +101,15 @@ def evaluate_access(
 
     scope_type = runtime_context.get("scope_type") or resource_dict.get("scope_type")
     scope_key = runtime_context.get("scope_key") or resource_dict.get("scope_key")
+    if action in EXACT_SCOPE_ACTIONS and (not scope_type or not scope_key):
+        return _deny(
+            subject,
+            action,
+            resource_dict,
+            required_permission,
+            "missing_scope_key",
+            [],
+        )
     if not scope_type:
         return _allow(
             subject,

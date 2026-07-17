@@ -308,6 +308,99 @@ def test_evaluate_access_allows_reference_dict_without_queryability_metadata() -
         assert decision.resource["table_name"] == "legacy_reference_table"
 
 
+@pytest.mark.parametrize(
+    ("action", "email", "scope_type", "scope_key", "expected_permission"),
+    [
+        (
+            "action:request",
+            "demo.manager@queryops.local",
+            "department",
+            "finance",
+            "can_request_action",
+        ),
+        (
+            "action:approve_scoped",
+            "demo.analyst@queryops.local",
+            "department",
+            "it",
+            "can_approve_scoped_action",
+        ),
+        (
+            "action:approve_global",
+            "demo.admin@queryops.local",
+            "global",
+            "global",
+            "can_approve_global_action",
+        ),
+        (
+            "action:approve_override",
+            "demo.admin@queryops.local",
+            "global",
+            "global",
+            "can_approve_policy_override",
+        ),
+        (
+            "audit:view_scope",
+            "demo.analyst@queryops.local",
+            "department",
+            "it",
+            "can_view_scope_audit",
+        ),
+        (
+            "audit:view_global",
+            "demo.admin@queryops.local",
+            "global",
+            "global",
+            "can_view_global_audit",
+        ),
+    ],
+)
+def test_evaluate_access_supports_m8_action_and_audit_vocabulary(
+    action: str,
+    email: str,
+    scope_type: str,
+    scope_key: str,
+    expected_permission: str,
+) -> None:
+    with session_scope() as session:
+        seed_database(session, profile_name="small", reset=True)
+        subject = build_user_access_context(user_by_email(session, email), session)
+
+        decision = evaluate_access(
+            subject,
+            action,
+            {"resource_type": "action_contract"},
+            {"scope_type": scope_type, "scope_key": scope_key},
+        )
+
+        assert decision.allowed is True
+        assert decision.required_permission == expected_permission
+
+
+@pytest.mark.parametrize(
+    "action",
+    ["action:request", "action:approve_scoped", "audit:view_scope"],
+)
+def test_scoped_action_access_requires_an_exact_scope_key(action: str) -> None:
+    with session_scope() as session:
+        seed_database(session, profile_name="small", reset=True)
+        subject = build_user_access_context(
+            user_by_email(session, "demo.analyst@queryops.local"),
+            session,
+        )
+
+        decision = evaluate_access(
+            subject,
+            action,
+            {"resource_type": "reference_without_scope"},
+            {},
+        )
+
+        assert decision.allowed is False
+        assert decision.reason == "missing_scope_key"
+        assert decision.matched_scopes == []
+
+
 def test_authorize_resource_access_returns_access_decision() -> None:
     with session_scope() as session:
         seed_database(session, profile_name="small", reset=True)

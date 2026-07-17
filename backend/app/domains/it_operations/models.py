@@ -147,6 +147,14 @@ class Department(Base):
         "AccessScope",
         back_populates="department",
     )
+    action_requests: Mapped[list[Any]] = relationship(
+        "ActionRequest",
+        back_populates="department",
+    )
+    app_audit_logs: Mapped[list[Any]] = relationship(
+        "AppAuditLog",
+        back_populates="department",
+    )
 
 
 class License(Base):
@@ -625,6 +633,7 @@ class ItAuditEvent(Base):
     __tablename__ = "it_audit_events"
     __table_args__ = (
         Index("ix_it_audit_events_actor_user_id", "actor_user_id"),
+        Index("ix_it_audit_events_actor_app_user_id", "actor_app_user_id"),
         Index("ix_it_audit_events_target_user_id", "target_user_id"),
         Index("ix_it_audit_events_department_id", "department_id"),
         Index("ix_it_audit_events_occurred_at", "occurred_at"),
@@ -634,6 +643,10 @@ class ItAuditEvent(Base):
     actor_user_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
         ForeignKey("directory_users.id", ondelete="SET NULL"),
+    )
+    actor_app_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid(as_uuid=True),
+        ForeignKey("app_users.id", ondelete="SET NULL"),
     )
     target_user_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid(as_uuid=True),
@@ -649,3 +662,9 @@ class ItAuditEvent(Base):
     description: Mapped[str | None] = mapped_column(Text)
     occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     event_metadata: Mapped[dict[str, Any] | None] = mapped_column("metadata", JSON)
+
+    actor_app_user: Mapped[Any | None] = relationship(
+        "AppUser",
+        back_populates="operational_audit_events",
+        foreign_keys=[actor_app_user_id],
+    )
