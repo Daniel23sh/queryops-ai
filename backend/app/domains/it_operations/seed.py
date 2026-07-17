@@ -28,6 +28,7 @@ from app.domains.it_operations.models import (
 from app.domains.it_operations.seed_profiles import SeedProfile, get_seed_profile
 from app.models.product import (
     AccessScope,
+    ActionRequest,
     AppAuditLog,
     AppUser,
     ApprovalRequest,
@@ -414,6 +415,7 @@ SEEDED_MODELS = [
     EvaluationRun,
     Notification,
     ApprovalRequest,
+    ActionRequest,
     DashboardCard,
     QueryRun,
     SavedQuery,
