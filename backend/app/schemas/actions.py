@@ -49,6 +49,15 @@ class ActionPreviewRequest(StrictActionRequest):
             raise ValueError(
                 "Explicit action selectors exceed the supported record limit."
             )
+        if self.action_type == SupportedActionType.DISABLE_INACTIVE_USER:
+            if not self.target_user_ids:
+                raise ValueError(
+                    "Disable inactive user requires explicit Directory User targets."
+                )
+            if self.license_assignment_ids:
+                raise ValueError(
+                    "Disable inactive user accepts only Directory User targets."
+                )
         return self
 
 

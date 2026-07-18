@@ -55,12 +55,24 @@ class RevalidatedReclaimRecord(EligibleRecordDescriptor):
 @dataclass(frozen=True, kw_only=True)
 class RevalidatedSkip(SkippedRecordDescriptor):
 
-    def as_dict(self) -> dict[str, str]:
+    def as_dict(self) -> dict[str, object]:
         return {
             "record_type": "license_assignment",
             "record_id": str(self.record_id),
+            "license_assignment_id": str(self.record_id),
+            "scope": {
+                "id": None,
+                "type": self.scope_type,
+                "key": self.scope_key,
+            },
+            "user_display_label": None,
+            "license_product": None,
+            "license_vendor": None,
+            "last_used_at": None,
+            "monthly_cost_usd": None,
             "reason_code": self.reason_code,
             "reason": self.reason,
+            "high_confidence": False,
         }
 
 

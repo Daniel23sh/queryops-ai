@@ -52,7 +52,7 @@ def execute_reclaim(
             raise RuntimeError("The action execution set changed before mutation.")
 
         db.execute(
-            insert(ItAuditEvent),
+            insert(ItAuditEvent.__table__),
             [
                 {
                     "id": uuid.uuid4(),

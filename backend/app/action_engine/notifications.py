@@ -6,6 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.action_engine.policy import evaluate_action_approval
+from app.action_engine.presentation import action_presentation
 from app.auth.access_context import build_user_access_context
 from app.models.product import (
     ActionRequest,
@@ -74,13 +75,14 @@ def build_pending_approval_notifications(
     recipients: tuple[AppUser, ...],
 ) -> tuple[Notification, ...]:
     expires_at = approval_request.expires_at
+    presentation = action_presentation(action_request.action_type)
     return tuple(
         Notification(
             recipient_user_id=recipient.id,
             actor_user_id=action_request.requested_by_app_user_id,
             notification_type=PENDING_APPROVAL_NOTIFICATION,
             title="Action request pending approval",
-            body="A reclaim unused license request is ready for review.",
+            body=presentation.pending_body,
             status=NotificationStatus.UNREAD.value,
             related_resource_type="action_request",
             related_resource_id=action_request.id,
