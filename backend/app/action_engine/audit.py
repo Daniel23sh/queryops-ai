@@ -3,7 +3,32 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+from sqlalchemy import case
+
 from app.models.product import ActionRequest, AppAuditLog, AppUser, ApprovalRequest
+
+
+ACTION_TIMELINE_ORDER = (
+    "action_preview_created",
+    "action_requested",
+    "action_approval_escalated",
+    "action_approved",
+    "action_executed",
+    "action_rejected",
+    "action_cancelled",
+    "action_expired",
+    "action_failed",
+)
+
+
+def action_timeline_order():
+    return case(
+        *(
+            (AppAuditLog.event_type == event_type, position)
+            for position, event_type in enumerate(ACTION_TIMELINE_ORDER)
+        ),
+        else_=len(ACTION_TIMELINE_ORDER),
+    )
 
 
 def build_action_audit_log(

@@ -17,6 +17,11 @@ from app.action_engine.registry import ActionRegistry
 from app.api.routes import actions as actions_routes
 from app.db.base import Base
 from app.db.session import get_db
+from app.domains.it_operations.actions.disable_inactive_user import (
+    DisableCandidateRead,
+    DisableCandidateRow,
+    DisableInactiveUserHandler,
+)
 from app.domains.it_operations.actions.reclaim_unused_license import (
     ReclaimCandidateRead,
     ReclaimCandidateRow,
@@ -76,6 +81,9 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
     registry.register(
         ReclaimUnusedLicenseHandler(candidate_reader=_sqlite_candidate_reader)
     )
+    registry.register(
+        DisableInactiveUserHandler(candidate_reader=_sqlite_disable_candidate_reader)
+    )
 
     def override_get_db() -> Generator[Session, None, None]:
         yield db_session
@@ -97,6 +105,175 @@ def test_preview_requires_authentication(client: TestClient) -> None:
 
     assert response.status_code == 401
     assert response.json()["error"]["code"] == "UNAUTHORIZED"
+
+
+def test_disable_preview_requires_nonempty_well_formed_user_targets(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    csrf = _login(client, "demo.manager@queryops.local")
+    scope = db_session.scalar(
+        select(AccessScope).where(AccessScope.scope_key == "finance")
+    )
+    assert scope is not None
+    base = {
+        "action_type": "disable_inactive_user",
+        "scope_id": str(scope.id),
+        "department_id": str(scope.department_id),
+        "reason": "Disable inactive users safely.",
+    }
+
+    for payload in (
+        base,
+        {**base, "target_user_ids": ["not-a-uuid"]},
+        {
+            **base,
+            "target_user_ids": [str(uuid.uuid4())],
+            "license_assignment_ids": [str(uuid.uuid4())],
+        },
+    ):
+        response = client.post(
+            "/api/v1/actions/preview",
+            headers={"X-CSRF-Token": csrf},
+            json=payload,
+        )
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == "INVALID_ACTION_REQUEST"
+
+
+def test_disable_preview_request_and_cancel_reuse_generic_action_contract(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    scope = db_session.scalar(
+        select(AccessScope).where(AccessScope.scope_key == "finance")
+    )
+    assert scope is not None and scope.department_id is not None
+    target = DirectoryUser(
+        employee_number="PR4-ACTIONS-API",
+        email="pr4-actions-api@example.test",
+        full_name="Safe PR4 API User",
+        department_id=scope.department_id,
+        account_type="human",
+        employee_status="active",
+        account_status="active",
+        last_login_at=NOW - timedelta(days=91),
+    )
+    db_session.add(target)
+    db_session.commit()
+    csrf = _login(client, "demo.manager@queryops.local")
+
+    preview_response = client.post(
+        "/api/v1/actions/preview",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "action_type": "disable_inactive_user",
+            "scope_id": str(scope.id),
+            "department_id": str(scope.department_id),
+            "target_user_ids": [str(target.id), str(target.id)],
+            "reason": "Disable inactive users safely.",
+        },
+    )
+    assert preview_response.status_code == 201, preview_response.json()
+    data = preview_response.json()["data"]
+    assert data["action_type"] == "disable_inactive_user"
+    assert data["preview"]["summary"]["affected_users_count"] == 1
+    assert data["preview"]["eligible_records"][0]["directory_user_id"] == str(
+        target.id
+    )
+    assert target.email not in json.dumps(data)
+
+    action_id = data["action_request_id"]
+    submitted = client.post(
+        "/api/v1/actions/request",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "action_request_id": action_id,
+            "reason": "Approve this inactive-user request.",
+        },
+    )
+    assert submitted.status_code == 200, submitted.json()
+    approval = db_session.scalar(
+        select(ApprovalRequest).where(
+            ApprovalRequest.action_request_id == uuid.UUID(action_id)
+        )
+    )
+    assert approval is not None and approval.title == "Disable inactive users"
+    notification_bodies = db_session.scalars(
+        select(Notification.body).where(
+            Notification.related_resource_id == uuid.UUID(action_id)
+        )
+    ).all()
+    assert notification_bodies
+    assert set(notification_bodies) == {
+        "A disable inactive user request is ready for review."
+    }
+
+    cancelled = client.post(
+        f"/api/v1/actions/{action_id}/cancel",
+        headers={"X-CSRF-Token": csrf},
+        json={"reason": "Cancel after review."},
+    )
+    assert cancelled.status_code == 200, cancelled.json()
+    assert cancelled.json()["data"]["status"] == "cancelled"
+
+
+def test_disable_target_substitution_in_persisted_snapshot_fails_closed(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    scope = db_session.scalar(
+        select(AccessScope).where(AccessScope.scope_key == "finance")
+    )
+    assert scope is not None and scope.department_id is not None
+    target = DirectoryUser(
+        employee_number="PR4-SNAPSHOT-TARGET",
+        email="pr4-snapshot-target@example.test",
+        full_name="Safe Snapshot Target",
+        department_id=scope.department_id,
+        account_type="human",
+        employee_status="active",
+        account_status="active",
+        last_login_at=NOW - timedelta(days=91),
+    )
+    db_session.add(target)
+    db_session.commit()
+    csrf = _login(client, "demo.manager@queryops.local")
+    preview = client.post(
+        "/api/v1/actions/preview",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "action_type": "disable_inactive_user",
+            "scope_id": str(scope.id),
+            "department_id": str(scope.department_id),
+            "target_user_ids": [str(target.id)],
+            "reason": "Create a structurally bound target snapshot.",
+        },
+    )
+    assert preview.status_code == 201, preview.json()
+    action_id = uuid.UUID(preview.json()["data"]["action_request_id"])
+    action = db_session.get(ActionRequest, action_id)
+    assert action is not None
+    snapshot = dict(action.preview_json)
+    eligible = [dict(record) for record in snapshot["eligible_records"]]
+    eligible[0]["directory_user_id"] = str(uuid.uuid4())
+    snapshot["eligible_records"] = eligible
+    action.preview_json = snapshot
+    db_session.commit()
+
+    submitted = client.post(
+        "/api/v1/actions/request",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "action_request_id": str(action_id),
+            "reason": "This substituted target must not be accepted.",
+        },
+    )
+
+    assert submitted.status_code == 409
+    assert submitted.json()["error"]["code"] == "ACTION_PREVIEW_UNAVAILABLE"
+    db_session.refresh(action)
+    assert action.status == "draft_preview"
 
 
 @pytest.mark.parametrize("csrf_token", [None, "wrong-token"])
@@ -838,6 +1015,41 @@ def _sqlite_candidate_reader(
         )
     return ReclaimCandidateRead(
         records=tuple(records),
+        runtime_role="queryops_query_runtime",
+        transaction_read_only=True,
+        row_security_enabled=True,
+    )
+
+
+def _sqlite_disable_candidate_reader(
+    db: Session,
+    target,
+    _requester,
+) -> DisableCandidateRead:
+    target_ids = [
+        reference.record_id
+        for reference in target.targets
+        if reference.record_type == "directory_user"
+    ]
+    users = db.scalars(
+        select(DirectoryUser)
+        .where(DirectoryUser.id.in_(target_ids))
+        .order_by(DirectoryUser.id)
+    ).all()
+    return DisableCandidateRead(
+        records=tuple(
+            DisableCandidateRow(
+                directory_user_id=user.id,
+                department_id=user.department_id,
+                account_type=user.account_type,
+                account_status=user.account_status,
+                user_display_label=user.full_name,
+                latest_successful_login_at=user.last_login_at,
+                is_privileged=False,
+                has_open_critical_security_event=False,
+            )
+            for user in users
+        ),
         runtime_role="queryops_query_runtime",
         transaction_read_only=True,
         row_security_enabled=True,

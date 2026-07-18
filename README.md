@@ -279,16 +279,21 @@ suggested
 
 The LLM may suggest an action type, but it does not choose final records, approve changes, or mutate the database. The backend calculates the preview, checks eligibility, enforces policy, executes the operation, and writes audit logs.
 
-M8 PR2 implements the requester-side backend flow for `reclaim_unused_license`:
+M8 PR4 completes the two V1 backend actions, `reclaim_unused_license` and `disable_inactive_user`, through the shared action lifecycle:
 
 ```txt
 POST /api/v1/actions/preview
 POST /api/v1/actions/request
 GET  /api/v1/actions/{action_request_id}
 POST /api/v1/actions/{action_request_id}/cancel
+GET  /api/v1/approvals/pending
+POST /api/v1/approvals/{approval_id}/approve
+POST /api/v1/approvals/{approval_id}/reject
 ```
 
-The backend deterministically reads current license data through `queryops_query_runtime`, a read-only transaction, transaction-local RLS context, and PostgreSQL RLS. Draft previews expire after 30 minutes; submitted pending approvals expire after 24 hours. Preview, request, and cancellation events are audited, and submit creates notification records for currently eligible approvers. PR2 does not add approval decisions, execution, license mutations, notification delivery/read APIs, or frontend action UI.
+The backend deterministically reads current operational data through `queryops_query_runtime`, a read-only transaction, transaction-local RLS context, and PostgreSQL RLS. Draft previews expire after 30 minutes and submitted approvals after 24 hours. Approval synchronously revalidates current rows and dependencies before entering the narrow write role. License reclaim uses current assignment policy; inactive-user disablement requires an active human with no successful login for at least 90 days. Service accounts are always skipped. Privileged humans, humans with open critical security events, and cross-scope humans require Admin override; more than 20 actionable records is a request-level Admin rule.
+
+Successful execution atomically persists the domain mutation, application lifecycle audit, one domain audit per changed record, lifecycle state, and database-only notifications. Failure rolls back all success-side effects and uses a separate safe failure transaction. The backend includes permission-aware approval, notification, audit, and safe action-timeline APIs, but no action/approval/audit/notification frontend.
 
 ## Evaluation and Testing
 
@@ -340,7 +345,7 @@ Default local URLs:
 * Backend health endpoint: `http://localhost:8000/health`
 * PostgreSQL: `localhost:5432`
 
-PostgreSQL is included for the local development environment. Milestones 0 through 7 are complete and merged into `main` through PR #28. M8 PR1 is merged through PR #29, and M8 PR2 is implementation-complete on `feature/m8-reclaim-preview-request`. The current application includes the governed Query Engine, command-first Ask Data, dashboards and saved cards, controlled CSV export, current-viewer card refresh, the responsive dashboard editor, and the requester-side reclaim-license backend flow. Approval decisions, action execution, operational mutations, notification delivery/read APIs, audit screens, and action frontend behavior remain deferred.
+PostgreSQL is included for the local development environment. Milestones 0 through 7 are complete and merged into `main` through PR #28. M8 PR1 through PR3 are merged through PR #31, and M8 PR4 is implementation-complete on `feature/m8-disable-inactive-user` but not merged. The current backend includes both V1 actions, approvals, synchronous execution, action/domain audit, database notification APIs, and safe timelines. Action, approval, audit, and notification frontend behavior remains deferred.
 
 Stop the stack:
 
@@ -464,9 +469,9 @@ RLS runtime model:
 
 Action approval runtime model:
 
-* `reclaim_unused_license` approvals revalidate current rows and execute synchronously through the non-owner `queryops_action_runtime` role.
-* The action role is `NOLOGIN`, `NOBYPASSRLS`, and granted to the explicit application login role from `QUERYOPS_APP_DATABASE_ROLE` with inheritance disabled; action code must use `SET LOCAL ROLE`.
-* Its grants are limited to required reads, three `license_assignments` update columns, and scoped `it_audit_events` inserts. PostgreSQL UPDATE/INSERT policies apply only to the action role.
+* `reclaim_unused_license` and `disable_inactive_user` approvals revalidate current rows and execute synchronously through the non-owner `queryops_action_runtime` role.
+* The action role is `NOLOGIN`, `NOINHERIT`, `NOSUPERUSER`, and `NOBYPASSRLS`, and is granted to the explicit application login role from `QUERYOPS_APP_DATABASE_ROLE` with inheritance disabled and SET enabled; action code must use `SET LOCAL ROLE`.
+* Its grants are limited to required reads, three `license_assignments` UPDATE columns, `directory_users.account_status`/`updated_at` UPDATE, and scoped `it_audit_events` INSERT. Role-scoped PostgreSQL policies bind mutations to the active scope and allow only active human users to become disabled.
 * Approval, mutation, application/domain audit, and database notifications commit atomically. Failure state is recorded separately after a rollback.
 * Backend APIs provide pending approval review/decisions, current-recipient notification reads, and permission-scoped audit reads. No action or approval frontend is included yet.
 
@@ -746,9 +751,9 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-Milestones 0 through 6 are complete and merged into `main`; PR #24 merged M6 PR5 Card Reordering & Layout Persistence and the final Admin restricted-export policy. Milestone 7 — Product UX & Dashboard Redesign is complete. M7 PR1 is merged through PR #25, M7 PR2 through PR #26, M7 PR3 through PR #27, and M7 PR4 is implementation-complete on `feature/m7-ask-data-responsive-polish`.
+Milestones 0 through 7 are complete and merged into `main`; M7 PR4 merged through PR #28. Milestone 8 — Actions, Approvals & Audit is active. M8 PR1 through PR3 are merged through PR #31, and M8 PR4 is implementation-complete on `feature/m8-disable-inactive-user` but is not merged.
 
-The completed Milestone 7 experience is dark-first with a persistent light option, responsive navigation, My Dashboard as the authenticated home, permission-aware routes, Scope terminology, a responsive dashboard editor, safe visualizations, and command-first Ask Data. Milestone 8 is next and has not started.
+The completed Milestone 7 experience is dark-first with a persistent light option, responsive navigation, My Dashboard as the authenticated home, permission-aware routes, Scope terminology, a responsive dashboard editor, safe visualizations, and command-first Ask Data. Milestone 8 is active: PR1 through PR3 are merged and PR4 is implementation-complete locally but not merged.
 
 Implemented foundation functionality includes:
 
@@ -792,8 +797,10 @@ Milestone 7 — Product UX & Dashboard Redesign is complete.
 M7 PR1 — Product Shell, Routing & Navigation is complete and merged through PR #25.
 M7 PR2 — Role-Aware Home & Dashboard Browser is complete and merged through PR #26.
 M7 PR3 — Dashboard Editor, Grid & Visualizations is complete and merged through PR #27.
-M7 PR4 — Ask Data Redesign & Final UX Hardening is implementation-complete on feature/m7-ask-data-responsive-polish.
-Milestone 8 is next and not started.
+M7 PR4 — Ask Data Redesign & Final UX Hardening is complete and merged through PR #28.
+M8 PR1 through PR3 are complete and merged through PR #31.
+M8 PR4 — Disable Inactive User & Backend Security Completion is implementation-complete locally but not merged.
+M8 PR5 through PR7 have not started.
 ```
 
 PR5 persists the order of cards in owned personal dashboards through `DashboardCard.position`. It includes accessible drag-and-drop and Move Up / Move Down controls, but does not add card resizing, x/y grid coordinates, width/height persistence, advanced `layout` behavior, scheduled refresh, dashboard starring/cloning, actions, approvals, notifications, real external LLM calls, Supabase Auth, Redis/background jobs, or domain expansion. Those deferred areas remain outside Milestone 6.

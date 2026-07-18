@@ -6,27 +6,32 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import case, select
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.action_engine.audit import build_action_audit_log
+from app.action_engine.audit import action_timeline_order, build_action_audit_log
 from app.action_engine.notifications import (
     build_pending_approval_notifications,
     eligible_approvers,
 )
 from app.action_engine.policy import evaluate_action_approval, evaluate_action_request
+from app.action_engine.presentation import action_presentation
 from app.action_engine.preview import (
     InvalidPreviewSnapshotError,
-    build_reclaim_preview_storage,
+    build_action_preview_storage,
     safe_policy_details,
-    safe_reclaim_preview,
-    validate_reclaim_snapshot,
+    safe_action_preview,
+    validate_action_snapshot,
 )
 from app.action_engine.registry import ActionRegistry, UnknownActionTypeError
 from app.auth.access_context import UserAccessContext, build_user_access_context
+from app.domains.it_operations.actions.disable_inactive_user import (
+    DisablePreviewAuthorizationError,
+    DisablePreviewError,
+    DisablePreviewTooLargeError,
+)
 from app.domains.it_operations.actions.reclaim_unused_license import (
-    ReclaimActionPreview,
     ReclaimPreviewAuthorizationError,
     ReclaimPreviewError,
     ReclaimPreviewTooLargeError,
@@ -59,6 +64,18 @@ RECLAIM_PROVENANCE_REQUIRED_TABLES = frozenset(
 )
 RECLAIM_PROVENANCE_ALLOWED_TABLES = frozenset(
     {"departments", "directory_users", "license_assignments", "licenses"}
+)
+DISABLE_TEMPLATE_ID = "inactive_users_by_department"
+DISABLE_PROVENANCE_REQUIRED_TABLES = frozenset({"directory_users"})
+DISABLE_PROVENANCE_ALLOWED_TABLES = frozenset(
+    {
+        "departments",
+        "directory_users",
+        "login_events",
+        "groups",
+        "user_group_memberships",
+        "security_events",
+    }
 )
 
 
@@ -96,6 +113,7 @@ class ActionLifecycleService:
             db,
             current_user=current_user,
             source_query_run_id=payload.source_query_run_id,
+            action_type=payload.action_type,
         )
         target = _target_input(payload, scope)
         now = _as_utc(self._clock())
@@ -107,26 +125,20 @@ class ActionLifecycleService:
                 requester=access_context,
                 now=now,
             )
-        except ReclaimPreviewAuthorizationError as exc:
+        except (ReclaimPreviewAuthorizationError, DisablePreviewAuthorizationError) as exc:
             raise _forbidden() from exc
-        except ReclaimPreviewTooLargeError as exc:
+        except (ReclaimPreviewTooLargeError, DisablePreviewTooLargeError) as exc:
             raise ActionServiceError(
                 code="ACTION_PREVIEW_TOO_LARGE",
                 message="The requested action preview exceeds the supported record limit.",
                 status_code=422,
             ) from exc
-        except ReclaimPreviewError as exc:
+        except (ReclaimPreviewError, DisablePreviewError) as exc:
             raise ActionServiceError(
                 code="ACTION_PREVIEW_FAILED",
                 message="The action preview could not be created safely.",
                 status_code=500,
             ) from exc
-        if not isinstance(preview, ReclaimActionPreview):
-            raise ActionServiceError(
-                code="ACTION_PREVIEW_FAILED",
-                message="The action preview could not be created safely.",
-                status_code=500,
-            )
         if (
             _as_utc(preview.timestamps.generated_at) != now
             or _as_utc(preview.timestamps.expires_at) != now + PREVIEW_LIFETIME
@@ -137,7 +149,14 @@ class ActionLifecycleService:
                 status_code=500,
             )
 
-        storage = build_reclaim_preview_storage(preview)
+        try:
+            storage = build_action_preview_storage(preview)
+        except TypeError as exc:
+            raise ActionServiceError(
+                code="ACTION_PREVIEW_FAILED",
+                message="The action preview could not be created safely.",
+                status_code=500,
+            ) from exc
         action_request_id = uuid.uuid4()
         action_request = ActionRequest(
             id=action_request_id,
@@ -165,7 +184,7 @@ class ActionLifecycleService:
             expires_at=preview.timestamps.expires_at,
         )
         try:
-            validate_reclaim_snapshot(action_request)
+            validate_action_snapshot(action_request)
         except InvalidPreviewSnapshotError as exc:
             raise ActionServiceError(
                 code="ACTION_PREVIEW_FAILED",
@@ -184,7 +203,7 @@ class ActionLifecycleService:
             event_type="action_preview_created",
             action="preview",
             status=ActionRequestStatus.DRAFT_PREVIEW.value,
-            summary="Reclaim unused license preview created.",
+            summary=action_presentation(action_request.action_type).preview_summary,
             metadata=audit_metadata,
             before_state=None,
             after_state={"status": ActionRequestStatus.DRAFT_PREVIEW.value},
@@ -215,6 +234,7 @@ class ActionLifecycleService:
             current_user.id,
         )
         self._registered_handler(action_request.action_type)
+        presentation = action_presentation(action_request.action_type)
         now = _as_utc(self._clock())
 
         if action_request.status == ActionRequestStatus.PENDING_APPROVAL.value:
@@ -268,7 +288,7 @@ class ActionLifecycleService:
             query_run_id=None,
             action_request_id=action_request.id,
             request_type=action_request.action_type,
-            title="Reclaim unused licenses",
+            title=presentation.request_title,
             description=payload.reason,
             status=ApprovalStatus.PENDING.value,
             target_type="action_request",
@@ -303,7 +323,7 @@ class ActionLifecycleService:
             event_type="action_requested",
             action="request",
             status=ActionRequestStatus.PENDING_APPROVAL.value,
-            summary="Reclaim unused license request submitted for approval.",
+            summary=presentation.requested_summary,
             metadata={
                 "approval_request_id": approval.id,
                 "notification_count": len(notifications),
@@ -374,13 +394,7 @@ class ActionLifecycleService:
             .where(AppAuditLog.action_request_id == action_request.id)
             .order_by(
                 AppAuditLog.created_at,
-                case(
-                    (AppAuditLog.event_type == "action_preview_created", 0),
-                    (AppAuditLog.event_type == "action_requested", 1),
-                    (AppAuditLog.event_type == "action_cancelled", 2),
-                    (AppAuditLog.event_type == "action_expired", 2),
-                    else_=99,
-                ),
+                action_timeline_order(),
                 AppAuditLog.id,
             )
         ).all()
@@ -420,6 +434,7 @@ class ActionLifecycleService:
             current_user.id,
         )
         self._registered_handler(action_request.action_type)
+        presentation = action_presentation(action_request.action_type)
         now = _as_utc(self._clock())
         if (
             action_request.status == ActionRequestStatus.PENDING_APPROVAL.value
@@ -456,7 +471,7 @@ class ActionLifecycleService:
             event_type="action_cancelled",
             action="cancel",
             status=ActionRequestStatus.CANCELLED.value,
-            summary="Reclaim unused license request cancelled by the requester.",
+            summary=presentation.cancelled_summary,
             metadata={
                 "approval_request_id": approval.id,
                 "cancellation_reason": payload.reason,
@@ -540,6 +555,7 @@ def _validate_source_query_run(
     *,
     current_user: AppUser,
     source_query_run_id: uuid.UUID | None,
+    action_type: SupportedActionType,
 ) -> QueryRun | None:
     if source_query_run_id is None:
         return None
@@ -565,15 +581,22 @@ def _validate_source_query_run(
         for table in raw_tables
         if isinstance(table, str) and table.strip()
     }
-    if (
-        not RECLAIM_PROVENANCE_REQUIRED_TABLES.issubset(tables)
-        or not tables.issubset(RECLAIM_PROVENANCE_ALLOWED_TABLES)
-    ):
+    if action_type == SupportedActionType.RECLAIM_UNUSED_LICENSE:
+        required_tables = RECLAIM_PROVENANCE_REQUIRED_TABLES
+        allowed_tables = RECLAIM_PROVENANCE_ALLOWED_TABLES
+        template_id = RECLAIM_TEMPLATE_ID
+    elif action_type == SupportedActionType.DISABLE_INACTIVE_USER:
+        required_tables = DISABLE_PROVENANCE_REQUIRED_TABLES
+        allowed_tables = DISABLE_PROVENANCE_ALLOWED_TABLES
+        template_id = DISABLE_TEMPLATE_ID
+    else:
+        raise _invalid_source_query()
+    if not required_tables.issubset(tables) or not tables.issubset(allowed_tables):
         raise _invalid_source_query()
 
     if (
         metadata.get("provider") == "domain_pack_template"
-        and metadata.get("template_id") != RECLAIM_TEMPLATE_ID
+        and metadata.get("template_id") != template_id
     ):
         raise _invalid_source_query()
     return query_run
@@ -750,7 +773,7 @@ def _serialize_action_request(
     approval: ApprovalRequest | None = None,
     timeline: tuple[AppAuditLog, ...] = (),
 ) -> dict[str, Any]:
-    preview = safe_reclaim_preview(action_request)
+    preview = safe_action_preview(action_request)
     deadline = (
         action_request.preview_expires_at
         if action_request.status == ActionRequestStatus.DRAFT_PREVIEW.value
@@ -852,7 +875,7 @@ def _policy_flag_codes(action_request: ActionRequest) -> list[str]:
 
 def _require_valid_snapshot(action_request: ActionRequest) -> None:
     try:
-        validate_reclaim_snapshot(action_request)
+        validate_action_snapshot(action_request)
     except InvalidPreviewSnapshotError as exc:
         raise ActionServiceError(
             code="ACTION_PREVIEW_UNAVAILABLE",

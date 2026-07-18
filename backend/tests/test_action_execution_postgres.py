@@ -13,7 +13,7 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select, text, update
+from sqlalchemy import create_engine, delete, func, select, text, update
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.orm import Session
@@ -21,9 +21,22 @@ from sqlalchemy.orm import Session
 from action_postgres_test_db import validated_disposable_database_url
 from app.api.routes import actions as actions_routes
 from app.api.routes import approvals as approvals_routes
+from app.action_engine import approval as approval_module
 from app.action_engine.approval import _expire_one, _persist_execution_failure
+from app.action_engine.disable_execution import DisableRevalidation, execute_disable
 from app.db.session import get_db
-from app.domains.it_operations.models import DirectoryUser, ItAuditEvent, LicenseAssignment
+from app.domains.it_operations.actions.disable_inactive_user import (
+    DisableInactiveUserHandler,
+)
+from app.domains.it_operations.models import (
+    DirectoryUser,
+    Group,
+    ItAuditEvent,
+    LicenseAssignment,
+    LoginEvent,
+    SecurityEvent,
+    UserGroupMembership,
+)
 from app.domains.it_operations.seed import seed_database
 from app.main import app
 from app.models.product import (
@@ -49,23 +62,45 @@ def test_action_runtime_role_has_minimal_attributes_grants_and_policies(
         role = connection.execute(
             text(
                 "SELECT rolcanlogin, rolsuper, rolcreatedb, rolcreaterole, "
-                "rolinherit, rolbypassrls FROM pg_roles WHERE rolname = :role"
+                "rolinherit, rolbypassrls, rolreplication "
+                "FROM pg_roles WHERE rolname = :role"
             ),
             {"role": ACTION_ROLE},
         ).one()
-        assert role == (False, False, False, False, False, False)
-        membership = connection.execute(
+        assert role == (False, False, False, False, False, False, False)
+        memberships = connection.execute(
             text(
-                "SELECT membership.inherit_option, membership.set_option "
+                "SELECT granted_role.rolname, member_role.rolname, "
+                "membership.inherit_option, membership.set_option "
                 "FROM pg_auth_members membership "
                 "JOIN pg_roles granted_role ON granted_role.oid = membership.roleid "
                 "JOIN pg_roles member_role ON member_role.oid = membership.member "
                 "WHERE granted_role.rolname = :runtime_role "
-                "AND member_role.rolname = 'queryops'"
+                "OR member_role.rolname = :runtime_role "
+                "ORDER BY granted_role.rolname, member_role.rolname"
             ),
             {"runtime_role": ACTION_ROLE},
-        ).one()
-        assert membership == (False, True)
+        ).all()
+        assert memberships == [(ACTION_ROLE, "queryops", False, True)]
+        owned_objects = connection.execute(
+            text(
+                "SELECT "
+                "(SELECT count(*) FROM pg_database database "
+                " JOIN pg_roles owner ON owner.oid = database.datdba "
+                " WHERE owner.rolname = :role) + "
+                "(SELECT count(*) FROM pg_namespace namespace "
+                " JOIN pg_roles owner ON owner.oid = namespace.nspowner "
+                " WHERE owner.rolname = :role) + "
+                "(SELECT count(*) FROM pg_class relation "
+                " JOIN pg_roles owner ON owner.oid = relation.relowner "
+                " WHERE owner.rolname = :role) + "
+                "(SELECT count(*) FROM pg_proc procedure "
+                " JOIN pg_roles owner ON owner.oid = procedure.proowner "
+                " WHERE owner.rolname = :role)"
+            ),
+            {"role": ACTION_ROLE},
+        ).scalar_one()
+        assert owned_objects == 0
         grants = connection.execute(
             text(
                 "SELECT table_name, privilege_type FROM information_schema.role_table_grants "
@@ -99,6 +134,38 @@ def test_action_runtime_role_has_minimal_attributes_grants_and_policies(
             {"role": ACTION_ROLE},
         ).scalars().all()
         assert columns == ["reclaimed_at", "reclaimed_by_app_user_id", "status"]
+        directory_columns = connection.execute(
+            text(
+                "SELECT column_name FROM information_schema.role_column_grants "
+                "WHERE grantee = :role AND table_name = 'directory_users' "
+                "AND privilege_type = 'UPDATE' ORDER BY column_name"
+            ),
+            {"role": ACTION_ROLE},
+        ).scalars().all()
+        assert directory_columns == ["account_status", "updated_at"]
+        dependency_select_columns = connection.execute(
+            text(
+                "SELECT table_name, column_name "
+                "FROM information_schema.role_column_grants "
+                "WHERE grantee = :role AND privilege_type = 'SELECT' "
+                "AND table_name IN ('groups', 'login_events', 'security_events', "
+                "'user_group_memberships') ORDER BY table_name, column_name"
+            ),
+            {"role": ACTION_ROLE},
+        ).all()
+        assert dependency_select_columns == [
+            ("groups", "id"),
+            ("groups", "is_privileged"),
+            ("login_events", "event_type"),
+            ("login_events", "occurred_at"),
+            ("login_events", "user_id"),
+            ("security_events", "id"),
+            ("security_events", "severity"),
+            ("security_events", "status"),
+            ("security_events", "user_id"),
+            ("user_group_memberships", "group_id"),
+            ("user_group_memberships", "user_id"),
+        ]
         policies = connection.execute(
             text(
                 "SELECT tablename, cmd, roles, qual, with_check FROM pg_policies "
@@ -108,13 +175,14 @@ def test_action_runtime_role_has_minimal_attributes_grants_and_policies(
             ),
             {"role": ACTION_ROLE},
         ).all()
-        assert len(policies) == 2
+        assert len(policies) == 3
         assert all(row.roles == [ACTION_ROLE] for row in policies)
         assert {
             (row.tablename, row.cmd)
             for row in policies
         } == {
             ("license_assignments", "UPDATE"),
+            ("directory_users", "UPDATE"),
             ("it_audit_events", "INSERT"),
         }
         assert all(
@@ -131,11 +199,37 @@ def test_action_runtime_role_has_minimal_attributes_grants_and_policies(
             for row in policies
         )
         assert any(
+            row.tablename == "directory_users"
+            and row.cmd == "UPDATE"
+            and row.qual
+            and "account_type" in row.qual
+            and "account_status" in row.qual
+            and row.with_check
+            and "account_type" in row.with_check
+            and "account_status" in row.with_check
+            for row in policies
+        )
+        assert any(
             row.tablename == "it_audit_events"
             and row.cmd == "INSERT"
             and row.with_check
             for row in policies
         )
+        select_policies = connection.execute(
+            text(
+                "SELECT tablename, cmd, roles, qual FROM pg_policies "
+                "WHERE CAST(:role AS name) = ANY(roles) AND cmd = 'SELECT' "
+                "ORDER BY tablename, policyname"
+            ),
+            {"role": ACTION_ROLE},
+        ).all()
+        assert [(row.tablename, row.cmd) for row in select_policies] == [
+            ("groups", "SELECT"),
+            ("login_events", "SELECT"),
+            ("security_events", "SELECT"),
+            ("user_group_memberships", "SELECT"),
+        ]
+        assert all(row.roles == [ACTION_ROLE] and row.qual for row in select_policies)
 
 
 def test_action_runtime_role_cannot_mutate_unapproved_columns_or_tables(
@@ -152,7 +246,7 @@ def test_action_runtime_role_cannot_mutate_unapproved_columns_or_tables(
             {"id": assignment_id},
         ),
         (
-            "UPDATE directory_users SET account_status = 'disabled' WHERE id = :id",
+            "UPDATE directory_users SET full_name = 'forbidden' WHERE id = :id",
             {"id": user_id},
         ),
         (
@@ -172,6 +266,557 @@ def test_action_runtime_role_cannot_mutate_unapproved_columns_or_tables(
                 with connection.begin():
                     connection.execute(text(f'SET LOCAL ROLE "{ACTION_ROLE}"'))
                     connection.execute(text(statement), parameters)
+
+
+def test_directory_user_update_policy_allows_only_scoped_active_humans(
+    postgres_engine: Engine,
+) -> None:
+    with Session(postgres_engine) as session:
+        actor = _user(session, "demo.analyst@queryops.local")
+        finance_user = _new_inactive_user(session, "PR4-RLS-HUMAN", "finance")
+        sales_user = _new_inactive_user(session, "PR4-RLS-FOREIGN", "sales")
+        service_user = _new_inactive_user(
+            session,
+            "PR4-RLS-SERVICE",
+            "finance",
+            account_type="service",
+        )
+        finance = _scope(session, "finance")
+        actor_id = actor.id
+        finance_id = finance.department_id
+        user_ids = (finance_user.id, sales_user.id, service_user.id)
+
+    statement = text(
+        "UPDATE directory_users SET account_status = 'disabled', updated_at = :now "
+        "WHERE id = :id"
+    )
+    with postgres_engine.connect() as connection:
+        with connection.begin():
+            _set_department_rls_context(
+                connection,
+                department_id=finance_id,
+                app_user_id=actor_id,
+            )
+            connection.execute(text(f'SET LOCAL ROLE "{ACTION_ROLE}"'))
+            rowcounts = [
+                connection.execute(statement, {"id": user_id, "now": NOW}).rowcount
+                for user_id in user_ids
+            ]
+    assert rowcounts == [1, 0, 0]
+    with Session(postgres_engine) as session:
+        assert session.get(DirectoryUser, user_ids[0]).account_status == "disabled"
+        assert session.get(DirectoryUser, user_ids[1]).account_status == "active"
+        assert session.get(DirectoryUser, user_ids[2]).account_status == "active"
+
+
+def test_disable_action_executes_atomically_with_domain_audit_and_notifications(
+    client: TestClient,
+    postgres_engine: Engine,
+) -> None:
+    _assign_finance_scope(postgres_engine)
+    user_id, approval_id, action_id = _disable_request(client, postgres_engine)
+
+    response = _approve_request(client, approval_id)
+
+    assert response.status_code == 200, response.json()
+    assert response.json()["data"] == {
+        "approval_id": str(approval_id),
+        "action_request_id": str(action_id),
+        "status": "completed",
+        "executed_records_count": 1,
+        "skipped_records_count": 0,
+        "self_approved": False,
+        "override_used": False,
+        "completed_at": "2026-06-28T12:00:00Z",
+    }
+    with Session(postgres_engine) as session:
+        user = session.get(DirectoryUser, user_id)
+        action = session.get(ActionRequest, action_id)
+        approval = session.get(ApprovalRequest, approval_id)
+        assert user is not None and user.account_status == "disabled"
+        assert user.updated_at == NOW
+        assert (
+            user.employee_number,
+            user.email,
+            user.full_name,
+            user.account_type,
+            user.employee_status,
+            user.last_login_at,
+        ) == (
+            "PR4-DISABLE-TARGET",
+            "pr4-disable-target@example.test",
+            "Safe PR4-DISABLE-TARGET",
+            "human",
+            "active",
+            NOW - timedelta(days=91),
+        )
+        assert action is not None and action.status == "completed"
+        assert approval is not None and approval.status == "approved"
+        domain_events = session.scalars(
+            select(ItAuditEvent).where(
+                ItAuditEvent.event_type == "user_disabled",
+                ItAuditEvent.resource_id == user_id,
+            )
+        ).all()
+        assert len(domain_events) == 1
+        event = domain_events[0]
+        assert event.actor_user_id is None
+        assert event.actor_app_user_id == approval.decided_by_user_id
+        assert event.target_user_id == user_id
+        assert event.event_metadata["changed_fields"] == {
+            "account_status": {"before": "active", "after": "disabled"}
+        }
+        lifecycle_events = Counter(
+            session.scalars(
+                select(AppAuditLog.event_type).where(
+                    AppAuditLog.action_request_id == action_id,
+                    AppAuditLog.event_type.in_(("action_approved", "action_executed")),
+                )
+            ).all()
+        )
+        assert lifecycle_events == Counter(
+            {"action_approved": 1, "action_executed": 1}
+        )
+        decision_notifications = Counter(
+            session.scalars(
+                select(Notification.notification_type).where(
+                    Notification.related_resource_id == action_id,
+                    Notification.notification_type.in_(("action_approved", "action_completed")),
+                )
+            ).all()
+        )
+        assert decision_notifications == Counter(
+            {"action_approved": 1, "action_completed": 2}
+        )
+    _login(client, "demo.manager@queryops.local")
+    detail = client.get(f"/api/v1/actions/{action_id}")
+    assert detail.status_code == 200, detail.json()
+    timeline = detail.json()["data"]["timeline"]
+    assert [item["event_type"] for item in timeline] == [
+        "action_preview_created",
+        "action_requested",
+        "action_approved",
+        "action_executed",
+    ]
+    assert timeline[-1]["summary"] == "Disable inactive user action completed."
+    assert all("metadata" not in item for item in timeline)
+
+    retry = _approve_request(client, approval_id)
+    assert retry.status_code == 409, retry.json()
+    with Session(postgres_engine) as session:
+        assert session.scalar(
+            select(func.count())
+            .select_from(ItAuditEvent)
+            .where(
+                ItAuditEvent.event_type == "user_disabled",
+                ItAuditEvent.resource_id == user_id,
+            )
+        ) == 1
+
+
+def test_successful_login_after_preview_is_revalidated_as_a_no_op(
+    client: TestClient,
+    postgres_engine: Engine,
+) -> None:
+    _assign_finance_scope(postgres_engine)
+    user_id, approval_id, action_id = _disable_request(client, postgres_engine)
+    with Session(postgres_engine) as session:
+        user = session.get(DirectoryUser, user_id)
+        assert user is not None
+        session.add(
+            LoginEvent(
+                user_id=user.id,
+                department_id=user.department_id,
+                event_type="success",
+                occurred_at=NOW - timedelta(minutes=1),
+            )
+        )
+        session.commit()
+
+    response = _approve_request(client, approval_id)
+
+    assert response.status_code == 200, response.json()
+    assert response.json()["data"]["status"] == "completed"
+    assert response.json()["data"]["executed_records_count"] == 0
+    assert response.json()["data"]["skipped_records_count"] == 1
+    _login(client, "demo.manager@queryops.local")
+    detail = client.get(f"/api/v1/actions/{action_id}")
+    assert detail.status_code == 200, detail.json()
+    assert detail.json()["data"]["preview"]["skipped_records"][0][
+        "reason_code"
+    ] == "recent_successful_login"
+    with Session(postgres_engine) as session:
+        assert session.get(DirectoryUser, user_id).account_status == "active"
+        assert session.get(ActionRequest, action_id).status == "completed"
+        assert session.scalars(
+            select(ItAuditEvent).where(
+                ItAuditEvent.event_type == "user_disabled",
+                ItAuditEvent.resource_id == user_id,
+            )
+        ).all() == []
+
+
+def test_dependency_change_cannot_add_a_new_execution_target_after_locking(
+    client: TestClient,
+    postgres_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assign_finance_scope(postgres_engine)
+    user_id, approval_id, action_id = _disable_request(client, postgres_engine)
+    with Session(postgres_engine) as session:
+        user = session.get(DirectoryUser, user_id)
+        assert user is not None
+        session.add(
+            LoginEvent(
+                user_id=user.id,
+                department_id=user.department_id,
+                event_type="success",
+                occurred_at=NOW - timedelta(minutes=1),
+            )
+        )
+        session.commit()
+
+    real_lock = approval_module.lock_action_dependencies
+
+    def remove_recent_login_during_lock_phase(db, action_type, revalidation):
+        real_lock(db, action_type, revalidation)
+        db.execute(delete(LoginEvent).where(LoginEvent.user_id == user_id))
+
+    monkeypatch.setattr(
+        approval_module,
+        "lock_action_dependencies",
+        remove_recent_login_during_lock_phase,
+    )
+    response = _approve_request(client, approval_id)
+
+    assert response.status_code == 200, response.json()
+    assert response.json()["data"]["status"] == "failed"
+    assert "dependency" not in str(response.json()).lower()
+    with Session(postgres_engine) as session:
+        assert session.get(DirectoryUser, user_id).account_status == "active"
+        assert session.get(ActionRequest, action_id).status == "failed"
+        assert session.scalar(
+            select(func.count())
+            .select_from(LoginEvent)
+            .where(LoginEvent.user_id == user_id)
+        ) == 1
+        assert session.scalar(
+            select(ItAuditEvent.id).where(
+                ItAuditEvent.event_type == "user_disabled",
+                ItAuditEvent.resource_id == user_id,
+            )
+        ) is None
+
+
+@pytest.mark.parametrize("drift", ["already_disabled", "service_account"])
+def test_disable_revalidation_hard_skips_nonexecutable_account_drift(
+    client: TestClient,
+    postgres_engine: Engine,
+    drift: str,
+) -> None:
+    _assign_finance_scope(postgres_engine)
+    user_id, approval_id, action_id = _disable_request(client, postgres_engine)
+    with Session(postgres_engine) as session:
+        user = session.get(DirectoryUser, user_id)
+        assert user is not None
+        if drift == "already_disabled":
+            user.account_status = "disabled"
+        else:
+            user.account_type = "service"
+        session.commit()
+
+    response = _approve_request(client, approval_id)
+
+    assert response.status_code == 200, response.json()
+    assert response.json()["data"]["executed_records_count"] == 0
+    assert response.json()["data"]["skipped_records_count"] == 1
+    with Session(postgres_engine) as session:
+        user = session.get(DirectoryUser, user_id)
+        assert user is not None
+        if drift == "already_disabled":
+            assert user.account_status == "disabled"
+        else:
+            assert user.account_type == "service"
+            assert user.account_status == "active"
+        assert session.get(ActionRequest, action_id).status == "completed"
+        assert session.scalars(
+            select(ItAuditEvent).where(
+                ItAuditEvent.event_type == "user_disabled",
+                ItAuditEvent.resource_id == user_id,
+            )
+        ).all() == []
+
+
+def test_disable_scope_move_is_recomputed_and_requires_admin(
+    client: TestClient,
+    postgres_engine: Engine,
+) -> None:
+    _assign_finance_scope(postgres_engine)
+    user_id, approval_id, action_id = _disable_request(client, postgres_engine)
+    with Session(postgres_engine) as session:
+        user = session.get(DirectoryUser, user_id)
+        destination = _scope(session, "it")
+        assert user is not None
+        user.department_id = destination.department_id
+        session.commit()
+
+    blocked = _approve_request(client, approval_id)
+
+    assert blocked.status_code == 422, blocked.json()
+    assert blocked.json()["error"]["code"] == "POLICY_OVERRIDE_REQUIRED"
+    with Session(postgres_engine) as session:
+        action = session.get(ActionRequest, action_id)
+        assert session.get(DirectoryUser, user_id).account_status == "active"
+        assert action is not None and action.status == "pending_approval"
+        assert action.policy_flags_json["revalidation_crosses_scopes"] is True
+
+    admin_csrf = _login(client, "demo.admin@queryops.local")
+    approved = client.post(
+        f"/api/v1/approvals/{approval_id}/approve",
+        headers={"X-CSRF-Token": admin_csrf},
+        json={"decision_reason": "Cross-scope user disablement approved by Admin."},
+    )
+    assert approved.status_code == 200, approved.json()
+    with Session(postgres_engine) as session:
+        assert session.get(DirectoryUser, user_id).account_status == "disabled"
+
+
+def test_admin_disable_self_approval_is_audited(
+    client: TestClient,
+    postgres_engine: Engine,
+) -> None:
+    user_id, approval_id, action_id = _disable_request(
+        client,
+        postgres_engine,
+        requester_email="demo.admin@queryops.local",
+    )
+    csrf = _login(client, "demo.admin@queryops.local")
+
+    response = client.post(
+        f"/api/v1/approvals/{approval_id}/approve",
+        headers={"X-CSRF-Token": csrf},
+        json={"decision_reason": "Admin self-approval reviewed under policy."},
+    )
+
+    assert response.status_code == 200, response.json()
+    assert response.json()["data"]["self_approved"] is True
+    with Session(postgres_engine) as session:
+        assert session.get(DirectoryUser, user_id).account_status == "disabled"
+        events = session.scalars(
+            select(AppAuditLog).where(
+                AppAuditLog.action_request_id == action_id,
+                AppAuditLog.event_type.in_(("action_approved", "action_executed")),
+            )
+        ).all()
+        assert len(events) == 2
+        assert all(event.self_approved is True for event in events)
+
+
+def test_admin_global_disable_executes_through_global_action_rls(
+    client: TestClient,
+    postgres_engine: Engine,
+) -> None:
+    with Session(postgres_engine) as session:
+        global_scope = session.scalar(
+            select(AccessScope).where(
+                AccessScope.scope_type == "global",
+                AccessScope.scope_key == "global",
+            )
+        )
+        target = _new_inactive_user(session, "PR4-GLOBAL-DISABLE", "finance")
+        assert global_scope is not None
+        global_scope_id = global_scope.id
+        target_id = target.id
+    csrf = _login(client, "demo.admin@queryops.local")
+    preview = client.post(
+        "/api/v1/actions/preview",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "action_type": "disable_inactive_user",
+            "scope_id": str(global_scope_id),
+            "target_user_ids": [str(target_id)],
+            "reason": "Admin global inactive-user preview.",
+        },
+    )
+    assert preview.status_code == 201, preview.json()
+    preview_data = preview.json()["data"]
+    assert preview_data["requires_admin"] is True
+    assert preview_data["preview"]["override_required_records"][0][
+        "directory_user_id"
+    ] == str(target_id)
+    action_id = uuid.UUID(preview_data["action_request_id"])
+    submitted = client.post(
+        "/api/v1/actions/request",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "action_request_id": str(action_id),
+            "reason": "Admin global inactive-user request.",
+        },
+    )
+    assert submitted.status_code == 200, submitted.json()
+    with Session(postgres_engine) as session:
+        approval_id = session.scalar(
+            select(ApprovalRequest.id).where(
+                ApprovalRequest.action_request_id == action_id
+            )
+        )
+        assert approval_id is not None
+    approved = client.post(
+        f"/api/v1/approvals/{approval_id}/approve",
+        headers={"X-CSRF-Token": csrf},
+        json={"decision_reason": "Admin global override approved."},
+    )
+    assert approved.status_code == 200, approved.json()
+    assert approved.json()["data"]["self_approved"] is True
+    assert approved.json()["data"]["override_used"] is True
+    with Session(postgres_engine) as session:
+        assert session.get(DirectoryUser, target_id).account_status == "disabled"
+        assert session.scalar(
+            select(ItAuditEvent.id).where(
+                ItAuditEvent.event_type == "user_disabled",
+                ItAuditEvent.resource_id == target_id,
+            )
+        ) is not None
+
+
+def test_disable_executor_rejects_application_role_without_runtime_switch(
+    postgres_engine: Engine,
+) -> None:
+    revalidation = DisableRevalidation(
+        eligible_records=(),
+        skipped_records=(),
+        admin_override_records=(),
+        policy_flags=(),
+        executable_records=(),
+        override_reason_codes=(),
+        crosses_scopes=False,
+        revalidated_at=NOW,
+    )
+    with Session(postgres_engine) as session:
+        with pytest.raises(
+            RuntimeError,
+            match="secure action execution boundary is unavailable",
+        ):
+            execute_disable(
+                session,
+                action_request_id=uuid.uuid4(),
+                approver_app_user_id=uuid.uuid4(),
+                revalidation=revalidation,
+                execution_time=NOW,
+            )
+
+
+@pytest.mark.parametrize("new_override", ["privileged", "critical_event"])
+def test_new_sensitive_dependency_escalates_before_disablement(
+    client: TestClient,
+    postgres_engine: Engine,
+    new_override: str,
+) -> None:
+    _assign_finance_scope(postgres_engine)
+    user_id, approval_id, action_id = _disable_request(client, postgres_engine)
+    with Session(postgres_engine) as session:
+        user = session.get(DirectoryUser, user_id)
+        assert user is not None
+        if new_override == "privileged":
+            group = Group(
+                name="PR4 Privileged Group",
+                group_type="admin",
+                department_id=user.department_id,
+                is_privileged=True,
+                risk_level="critical",
+            )
+            session.add(group)
+            session.flush()
+            session.add(
+                UserGroupMembership(
+                    user_id=user.id,
+                    group_id=group.id,
+                    department_id=user.department_id,
+                    added_at=NOW,
+                )
+            )
+        else:
+            session.add(
+                SecurityEvent(
+                    user_id=user.id,
+                    department_id=user.department_id,
+                    event_type="credential_compromise",
+                    severity="critical",
+                    occurred_at=NOW,
+                    status="open",
+                )
+            )
+        session.commit()
+
+    blocked = _approve_request(client, approval_id)
+
+    assert blocked.status_code == 422, blocked.json()
+    assert blocked.json()["error"]["code"] == "POLICY_OVERRIDE_REQUIRED"
+    with Session(postgres_engine) as session:
+        action = session.get(ActionRequest, action_id)
+        assert session.get(DirectoryUser, user_id).account_status == "active"
+        assert action is not None and action.status == "pending_approval"
+        assert action.requires_admin is True
+        codes = {
+            item["code"]
+            for item in action.policy_flags_json["revalidation_flags"]
+        }
+        expected = (
+            "privileged_user"
+            if new_override == "privileged"
+            else "open_critical_security_event"
+        )
+        assert expected in codes
+
+    admin_csrf = _login(client, "demo.admin@queryops.local")
+    approved = client.post(
+        f"/api/v1/approvals/{approval_id}/approve",
+        headers={"X-CSRF-Token": admin_csrf},
+        json={"decision_reason": "Admin override reviewed and approved."},
+    )
+    assert approved.status_code == 200, approved.json()
+    assert approved.json()["data"]["override_used"] is True
+    _login(client, "demo.manager@queryops.local")
+    detail = client.get(f"/api/v1/actions/{action_id}")
+    assert detail.status_code == 200, detail.json()
+    assert detail.json()["data"]["status"] == "completed"
+    with Session(postgres_engine) as session:
+        assert session.get(DirectoryUser, user_id).account_status == "disabled"
+
+
+def test_disable_execution_failure_rolls_back_mutation_and_domain_audit(
+    client: TestClient,
+    postgres_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _assign_finance_scope(postgres_engine)
+    user_id, approval_id, action_id = _disable_request(client, postgres_engine)
+    real_execute = DisableInactiveUserHandler.execute
+
+    def fail_after_mutation(*args, **kwargs):
+        real_execute(*args, **kwargs)
+        raise RuntimeError("forced-disable-test-failure")
+
+    monkeypatch.setattr(DisableInactiveUserHandler, "execute", fail_after_mutation)
+    response = _approve_request(client, approval_id)
+
+    assert response.status_code == 200, response.json()
+    assert response.json()["data"]["status"] == "failed"
+    with Session(postgres_engine) as session:
+        assert session.get(DirectoryUser, user_id).account_status == "active"
+        assert session.get(ActionRequest, action_id).status == "failed"
+        assert session.scalars(
+            select(ItAuditEvent).where(
+                ItAuditEvent.event_type == "user_disabled",
+                ItAuditEvent.resource_id == user_id,
+            )
+        ).all() == []
+        assert session.scalar(
+            select(AppAuditLog).where(
+                AppAuditLog.action_request_id == action_id,
+                AppAuditLog.event_type == "action_failed",
+            )
+        ) is not None
 
 
 def test_action_runtime_audit_insert_is_scope_checked_and_context_does_not_leak(
@@ -253,18 +898,25 @@ def test_query_runtime_remains_read_only_for_action_columns(
 ) -> None:
     with Session(postgres_engine) as session:
         assignment = session.scalar(select(LicenseAssignment).order_by(LicenseAssignment.id))
-        assert assignment is not None
+        user = session.scalar(select(DirectoryUser).order_by(DirectoryUser.id))
+        assert assignment is not None and user is not None
         assignment_id = assignment.id
-    with postgres_engine.connect() as connection:
-        with pytest.raises(DBAPIError):
-            with connection.begin():
-                connection.execute(text('SET LOCAL ROLE "queryops_query_runtime"'))
-                connection.execute(
-                    text(
-                        "UPDATE license_assignments SET status = 'reclaimed' WHERE id = :id"
-                    ),
-                    {"id": assignment_id},
-                )
+        user_id = user.id
+    for statement, record_id in (
+        (
+            "UPDATE license_assignments SET status = 'reclaimed' WHERE id = :id",
+            assignment_id,
+        ),
+        (
+            "UPDATE directory_users SET account_status = 'disabled' WHERE id = :id",
+            user_id,
+        ),
+    ):
+        with postgres_engine.connect() as connection:
+            with pytest.raises(DBAPIError):
+                with connection.begin():
+                    connection.execute(text('SET LOCAL ROLE "queryops_query_runtime"'))
+                    connection.execute(text(statement), {"id": record_id})
 
 
 def test_scoped_analyst_approve_executes_once_with_audit_and_notifications(
@@ -312,6 +964,10 @@ def test_scoped_analyst_approve_executes_once_with_audit_and_notifications(
         assert len(domain_events) == 1
         assert domain_events[0].actor_app_user_id == analyst.id
         assert domain_events[0].actor_user_id is None
+        assert domain_events[0].event_metadata == {
+            "action_request_id": str(action_id),
+            "action_type": "reclaim_unused_license",
+        }
         notification_pairs = session.execute(
             select(
                 Notification.recipient_user_id,
@@ -959,6 +1615,45 @@ def test_concurrent_approve_requests_have_exactly_one_winner(
         ) == 1
 
 
+def test_concurrent_disable_approvals_have_exactly_one_mutation_and_audit(
+    client: TestClient,
+    postgres_engine: Engine,
+) -> None:
+    _assign_finance_scope(postgres_engine)
+    user_id, approval_id, action_id = _disable_request(client, postgres_engine)
+
+    def approve_once() -> tuple[int, str]:
+        with TestClient(app) as concurrent_client:
+            csrf = _login(concurrent_client, "demo.analyst@queryops.local")
+            response = concurrent_client.post(
+                f"/api/v1/approvals/{approval_id}/approve",
+                headers={"X-CSRF-Token": csrf},
+                json={"decision_reason": "Concurrent inactive-user approval."},
+            )
+            payload = response.json()
+            return response.status_code, payload.get("error", {}).get("code", "completed")
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        results = list(executor.map(lambda _index: approve_once(), range(2)))
+
+    assert sorted(status for status, _code in results) == [200, 409]
+    assert {code for _status, code in results} == {
+        "completed",
+        "ACTION_ALREADY_PROCESSED",
+    }
+    with Session(postgres_engine) as session:
+        assert session.get(DirectoryUser, user_id).account_status == "disabled"
+        assert session.get(ActionRequest, action_id).status == "completed"
+        assert len(
+            session.scalars(
+                select(ItAuditEvent).where(
+                    ItAuditEvent.resource_id == user_id,
+                    ItAuditEvent.event_type == "user_disabled",
+                )
+            ).all()
+        ) == 1
+
+
 def test_concurrent_approve_and_reject_have_one_winner(
     client: TestClient,
     postgres_engine: Engine,
@@ -1194,6 +1889,73 @@ def _manager_finance_request(
         )
         assert approval is not None
         return assignment_id, approval.id, action_id
+
+
+def _disable_request(
+    client: TestClient,
+    engine: Engine,
+    *,
+    requester_email: str = "demo.manager@queryops.local",
+) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
+    with Session(engine) as session:
+        scope = _scope(session, "finance")
+        user = _new_inactive_user(session, "PR4-DISABLE-TARGET", "finance")
+        user_id = user.id
+        scope_id = scope.id
+        department_id = scope.department_id
+    csrf = _login(client, requester_email)
+    preview = client.post(
+        "/api/v1/actions/preview",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "action_type": "disable_inactive_user",
+            "scope_id": str(scope_id),
+            "department_id": str(department_id),
+            "target_user_ids": [str(user_id)],
+            "reason": "Deterministic inactive-user execution preview.",
+        },
+    )
+    assert preview.status_code == 201, preview.json()
+    action_id = uuid.UUID(preview.json()["data"]["action_request_id"])
+    submitted = client.post(
+        "/api/v1/actions/request",
+        headers={"X-CSRF-Token": csrf},
+        json={
+            "action_request_id": str(action_id),
+            "reason": "Approve this deterministic inactive-user action.",
+        },
+    )
+    assert submitted.status_code == 200, submitted.json()
+    with Session(engine) as session:
+        approval = session.scalar(
+            select(ApprovalRequest).where(ApprovalRequest.action_request_id == action_id)
+        )
+        assert approval is not None
+        return user_id, approval.id, action_id
+
+
+def _new_inactive_user(
+    session: Session,
+    marker: str,
+    scope_key: str,
+    *,
+    account_type: str = "human",
+) -> DirectoryUser:
+    scope = _scope(session, scope_key)
+    user = DirectoryUser(
+        employee_number=marker,
+        email=f"{marker.lower()}@example.test",
+        full_name=f"Safe {marker}",
+        department_id=scope.department_id,
+        account_type=account_type,
+        employee_status="active",
+        account_status="active",
+        last_login_at=NOW - timedelta(days=91),
+    )
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return user
 
 
 def _admin_global_request(

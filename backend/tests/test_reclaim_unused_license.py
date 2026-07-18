@@ -12,7 +12,6 @@ from sqlalchemy.pool import StaticPool
 
 from app.action_engine.base import ActionTargetInput, ActionTargetReference
 from app.action_engine.registry import (
-    UnknownActionTypeError,
     build_default_action_registry,
 )
 from app.auth.access_context import UserAccessContext, build_user_access_context
@@ -347,14 +346,13 @@ def test_every_examined_record_has_exactly_one_classification(
     assert groups[1].isdisjoint(groups[2])
 
 
-def test_default_registry_registers_only_reclaim_and_unknown_types_fail_closed() -> None:
+def test_default_registry_registers_only_explicit_v1_actions() -> None:
     registry = build_default_action_registry()
 
     assert registry.registered_action_types == (
+        SupportedActionType.DISABLE_INACTIVE_USER,
         SupportedActionType.RECLAIM_UNUSED_LICENSE,
     )
-    with pytest.raises(UnknownActionTypeError, match="No handler is registered"):
-        registry.get(SupportedActionType.DISABLE_INACTIVE_USER)
 
 
 def test_handler_exposes_persisted_revalidation_and_execution_contract() -> None:

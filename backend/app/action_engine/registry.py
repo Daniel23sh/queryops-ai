@@ -64,7 +64,11 @@ def build_default_action_registry() -> ActionRegistry:
     from app.domains.it_operations.actions.reclaim_unused_license import (
         ReclaimUnusedLicenseHandler,
     )
+    from app.domains.it_operations.actions.disable_inactive_user import (
+        DisableInactiveUserHandler,
+    )
 
     registry = ActionRegistry()
     registry.register(ReclaimUnusedLicenseHandler())
+    registry.register(DisableInactiveUserHandler())
     return registry

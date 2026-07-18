@@ -11,19 +11,22 @@ from sqlalchemy import case, or_, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.action_engine.audit import build_action_audit_log
+from app.action_engine.action_dispatch import (
+    ActionRevalidation,
+    lock_action_dependencies,
+    require_action_revalidation,
+    require_stable_execution_set,
+    safe_action_revalidation_flags,
+)
+from app.action_engine.audit import action_timeline_order, build_action_audit_log
 from app.action_engine.notifications import (
     build_action_notification,
     build_pending_approval_notifications,
     eligible_approvers,
 )
 from app.action_engine.policy import evaluate_action_approval
-from app.action_engine.preview import safe_reclaim_preview, validate_reclaim_snapshot
-from app.action_engine.revalidation import (
-    ReclaimRevalidation,
-    lock_reclaim_dependencies,
-    safe_revalidation_flags,
-)
+from app.action_engine.presentation import ActionPresentation, action_presentation
+from app.action_engine.preview import safe_action_preview, validate_action_snapshot
 from app.action_engine.registry import ActionRegistry, build_default_action_registry
 from app.action_engine.runtime_role import (
     reset_action_runtime_role,
@@ -182,6 +185,7 @@ class ApprovalLifecycleService:
     ) -> dict[str, Any]:
         context = build_user_access_context(current_user, db)
         action, approval = _locked_pair(db, approval_id)
+        presentation = action_presentation(action.action_type)
         decision = _approval_decision(action, context)
         if not decision.allowed:
             raise _not_found()
@@ -241,7 +245,7 @@ class ApprovalLifecycleService:
             event_type="action_rejected",
             action="reject",
             status=ActionRequestStatus.REJECTED.value,
-            summary="Reclaim unused license request rejected.",
+            summary=presentation.rejected_summary,
             before_state={
                 "action_status": ActionRequestStatus.PENDING_APPROVAL.value,
                 "approval_status": ApprovalStatus.PENDING.value,
@@ -256,7 +260,7 @@ class ApprovalLifecycleService:
             actor_user_id=current_user.id,
             notification_type="action_rejected",
             title="Action request rejected",
-            body="Your reclaim unused license request was rejected.",
+            body=presentation.rejected_body,
             action_request=action,
             approval_request=approval,
         )
@@ -280,6 +284,7 @@ class ApprovalLifecycleService:
     ) -> dict[str, Any]:
         context = build_user_access_context(current_user, db)
         action, approval = _locked_pair(db, approval_id)
+        presentation = action_presentation(action.action_type)
         initial_decision = _approval_decision(action, context)
         if not initial_decision.allowed:
             raise _not_found()
@@ -301,30 +306,33 @@ class ApprovalLifecycleService:
         _require_pending(action, approval, now)
         failure_category = "validation_failed"
         try:
-            validate_reclaim_snapshot(action)
+            validate_action_snapshot(action)
             handler = self._registry.get(action.action_type)
             set_rls_context(db, build_rls_context(context))
             set_action_runtime_role(db)
-            revalidation = handler.revalidate(
-                db=db,
-                action_request=action,
-                approver=context,
-                now=now,
+            initial_revalidation = require_action_revalidation(
+                action.action_type,
+                handler.revalidate(
+                    db=db,
+                    action_request=action,
+                    approver=context,
+                    now=now,
+                ),
             )
-            if not isinstance(revalidation, ReclaimRevalidation):
-                raise TypeError("The action handler returned an invalid revalidation result.")
             reset_action_runtime_role(db)
-            lock_reclaim_dependencies(db, revalidation)
+            lock_action_dependencies(db, action.action_type, initial_revalidation)
             set_action_runtime_role(db)
-            revalidation = handler.revalidate(
-                db=db,
-                action_request=action,
-                approver=context,
-                now=now,
+            revalidation = require_action_revalidation(
+                action.action_type,
+                handler.revalidate(
+                    db=db,
+                    action_request=action,
+                    approver=context,
+                    now=now,
+                ),
             )
-            if not isinstance(revalidation, ReclaimRevalidation):
-                raise TypeError("The action handler returned an invalid revalidation result.")
             reset_action_runtime_role(db)
+            require_stable_execution_set(initial_revalidation, revalidation)
 
             current_decision = evaluate_action_approval(
                 context,
@@ -389,9 +397,10 @@ class ApprovalLifecycleService:
                 approval=approval,
                 decision_reason=decision_reason,
                 revalidation=revalidation,
-                executed_assignment_ids=outcome.executed_record_ids,
+                executed_record_ids=outcome.executed_record_ids,
                 self_approved=current_decision.self_approved,
                 now=now,
+                presentation=presentation,
             )
             db.commit()
             return {
@@ -643,10 +652,13 @@ def _persist_escalation(
     actor: AppUser,
     action: ActionRequest,
     approval: ApprovalRequest,
-    revalidation: ReclaimRevalidation,
+    revalidation: ActionRevalidation,
 ) -> None:
     policy = dict(action.policy_flags_json or {})
-    policy["revalidation_flags"] = safe_revalidation_flags(revalidation)
+    policy["revalidation_flags"] = safe_action_revalidation_flags(
+        action.action_type,
+        revalidation,
+    )
     policy["revalidation_requires_admin"] = True
     policy["revalidation_requires_policy_override"] = True
     policy["revalidation_crosses_scopes"] = revalidation.crosses_scopes
@@ -694,10 +706,11 @@ def _complete_success(
     action: ActionRequest,
     approval: ApprovalRequest,
     decision_reason: str,
-    revalidation: ReclaimRevalidation,
-    executed_assignment_ids: tuple[uuid.UUID, ...],
+    revalidation: ActionRevalidation,
+    executed_record_ids: tuple[uuid.UUID, ...],
     self_approved: bool,
     now: datetime,
+    presentation: ActionPresentation,
 ) -> None:
     approval.status = ApprovalStatus.APPROVED.value
     approval.decided_by_user_id = actor.id
@@ -714,25 +727,55 @@ def _complete_success(
         else []
     )
     current_skips = [item.as_dict() for item in revalidation.skipped_records]
+    override_reason_records = [
+        {"reason_code": code}
+        for record in action.preview_json.get("override_required_records", [])
+        if isinstance(record, dict)
+        for code in record.get("override_reason_codes", [])
+        if isinstance(code, str)
+    ]
     action.skipped_records_json = {
         "records": [*prior_records, *current_skips],
-        "exclusions_by_reason": _skip_counts([*prior_records, *current_skips]),
+        "exclusions_by_reason": _skip_counts(
+            [*prior_records, *current_skips, *override_reason_records]
+        ),
     }
     action.skipped_count = len(prior_records) + len(current_skips)
+    preview = dict(action.preview_json or {})
+    summary = dict(preview.get("summary") or {})
+    summary["skipped_count"] = action.skipped_count
+    if "service_accounts_excluded_count" in summary:
+        summary["service_accounts_excluded_count"] = sum(
+            record.get("reason_code") == "service_account_excluded"
+            for record in [*prior_records, *current_skips]
+        )
+    if "recent_login_skipped_count" in summary:
+        summary["recent_login_skipped_count"] = sum(
+            record.get("reason_code") == "recent_successful_login"
+            for record in [*prior_records, *current_skips]
+        )
+    preview["summary"] = summary
+    action.preview_json = preview
     before = {
         "records": [
-            {"license_assignment_id": str(record_id), "status": "active"}
-            for record_id in executed_assignment_ids
+            {
+                presentation.target_id_field: str(record_id),
+                presentation.status_field: presentation.before_status,
+            }
+            for record_id in executed_record_ids
         ]
     }
     after = {
         "records": [
-            {"license_assignment_id": str(record_id), "status": "reclaimed"}
-            for record_id in executed_assignment_ids
+            {
+                presentation.target_id_field: str(record_id),
+                presentation.status_field: presentation.after_status,
+            }
+            for record_id in executed_record_ids
         ]
     }
     common_metadata = {
-        "executed_count": len(executed_assignment_ids),
+        "executed_count": len(executed_record_ids),
         "skipped_count": action.skipped_count,
         "override_used": revalidation.requires_policy_override,
     }
@@ -743,7 +786,7 @@ def _complete_success(
         event_type="action_approved",
         action="approve",
         status=ActionRequestStatus.APPROVED_EXECUTING.value,
-        summary="Reclaim unused license request approved for synchronous execution.",
+        summary=presentation.approved_summary,
         metadata=common_metadata,
         before_state={"status": ActionRequestStatus.PENDING_APPROVAL.value},
         after_state={"status": ActionRequestStatus.APPROVED_EXECUTING.value},
@@ -756,7 +799,7 @@ def _complete_success(
         event_type="action_executed",
         action="execute",
         status=ActionRequestStatus.COMPLETED.value,
-        summary="Reclaim unused license action completed.",
+        summary=presentation.executed_summary,
         metadata=common_metadata,
         before_state=before,
         after_state=after,
@@ -768,7 +811,7 @@ def _complete_success(
             actor_user_id=actor.id,
             notification_type="action_approved",
             title="Action request approved",
-            body="Your reclaim unused license request was approved.",
+            body=presentation.approved_body,
             action_request=action,
             approval_request=approval,
         ),
@@ -777,7 +820,7 @@ def _complete_success(
             actor_user_id=actor.id,
             notification_type="action_completed",
             title="Action completed",
-            body="Your reclaim unused license action completed.",
+            body=presentation.completed_body,
             action_request=action,
             approval_request=approval,
         ),
@@ -786,7 +829,7 @@ def _complete_success(
             actor_user_id=actor.id,
             notification_type="action_completed",
             title="Approved action completed",
-            body="The reclaim unused license action completed.",
+            body=presentation.approver_completed_body,
             action_request=action,
             approval_request=approval,
         ),
@@ -953,11 +996,12 @@ def _serialize_approval_detail(
         and not _expired(action, approval, now)
     )
     can_decide = decision.allowed and currently_pending
-    preview = safe_reclaim_preview(action)
+    preview = safe_action_preview(action)
+    presentation = action_presentation(action.action_type)
     timeline = db.scalars(
         select(AppAuditLog)
         .where(AppAuditLog.action_request_id == action.id)
-        .order_by(AppAuditLog.created_at, AppAuditLog.id)
+        .order_by(AppAuditLog.created_at, action_timeline_order(), AppAuditLog.id)
     ).all()
     can_view_global_audit = context.has_permission("can_view_global_audit")
     return {
@@ -977,9 +1021,8 @@ def _serialize_approval_detail(
         "skipped_count": action.skipped_count,
         "override_count": int(preview["summary"].get("override_required_count", 0)),
         "estimated_impact": {
-            "estimated_monthly_savings": preview["summary"].get(
-                "estimated_monthly_savings"
-            )
+            key: preview["summary"].get(key)
+            for key in presentation.estimated_impact_keys
         },
         "policy_flags": preview["policy_flags"],
         "requires_admin": action.requires_admin,
