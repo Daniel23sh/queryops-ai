@@ -16,7 +16,7 @@ Current PR scope:
 
 `M7 PR4 — Ask Data Redesign & Final UX Hardening` is complete and merged into `main` through PR #28. Milestone 7 is complete.
 
-`Milestone 8 — Actions, Approvals & Audit` is active. `M8 PR1 — Action Persistence & Engine Contracts` is complete and merged into `main` through PR #29. `M8 PR2 — Reclaim License Preview & Request Flow` is complete and merged into `main` through PR #30. `M8 PR3 — Approval Execution, Audit & Notifications` is complete and merged into `main` through PR #31. `M8 PR4 — Disable Inactive User & Backend Security Completion` is in progress on `feature/m8-disable-inactive-user`; M8 PR5 through PR7 have not started.
+`Milestone 8 — Actions, Approvals & Audit` is active. `M8 PR1 — Action Persistence & Engine Contracts` is complete and merged into `main` through PR #29. `M8 PR2 — Reclaim License Preview & Request Flow` is complete and merged into `main` through PR #30. `M8 PR3 — Approval Execution, Audit & Notifications` is complete and merged into `main` through PR #31. `M8 PR4 — Disable Inactive User & Backend Security Completion` is implementation-complete on `feature/m8-disable-inactive-user` but is not merged; M8 PR5 through PR7 have not started.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
@@ -120,7 +120,7 @@ Explicitly out of scope for M6 PR5:
 - masking
 - tenant/project/region governance
 
-Actions, approvals, audit UI, notifications, real LLM/API-key support, and Supabase Auth remained deferred through Milestone 7. The former Actions, Approvals & Audit Milestone 7 is now Milestone 8 because Product UX & Dashboard Redesign became Milestone 7. Milestone 8 is active through the approved seven-PR sequence in Section 17; PR1 through PR3 are merged, and PR4 is in progress under the locked backend-only scope below.
+Actions, approvals, audit UI, notifications, real LLM/API-key support, and Supabase Auth remained deferred through Milestone 7. The former Actions, Approvals & Audit Milestone 7 is now Milestone 8 because Product UX & Dashboard Redesign became Milestone 7. Milestone 8 is active through the approved seven-PR sequence in Section 17; PR1 through PR3 are merged, and PR4 is implementation-complete but unmerged under the locked backend-only scope below.
 
 ## 2. Product Summary
 
@@ -440,7 +440,7 @@ The latest PR status is:
 
 `M7 PR2 — Role-Aware Home & Dashboard Browser` is complete and merged through PR #26. `M7 PR3 — Dashboard Editor, Grid & Visualizations` is complete and merged through PR #27. `M7 PR4 — Ask Data Redesign & Final UX Hardening` is complete and merged through PR #28.
 
-`Milestone 8 — Actions, Approvals & Audit` is active. `M8 PR1 — Action Persistence & Engine Contracts` is complete and merged through PR #29. `M8 PR2 — Reclaim License Preview & Request Flow` is complete and merged through PR #30. `M8 PR3 — Approval Execution, Audit & Notifications` is complete and merged through PR #31. M8 PR4 is in progress on `feature/m8-disable-inactive-user`; M8 PR5 through PR7 have not started.
+`Milestone 8 — Actions, Approvals & Audit` is active. `M8 PR1 — Action Persistence & Engine Contracts` is complete and merged through PR #29. `M8 PR2 — Reclaim License Preview & Request Flow` is complete and merged through PR #30. `M8 PR3 — Approval Execution, Audit & Notifications` is complete and merged through PR #31. M8 PR4 is implementation-complete on `feature/m8-disable-inactive-user` but is not merged; M8 PR5 through PR7 have not started.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -944,7 +944,7 @@ Milestone 8 is split into seven approved PRs:
 6. `M8 PR6 — Approvals, Audit & Notifications UX`
 7. `M8 PR7 — M8 E2E, Security Hardening & Completion`
 
-M8 PR1 is complete and merged through PR #29. M8 PR2 is complete and merged through PR #30. M8 PR3 is complete and merged through PR #31. M8 PR4 is in progress on `feature/m8-disable-inactive-user`; M8 PR5 through PR7 have not started.
+M8 PR1 is complete and merged through PR #29. M8 PR2 is complete and merged through PR #30. M8 PR3 is complete and merged through PR #31. M8 PR4 is implementation-complete on `feature/m8-disable-inactive-user` but is not merged; M8 PR5 through PR7 have not started.
 
 ### M8 PR1 — Action Persistence & Engine Contracts
 
@@ -1193,7 +1193,7 @@ Completion evidence:
 - A fifth CodeRabbit pass was rate-limited. After its stated cooldown, the final retry was rejected before launch, so the final post-fix gate used the authorized **Manual CodeRabbit-style self-review — not a CodeRabbit result**. The complete diff and required suspicious-pattern searches were reviewed across migration/grants/RLS, authorization, concurrency, revalidation, transactionality, mutation, audit, notifications, and failure handling; no remaining Critical, Major, or actionable in-scope Minor issue was found. No zero-finding CodeRabbit result is claimed.
 - `git diff --check`, full diff/scope inspection, ignored-planning-file verification, and backend/frontend regression checks passed. No frontend source file or private planning document changed.
 
-Known limitations are intentional: PR3 supports only synchronous `reclaim_unused_license`; notifications are database records only; there is no separate Execute endpoint, automatic retry, rollback action, worker, scheduler, queue, Redis, frontend action/approval/audit/notification UI, or `disable_inactive_user`. If both execution and the separate safe failure-persistence transaction fail, the API returns a generic error and operational intervention is still required. M8 PR4 is now in progress under the separate scope below.
+Known limitations are intentional: PR3 supports only synchronous `reclaim_unused_license`; notifications are database records only; there is no separate Execute endpoint, automatic retry, rollback action, worker, scheduler, queue, Redis, frontend action/approval/audit/notification UI, or `disable_inactive_user`. If both execution and the separate safe failure-persistence transaction fail, the API returns a generic error and operational intervention is still required. M8 PR4 is implementation-complete under the separate scope below but is not merged.
 
 ### M8 PR4 — Disable Inactive User & Backend Security Completion
 
@@ -1203,7 +1203,7 @@ Branch:
 feature/m8-disable-inactive-user
 ```
 
-Status: in progress.
+Status: implementation-complete locally; not merged.
 
 Goal: add the second and final V1 backend action, `disable_inactive_user`, by extending the deterministic PR1–PR3 action workflow without duplicating approval, execution, audit, notification, or concurrency orchestration.
 
@@ -1226,3 +1226,14 @@ Guardrails:
 - Never infer an AppUser/DirectoryUser identity, persist raw emails, login/security-event rows, SQL, QueryRun rows, arbitrary JSON, or raw database errors.
 - Change only Directory User `account_status` and `updated_at`; retain atomic success, one-winner lifecycle, idempotency, audit, notification deduplication, and separate failure persistence.
 - No frontend, navigation, additional action type, action suggestion, external delivery, queue, worker, scheduler, Redis, automatic retry/rollback, real LLM behavior, Supabase Auth, or M8 PR5+ work is allowed.
+
+Delivered:
+
+- Migration `0010_disable_inactive_user` extends the fixed non-owner action role with column-only dependency reads, Directory User `account_status`/`updated_at` UPDATE, and role/scope/state RLS while refusing unknown role attributes, memberships, ownership, or grants.
+- The explicitly registered `disable_inactive_user` handler classifies active human users at a deterministic 90-day successful-login boundary. Service, disabled, recent, missing, and unsafe records are skipped; privileged, open-critical-event, and cross-scope humans require Admin override; over 20 is request-level only.
+- Preview reads use `queryops_query_runtime`, a read-only transaction, transaction-local requester RLS, independently authorized resources, bounded explicit UUID selectors, and minimal structurally validated snapshots. QueryRun content never selects targets.
+- Approval re-reads and locks current users and dependencies, performs a second action-role pass, forbids a newly executable set after dependency locking, recomputes scope/override policy, and reuses PR3's one-winner synchronous lifecycle.
+- Execution changes only Directory User status/timestamp, writes one actor-separated `user_disabled` domain audit per mutation, and atomically persists lifecycle audit and database notifications. Technical failure rolls back success effects and uses PR3's separate safe failure transaction.
+- Final verification passed 710 default backend tests with 150 expected PostgreSQL skips, all 860 disposable-PostgreSQL backend tests, the exact 20-case suite within 86 focused PostgreSQL action tests, fresh and round-trip migration/refusal/no-diff gates, 188 frontend regression tests, standalone TypeScript checks, and the production build. The final review was **Manual PR4 security and correctness review — not a CodeRabbit result**.
+
+Intentional limitations remain: execution is synchronous; notifications are database-only; service accounts require a future separate action type; there is no action frontend, separate Execute endpoint, automatic retry/rollback, queue, worker, scheduler, Redis, or external delivery. If execution and separate failure persistence both fail, the API returns a generic error and operational intervention is required.
