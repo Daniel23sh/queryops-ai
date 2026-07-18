@@ -9,7 +9,7 @@ from typing import Protocol, runtime_checkable
 from sqlalchemy.orm import Session
 
 from app.auth.access_context import UserAccessContext
-from app.models.product import SupportedActionType
+from app.models.product import ActionRequest, SupportedActionType
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -175,7 +175,7 @@ class ActionHandler(Protocol):
         self,
         *,
         db: Session,
-        preview: ActionPreview,
+        action_request: ActionRequest,
         approver: UserAccessContext,
         now: datetime,
     ) -> RevalidationResult: ...
@@ -184,9 +184,8 @@ class ActionHandler(Protocol):
         self,
         *,
         db: Session,
-        action_request_id: uuid.UUID,
+        action_request: ActionRequest,
         approved_by_app_user_id: uuid.UUID,
         revalidation: RevalidationResult,
-        idempotency_key: str,
         now: datetime,
     ) -> ExecutionResult: ...

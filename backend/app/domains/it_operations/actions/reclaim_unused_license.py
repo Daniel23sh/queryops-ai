@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import uuid
 from collections import Counter
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
@@ -39,7 +38,12 @@ from app.domains.it_operations.models import (
     License,
     LicenseAssignment,
 )
-from app.models.product import AccessScope, DataResource, SupportedActionType
+from app.models.product import (
+    AccessScope,
+    ActionRequest,
+    DataResource,
+    SupportedActionType,
+)
 from app.query_engine.runtime_role import QUERY_RUNTIME_ROLE, set_query_runtime_role
 
 
@@ -98,10 +102,6 @@ class ReclaimPreviewAuthorizationError(ReclaimPreviewError):
 
 
 class ReclaimPreviewTooLargeError(ReclaimPreviewError):
-    pass
-
-
-class ActionExecutionUnavailableError(ReclaimPreviewError):
     pass
 
 
@@ -378,35 +378,46 @@ class ReclaimUnusedLicenseHandler:
         self,
         *,
         db: Session,
-        preview: ActionPreview,
+        action_request: ActionRequest,
         approver: UserAccessContext,
         now: datetime,
     ) -> RevalidationResult:
-        del db, preview, approver, now
-        raise ActionExecutionUnavailableError(
-            "Revalidation is not available in M8 PR2."
+        from app.action_engine.revalidation import revalidate_reclaim_targets
+
+        return revalidate_reclaim_targets(
+            db,
+            action_request=action_request,
+            approver=approver,
+            now=now,
         )
 
     def execute(
         self,
         *,
         db: Session,
-        action_request_id: uuid.UUID,
+        action_request: ActionRequest,
         approved_by_app_user_id: uuid.UUID,
         revalidation: RevalidationResult,
-        idempotency_key: str,
         now: datetime,
     ) -> ExecutionResult:
-        del (
+        from app.action_engine.executor import execute_reclaim
+        from app.action_engine.revalidation import ReclaimRevalidation
+
+        if not isinstance(revalidation, ReclaimRevalidation):
+            raise TypeError("Reclaim execution requires a reclaim revalidation result.")
+        executed_assignment_ids = execute_reclaim(
             db,
-            action_request_id,
-            approved_by_app_user_id,
-            revalidation,
-            idempotency_key,
-            now,
+            action_request_id=action_request.id,
+            approver_app_user_id=approved_by_app_user_id,
+            revalidation=revalidation,
+            execution_time=now,
         )
-        raise ActionExecutionUnavailableError(
-            "Execution is not available in M8 PR2."
+        return ExecutionResult(
+            action_request_id=action_request.id,
+            executed_record_ids=executed_assignment_ids,
+            skipped_records=revalidation.skipped_records,
+            completed_at=now,
+            idempotency_key=action_request.idempotency_key,
         )
 
 

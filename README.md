@@ -462,6 +462,14 @@ RLS runtime model:
 * The runtime role has SELECT-only grants for allowed queryable tables and cannot access non-queryable `it_audit_events`.
 * Query execution uses validator `sanitized_sql`, transaction-local RLS context, PostgreSQL RLS, read-only transaction mode, statement timeout, and row caps.
 
+Action approval runtime model:
+
+* `reclaim_unused_license` approvals revalidate current rows and execute synchronously through the non-owner `queryops_action_runtime` role.
+* The action role is `NOLOGIN`, `NOBYPASSRLS`, and granted to the explicit application login role from `QUERYOPS_APP_DATABASE_ROLE` with inheritance disabled; action code must use `SET LOCAL ROLE`.
+* Its grants are limited to required reads, three `license_assignments` update columns, and scoped `it_audit_events` inserts. PostgreSQL UPDATE/INSERT policies apply only to the action role.
+* Approval, mutation, application/domain audit, and database notifications commit atomically. Failure state is recorded separately after a rollback.
+* Backend APIs provide pending approval review/decisions, current-recipient notification reads, and permission-scoped audit reads. No action or approval frontend is included yet.
+
 Current Query Engine limitations:
 
 * User-supplied template parameters are not supported through the public API.
@@ -470,7 +478,7 @@ Current Query Engine limitations:
 * Query detail endpoints return only the authenticated user's own runs.
 * Scope-aware query history requires assigned access scopes and the appropriate history permission.
 * Full domain pack expansion to 36 templates / 40 evaluation cases is not implemented.
-* Scheduled card refresh, actions, approvals, and notifications are not implemented.
+* Scheduled card refresh, scheduled/background actions, external notification delivery, and action/approval frontend screens are not implemented.
 
 ### Role-Aware Home and Dashboard Browser
 
@@ -657,17 +665,21 @@ DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .ven
 DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/pytest tests/test_rls_postgres.py -q
 ```
 
-Run the full backend suite with PostgreSQL-specific Query Engine tests enabled:
+Run the full backend suite with PostgreSQL-specific tests against a separate disposable database. Action tests refuse the configured application database and require an explicit destructive-test opt-in:
 
 ```bash
 docker compose up -d postgres
+docker compose exec postgres dropdb --if-exists -U queryops queryops_test
+docker compose exec postgres createdb -U queryops queryops_test
 cd backend
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic upgrade head
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic check
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/pytest tests/test_exports_postgres.py -q -rs
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/pytest tests/test_card_refresh_postgres.py -q -rs
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/pytest
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_test .venv/bin/alembic upgrade head
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_test .venv/bin/alembic check
+POSTGRES_TEST_DATABASE_DISPOSABLE=1 \
+POSTGRES_TEST_DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_test \
+  .venv/bin/pytest
 ```
+
+Never point `POSTGRES_TEST_DATABASE_URL` at the normal `POSTGRES_DB`. The action PostgreSQL fixtures run Alembic and reset deterministic seed data.
 
 ### Frontend
 
@@ -705,6 +717,8 @@ POSTGRES_DB=queryops
 POSTGRES_USER=queryops
 POSTGRES_PASSWORD=queryops
 POSTGRES_PORT=5432
+QUERYOPS_APP_DATABASE_ROLE=queryops
+POSTGRES_TEST_DATABASE_DISPOSABLE=0
 BACKEND_PORT=8000
 FRONTEND_PORT=5173
 DATABASE_URL=postgresql+psycopg://queryops:queryops@postgres:5432/queryops

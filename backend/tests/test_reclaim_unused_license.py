@@ -28,7 +28,6 @@ from app.domains.it_operations.actions.reclaim_unused_license import (
     SKIP_RECENT,
     SKIP_RECLAIMED,
     SKIP_SUSPENDED,
-    ActionExecutionUnavailableError,
     ReclaimActionPreview,
     ReclaimCandidateRead,
     ReclaimCandidateRow,
@@ -358,38 +357,18 @@ def test_default_registry_registers_only_reclaim_and_unknown_types_fail_closed()
         registry.get(SupportedActionType.DISABLE_INACTIVE_USER)
 
 
-def test_revalidation_and_execution_fail_closed_in_pr2(
-    db_session: Session,
-    context: UserAccessContext,
-    finance_scope: AccessScope,
-) -> None:
-    handler = ReclaimUnusedLicenseHandler(
-        candidate_reader=_reader([_row(finance_scope)])
-    )
-    preview = handler.build_preview(
-        db=db_session,
-        target=_target(finance_scope),
-        requester=context,
-        now=NOW,
-    )
+def test_handler_exposes_persisted_revalidation_and_execution_contract() -> None:
+    import inspect
 
-    with pytest.raises(ActionExecutionUnavailableError, match="Revalidation"):
-        handler.revalidate(
-            db=db_session,
-            preview=preview,
-            approver=context,
-            now=NOW,
-        )
+    revalidate_parameters = inspect.signature(
+        ReclaimUnusedLicenseHandler.revalidate
+    ).parameters
+    execute_parameters = inspect.signature(ReclaimUnusedLicenseHandler.execute).parameters
 
-    with pytest.raises(ActionExecutionUnavailableError, match="Execution"):
-        handler.execute(
-            db=db_session,
-            action_request_id=uuid.uuid4(),
-            approved_by_app_user_id=uuid.uuid4(),
-            revalidation=None,  # type: ignore[arg-type]
-            idempotency_key="not-executable-in-pr2",
-            now=NOW,
-        )
+    assert "action_request" in revalidate_parameters
+    assert "preview" not in revalidate_parameters
+    assert "action_request" in execute_parameters
+    assert "idempotency_key" not in execute_parameters
 
 
 def _preview(

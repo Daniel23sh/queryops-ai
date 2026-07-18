@@ -24,6 +24,7 @@ services:
       SESSION_COOKIE_SECURE: ${SESSION_COOKIE_SECURE:-false}
       SESSION_MAX_AGE_SECONDS: ${SESSION_MAX_AGE_SECONDS:-28800}
       DATABASE_URL: ${DATABASE_URL:-postgresql://queryops:queryops@postgres:5432/queryops}
+      QUERYOPS_APP_DATABASE_ROLE: ${QUERYOPS_APP_DATABASE_ROLE:-queryops}
       PYTHONUNBUFFERED: "1"
     ports:
       - "${BACKEND_PORT:-8000}:8000"

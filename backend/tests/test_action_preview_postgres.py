@@ -12,13 +12,13 @@ from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select, text
-from sqlalchemy.engine import Engine, make_url
+from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
+from action_postgres_test_db import validated_disposable_database_url
 from app.api.routes import actions as actions_routes
 from app.core.rls import build_rls_context, set_rls_context
-from app.db.base import Base
 from app.db.session import get_db
 from app.domains.it_operations.models import (
     Department,
@@ -401,7 +401,6 @@ def postgres_engine() -> Generator[Engine, None, None]:
         pytest.skip(f"PostgreSQL test database is unavailable: {exc}")
 
     _run_alembic_upgrade(database_url)
-    Base.metadata.create_all(engine)
     with Session(engine) as session:
         seed_database(session, profile_name="small", reset=True)
         session.commit()
@@ -414,18 +413,120 @@ def postgres_engine() -> Generator[Engine, None, None]:
 def _postgres_test_database_url() -> str | None:
     explicit_url = os.environ.get("POSTGRES_TEST_DATABASE_URL")
     if explicit_url:
-        return explicit_url
-    database_url = os.environ.get("DATABASE_URL")
-    if not database_url:
-        return None
-    parsed_url = make_url(database_url)
-    if (
-        parsed_url.drivername.startswith("postgresql")
-        and parsed_url.database is not None
-        and parsed_url.database.startswith("queryops_m8_pr2_verify_")
-    ):
-        return database_url
+        return validated_disposable_database_url(explicit_url)
     return None
+
+
+def test_validated_disposable_url_requires_explicit_opt_in(monkeypatch) -> None:
+    monkeypatch.delenv("POSTGRES_TEST_DATABASE_DISPOSABLE", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    with pytest.raises(pytest.fail.Exception, match="POSTGRES_TEST_DATABASE_DISPOSABLE=1"):
+        validated_disposable_database_url(
+            "postgresql+psycopg://queryops:queryops@localhost:5432/queryops_test"
+        )
+
+
+@pytest.mark.parametrize(
+    ("database_url", "expected_message"),
+    [
+        ("sqlite:///queryops_test.db", "explicit PostgreSQL database"),
+        (
+            "postgresql+psycopg://queryops:queryops@localhost:5432",
+            "explicit PostgreSQL database",
+        ),
+        (
+            "postgresql+psycopg://queryops:queryops@localhost:5432/queryops_ci",
+            "must include a test or dev marker",
+        ),
+        (
+            "postgresql+psycopg://queryops:queryops@prod.example.com:5432/queryops_test",
+            "require a local PostgreSQL endpoint",
+        ),
+        (
+            "postgresql+psycopg://queryops:queryops@localhost:5432/contest",
+            "must include a test or dev marker",
+        ),
+        (
+            "postgresql+psycopg://queryops:queryops@localhost:5432/queryops_test?host=prod.example.com",
+            "cannot override the endpoint",
+        ),
+    ],
+)
+def test_validated_disposable_url_rejects_unsafe_targets(
+    monkeypatch,
+    database_url: str,
+    expected_message: str,
+) -> None:
+    monkeypatch.setenv("POSTGRES_TEST_DATABASE_DISPOSABLE", "1")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+    monkeypatch.delenv("POSTGRES_DB", raising=False)
+
+    with pytest.raises(pytest.fail.Exception, match=expected_message):
+        validated_disposable_database_url(database_url)
+
+
+def test_validated_disposable_url_rejects_postgres_db(monkeypatch) -> None:
+    database_url = (
+        "postgresql+psycopg://queryops:queryops@localhost:5432/queryops_test"
+    )
+    monkeypatch.setenv("POSTGRES_TEST_DATABASE_DISPOSABLE", "1")
+    monkeypatch.setenv("POSTGRES_DB", "queryops_test")
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    with pytest.raises(pytest.fail.Exception, match="configured application database"):
+        validated_disposable_database_url(database_url)
+
+
+@pytest.mark.parametrize("application_host", ["127.0.0.1", "localhost."])
+def test_validated_disposable_url_rejects_database_url_identity(
+    monkeypatch,
+    application_host: str,
+) -> None:
+    database_url = (
+        "postgresql+psycopg://queryops:queryops@localhost:5432/queryops_test"
+    )
+    monkeypatch.setenv("POSTGRES_TEST_DATABASE_DISPOSABLE", "1")
+    monkeypatch.delenv("POSTGRES_DB", raising=False)
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        f"postgresql+psycopg://other:secret@{application_host}:5432/queryops_test",
+    )
+
+    with pytest.raises(pytest.fail.Exception, match="Refusing to use DATABASE_URL"):
+        validated_disposable_database_url(database_url)
+
+
+def test_validated_disposable_url_rejects_uncomparable_database_url(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("POSTGRES_TEST_DATABASE_DISPOSABLE", "1")
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+psycopg://queryops:queryops@safe.example:5432/queryops"
+        "?host=localhost&port=55432&dbname=queryops_m8_review_test",
+    )
+
+    with pytest.raises(pytest.fail.Exception, match="Cannot safely compare DATABASE_URL"):
+        validated_disposable_database_url(
+            "postgresql+psycopg://queryops:queryops@localhost:55432/"
+            "queryops_m8_review_test"
+        )
+
+
+@pytest.mark.parametrize("database_name", ["queryops_test", "queryops_m8_dev"])
+def test_validated_disposable_url_accepts_test_and_dev_names(
+    monkeypatch,
+    database_name: str,
+) -> None:
+    database_url = (
+        "postgresql+psycopg://queryops:queryops@localhost:5432/" + database_name
+    )
+    monkeypatch.setenv("POSTGRES_TEST_DATABASE_DISPOSABLE", "1")
+    monkeypatch.delenv("POSTGRES_DB", raising=False)
+    monkeypatch.delenv("DATABASE_URL", raising=False)
+
+    assert validated_disposable_database_url(database_url) == database_url
 
 
 def _run_alembic_upgrade(database_url: str) -> None:

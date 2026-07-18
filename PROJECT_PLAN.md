@@ -16,7 +16,7 @@ Current PR scope:
 
 `M7 PR4 — Ask Data Redesign & Final UX Hardening` is complete and merged into `main` through PR #28. Milestone 7 is complete.
 
-`Milestone 8 — Actions, Approvals & Audit` is active. `M8 PR1 — Action Persistence & Engine Contracts` is complete and merged into `main` through PR #29. `M8 PR2 — Reclaim License Preview & Request Flow` is implementation-complete on `feature/m8-reclaim-preview-request` but is not merged. M8 PR3 is next and has not started.
+`Milestone 8 — Actions, Approvals & Audit` is active. `M8 PR1 — Action Persistence & Engine Contracts` is complete and merged into `main` through PR #29. `M8 PR2 — Reclaim License Preview & Request Flow` is complete and merged into `main` through PR #30. `M8 PR3 — Approval Execution, Audit & Notifications` is implementation-complete on `feature/m8-approval-execution-audit` but is not merged. M8 PR4 is next but has not started; M8 PR5 through PR7 have not started.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
@@ -120,7 +120,7 @@ Explicitly out of scope for M6 PR5:
 - masking
 - tenant/project/region governance
 
-Actions, approvals, audit UI, notifications, real LLM/API-key support, and Supabase Auth remained deferred through Milestone 7. The former Actions, Approvals & Audit Milestone 7 is now Milestone 8 because Product UX & Dashboard Redesign became Milestone 7. Milestone 8 is active only for the approved PR1 persistence and deterministic contract foundation described in Section 17.
+Actions, approvals, audit UI, notifications, real LLM/API-key support, and Supabase Auth remained deferred through Milestone 7. The former Actions, Approvals & Audit Milestone 7 is now Milestone 8 because Product UX & Dashboard Redesign became Milestone 7. Milestone 8 is active through the approved seven-PR sequence in Section 17; PR1 and PR2 are merged, PR3 approval execution, audit, and notification work is implementation-complete but not merged, and PR4 is next but has not started.
 
 ## 2. Product Summary
 
@@ -440,7 +440,7 @@ The latest PR status is:
 
 `M7 PR2 — Role-Aware Home & Dashboard Browser` is complete and merged through PR #26. `M7 PR3 — Dashboard Editor, Grid & Visualizations` is complete and merged through PR #27. `M7 PR4 — Ask Data Redesign & Final UX Hardening` is complete and merged through PR #28.
 
-`Milestone 8 — Actions, Approvals & Audit` is active. `M8 PR1 — Action Persistence & Engine Contracts` is complete and merged through PR #29. `M8 PR2 — Reclaim License Preview & Request Flow` is implementation-complete but is not merged. M8 PR3 is next and has not started; M8 PR4 through PR7 have not started.
+`Milestone 8 — Actions, Approvals & Audit` is active. `M8 PR1 — Action Persistence & Engine Contracts` is complete and merged through PR #29. `M8 PR2 — Reclaim License Preview & Request Flow` is complete and merged through PR #30. `M8 PR3 — Approval Execution, Audit & Notifications` is implementation-complete but not merged. M8 PR4 is next but has not started; M8 PR5 through PR7 have not started.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -944,7 +944,7 @@ Milestone 8 is split into seven approved PRs:
 6. `M8 PR6 — Approvals, Audit & Notifications UX`
 7. `M8 PR7 — M8 E2E, Security Hardening & Completion`
 
-M8 PR1 is complete and merged through PR #29. M8 PR2 is implementation-complete but is not merged. M8 PR3 is next and has not started; M8 PR4 through PR7 have not started.
+M8 PR1 is complete and merged through PR #29. M8 PR2 is complete and merged through PR #30. M8 PR3 is implementation-complete but not merged. M8 PR4 is next but has not started; M8 PR5 through PR7 have not started.
 
 ### M8 PR1 — Action Persistence & Engine Contracts
 
@@ -1038,7 +1038,7 @@ Branch:
 feature/m8-reclaim-preview-request
 ```
 
-Status: implementation-complete on `feature/m8-reclaim-preview-request`; not merged.
+Status: complete and merged into `main` through PR #30.
 
 Goal: deliver the requester-side backend lifecycle for `reclaim_unused_license` through deterministic preview, persisted draft, submission, safe detail, pending-request cancellation, audit, approver notifications, and current-viewer PostgreSQL RLS without implementing approval decisions or operational execution.
 
@@ -1112,4 +1112,85 @@ Completion evidence:
 - Review method: **Manual CodeRabbit-style self-review — not a CodeRabbit result.** CodeRabbit CLI 0.6.5 was installed, but `coderabbit auth status --agent` reported unauthenticated; automatic login then timed out and the supported fallback remained blocked waiting for a manually copied browser token. Therefore no CodeRabbit issue count is claimed.
 - The manual review found and fixed two Major issues: count-only persisted-snapshot validation that could permit a lifecycle write before serialization failed, and unexpected SQLAlchemy failures bypassing the standardized safe action error envelope. It also fixed one Minor issue: inconsistent per-record versus aggregate Decimal rounding. Regression tests cover all three. The repeated full review found no unresolved Critical, Major, or actionable in-scope Minor issue.
 
-Known limitations remain intentional: there is no approval list/decision, revalidation, execution, license mutation, domain audit write, notification delivery/read API, action frontend, or background worker. PR2 is not marked merged. M8 PR3 — Approval Execution, Audit & Notifications is next but has not started.
+Known limitations remain intentional: there is no approval list/decision, revalidation, execution, license mutation, domain audit write, notification delivery/read API, action frontend, or background worker in PR2 itself. M8 PR3 — Approval Execution, Audit & Notifications is now implementation-complete under the separate scope below but is not merged.
+
+### M8 PR3 — Approval Execution, Audit & Notifications
+
+Branch:
+
+```text
+feature/m8-approval-execution-audit
+```
+
+Status: implementation-complete on `feature/m8-approval-execution-audit`; not merged.
+
+Goal: complete `reclaim_unused_license` end-to-end on the backend through permission-aware approval review, synchronous approve-and-execute, current-state revalidation, narrowly privileged PostgreSQL mutation, audit, notifications, and safe timeline/read APIs without starting the second action or frontend work.
+
+In scope:
+
+- `GET /api/v1/approvals/pending`, `GET /api/v1/approvals/{approval_id}`, `POST /api/v1/approvals/{approval_id}/approve`, and `POST /api/v1/approvals/{approval_id}/reject`
+- dynamically authorized pending visibility, bounded pagination, priority/oldest sorting, safe approval detail, and lazy concurrency-safe expiration
+- current-approver revalidation of every persisted reclaim target against current permissions, `UserAccessContext`, policy, RLS, and PostgreSQL rows
+- a dedicated non-owner `queryops_action_runtime` role with `NOBYPASSRLS`, minimal read/column-update/domain-audit grants, and constant-controlled `SET LOCAL ROLE`
+- scoped `license_assignments` UPDATE RLS using `USING` and `WITH CHECK`, plus scoped `it_audit_events` INSERT RLS using `WITH CHECK`
+- optimistic pending-state claims, synchronous idempotent execution, a shared execution timestamp, and mutation of only assignment status/reclaimed fields
+- atomic success persistence across approval, domain mutation, application/domain audit, notifications, skipped counts, and completion status
+- rollback of every success-side effect on technical failure followed by a separate safe failed-status/audit/notification transaction
+- `action_approved`, `action_rejected`, `action_executed`, `action_failed`, escalation, and domain `license_removed` audit behavior with changed fields only
+- requester/approver/Admin-sensitive notification records plus current-recipient list, mark-read, and read-all APIs
+- permission-aware `GET /api/v1/audit/logs` and safe persisted action timeline metadata
+- deterministic PostgreSQL runtime-role, RLS, rollback, concurrency, idempotency, notification, audit, and the identifiable 20-case action-security suite
+
+Database security decision:
+
+- `queryops_query_runtime` remains strictly read-only and never executes an operational action.
+- Deterministic domain mutation uses `queryops_action_runtime`, a non-owner, non-bypass role entered transaction-locally only after current approver authorization and revalidation.
+- The action role receives only SELECT on `license_assignments`, `directory_users`, and `licenses`; column-level UPDATE of `license_assignments.status`, `reclaimed_at`, and `reclaimed_by_app_user_id`; and INSERT on `it_audit_events`.
+- The application role returns from the action role before product-table approval, audit, notification, and lifecycle writes.
+
+Guardrails:
+
+- Effective permission keys and exact assigned scopes are authoritative. Manager approval is denied; scoped approval is limited to 20 records with no self/cross-scope/override approval; global, override, and Admin self-approval each require their dedicated permissions.
+- Persisted preview data is review context, never current eligibility. Every target is re-queried and locked where needed; QueryRun SQL, generated/executed SQL, LLM metadata, and client-provided record state never select executable records.
+- A newly discovered Admin condition escalates without claiming or mutating; zero currently executable records complete as a successful no-op with all records recorded as skipped.
+- Approve and execute remain one success transaction. No commit occurs between decision, mutation, audit, notification, and completion; technical failures roll it all back before separate safe failure persistence.
+- Only the three approved `LicenseAssignment` columns may change. No `app_user`/`directory_user` identity inference is permitted, and QueryOps approvers use `ItAuditEvent.actor_app_user_id` while `actor_user_id` stays null absent a genuine directory actor.
+- Public responses and limited timelines never expose SQL, raw access snapshots, full permissions, raw rows, raw audit metadata, driver errors, credentials, stack traces, or internal failure detail.
+- No frontend, `disable_inactive_user`, separate Execute endpoint, queue, scheduler, background worker, external notification delivery, rollback action, real LLM behavior, Supabase Auth, or M8 PR4+ implementation is allowed.
+
+Acceptance criteria:
+
+- Approval list/detail/reject/approve endpoints enforce auth, CSRF where state changes, strict schemas, current effective authorization, safe not-found, stable conflicts, and the locked sorting/visibility contract.
+- Revalidation safely skips ordinary drift, escalates new override requirements without mutation, and executes only current authorized records through the action runtime and write-side RLS.
+- Approve/approve, approve/reject, and approve/cancel races have one winner; completed, failed, rejected, cancelled, and expired requests cannot execute or create duplicate audit/notifications.
+- Success, no-op, rejection, escalation, technical failure, and failure-persistence behavior are deterministic, safely serialized, and covered by unit/API and real PostgreSQL tests.
+- Application audit, one domain audit per changed assignment, notification recipient/deduplication/read behavior, scoped/global audit visibility, and timeline metadata match the locked contracts.
+- Migration previous-head/new-head round trips, Alembic no-diff check, full backend/PostgreSQL/frontend regressions, focused concurrency/runtime-role tests, diff checks, and the required review gate pass before PR3 is marked implementation-complete.
+
+Explicit exclusions:
+
+- `disable_inactive_user` or any directory-user mutation
+- frontend Actions, Approvals, Audit, Notifications, navigation, badges, or timeline UI
+- action suggestions, notification delivery outside database records, WebSockets, email, Slack, or push
+- background jobs, scheduled execution, Redis, queues, automatic retries, automatic rollback actions, or an execution-log table
+- real LLM behavior, LLM-selected executable records, arbitrary mutation SQL, Supabase Auth, or future M8 work
+
+Implementation delivered:
+
+- Migration `0009_action_runtime_role` creates the fixed `queryops_action_runtime` role as `NOLOGIN`, `NOINHERIT`, and `NOBYPASSRLS`; grants only schema usage, the three required domain-table SELECT grants, the three-column `license_assignments` UPDATE grant, and `it_audit_events` INSERT; grants the configured application login role explicit SET-only membership; installs role-scoped assignment UPDATE `USING`/`WITH CHECK` and domain-audit INSERT `WITH CHECK` policies; and reverses only those PR3 objects. A pre-existing action role fails closed instead of being altered or dropped.
+- Pending approval list/detail, reject, and synchronous approve-and-execute routes use current effective permissions, exact scope matching, safe not-found behavior, bounded payloads/pagination, lazy expiration, priority sorting, and Manager/Analyst/global/override/self-approval rules from the action policy contracts.
+- Revalidation re-queries and locks every deterministic assignment target plus related user/license policy dependencies under the current approver context. Persisted preview, QueryRun SQL, and LLM metadata never select execution rows. Ordinary eligibility drift is recorded as stable skips; a new override requirement escalates without claiming or mutation; an all-skipped set completes as a successful no-op.
+- Approval claims retain conditional pending/expiration checks after row locks. Approve/approve, approve/reject, approve/cancel, expiration, and failure-persistence races preserve one terminal winner. Completed, failed, rejected, cancelled, and expired actions cannot execute again or duplicate audits/notifications.
+- Reclaim execution runs synchronously through the action role, verifies current role/read-write/RLS state and row count, and changes only assignment `status`, `reclaimed_at`, and `reclaimed_by_app_user_id` with one shared timestamp. Success keeps approval, mutation, one `license_removed` domain audit per changed assignment, application audits, notifications, skipped counts, and completion in one transaction. Technical failure rolls that transaction back and persists safe failed status, audit, and notifications separately when the terminal claim is still available.
+- `GET /api/v1/notifications`, current-recipient idempotent mark-read/read-all routes, permission-aware `GET /api/v1/audit/logs`, and persisted safe action timeline serialization are complete. Notification delivery remains database-only. App audit before/after data contains changed fields only; domain audit uses `actor_app_user_id` and never infers a directory actor.
+
+Completion evidence:
+
+- The exact release-blocking action-security matrix passed all 20 cases. The separately verbose runtime-role/concurrency selection passed 8 cases, including approve/approve, approve/reject, approve/cancel, expiration, and failure terminal-winner checks. Focused final PostgreSQL action preview/execution tests passed 44 cases, and disposable-database guard tests passed 9 cases.
+- Default backend verification passed 686 tests with 132 expected PostgreSQL-only skips. The full disposable-PostgreSQL backend run passed all 818 tests. Frontend regression passed all 188 tests across 28 files, and TypeScript plus the production Vite build passed with only the pre-existing large-chunk advisory.
+- On the disposable database, migration verification passed `0008_action_engine_foundation -> 0009_action_runtime_role -> 0008_action_engine_foundation -> 0009_action_runtime_role`; `alembic check` reported no pending operations. A separate pre-existing-role failure test confirmed the migration refuses to modify a pre-existing privileged role. No existing user database was reset or reseeded.
+- Four CodeRabbit CLI reviews completed and reported 20 findings in total: 2 Critical, 16 Major, and 2 Minor. All valid findings were fixed in separate commits with regression coverage. Fixes included role/policy ownership and actor binding, explicit application-role membership, safe failure categorization, guarded expiration/failure claims, dependency locking and second revalidation, cumulative skips, cross-scope policy recomputation, exact grants/notification/concurrency assertions, migration-only schema setup, destructive-test opt-in/application-database protection, and canonical endpoint identity checks.
+- A fifth CodeRabbit pass was rate-limited. After its stated cooldown, the final retry was rejected before launch, so the final post-fix gate used the authorized **Manual CodeRabbit-style self-review — not a CodeRabbit result**. The complete diff and required suspicious-pattern searches were reviewed across migration/grants/RLS, authorization, concurrency, revalidation, transactionality, mutation, audit, notifications, and failure handling; no remaining Critical, Major, or actionable in-scope Minor issue was found. No zero-finding CodeRabbit result is claimed.
+- `git diff --check`, full diff/scope inspection, ignored-planning-file verification, and backend/frontend regression checks passed. No frontend source file or private planning document changed.
+
+Known limitations are intentional: PR3 supports only synchronous `reclaim_unused_license`; notifications are database records only; there is no separate Execute endpoint, automatic retry, rollback action, worker, scheduler, queue, Redis, frontend action/approval/audit/notification UI, or `disable_inactive_user`. If both execution and the separate safe failure-persistence transaction fail, the API returns a generic error and operational intervention is still required. M8 PR4 is next but has not started.

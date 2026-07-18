@@ -33,12 +33,21 @@ def eligible_approvers(
     policy = action_request.policy_flags_json
     requires_policy_override = (
         isinstance(policy, dict)
-        and policy.get("requires_policy_override") is True
+        and (
+            policy.get("requires_policy_override") is True
+            or policy.get("revalidation_requires_policy_override") is True
+        )
     )
     crosses_scopes = (
-        action_request.requires_admin
-        or action_request.scope_type == "global"
-        or (isinstance(policy, dict) and policy.get("crosses_scopes") is True)
+        action_request.scope_type == "global"
+        or action_request.record_count > 20
+        or (
+            isinstance(policy, dict)
+            and (
+                policy.get("crosses_scopes") is True
+                or policy.get("revalidation_crosses_scopes") is True
+            )
+        )
     )
 
     recipients: dict[str, AppUser] = {}
@@ -91,6 +100,34 @@ def build_pending_approval_notifications(
             },
         )
         for recipient in recipients
+    )
+
+
+def build_action_notification(
+    *,
+    recipient_user_id,
+    actor_user_id,
+    notification_type: str,
+    title: str,
+    body: str,
+    action_request: ActionRequest,
+    approval_request: ApprovalRequest,
+) -> Notification:
+    return Notification(
+        recipient_user_id=recipient_user_id,
+        actor_user_id=actor_user_id,
+        notification_type=notification_type,
+        title=title,
+        body=body,
+        status=NotificationStatus.UNREAD.value,
+        related_resource_type="action_request",
+        related_resource_id=action_request.id,
+        payload={
+            "action_request_id": str(action_request.id),
+            "approval_request_id": str(approval_request.id),
+            "action_type": action_request.action_type,
+            "status": action_request.status,
+        },
     )
 
 

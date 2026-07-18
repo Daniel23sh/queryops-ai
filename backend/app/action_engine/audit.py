@@ -18,6 +18,8 @@ def build_action_audit_log(
     metadata: dict[str, Any] | None = None,
     before_state: dict[str, Any] | None = None,
     after_state: dict[str, Any] | None = None,
+    severity: str = "info",
+    self_approved: bool | None = None,
 ) -> AppAuditLog:
     return AppAuditLog(
         id=uuid.uuid4(),
@@ -30,7 +32,7 @@ def build_action_audit_log(
         scope_id=action_request.scope_id,
         scope_type=action_request.scope_type,
         scope_key=action_request.scope_key,
-        severity="info",
+        severity=severity,
         event_type=event_type,
         action=action,
         status=status,
@@ -40,7 +42,7 @@ def build_action_audit_log(
         audit_metadata=_safe_audit_metadata(action_request, metadata or {}),
         before_state_json=before_state,
         after_state_json=after_state,
-        self_approved=None,
+        self_approved=self_approved,
     )
 
 
@@ -60,11 +62,16 @@ def _safe_audit_metadata(
         "notification_count",
         "cancellation_reason",
         "expiration_kind",
+        "executed_count",
+        "skipped_count",
+        "override_used",
+        "failure_category",
+        "escalation_reason",
     ):
         value = metadata.get(key)
         if isinstance(value, uuid.UUID):
             safe[key] = str(value)
-        elif isinstance(value, str | int) and not isinstance(value, bool):
+        elif isinstance(value, str | int | bool):
             safe[key] = value
     flag_codes = metadata.get("policy_flag_codes")
     if isinstance(flag_codes, list | tuple):
