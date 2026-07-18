@@ -31,8 +31,10 @@ from app.models.product import (
     AppUser,
     ApprovalRequest,
     Notification,
+    Permission,
     Role,
     UserAccessScope,
+    UserPermission,
 )
 
 
@@ -145,6 +147,50 @@ def test_action_policy_details_include_revalidated_cross_scope_state(
     assert response.json()["data"]["policy_details"]["crosses_scopes"] is True
 
 
+def test_revalidated_cross_scope_requires_global_authority_for_all_approval_access(
+    client: TestClient, db_session: Session
+) -> None:
+    analyst = _add_finance_analyst(db_session)
+    override_permission = db_session.scalar(
+        select(Permission).where(Permission.key == "can_approve_policy_override")
+    )
+    assert override_permission is not None
+    db_session.add(
+        UserPermission(
+            user_id=analyst.id,
+            permission_id=override_permission.id,
+            effect="allow",
+            reason="Prove global approval is independently required.",
+        )
+    )
+    manager_csrf = _login(client, "demo.manager@queryops.local")
+    approval = _create_pending(client, db_session, manager_csrf, "finance")
+    action = approval.action_request
+    assert action is not None
+    action.requires_admin = True
+    action.policy_flags_json = {
+        **action.policy_flags_json,
+        "revalidation_requires_policy_override": True,
+        "revalidation_crosses_scopes": True,
+    }
+    approval.required_approver_role = "admin"
+    db_session.commit()
+
+    csrf = _login(client, analyst.email)
+    assert client.get("/api/v1/approvals/pending").json()["data"]["items"] == []
+    assert client.get(f"/api/v1/approvals/{approval.id}").status_code == 404
+    rejected = client.post(
+        f"/api/v1/approvals/{approval.id}/reject",
+        headers={"X-CSRF-Token": csrf},
+        json={"decision_reason": "Scoped authority must not reject this request."},
+    )
+    assert rejected.status_code == 404
+    assert rejected.json()["error"]["code"] == "APPROVAL_NOT_FOUND"
+    db_session.expire_all()
+    assert db_session.get(ActionRequest, action.id).status == "pending_approval"
+    assert db_session.get(ApprovalRequest, approval.id).status == "pending"
+
+
 def test_scoped_analyst_cannot_see_foreign_scope_or_own_request(
     client: TestClient, db_session: Session
 ) -> None:
@@ -242,6 +288,50 @@ def test_scoped_pending_list_does_not_expire_foreign_scope_requests(
     assert db_session.get(ActionRequest, visible.action_request_id).status == "expired"
     assert db_session.get(ApprovalRequest, foreign.id).status == "pending"
     assert db_session.get(ActionRequest, foreign.action_request_id).status == "pending_approval"
+
+
+@pytest.mark.parametrize("decision", ["approve", "reject"])
+@pytest.mark.parametrize("lifecycle", ["expired_pending", "terminal"])
+def test_foreign_scope_decision_is_not_a_lifecycle_or_expiration_oracle(
+    client: TestClient,
+    db_session: Session,
+    decision: str,
+    lifecycle: str,
+) -> None:
+    manager_csrf = _login(client, "demo.manager@queryops.local")
+    approval = _create_pending(client, db_session, manager_csrf, "finance")
+    action = approval.action_request
+    assert action is not None
+    if lifecycle == "expired_pending":
+        action.expires_at = NOW - timedelta(seconds=1)
+        approval.expires_at = NOW - timedelta(seconds=1)
+        expected_action_status = "pending_approval"
+        expected_approval_status = "pending"
+    else:
+        action.status = "rejected"
+        approval.status = "rejected"
+        expected_action_status = "rejected"
+        expected_approval_status = "rejected"
+    db_session.commit()
+
+    csrf = _login(client, "demo.analyst@queryops.local")
+    response = client.post(
+        f"/api/v1/approvals/{approval.id}/{decision}",
+        headers={"X-CSRF-Token": csrf},
+        json={"decision_reason": "Foreign approval must remain undisclosed."},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["error"]["code"] == "APPROVAL_NOT_FOUND"
+    db_session.expire_all()
+    assert db_session.get(ActionRequest, action.id).status == expected_action_status
+    assert db_session.get(ApprovalRequest, approval.id).status == expected_approval_status
+    assert db_session.scalar(
+        select(AppAuditLog).where(
+            AppAuditLog.action_request_id == action.id,
+            AppAuditLog.event_type == "action_expired",
+        )
+    ) is None
 
 
 def test_reject_requires_csrf_and_strict_bounded_reason(

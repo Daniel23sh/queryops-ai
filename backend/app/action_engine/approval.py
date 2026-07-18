@@ -52,6 +52,8 @@ APPROVAL_PERMISSIONS = frozenset(
     }
 )
 LOGGER = logging.getLogger(__name__)
+
+
 @dataclass(frozen=True)
 class ApprovalServiceError(Exception):
     code: str
@@ -180,6 +182,9 @@ class ApprovalLifecycleService:
     ) -> dict[str, Any]:
         context = build_user_access_context(current_user, db)
         action, approval = _locked_pair(db, approval_id)
+        decision = _approval_decision(action, context)
+        if not decision.allowed:
+            raise _not_found()
         now = _as_utc(self._clock())
         if (
             action.status == ActionRequestStatus.PENDING_APPROVAL.value
@@ -196,10 +201,6 @@ class ApprovalLifecycleService:
                 raise _already_processed()
             raise _expired_error()
         _require_pending(action, approval, now)
-        decision = _approval_decision(action, context)
-        if not decision.allowed:
-            raise _not_found()
-
         action_result = db.execute(
             update(ActionRequest)
             .where(
@@ -279,6 +280,9 @@ class ApprovalLifecycleService:
     ) -> dict[str, Any]:
         context = build_user_access_context(current_user, db)
         action, approval = _locked_pair(db, approval_id)
+        initial_decision = _approval_decision(action, context)
+        if not initial_decision.allowed:
+            raise _not_found()
         now = _as_utc(self._clock())
         if (
             action.status == ActionRequestStatus.PENDING_APPROVAL.value
@@ -295,9 +299,6 @@ class ApprovalLifecycleService:
                 raise _already_processed()
             raise _expired_error()
         _require_pending(action, approval, now)
-        initial_decision = _approval_decision(action, context)
-        if not initial_decision.allowed:
-            raise _not_found()
         failure_category = "validation_failed"
         try:
             validate_reclaim_snapshot(action)
@@ -454,6 +455,7 @@ def _approval_decision(action: ActionRequest, context: UserAccessContext):
         crosses_scopes=(
             action.scope_type == "global"
             or policy.get("crosses_scopes") is True
+            or policy.get("revalidation_crosses_scopes") is True
             or action.record_count > 20
         ),
         requires_policy_override=(

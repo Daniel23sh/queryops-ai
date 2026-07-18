@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ipaddress
 import json
 import os
 import uuid
@@ -13,10 +12,11 @@ from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select, text
-from sqlalchemy.engine import Engine, make_url
+from sqlalchemy.engine import Engine
 from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
+from action_postgres_test_db import validated_disposable_database_url
 from app.api.routes import actions as actions_routes
 from app.core.rls import build_rls_context, set_rls_context
 from app.db.session import get_db
@@ -418,37 +418,7 @@ def _postgres_test_database_url() -> str | None:
 
 
 def _validated_disposable_url(database_url: str) -> str:
-    if os.environ.get("POSTGRES_TEST_DATABASE_DISPOSABLE") != "1":
-        pytest.fail(
-            "Set POSTGRES_TEST_DATABASE_DISPOSABLE=1 to permit destructive action tests."
-        )
-    parsed_url = make_url(database_url)
-    database_name = parsed_url.database
-    application_database_name = os.environ.get("POSTGRES_DB", "queryops")
-    if parsed_url.get_backend_name() != "postgresql" or not database_name:
-        pytest.fail("Action preview tests require an explicit PostgreSQL database.")
-    application_url = os.environ.get("DATABASE_URL")
-    if application_url and _database_identity(make_url(application_url)) == _database_identity(
-        parsed_url
-    ):
-        pytest.fail("Refusing to use DATABASE_URL for destructive action tests.")
-    if database_name == application_database_name:
-        pytest.fail("Refusing to use the configured application database for destructive tests.")
-    if "test" not in database_name.lower() and "dev" not in database_name.lower():
-        pytest.fail("The destructive test database name must identify it as test or dev.")
-    return database_url
-
-
-def _database_identity(database_url) -> tuple[str | None, int, str | None]:
-    host = (database_url.host or "localhost").rstrip(".").lower()
-    if not host:
-        pytest.fail("Could not determine the destructive test database endpoint.")
-    try:
-        if ipaddress.ip_address(host).is_loopback:
-            host = "localhost"
-    except ValueError:
-        pass
-    return host, database_url.port or 5432, database_url.database
+    return validated_disposable_database_url(database_url)
 
 
 def test_validated_disposable_url_requires_explicit_opt_in(monkeypatch) -> None:
@@ -471,7 +441,19 @@ def test_validated_disposable_url_requires_explicit_opt_in(monkeypatch) -> None:
         ),
         (
             "postgresql+psycopg://queryops:queryops@localhost:5432/queryops_ci",
-            "must identify it as test or dev",
+            "must include a test or dev marker",
+        ),
+        (
+            "postgresql+psycopg://queryops:queryops@prod.example.com:5432/queryops_test",
+            "require a local PostgreSQL endpoint",
+        ),
+        (
+            "postgresql+psycopg://queryops:queryops@localhost:5432/contest",
+            "must include a test or dev marker",
+        ),
+        (
+            "postgresql+psycopg://queryops:queryops@localhost:5432/queryops_test?host=prod.example.com",
+            "cannot override the endpoint",
         ),
     ],
 )
@@ -517,6 +499,23 @@ def test_validated_disposable_url_rejects_database_url_identity(
 
     with pytest.raises(pytest.fail.Exception, match="Refusing to use DATABASE_URL"):
         _validated_disposable_url(database_url)
+
+
+def test_validated_disposable_url_rejects_uncomparable_database_url(
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("POSTGRES_TEST_DATABASE_DISPOSABLE", "1")
+    monkeypatch.setenv(
+        "DATABASE_URL",
+        "postgresql+psycopg://queryops:queryops@safe.example:5432/queryops"
+        "?host=localhost&port=55432&dbname=queryops_m8_review_test",
+    )
+
+    with pytest.raises(pytest.fail.Exception, match="Cannot safely compare DATABASE_URL"):
+        _validated_disposable_url(
+            "postgresql+psycopg://queryops:queryops@localhost:55432/"
+            "queryops_m8_review_test"
+        )
 
 
 @pytest.mark.parametrize("database_name", ["queryops_test", "queryops_m8_dev"])

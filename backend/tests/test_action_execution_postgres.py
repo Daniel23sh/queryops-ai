@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ipaddress
 import os
 import uuid
 from collections import Counter
@@ -15,10 +14,11 @@ from alembic import command
 from alembic.config import Config
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select, text, update
-from sqlalchemy.engine import Engine, make_url
+from sqlalchemy.engine import Engine
 from sqlalchemy.exc import DBAPIError, OperationalError
 from sqlalchemy.orm import Session
 
+from action_postgres_test_db import validated_disposable_database_url
 from app.api.routes import actions as actions_routes
 from app.api.routes import approvals as approvals_routes
 from app.action_engine.approval import _expire_one, _persist_execution_failure
@@ -519,6 +519,60 @@ def test_new_override_escalates_without_mutation_then_admin_can_execute(
         assert session.get(LicenseAssignment, assignment_id).status == "reclaimed"
 
 
+def test_scope_move_is_recomputed_and_escalated_before_execution(
+    client: TestClient,
+    postgres_engine: Engine,
+) -> None:
+    _assign_finance_scope(postgres_engine)
+    assignment_id, approval_id, action_id = _manager_finance_request(
+        client, postgres_engine
+    )
+    with Session(postgres_engine) as session:
+        assignment = session.get(LicenseAssignment, assignment_id)
+        destination = _scope(session, "it")
+        assert assignment is not None
+        user = session.get(DirectoryUser, assignment.user_id)
+        assert user is not None
+        assignment.department_id = destination.department_id
+        user.department_id = destination.department_id
+        session.commit()
+
+    analyst_csrf = _login(client, "demo.analyst@queryops.local")
+    blocked = client.post(
+        f"/api/v1/approvals/{approval_id}/approve",
+        headers={"X-CSRF-Token": analyst_csrf},
+        json={"decision_reason": "Current scope must be re-evaluated."},
+    )
+    assert blocked.status_code == 422, blocked.json()
+    assert blocked.json()["error"]["code"] == "POLICY_OVERRIDE_REQUIRED"
+    with Session(postgres_engine) as session:
+        assignment = session.get(LicenseAssignment, assignment_id)
+        action = session.get(ActionRequest, action_id)
+        approval = session.get(ApprovalRequest, approval_id)
+        assert assignment is not None and assignment.status == "active"
+        assert action is not None and action.status == "pending_approval"
+        assert action.policy_flags_json["revalidation_crosses_scopes"] is True
+        assert approval is not None and approval.status == "pending"
+        escalations = session.scalars(
+            select(AppAuditLog).where(
+                AppAuditLog.action_request_id == action_id,
+                AppAuditLog.event_type == "action_approval_escalated",
+            )
+        ).all()
+        assert len(escalations) == 1
+
+    admin_csrf = _login(client, "demo.admin@queryops.local")
+    approved = client.post(
+        f"/api/v1/approvals/{approval_id}/approve",
+        headers={"X-CSRF-Token": admin_csrf},
+        json={"decision_reason": "Cross-scope execution approved by Admin."},
+    )
+    assert approved.status_code == 200, approved.json()
+    assert approved.json()["data"]["override_used"] is True
+    with Session(postgres_engine) as session:
+        assert session.get(LicenseAssignment, assignment_id).status == "reclaimed"
+
+
 @pytest.mark.parametrize("authorization_loss", ["scope", "permission"])
 def test_approver_authorization_is_rechecked_before_execution(
     client: TestClient,
@@ -985,34 +1039,85 @@ def test_concurrent_approve_and_cancel_have_one_winner(
     postgres_engine: Engine,
 ) -> None:
     _assign_finance_scope(postgres_engine)
-    _assignment_id, approval_id, action_id = _manager_finance_request(
+    assignment_id, approval_id, action_id = _manager_finance_request(
         client, postgres_engine
     )
 
-    def approve() -> int:
+    def approve() -> tuple[str, int]:
         with TestClient(app) as concurrent_client:
             csrf = _login(concurrent_client, "demo.analyst@queryops.local")
-            return concurrent_client.post(
+            response = concurrent_client.post(
                 f"/api/v1/approvals/{approval_id}/approve",
                 headers={"X-CSRF-Token": csrf},
                 json={"decision_reason": "Concurrent approval decision."},
-            ).status_code
+            )
+            return "approve", response.status_code
 
-    def cancel() -> int:
+    def cancel() -> tuple[str, int]:
         with TestClient(app) as concurrent_client:
             csrf = _login(concurrent_client, "demo.manager@queryops.local")
-            return concurrent_client.post(
+            response = concurrent_client.post(
                 f"/api/v1/actions/{action_id}/cancel",
                 headers={"X-CSRF-Token": csrf},
                 json={"reason": "Concurrent requester cancellation."},
-            ).status_code
+            )
+            return "cancel", response.status_code
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         futures = (executor.submit(approve), executor.submit(cancel))
-        statuses = sorted(future.result() for future in futures)
-    assert statuses == [200, 409]
+        results = dict(future.result() for future in futures)
+    assert sorted(results.values()) == [200, 409]
+    winner = next(operation for operation, status in results.items() if status == 200)
     with Session(postgres_engine) as session:
-        assert session.get(ActionRequest, action_id).status in {"completed", "cancelled"}
+        action = session.get(ActionRequest, action_id)
+        approval = session.get(ApprovalRequest, approval_id)
+        assignment = session.get(LicenseAssignment, assignment_id)
+        assert action is not None and approval is not None and assignment is not None
+        lifecycle_events = Counter(
+            session.scalars(
+                select(AppAuditLog.event_type).where(
+                    AppAuditLog.action_request_id == action_id,
+                    AppAuditLog.event_type.in_(
+                        ("action_approved", "action_executed", "action_cancelled")
+                    ),
+                )
+            ).all()
+        )
+        decision_notifications = Counter(
+            session.scalars(
+                select(Notification.notification_type).where(
+                    Notification.related_resource_id == action_id,
+                    Notification.notification_type.in_(
+                        ("action_approved", "action_completed")
+                    ),
+                )
+            ).all()
+        )
+        domain_events = session.scalars(
+            select(ItAuditEvent).where(
+                ItAuditEvent.resource_id == assignment_id,
+                ItAuditEvent.event_type == "license_removed",
+                ItAuditEvent.actor_app_user_id.is_not(None),
+            )
+        ).all()
+        if winner == "approve":
+            assert action.status == "completed"
+            assert approval.status == "approved"
+            assert assignment.status == "reclaimed"
+            assert lifecycle_events == Counter(
+                {"action_approved": 1, "action_executed": 1}
+            )
+            assert decision_notifications == Counter(
+                {"action_approved": 1, "action_completed": 2}
+            )
+            assert len(domain_events) == 1
+        else:
+            assert action.status == "cancelled"
+            assert approval.status == "cancelled"
+            assert assignment.status == "active"
+            assert lifecycle_events == Counter({"action_cancelled": 1})
+            assert decision_notifications == Counter()
+            assert domain_events == []
 
 
 def test_admin_self_approval_is_explicitly_audited(
@@ -1263,34 +1368,4 @@ def _required_disposable_database_url() -> str:
     database_url = os.environ.get("POSTGRES_TEST_DATABASE_URL")
     if not database_url:
         pytest.skip("Action execution PostgreSQL tests require a disposable database URL.")
-    if os.environ.get("POSTGRES_TEST_DATABASE_DISPOSABLE") != "1":
-        pytest.fail(
-            "Set POSTGRES_TEST_DATABASE_DISPOSABLE=1 to permit destructive action tests."
-        )
-    parsed = make_url(database_url)
-    database_name = parsed.database
-    application_database_name = os.environ.get("POSTGRES_DB", "queryops")
-    if parsed.get_backend_name() != "postgresql" or not database_name:
-        pytest.fail("Action execution tests require an explicit PostgreSQL database.")
-    application_url = os.environ.get("DATABASE_URL")
-    if application_url and _database_identity(make_url(application_url)) == _database_identity(
-        parsed
-    ):
-        pytest.fail("Refusing to use DATABASE_URL for destructive action tests.")
-    if database_name == application_database_name:
-        pytest.fail("Refusing to use the configured application database for destructive tests.")
-    if "test" not in database_name.lower() and "dev" not in database_name.lower():
-        pytest.fail("The destructive test database name must identify it as test or dev.")
-    return database_url
-
-
-def _database_identity(database_url) -> tuple[str | None, int, str | None]:
-    host = (database_url.host or "localhost").rstrip(".").lower()
-    if not host:
-        pytest.fail("Could not determine the destructive test database endpoint.")
-    try:
-        if ipaddress.ip_address(host).is_loopback:
-            host = "localhost"
-    except ValueError:
-        pass
-    return host, database_url.port or 5432, database_url.database
+    return validated_disposable_database_url(database_url)
