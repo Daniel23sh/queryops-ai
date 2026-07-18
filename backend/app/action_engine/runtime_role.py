@@ -20,7 +20,7 @@ class ActionRuntimeExecutable(Protocol):
 def set_action_runtime_role(db: ActionRuntimeExecutable) -> None:
     """Enter the fixed, narrowly privileged action role for this transaction."""
 
-    db.execute(text('SET LOCAL ROLE "queryops_action_runtime"'))
+    db.execute(text(f'SET LOCAL ROLE "{ACTION_RUNTIME_ROLE}"'))
 
 
 def reset_action_runtime_role(db: ActionRuntimeExecutable) -> None:

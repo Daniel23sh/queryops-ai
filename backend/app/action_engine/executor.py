@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
 from datetime import datetime
 
 from sqlalchemy import insert, text, update
@@ -12,15 +11,6 @@ from app.action_engine.runtime_role import ACTION_RUNTIME_ROLE
 from app.domains.it_operations.models import AssignmentStatus, ItAuditEvent, LicenseAssignment
 
 
-@dataclass(frozen=True, kw_only=True)
-class ReclaimExecutionOutcome:
-    executed_assignment_ids: tuple[uuid.UUID, ...]
-    completed_at: datetime
-    runtime_role: str
-    transaction_read_only: bool
-    row_security_enabled: bool
-
-
 def execute_reclaim(
     db: Session,
     *,
@@ -28,7 +18,7 @@ def execute_reclaim(
     approver_app_user_id: uuid.UUID,
     revalidation: ReclaimRevalidation,
     execution_time: datetime,
-) -> ReclaimExecutionOutcome:
+) -> tuple[uuid.UUID, ...]:
     """Mutate only the locked, revalidated assignments under the action role."""
 
     runtime_role = str(db.execute(text("SELECT current_user")).scalar_one())
@@ -44,7 +34,7 @@ def execute_reclaim(
         raise RuntimeError("The secure action execution boundary is unavailable.")
 
     records = revalidation.executable_records
-    assignment_ids = tuple(record.assignment_id for record in records)
+    assignment_ids = tuple(record.record_id for record in records)
     if assignment_ids:
         result = db.execute(
             update(LicenseAssignment)
@@ -72,7 +62,7 @@ def execute_reclaim(
                     "department_id": record.department_id,
                     "event_type": "license_removed",
                     "resource_type": "license_assignment",
-                    "resource_id": record.assignment_id,
+                    "resource_id": record.record_id,
                     "description": "Unused license assignment reclaimed through an approved action.",
                     "occurred_at": execution_time,
                     "metadata": {
@@ -84,10 +74,4 @@ def execute_reclaim(
             ],
         )
 
-    return ReclaimExecutionOutcome(
-        executed_assignment_ids=assignment_ids,
-        completed_at=execution_time,
-        runtime_role=runtime_role,
-        transaction_read_only=transaction_read_only,
-        row_security_enabled=row_security_enabled,
-    )
+    return assignment_ids

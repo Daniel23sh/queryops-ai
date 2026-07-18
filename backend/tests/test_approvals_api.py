@@ -32,7 +32,6 @@ from app.models.product import (
     ApprovalRequest,
     Notification,
     Permission,
-    Role,
     UserAccessScope,
     UserPermission,
 )

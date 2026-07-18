@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import uuid
 from collections import Counter
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
@@ -406,7 +405,7 @@ class ReclaimUnusedLicenseHandler:
 
         if not isinstance(revalidation, ReclaimRevalidation):
             raise TypeError("Reclaim execution requires a reclaim revalidation result.")
-        outcome = execute_reclaim(
+        executed_assignment_ids = execute_reclaim(
             db,
             action_request_id=action_request.id,
             approver_app_user_id=approved_by_app_user_id,
@@ -415,9 +414,9 @@ class ReclaimUnusedLicenseHandler:
         )
         return ExecutionResult(
             action_request_id=action_request.id,
-            executed_record_ids=outcome.executed_assignment_ids,
+            executed_record_ids=executed_assignment_ids,
             skipped_records=revalidation.skipped_records,
-            completed_at=outcome.completed_at,
+            completed_at=now,
             idempotency_key=action_request.idempotency_key,
         )
 

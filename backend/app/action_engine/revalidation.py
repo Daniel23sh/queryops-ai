@@ -46,12 +46,9 @@ SAFE_OVERRIDE_REASONS = {
 
 @dataclass(frozen=True, kw_only=True)
 class RevalidatedReclaimRecord(EligibleRecordDescriptor):
-    assignment_id: uuid.UUID
     directory_user_id: uuid.UUID
     license_id: uuid.UUID
     department_id: uuid.UUID
-    scope_type: str
-    scope_key: str
     override_reason_codes: tuple[str, ...] = ()
 
 
@@ -174,8 +171,6 @@ def revalidate_reclaim_targets(
             RevalidatedReclaimRecord(
                 record_type="license_assignment",
                 record_id=target_id,
-                safe_summary=None,
-                assignment_id=target_id,
                 directory_user_id=row["directory_user_id"],
                 license_id=row["license_id"],
                 department_id=department_id,
