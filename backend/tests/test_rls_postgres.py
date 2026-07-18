@@ -102,6 +102,14 @@ def test_rls_is_enabled_and_policies_exist_on_domain_tables(
                 "qo_license_assignments_action_scope_update",
             ),
             ("it_audit_events", "qo_it_audit_events_action_scope_insert"),
+            ("directory_users", "qo_directory_users_action_scope_update"),
+            ("login_events", "qo_login_events_action_user_scope_select"),
+            (
+                "user_group_memberships",
+                "qo_user_group_memberships_action_user_scope_select",
+            ),
+            ("groups", "qo_groups_action_membership_scope_select"),
+            ("security_events", "qo_security_events_action_user_scope_select"),
         }
     )
     assert {

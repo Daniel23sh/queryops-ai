@@ -4,7 +4,7 @@ import json
 import os
 import uuid
 from collections.abc import Generator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -23,6 +23,7 @@ from app.db.session import get_db
 from app.domains.it_operations.models import (
     Department,
     DirectoryUser,
+    LoginEvent,
     License,
     LicenseAssignment,
 )
@@ -44,6 +45,125 @@ REQUIRED_RESOURCES = (
     "license_assignments",
     "licenses",
 )
+DISABLE_REQUIRED_RESOURCES = (
+    "directory_users",
+    "login_events",
+    "groups",
+    "user_group_memberships",
+    "security_events",
+)
+
+
+def test_disable_preview_uses_rls_and_safe_typed_snapshot(
+    client: TestClient,
+    postgres_engine: Engine,
+) -> None:
+    with Session(postgres_engine) as session:
+        user = _new_inactive_user(session, "finance", "PR4-PREVIEW-ELIGIBLE")
+        user_id = user.id
+        user_email = user.email
+    csrf_token = _login(client, "demo.manager@queryops.local")
+
+    response = _disable_preview(
+        client,
+        postgres_engine,
+        csrf_token,
+        "finance",
+        [user_id],
+    )
+
+    assert response.status_code == 201, response.json()
+    data = response.json()["data"]
+    preview = data["preview"]
+    assert preview["summary"]["affected_users_count"] == 1
+    assert preview["summary"]["service_accounts_excluded_count"] == 0
+    assert [record["directory_user_id"] for record in preview["eligible_records"]] == [
+        str(user_id)
+    ]
+    assert user_email not in json.dumps(preview)
+    assert preview["scope_decision_reason"] == "request_allowed"
+    with Session(postgres_engine) as session:
+        action = session.get(ActionRequest, uuid.UUID(data["action_request_id"]))
+        assert action is not None
+        assert [
+            item["table_name"]
+            for item in action.access_decision_snapshot_json["resource_decisions"]
+        ] == list(DISABLE_REQUIRED_RESOURCES)
+        assert action.access_decision_snapshot_json["read_boundary"] == {
+            "runtime_role": "queryops_query_runtime",
+            "transaction_read_only": True,
+            "row_security_enabled": True,
+        }
+
+
+def test_disable_preview_detects_recent_success_event_even_with_stale_user_column(
+    client: TestClient,
+    postgres_engine: Engine,
+) -> None:
+    with Session(postgres_engine) as session:
+        user = _new_inactive_user(session, "finance", "PR4-PREVIEW-RECENT")
+        session.add(
+            LoginEvent(
+                user_id=user.id,
+                department_id=user.department_id,
+                event_type="success",
+                occurred_at=REFERENCE_NOW - timedelta(days=1),
+            )
+        )
+        session.commit()
+        user_id = user.id
+    csrf_token = _login(client, "demo.manager@queryops.local")
+
+    response = _disable_preview(
+        client,
+        postgres_engine,
+        csrf_token,
+        "finance",
+        [user_id],
+    )
+
+    assert response.status_code == 201, response.json()
+    preview = response.json()["data"]["preview"]
+    assert preview["eligible_records"] == []
+    assert preview["skipped_records"][0]["reason_code"] == "recent_successful_login"
+    assert preview["summary"]["recent_login_skipped_count"] == 1
+
+
+def test_disable_foreign_and_missing_user_ids_are_indistinguishable(
+    client: TestClient,
+    postgres_engine: Engine,
+) -> None:
+    with Session(postgres_engine) as session:
+        foreign = _new_inactive_user(session, "sales", "PR4-PREVIEW-FOREIGN")
+        foreign_id = foreign.id
+        foreign_name = foreign.full_name
+        foreign_email = foreign.email
+    csrf_token = _login(client, "demo.manager@queryops.local")
+
+    foreign_response = _disable_preview(
+        client,
+        postgres_engine,
+        csrf_token,
+        "finance",
+        [foreign_id],
+    )
+    missing_response = _disable_preview(
+        client,
+        postgres_engine,
+        csrf_token,
+        "finance",
+        [uuid.uuid4()],
+    )
+
+    assert foreign_response.status_code == missing_response.status_code == 201
+    foreign_skip = foreign_response.json()["data"]["preview"]["skipped_records"][0]
+    missing_skip = missing_response.json()["data"]["preview"]["skipped_records"][0]
+    assert foreign_skip["reason_code"] == missing_skip["reason_code"]
+    assert foreign_skip["reason_code"] == "record_not_found_or_not_authorized"
+    assert foreign_skip["user_display_label"] is None
+    serialized = json.dumps(foreign_response.json())
+    assert foreign_name not in serialized
+    assert foreign_email not in serialized
 
 
 @pytest.mark.parametrize(
@@ -350,6 +470,63 @@ def _preview(
         headers={"X-CSRF-Token": csrf_token},
         json=payload,
     )
+
+
+def _disable_preview(
+    client: TestClient,
+    engine: Engine,
+    csrf_token: str,
+    scope_key: str,
+    target_user_ids: list[uuid.UUID],
+):
+    with Session(engine) as session:
+        scope = session.scalar(
+            select(AccessScope).where(
+                AccessScope.scope_type == "department",
+                AccessScope.scope_key == scope_key,
+            )
+        )
+        assert scope is not None and scope.department_id is not None
+        payload = {
+            "action_type": "disable_inactive_user",
+            "scope_id": str(scope.id),
+            "department_id": str(scope.department_id),
+            "target_user_ids": [str(record_id) for record_id in target_user_ids],
+            "reason": "Verify deterministic inactive-user action preview.",
+        }
+    return client.post(
+        "/api/v1/actions/preview",
+        headers={"X-CSRF-Token": csrf_token},
+        json=payload,
+    )
+
+
+def _new_inactive_user(
+    session: Session,
+    scope_key: str,
+    marker: str,
+) -> DirectoryUser:
+    scope = session.scalar(
+        select(AccessScope).where(
+            AccessScope.scope_type == "department",
+            AccessScope.scope_key == scope_key,
+        )
+    )
+    assert scope is not None and scope.department_id is not None
+    user = DirectoryUser(
+        employee_number=marker,
+        email=f"{marker.lower()}@example.test",
+        full_name=f"Safe {marker}",
+        department_id=scope.department_id,
+        account_type="human",
+        employee_status="active",
+        account_status="active",
+        last_login_at=REFERENCE_NOW - timedelta(days=91),
+    )
+    session.add(user)
+    session.commit()
+    session.refresh(user)
+    return user
 
 
 def _login(client: TestClient, email: str) -> str:
