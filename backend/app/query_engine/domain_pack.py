@@ -45,6 +45,14 @@ class QueryTemplateParameter:
 
 
 @dataclass(frozen=True)
+class QueryActionSuggestion:
+    action_type: str
+    label: str
+    selector_kind: str
+    result_identifier_column: str
+
+
+@dataclass(frozen=True)
 class QueryTemplate:
     id: str
     title: str
@@ -58,6 +66,7 @@ class QueryTemplate:
     parameters: tuple[QueryTemplateParameter, ...]
     sql: str | None = None
     generation_metadata: dict[str, Any] | None = None
+    suggested_action: QueryActionSuggestion | None = None
 
 
 @dataclass(frozen=True)
@@ -87,4 +96,3 @@ class DomainPack:
 
     def template(self, template_id: str) -> QueryTemplate:
         return self.templates_by_id[template_id]
-

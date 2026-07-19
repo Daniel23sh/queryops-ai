@@ -81,6 +81,12 @@ def run_query(
                 result,
                 query_run,
                 can_view_sql=access_context.has_permission("can_view_sql"),
+                suggested_actions=_suggested_actions(
+                    result,
+                    query_run=query_run,
+                    template_id=template_id,
+                    access_context=access_context,
+                ),
             )
         )
     )
@@ -126,6 +132,7 @@ def clarify_query(
                 result,
                 query_run,
                 can_view_sql=access_context.has_permission("can_view_sql"),
+                suggested_actions=[],
             )
         )
     )
@@ -352,6 +359,7 @@ def _serialize_query_result(
     query_run: QueryRun | None,
     *,
     can_view_sql: bool,
+    suggested_actions: list[dict[str, str]],
 ) -> dict[str, Any]:
     data = {
         "query_run_id": result.query_run_id,
@@ -365,6 +373,7 @@ def _serialize_query_result(
         "warnings": result.warnings,
         "clarification_required": result.clarification_required,
         "metadata": _safe_metadata(result.metadata),
+        "suggested_actions": suggested_actions,
     }
     if result.error_code is not None:
         data["error_code"] = result.error_code
@@ -372,6 +381,55 @@ def _serialize_query_result(
         data["generated_sql"] = query_run.generated_sql
         data["executed_sql"] = query_run.executed_sql
     return data
+
+
+def _suggested_actions(
+    result: Any,
+    *,
+    query_run: QueryRun | None,
+    template_id: str | None,
+    access_context: UserAccessContext,
+) -> list[dict[str, str]]:
+    if (
+        not access_context.has_permission("can_request_action")
+        or template_id is None
+        or query_run is None
+        or result.status != "succeeded"
+        or result.clarification_required
+        or result.truncated
+        or not result.rows
+    ):
+        return []
+    template = load_it_operations_domain_pack().templates_by_id.get(template_id)
+    suggestion = template.suggested_action if template is not None else None
+    if suggestion is None or not _valid_result_selectors(
+        result.rows,
+        suggestion.result_identifier_column,
+    ):
+        return []
+    return [
+        {
+            "action_type": suggestion.action_type,
+            "label": suggestion.label,
+            "selector_kind": suggestion.selector_kind,
+            "result_identifier_column": suggestion.result_identifier_column,
+        }
+    ]
+
+
+def _valid_result_selectors(rows: Any, identifier_column: str) -> bool:
+    if not isinstance(rows, list) or not rows:
+        return False
+    selector_ids: set[UUID] = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            return False
+        raw_selector = row.get(identifier_column)
+        try:
+            selector_ids.add(UUID(str(raw_selector)))
+        except (TypeError, ValueError, AttributeError):
+            return False
+    return 1 <= len(selector_ids) <= 100
 
 
 def _serialize_query_run(

@@ -35,6 +35,12 @@
       "referenced_tables": [
         "directory_users"
       ],
+      "suggested_action": {
+        "action_type": "disable_inactive_user",
+        "label": "Preview inactive user disablement",
+        "selector_kind": "directory_user",
+        "result_identifier_column": "id"
+      },
       "parameters": [
         {
           "name": "inactive_days",
@@ -105,6 +111,12 @@
         "license_assignments",
         "licenses"
       ],
+      "suggested_action": {
+        "action_type": "reclaim_unused_license",
+        "label": "Preview license reclaim",
+        "selector_kind": "license_assignment",
+        "result_identifier_column": "id"
+      },
       "parameters": [
         {
           "name": "unused_days",

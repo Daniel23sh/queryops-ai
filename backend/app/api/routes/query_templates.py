@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.api.responses import error_response, success_response
@@ -25,6 +25,7 @@ router = APIRouter(prefix="/api/v1")
 
 @router.get("/query-templates")
 def list_query_templates(
+    can_suggest_action: bool | None = Query(default=None),
     current_user: AppUser = Depends(require_authenticated_user),
     db: Session = Depends(get_db),
 ):
@@ -34,6 +35,10 @@ def list_query_templates(
         _serialize_template(template, domain_pack)
         for template in domain_pack.query_templates
         if _template_is_allowed(template, access_context)
+        and (
+            can_suggest_action is None
+            or (template.suggested_action is not None) is can_suggest_action
+        )
     ]
 
     return success_response(templates)
@@ -106,6 +111,7 @@ def _serialize_template(template: QueryTemplate, domain_pack: DomainPack) -> dic
         ],
         "scope_type": template.scope_type,
         "required_permission": template.required_permission,
+        "can_suggest_action": template.suggested_action is not None,
     }
 
 
