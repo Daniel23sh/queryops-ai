@@ -62,7 +62,6 @@ describe("ActionPreviewDrawer", () => {
 
 function readyFlow(): ActionPreviewFlow {
   return {
-    isOpen: true,
     phase: "ready",
     preview: backendActionDetail({ status: "draft_preview" }) as never,
     reason: "Request approval safely.",

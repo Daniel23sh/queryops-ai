@@ -9,7 +9,6 @@ type AvailableResolution = Extract<ActionResolution, { status: "available" }>;
 type SourceResolution = AvailableResolution & { previewRequestSourceGeneration: number };
 
 export type ActionPreviewFlow = {
-  isOpen: boolean;
   phase: "creating" | "ready" | "preview-error" | "submitting" | "submit-error";
   resolution: SourceResolution;
   preview: ActionDetail | null;
@@ -45,7 +44,6 @@ export function useActionPreviewFlow({
     };
     if (!csrfToken) {
       setFlow({
-        isOpen: true,
         phase: "preview-error",
         resolution: guardedResolution,
         preview: null,
@@ -57,7 +55,6 @@ export function useActionPreviewFlow({
     const token = ++tokenRef.current;
     inFlightRef.current = true;
     setFlow({
-      isOpen: true,
       phase: "creating",
       resolution: guardedResolution,
       preview: null,

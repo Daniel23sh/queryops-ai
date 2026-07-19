@@ -4,7 +4,7 @@ import { ActionSummary } from "../../actions/ActionsPage";
 import { useActionRequestSummary } from "../hooks/useActionRequestSummary";
 
 export function MyActionRequestsSummary() {
-  const actions = useActionRequestSummary(true);
+  const actions = useActionRequestSummary();
   return (
     <section className="grid gap-4" aria-labelledby="my-action-requests-title">
       <div className="flex items-end justify-between gap-3"><div><p className="m-0 text-xs font-bold uppercase tracking-wide text-brand-primary">Governed actions</p><h2 className="mb-0 mt-1 text-xl font-bold text-app-text" id="my-action-requests-title">My Action Requests</h2></div><Link className="text-sm font-bold text-brand-primary" to="/actions">View Actions</Link></div>

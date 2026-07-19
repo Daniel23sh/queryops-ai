@@ -35,7 +35,3 @@ export function getRouteTitle(pathname: string): string {
 export function dashboardPath(dashboardId: string): string {
   return `/dashboards/${encodeURIComponent(dashboardId)}`;
 }
-
-export function actionRequestPath(actionRequestId: string): string {
-  return `/actions/${encodeURIComponent(actionRequestId)}`;
-}
