@@ -12,6 +12,16 @@ vi.mock("../../../api/actions", () => ({ createActionPreview: vi.fn(), submitAct
 afterEach(() => vi.clearAllMocks());
 
 describe("useActionPreviewFlow", () => {
+  it("shows a safe session error without starting a preview request", async () => {
+    render(<MemoryRouter><Harness csrfToken={null} /></MemoryRouter>);
+
+    fireEvent.click(screen.getByRole("button", { name: "Open" }));
+
+    expect(await screen.findByText("preview-error")).toBeInTheDocument();
+    expect(screen.getByText(/refresh your session/i)).toBeInTheDocument();
+    expect(createActionPreview).not.toHaveBeenCalled();
+  });
+
   it("prevents duplicate previews and ignores a stale response after the query generation changes", async () => {
     const deferred = promiseController<ReturnType<typeof backendActionDetail>>();
     vi.mocked(createActionPreview).mockReturnValue(deferred.promise as never);
@@ -46,11 +56,11 @@ describe("useActionPreviewFlow", () => {
   });
 });
 
-function Harness() {
+function Harness({ csrfToken = "csrf" }: { csrfToken?: string | null }) {
   const [generation, setGeneration] = useState(1);
-  const flow = useActionPreviewFlow({ csrfToken: "csrf", sourceGeneration: generation });
+  const flow = useActionPreviewFlow({ csrfToken, sourceGeneration: generation });
   const location = useLocation();
-  return <><button onClick={() => void flow.openPreview(resolution)} type="button">Open</button><button onClick={() => setGeneration((value) => value + 1)} type="button">New query</button><button onClick={() => void flow.submit()} type="button">Submit</button><span>{flow.flow?.phase ?? "closed"}</span><span data-testid="path">{location.pathname}</span></>;
+  return <><button onClick={() => void flow.openPreview(resolution)} type="button">Open</button><button onClick={() => setGeneration((value) => value + 1)} type="button">New query</button><button onClick={() => void flow.submit()} type="button">Submit</button><span>{flow.flow?.phase ?? "closed"}</span>{flow.flow?.error ? <span>{flow.flow.error}</span> : null}<span data-testid="path">{location.pathname}</span></>;
 }
 
 const resolution: Extract<ActionResolution, { status: "available" }> = {
