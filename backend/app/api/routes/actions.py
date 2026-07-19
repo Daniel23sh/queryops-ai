@@ -6,7 +6,7 @@ from functools import lru_cache
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, Body, Depends, Request
+from fastapi import APIRouter, Body, Depends, Query, Request
 from pydantic import BaseModel, ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -22,6 +22,7 @@ from app.schemas.actions import (
     ActionCancelRequest,
     ActionPreviewRequest,
     ActionSubmitRequest,
+    RequesterActionStatusGroup,
 )
 
 
@@ -85,6 +86,33 @@ def submit_action_request(
             db,
             current_user=current_user,
             payload=parsed,
+        )
+    except ActionServiceError as exc:
+        return _service_error_response(exc)
+    except SQLAlchemyError:
+        return _database_error_response(db)
+    return success_response(data)
+
+
+@router.get("")
+def list_own_action_requests(
+    status_group: RequesterActionStatusGroup = Query(
+        default=RequesterActionStatusGroup.ALL
+    ),
+    limit: int = Query(default=25, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    current_user: AppUser = Depends(require_authenticated_user),
+    db: Session = Depends(get_db),
+    registry: ActionRegistry = Depends(get_action_registry),
+    clock: Callable[[], datetime] = Depends(get_action_clock),
+):
+    try:
+        data = ActionLifecycleService(registry=registry, clock=clock).list_own_requests(
+            db,
+            current_user=current_user,
+            status_group=status_group,
+            limit=limit,
+            offset=offset,
         )
     except ActionServiceError as exc:
         return _service_error_response(exc)

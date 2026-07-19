@@ -911,6 +911,292 @@ def test_preview_submit_detail_and_cancel_never_mutate_license_assignments(
     assert _assignment_state(db_session) == before
 
 
+def test_requester_action_list_requires_authentication(client: TestClient) -> None:
+    response = client.get("/api/v1/actions")
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "UNAUTHORIZED"
+
+
+def test_user_without_request_permission_cannot_list_actions(
+    client: TestClient,
+) -> None:
+    _login(client, "demo.user@queryops.local")
+
+    response = client.get("/api/v1/actions")
+
+    assert response.status_code == 403
+    assert response.json()["error"]["code"] == "FORBIDDEN"
+
+
+@pytest.mark.parametrize(
+    "email",
+    [
+        "demo.manager@queryops.local",
+        "demo.analyst@queryops.local",
+        "demo.admin@queryops.local",
+    ],
+)
+def test_requester_action_list_is_owned_and_metadata_only_for_request_roles(
+    client: TestClient,
+    db_session: Session,
+    email: str,
+) -> None:
+    requester = _user(db_session, email)
+    foreign = next(
+        user
+        for user in db_session.scalars(select(AppUser)).all()
+        if user.id != requester.id
+    )
+    own_action = _add_list_action(
+        db_session,
+        requester=requester,
+        status=ActionRequestStatus.PENDING_APPROVAL.value,
+        minute=2,
+    )
+    foreign_action = _add_list_action(
+        db_session,
+        requester=foreign,
+        status=ActionRequestStatus.COMPLETED.value,
+        minute=3,
+    )
+    _login(client, email)
+
+    response = client.get("/api/v1/actions")
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert [item["id"] for item in data["items"]] == [str(own_action.id)]
+    assert data["summary"] == {"pending": 1, "completed": 0, "closed": 0}
+    item = data["items"][0]
+    assert set(item) == {
+        "id",
+        "action_request_id",
+        "action_type",
+        "title",
+        "status",
+        "priority",
+        "scope",
+        "record_count",
+        "skipped_count",
+        "requires_admin",
+        "created_at",
+        "submitted_at",
+        "updated_at",
+        "expires_at",
+        "next_step",
+    }
+    assert item["title"] == "Reclaim unused licenses"
+    assert item["next_step"] == "Waiting for approval"
+    serialized = json.dumps(data)
+    assert str(foreign_action.id) not in serialized
+    for forbidden in (
+        "preview_json",
+        "eligible_records",
+        "skipped_records",
+        "policy_flags_json",
+        "generated_sql",
+        "executed_sql",
+        "failure_reason_internal",
+        "@example.test",
+    ):
+        assert forbidden not in serialized
+
+
+def test_requester_action_list_filters_status_orders_and_excludes_drafts(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    manager = _user(db_session, "demo.manager@queryops.local")
+    completed = _add_list_action(
+        db_session,
+        requester=manager,
+        status=ActionRequestStatus.COMPLETED.value,
+        minute=1,
+    )
+    pending = _add_list_action(
+        db_session,
+        requester=manager,
+        status=ActionRequestStatus.PENDING_APPROVAL.value,
+        minute=5,
+    )
+    failed = _add_list_action(
+        db_session,
+        requester=manager,
+        status=ActionRequestStatus.FAILED.value,
+        minute=4,
+    )
+    rejected = _add_list_action(
+        db_session,
+        requester=manager,
+        status=ActionRequestStatus.REJECTED.value,
+        minute=3,
+    )
+    cancelled = _add_list_action(
+        db_session,
+        requester=manager,
+        status=ActionRequestStatus.CANCELLED.value,
+        minute=2,
+    )
+    expired = _add_list_action(
+        db_session,
+        requester=manager,
+        status=ActionRequestStatus.EXPIRED.value,
+        minute=0,
+    )
+    _add_list_action(
+        db_session,
+        requester=manager,
+        status=ActionRequestStatus.DRAFT_PREVIEW.value,
+        minute=6,
+        submitted=False,
+    )
+    _add_list_action(
+        db_session,
+        requester=manager,
+        status=ActionRequestStatus.EXPIRED.value,
+        minute=7,
+        submitted=False,
+    )
+    _login(client, manager.email)
+
+    all_response = client.get("/api/v1/actions")
+    pending_response = client.get("/api/v1/actions?status_group=pending")
+    completed_response = client.get("/api/v1/actions?status_group=completed")
+    closed_response = client.get("/api/v1/actions?status_group=closed")
+
+    assert all_response.status_code == 200
+    assert [item["id"] for item in all_response.json()["data"]["items"]] == [
+        str(pending.id),
+        str(failed.id),
+        str(rejected.id),
+        str(cancelled.id),
+        str(completed.id),
+        str(expired.id),
+    ]
+    assert all_response.json()["data"]["summary"] == {
+        "pending": 1,
+        "completed": 1,
+        "closed": 4,
+    }
+    assert [
+        item["id"] for item in pending_response.json()["data"]["items"]
+    ] == [str(pending.id)]
+    assert [
+        item["id"] for item in completed_response.json()["data"]["items"]
+    ] == [str(completed.id)]
+    assert {
+        item["id"] for item in closed_response.json()["data"]["items"]
+    } == {str(failed.id), str(rejected.id), str(cancelled.id), str(expired.id)}
+
+
+def test_requester_action_list_validates_pagination_and_status_group(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    manager = _user(db_session, "demo.manager@queryops.local")
+    actions = [
+        _add_list_action(
+            db_session,
+            requester=manager,
+            status=ActionRequestStatus.COMPLETED.value,
+            minute=minute,
+        )
+        for minute in range(3)
+    ]
+    _login(client, manager.email)
+
+    response = client.get("/api/v1/actions?limit=1&offset=1")
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert [item["id"] for item in data["items"]] == [str(actions[1].id)]
+    assert data["pagination"] == {
+        "limit": 1,
+        "offset": 1,
+        "returned": 1,
+        "total": 3,
+    }
+    for path in (
+        "/api/v1/actions?limit=0",
+        "/api/v1/actions?limit=101",
+        "/api/v1/actions?offset=-1",
+        "/api/v1/actions?status_group=foreign",
+    ):
+        assert client.get(path).status_code == 422
+
+
+def test_requester_action_list_database_failure_is_sanitized(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _login(client, "demo.manager@queryops.local")
+    engine = db_session.get_bind()
+
+    def fail_action_list(_conn, _cursor, statement, _parameters, _context, _many):
+        if "FROM action_requests" in statement:
+            raise SQLAlchemyError("sensitive requester list database detail")
+
+    event.listen(engine, "before_cursor_execute", fail_action_list)
+    try:
+        response = client.get("/api/v1/actions")
+    finally:
+        event.remove(engine, "before_cursor_execute", fail_action_list)
+
+    assert response.status_code == 500
+    error = response.json()["error"]
+    assert error["code"] == "INTERNAL_ERROR"
+    assert error["message"] == "The action request could not be processed safely."
+    assert error["details"] == {}
+    assert "sensitive" not in response.text
+
+
+def _add_list_action(
+    db: Session,
+    *,
+    requester: AppUser,
+    status: str,
+    minute: int,
+    submitted: bool = True,
+) -> ActionRequest:
+    scope = db.scalar(
+        select(AccessScope)
+        .join(UserAccessScope, UserAccessScope.scope_id == AccessScope.id)
+        .where(UserAccessScope.user_id == requester.id)
+        .order_by(UserAccessScope.is_default.desc())
+    )
+    assert scope is not None
+    timestamp = NOW + timedelta(minutes=minute)
+    action = ActionRequest(
+        action_type="reclaim_unused_license",
+        requested_by_app_user_id=requester.id,
+        department_id=scope.department_id,
+        scope_id=scope.id,
+        scope_type=scope.scope_type,
+        scope_key=scope.scope_key,
+        access_context_snapshot_json={},
+        access_decision_snapshot_json={},
+        preview_json={},
+        policy_flags_json={},
+        skipped_records_json={},
+        status=status,
+        priority="high",
+        reason="Safe requester list fixture.",
+        requires_admin=False,
+        record_count=2,
+        skipped_count=1,
+        idempotency_key=f"requester-list:{uuid.uuid4()}",
+        created_at=timestamp,
+        updated_at=timestamp,
+        submitted_at=timestamp if submitted else None,
+        expires_at=timestamp + timedelta(hours=24),
+    )
+    db.add(action)
+    db.commit()
+    db.refresh(action)
+    return action
+
+
 def _preview(client: TestClient, csrf_token: str, payload: dict):
     return client.post(
         "/api/v1/actions/preview",

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -53,6 +53,7 @@ from app.schemas.actions import (
     ActionCancelRequest,
     ActionPreviewRequest,
     ActionSubmitRequest,
+    RequesterActionStatusGroup,
 )
 
 
@@ -75,6 +76,20 @@ DISABLE_PROVENANCE_ALLOWED_TABLES = frozenset(
         "groups",
         "user_group_memberships",
         "security_events",
+    }
+)
+REQUESTER_PENDING_STATUSES = frozenset(
+    {
+        ActionRequestStatus.PENDING_APPROVAL.value,
+        ActionRequestStatus.APPROVED_EXECUTING.value,
+    }
+)
+REQUESTER_CLOSED_STATUSES = frozenset(
+    {
+        ActionRequestStatus.REJECTED.value,
+        ActionRequestStatus.FAILED.value,
+        ActionRequestStatus.CANCELLED.value,
+        ActionRequestStatus.EXPIRED.value,
     }
 )
 
@@ -417,6 +432,68 @@ class ActionLifecycleService:
                 status_code=500,
             ) from exc
 
+    def list_own_requests(
+        self,
+        db: Session,
+        *,
+        current_user: AppUser,
+        status_group: RequesterActionStatusGroup,
+        limit: int,
+        offset: int,
+    ) -> dict[str, Any]:
+        access_context = build_user_access_context(current_user, db)
+        if not access_context.has_permission("can_request_action"):
+            raise _forbidden()
+        filters = [
+            ActionRequest.requested_by_app_user_id == current_user.id,
+            ActionRequest.submitted_at.is_not(None),
+            ActionRequest.status != ActionRequestStatus.DRAFT_PREVIEW.value,
+        ]
+        group_statuses = _requester_statuses(status_group)
+        if group_statuses is not None:
+            filters.append(ActionRequest.status.in_(group_statuses))
+
+        total = db.scalar(select(func.count()).select_from(ActionRequest).where(*filters))
+        rows = db.scalars(
+            select(ActionRequest)
+            .where(*filters)
+            .order_by(
+                ActionRequest.submitted_at.desc(),
+                ActionRequest.created_at.desc(),
+                ActionRequest.id.desc(),
+            )
+            .limit(limit)
+            .offset(offset)
+        ).all()
+        status_counts = dict(
+            db.execute(
+                select(ActionRequest.status, func.count())
+                .where(
+                    ActionRequest.requested_by_app_user_id == current_user.id,
+                    ActionRequest.submitted_at.is_not(None),
+                    ActionRequest.status != ActionRequestStatus.DRAFT_PREVIEW.value,
+                )
+                .group_by(ActionRequest.status)
+            ).all()
+        )
+        return {
+            "items": [_serialize_requester_list_item(row) for row in rows],
+            "summary": {
+                "pending": _count_statuses(status_counts, REQUESTER_PENDING_STATUSES),
+                "completed": status_counts.get(
+                    ActionRequestStatus.COMPLETED.value,
+                    0,
+                ),
+                "closed": _count_statuses(status_counts, REQUESTER_CLOSED_STATUSES),
+            },
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "returned": len(rows),
+                "total": int(total or 0),
+            },
+        }
+
     def cancel_request(
         self,
         db: Session,
@@ -534,6 +611,65 @@ def _resolve_request_scope(
     ):
         return scope
     raise _scope_not_found()
+
+
+def _requester_statuses(
+    status_group: RequesterActionStatusGroup,
+) -> frozenset[str] | None:
+    if status_group == RequesterActionStatusGroup.ALL:
+        return None
+    if status_group == RequesterActionStatusGroup.PENDING:
+        return REQUESTER_PENDING_STATUSES
+    if status_group == RequesterActionStatusGroup.COMPLETED:
+        return frozenset({ActionRequestStatus.COMPLETED.value})
+    return REQUESTER_CLOSED_STATUSES
+
+
+def _count_statuses(
+    status_counts: dict[str, int],
+    statuses: frozenset[str],
+) -> int:
+    return sum(status_counts.get(status, 0) for status in statuses)
+
+
+def _serialize_requester_list_item(action_request: ActionRequest) -> dict[str, Any]:
+    scope = action_request.scope
+    return {
+        "id": str(action_request.id),
+        "action_request_id": str(action_request.id),
+        "action_type": action_request.action_type,
+        "title": action_presentation(action_request.action_type).request_title,
+        "status": action_request.status,
+        "priority": action_request.priority,
+        "scope": {
+            "id": str(action_request.scope_id)
+            if action_request.scope_id is not None
+            else None,
+            "type": action_request.scope_type,
+            "key": action_request.scope_key,
+            "display_name": scope.display_name if scope is not None else None,
+        },
+        "record_count": action_request.record_count,
+        "skipped_count": action_request.skipped_count,
+        "requires_admin": action_request.requires_admin,
+        "created_at": _timestamp(action_request.created_at),
+        "submitted_at": _timestamp(action_request.submitted_at),
+        "updated_at": _timestamp(action_request.updated_at),
+        "expires_at": _timestamp(action_request.expires_at),
+        "next_step": _requester_next_step(action_request.status),
+    }
+
+
+def _requester_next_step(status: str) -> str:
+    return {
+        ActionRequestStatus.PENDING_APPROVAL.value: "Waiting for approval",
+        ActionRequestStatus.APPROVED_EXECUTING.value: "Execution in progress",
+        ActionRequestStatus.COMPLETED.value: "Completed",
+        ActionRequestStatus.REJECTED.value: "Rejected",
+        ActionRequestStatus.FAILED.value: "Review the safe failure summary",
+        ActionRequestStatus.CANCELLED.value: "Cancelled",
+        ActionRequestStatus.EXPIRED.value: "Create a new preview",
+    }.get(status, "Review request status")
 
 
 def _validate_department_bridge(

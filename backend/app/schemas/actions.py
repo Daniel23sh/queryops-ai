@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Self
 from uuid import UUID
 
@@ -10,6 +11,13 @@ from app.models.product import SupportedActionType
 
 MAX_ACTION_REASON_LENGTH = 1_000
 MAX_EXPLICIT_TARGET_IDS = 100
+
+
+class RequesterActionStatusGroup(StrEnum):
+    ALL = "all"
+    PENDING = "pending"
+    COMPLETED = "completed"
+    CLOSED = "closed"
 
 
 class StrictActionRequest(BaseModel):
