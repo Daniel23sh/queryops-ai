@@ -284,6 +284,7 @@ M8 PR4 completes the two V1 backend actions, `reclaim_unused_license` and `disab
 ```txt
 POST /api/v1/actions/preview
 POST /api/v1/actions/request
+GET  /api/v1/actions
 GET  /api/v1/actions/{action_request_id}
 POST /api/v1/actions/{action_request_id}/cancel
 GET  /api/v1/approvals/pending
@@ -293,7 +294,7 @@ POST /api/v1/approvals/{approval_id}/reject
 
 The backend deterministically reads current operational data through `queryops_query_runtime`, a read-only transaction, transaction-local RLS context, and PostgreSQL RLS. Draft previews expire after 30 minutes and submitted approvals after 24 hours. Approval synchronously revalidates current rows and dependencies before entering the narrow write role. License reclaim uses current assignment policy; inactive-user disablement requires an active human with no successful login for at least 90 days. Service accounts are always skipped. Privileged humans, humans with open critical security events, and cross-scope humans require Admin override; more than 20 actionable records is a request-level Admin rule.
 
-Successful execution atomically persists the domain mutation, application lifecycle audit, one domain audit per changed record, lifecycle state, and database-only notifications. Failure rolls back all success-side effects and uses a separate safe failure transaction. The backend includes permission-aware approval, notification, audit, and safe action-timeline APIs, but no action/approval/audit/notification frontend.
+Successful execution atomically persists the domain mutation, application lifecycle audit, one domain audit per changed record, lifecycle state, and database-only notifications. Failure rolls back all success-side effects and uses a separate safe failure transaction. M8 PR5 adds requester UX for deterministic current-result suggestions, safe previews, submission, owned action tracking/detail, persisted timelines, and pending cancellation. Approval decisions, Audit explorer, and Notifications remain backend-only until later M8 PRs.
 
 ## Evaluation and Testing
 
@@ -345,7 +346,7 @@ Default local URLs:
 * Backend health endpoint: `http://localhost:8000/health`
 * PostgreSQL: `localhost:5432`
 
-PostgreSQL is included for the local development environment. Milestones 0 through 7 are complete and merged into `main` through PR #28. M8 PR1 through PR3 are merged through PR #31, and M8 PR4 is implementation-complete on `feature/m8-disable-inactive-user` but not merged. The current backend includes both V1 actions, approvals, synchronous execution, action/domain audit, database notification APIs, and safe timelines. Action, approval, audit, and notification frontend behavior remains deferred.
+PostgreSQL is included for the local development environment. Milestones 0 through 7 are complete and merged into `main` through PR #28. M8 PR1 through PR4 are merged through PR #32, and M8 PR5 is implementation-complete on `feature/m8-requester-actions-ux` but not merged. The current backend includes both V1 actions, approvals, synchronous execution, action/domain audit, database notification APIs, safe timelines, deterministic template suggestions, and requester-owned action lists. The frontend includes requester Actions UX; approval, audit, and notification UX remains deferred.
 
 Stop the stack:
 
@@ -751,9 +752,9 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-Milestones 0 through 7 are complete and merged into `main`; M7 PR4 merged through PR #28. Milestone 8 — Actions, Approvals & Audit is active. M8 PR1 through PR3 are merged through PR #31, and M8 PR4 is implementation-complete on `feature/m8-disable-inactive-user` but is not merged.
+Milestones 0 through 7 are complete and merged into `main`; M7 PR4 merged through PR #28. Milestone 8 — Actions, Approvals & Audit is active. M8 PR1 through PR4 are merged through PR #32, and M8 PR5 is implementation-complete on `feature/m8-requester-actions-ux` but is not merged.
 
-The completed Milestone 7 experience is dark-first with a persistent light option, responsive navigation, My Dashboard as the authenticated home, permission-aware routes, Scope terminology, a responsive dashboard editor, safe visualizations, and command-first Ask Data. Milestone 8 is active: PR1 through PR3 are merged and PR4 is implementation-complete locally but not merged.
+The completed Milestone 7 experience is dark-first with a persistent light option, responsive navigation, My Dashboard as the authenticated home, permission-aware routes, Scope terminology, a responsive dashboard editor, safe visualizations, and command-first Ask Data. Milestone 8 is active: PR1 through PR4 are merged and PR5 is implementation-complete locally but not merged.
 
 Implemented foundation functionality includes:
 
@@ -787,6 +788,7 @@ Implemented foundation functionality includes:
 * command-first Ask Data with accessible template and five-item own-history drawers
 * PR3-powered in-memory Visual/Table result switching and progressive technical details
 * consolidated governed result save/export controls and clarification-safe state handling
+* requester Actions UX with deterministic current-template recommendations, safe preview/submission, owned tracking/detail, timelines, and cancellation
 * deterministic Chromium Playwright coverage in CI
 
 Current milestone status:
@@ -798,9 +800,9 @@ M7 PR1 — Product Shell, Routing & Navigation is complete and merged through PR
 M7 PR2 — Role-Aware Home & Dashboard Browser is complete and merged through PR #26.
 M7 PR3 — Dashboard Editor, Grid & Visualizations is complete and merged through PR #27.
 M7 PR4 — Ask Data Redesign & Final UX Hardening is complete and merged through PR #28.
-M8 PR1 through PR3 are complete and merged through PR #31.
-M8 PR4 — Disable Inactive User & Backend Security Completion is implementation-complete locally but not merged.
-M8 PR5 through PR7 have not started.
+M8 PR1 through PR4 are complete and merged through PR #32.
+M8 PR5 — Requester Actions UX is implementation-complete locally but not merged.
+M8 PR6 and PR7 have not started.
 ```
 
 PR5 persists the order of cards in owned personal dashboards through `DashboardCard.position`. It includes accessible drag-and-drop and Move Up / Move Down controls, but does not add card resizing, x/y grid coordinates, width/height persistence, advanced `layout` behavior, scheduled refresh, dashboard starring/cloning, actions, approvals, notifications, real external LLM calls, Supabase Auth, Redis/background jobs, or domain expansion. Those deferred areas remain outside Milestone 6.
