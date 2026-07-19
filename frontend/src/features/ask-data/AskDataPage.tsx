@@ -2,6 +2,10 @@ import { useRef, useState } from "react";
 
 import { hasPermission } from "../../auth/permissions";
 import type { AuthUser } from "../../auth/types";
+import { ActionPreviewDrawer } from "../actions/components/ActionPreviewDrawer";
+import { ActionRecommendationCard } from "../actions/components/ActionRecommendationCard";
+import { useActionPreviewFlow } from "../actions/hooks/useActionPreviewFlow";
+import { resolveActionSuggestion } from "../actions/utils/resolveActionSuggestion";
 import { AskDataCommandBar } from "./components/AskDataCommandBar";
 import { AskDataPageHeader } from "./components/AskDataPageHeader";
 import { AskDataResultWorkspace } from "./components/AskDataResultWorkspace";
@@ -21,6 +25,7 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
   const canViewTechnicalDetails = hasPermission(user, "can_view_sql");
   const canExport = hasPermission(user, "can_export_results");
   const canSave = hasPermission(user, "can_create_card");
+  const canRequestAction = hasPermission(user, "can_request_action");
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const commandRef = useRef<HTMLDivElement>(null);
@@ -37,6 +42,15 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
   const successfulActionResult =
     ask.currentResult?.result.status === "succeeded" &&
     ask.currentResult.result.clarification_required === false;
+  const actionResolution = resolveActionSuggestion({
+    canRequestAction,
+    current: ask.currentResult,
+    activeScope
+  });
+  const previewFlow = useActionPreviewFlow({
+    csrfToken,
+    sourceGeneration: ask.currentResult?.generation ?? null
+  });
 
   return (
     <article className="mx-auto grid w-full max-w-[1120px] gap-5" aria-labelledby="workspace-title">
@@ -61,6 +75,15 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
       />
 
       <AskDataResultWorkspace
+        actionRecommendation={
+          actionResolution.status === "hidden" ? null : (
+            <ActionRecommendationCard
+              onPreview={(resolution) => void previewFlow.openPreview(resolution)}
+              resolution={actionResolution}
+              scopeLabel={scopeLabel}
+            />
+          )
+        }
         canClarify={canRunFreeQuery}
         canExport={Boolean(successfulActionResult && canExport)}
         canSave={Boolean(successfulActionResult && canSave)}
@@ -75,6 +98,17 @@ export function AskDataPage({ user, csrfToken }: AskDataPageProps) {
         requestState={ask.requestState}
         resultDisplayMode={ask.resultDisplayMode}
       />
+
+      {previewFlow.flow ? (
+        <ActionPreviewDrawer
+          flow={previewFlow.flow}
+          onClose={previewFlow.close}
+          onReasonChange={previewFlow.setReason}
+          onRecreate={previewFlow.recreate}
+          onSubmit={() => void previewFlow.submit()}
+          role={user.role}
+        />
+      ) : null}
 
       {templatesOpen ? (
         <TemplateDrawer

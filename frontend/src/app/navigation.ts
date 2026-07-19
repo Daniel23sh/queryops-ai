@@ -2,6 +2,7 @@ import {
   CircleUserRound,
   LayoutDashboard,
   MessageSquareText,
+  ListChecks,
   ShieldCheck,
   type LucideIcon
 } from "lucide-react";
@@ -13,7 +14,7 @@ import { APP_ROUTES, type AppRoutePath } from "./routeConfig";
 export type NavigationSection = "workspace" | "admin";
 
 export type NavItem = {
-  id: "my-dashboard" | "ask-data" | "profile" | "admin-role-requests";
+  id: "my-dashboard" | "ask-data" | "actions" | "profile" | "admin-role-requests";
   label: string;
   title: string;
   summary: string;
@@ -43,6 +44,16 @@ export const WORKSPACE_NAV_ITEMS: NavItem[] = [
     icon: MessageSquareText,
     section: "workspace",
     canView: (user) => hasPermission(user, "can_use_query_templates")
+  },
+  {
+    id: "actions",
+    label: "Actions",
+    title: "Actions",
+    summary: "Track your governed action requests.",
+    path: APP_ROUTES.actions,
+    icon: ListChecks,
+    section: "workspace",
+    canView: (user) => hasPermission(user, "can_request_action")
   },
   {
     id: "profile",

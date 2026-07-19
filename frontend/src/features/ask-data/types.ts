@@ -1,4 +1,5 @@
 import type { PermissionKey } from "../../auth/types";
+import type { ActionSuggestion } from "../actions/types";
 
 export type JsonPrimitive = string | number | boolean | null;
 
@@ -29,6 +30,7 @@ export type QueryTemplate = {
   parameters: QueryTemplateParameter[];
   scope_type: string | null;
   required_permission: PermissionKey | string;
+  can_suggest_action: boolean;
 };
 
 export type QueryTemplateCategory = {
@@ -111,6 +113,7 @@ export type QueryRunResult = {
   warnings: QueryWarning[];
   clarification_required: boolean;
   metadata: QueryMetadata;
+  suggested_actions: ActionSuggestion[];
   error_code?: QueryErrorCode;
   generated_sql?: string | null;
   executed_sql?: string | null;

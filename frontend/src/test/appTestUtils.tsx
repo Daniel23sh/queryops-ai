@@ -20,6 +20,7 @@ export const demoManager = backendUser({
     "can_run_free_query",
     "can_query_scoped_data",
     "can_view_scoped_data",
+    "can_request_action",
     "can_create_personal_dashboard",
     "can_star_dashboard",
     "can_view_own_data"
@@ -38,6 +39,7 @@ export const demoAnalyst = backendUser({
     "can_create_card",
     "can_export_results",
     "can_view_sql",
+    "can_request_action",
     "can_star_dashboard",
     "can_view_own_data"
   ]
@@ -56,7 +58,8 @@ export const demoAdmin = backendUser({
     "can_export_results",
     "can_view_sql",
     "can_approve_role_requests",
-    "can_manage_users"
+    "can_manage_users",
+    "can_request_action"
   ]
 });
 
@@ -114,6 +117,9 @@ export function authenticatedRoutes(
     "GET /api/v1/auth/me": successResponse(user),
     "GET /api/v1/home/overview": successResponse(backendHomeOverview(user)),
     "GET /api/v1/dashboards/library": successResponse([]),
+    ...(user.permissions.includes("can_request_action")
+      ? { "GET /api/v1/actions": successResponse(backendActionList()) }
+      : {}),
     ...routes
   };
 }
@@ -385,7 +391,8 @@ export function backendQueryTemplate() {
     natural_language_question: "Show unused paid licenses in my scope.",
     parameters: [],
     scope_type: "department",
-    required_permission: "can_use_query_templates"
+    required_permission: "can_use_query_templates",
+    can_suggest_action: false
   };
 }
 
@@ -419,7 +426,8 @@ export function backendQueryResult({
       }
     },
     generated_sql: generatedSql,
-    executed_sql: executedSql
+    executed_sql: executedSql,
+    suggested_actions: []
   };
 }
 
@@ -462,28 +470,214 @@ function backendUser({
 }) {
   const isAdmin = role === "admin";
   const scopeKey = scopeName.toLowerCase();
+  const roleIds = {
+    user: "00000000-0000-4000-8000-000000000101",
+    manager: "00000000-0000-4000-8000-000000000102",
+    analyst: "00000000-0000-4000-8000-000000000103",
+    admin: "00000000-0000-4000-8000-000000000104"
+  };
+  const scopeIds = {
+    sales: "00000000-0000-4000-8000-000000000201",
+    finance: "00000000-0000-4000-8000-000000000202",
+    it: "00000000-0000-4000-8000-000000000203",
+    global: "00000000-0000-4000-8000-000000000204"
+  };
+  const departmentIds = {
+    sales: "00000000-0000-4000-8000-000000000301",
+    finance: "00000000-0000-4000-8000-000000000302",
+    it: "00000000-0000-4000-8000-000000000303",
+    global: null
+  };
+  const scopeId = scopeIds[scopeKey as keyof typeof scopeIds];
+  const departmentId = departmentIds[scopeKey as keyof typeof departmentIds];
 
   return {
-    id: `${role}-id`,
+    id: roleIds[role],
     email: `demo.${role}@queryops.local`,
     full_name: `Demo ${role.charAt(0).toUpperCase()}${role.slice(1)}`,
     role,
-    department_id: isAdmin ? null : `${scopeKey}-id`,
-    department: isAdmin ? null : { id: `${scopeKey}-id`, name: scopeName },
+    department_id: departmentId,
+    department: isAdmin ? null : { id: departmentId, name: scopeName },
     scopes: [
       {
-        id: `${scopeKey}-scope-id`,
+        id: scopeId,
         type: isAdmin ? "global" : "department",
         key: scopeKey,
         display_name: scopeName,
         access_level: isAdmin || role === "analyst" ? "manage" : "read",
         is_default: true,
-        department_id: isAdmin ? null : `${scopeKey}-id`
+        department_id: departmentId
       }
     ],
     status: "active",
     permissions,
     auth_mode: "demo"
+  };
+}
+
+export function backendActionList() {
+  return {
+    items: [],
+    summary: { pending: 0, completed: 0, closed: 0 },
+    pagination: { limit: 25, offset: 0, returned: 0, total: 0 }
+  };
+}
+
+export function backendActionListItem({
+  id = "00000000-0000-4000-8000-000000000501",
+  status = "pending_approval"
+}: {
+  id?: string;
+  status?: string;
+} = {}) {
+  return {
+    id,
+    action_request_id: id,
+    action_type: "reclaim_unused_license",
+    title: "Reclaim unused licenses",
+    status,
+    priority: "high",
+    scope: {
+      id: "00000000-0000-4000-8000-000000000202",
+      type: "department",
+      key: "finance",
+      display_name: "Finance"
+    },
+    record_count: 1,
+    skipped_count: 0,
+    requires_admin: false,
+    created_at: "2026-07-19T12:00:00Z",
+    submitted_at: "2026-07-19T12:01:00Z",
+    updated_at: "2026-07-19T12:01:00Z",
+    expires_at: "2026-07-20T12:01:00Z",
+    next_step: "Waiting for approval"
+  };
+}
+
+export function backendActionDetail({
+  id = "00000000-0000-4000-8000-000000000501",
+  status = "pending_approval",
+  requesterId = "00000000-0000-4000-8000-000000000102",
+  expired = false
+}: {
+  id?: string;
+  status?: string;
+  requesterId?: string;
+  expired?: boolean;
+} = {}) {
+  return {
+    id,
+    action_request_id: id,
+    action_type: "reclaim_unused_license",
+    status,
+    priority: "high",
+    scope: {
+      id: "00000000-0000-4000-8000-000000000202",
+      type: "department",
+      key: "finance",
+      display_name: "Finance"
+    },
+    preview: {
+      summary: {
+        affected_license_assignment_count: 1,
+        normal_eligible_count: 1,
+        skipped_count: 0,
+        override_required_count: 1,
+        high_confidence_count: 1,
+        estimated_monthly_savings: "25.00"
+      },
+      eligible_records: [safeLicenseRecord("00000000-0000-4000-8000-000000000601")],
+      skipped_records: [],
+      override_required_records: [
+        {
+          ...safeLicenseRecord("00000000-0000-4000-8000-000000000602"),
+          reason: "Admin review is required."
+        }
+      ],
+      exclusions_by_reason: [],
+      policy_flags: [{ code: "review_required", reason: "Approval is required." }]
+    },
+    generated_at: "2026-07-19T12:00:00Z",
+    preview_expires_at: expired ? "2026-07-18T12:30:00Z" : "2099-07-19T12:30:00Z",
+    expires_at: expired ? "2026-07-18T12:30:00Z" : "2099-07-20T12:00:00Z",
+    requires_admin: true,
+    is_expired: expired,
+    reason: "Review this current governed result.",
+    submitted_at: status === "draft_preview" ? null : "2026-07-19T12:01:00Z",
+    created_at: "2026-07-19T12:00:00Z",
+    updated_at: "2026-07-19T12:01:00Z",
+    approval:
+      status === "draft_preview"
+        ? null
+        : {
+            id: "00000000-0000-4000-8000-000000000701",
+            status: "pending",
+            required_approver_role: "admin",
+            created_at: "2026-07-19T12:01:00Z",
+            expires_at: "2099-07-20T12:00:00Z"
+          },
+    timeline:
+      status === "draft_preview"
+        ? [timelineEvent("action_preview_created", "Preview created", requesterId)]
+        : [
+            timelineEvent("action_preview_created", "Preview created", requesterId),
+            timelineEvent("action_requested", "Action requested", requesterId)
+          ]
+  };
+}
+
+export function backendActionQueryResult() {
+  const result = backendQueryResult();
+  return {
+    ...result,
+    query_run_id: "00000000-0000-4000-8000-000000000401",
+    columns: ["id", "product_name"],
+    rows: [
+      {
+        id: "00000000-0000-4000-8000-000000000601",
+        product_name: "Microsoft 365 E5"
+      }
+    ],
+    suggested_actions: [
+      {
+        action_type: "reclaim_unused_license",
+        label: "Preview license reclaim",
+        selector_kind: "license_assignment",
+        result_identifier_column: "id"
+      }
+    ]
+  };
+}
+
+function safeLicenseRecord(id: string) {
+  return {
+    record_type: "license_assignment",
+    record_id: id,
+    license_assignment_id: id,
+    scope: {
+      id: "00000000-0000-4000-8000-000000000202",
+      type: "department",
+      key: "finance"
+    },
+    user_display_label: "Governed user 1",
+    license_product: "Microsoft 365 E5",
+    license_vendor: "Microsoft",
+    last_used_at: null,
+    monthly_cost_usd: "25.00",
+    reason_code: "no_recorded_usage",
+    reason: "No license usage is recorded.",
+    high_confidence: true
+  };
+}
+
+function timelineEvent(eventType: string, summary: string, actorId: string) {
+  return {
+    event_type: eventType,
+    status: "pending_approval",
+    summary,
+    timestamp: "2026-07-19T12:01:00Z",
+    created_at: "2026-07-19T12:01:00Z",
+    actor: { id: actorId, display_name: "Demo Manager" }
   };
 }
 

@@ -9,6 +9,7 @@ import { AdminMetrics } from "./components/AdminMetrics";
 import { HomeHeader } from "./components/HomeHeader";
 import { OperationalMetrics } from "./components/OperationalMetrics";
 import { PersonalSummary } from "./components/PersonalSummary";
+import { MyActionRequestsSummary } from "./components/MyActionRequestsSummary";
 import { useHomeOverview } from "./hooks/useHomeOverview";
 
 export function HomePage({
@@ -24,6 +25,7 @@ export function HomePage({
   const [createOpener, setCreateOpener] = useState<HTMLElement | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const canCreate = hasPermission(user, "can_create_personal_dashboard");
+  const canRequestAction = hasPermission(user, "can_request_action");
   const closeCreate = useCallback(() => setCreateOpen(false), []);
   const handleCreated = useCallback(
     async (title: string) => {
@@ -79,6 +81,8 @@ export function HomePage({
           ) : null}
         </>
       ) : null}
+
+      {canRequestAction ? <MyActionRequestsSummary /> : null}
 
       <DashboardLibrary
         canCreate={canCreate}

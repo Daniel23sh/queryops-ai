@@ -2,6 +2,8 @@ export const APP_ROUTES = {
   login: "/login",
   home: "/",
   ask: "/ask",
+  actions: "/actions",
+  actionRequest: "/actions/:actionRequestId",
   dashboard: "/dashboards/:dashboardId",
   profile: "/profile",
   adminRoleRequests: "/admin/role-requests"
@@ -13,6 +15,8 @@ const ROUTE_TITLES: Record<AppRoutePath, string> = {
   [APP_ROUTES.login]: "Sign in",
   [APP_ROUTES.home]: "My Dashboard",
   [APP_ROUTES.ask]: "Ask Data",
+  [APP_ROUTES.actions]: "Actions",
+  [APP_ROUTES.actionRequest]: "Action Request",
   [APP_ROUTES.dashboard]: "Dashboard",
   [APP_ROUTES.profile]: "Profile",
   [APP_ROUTES.adminRoleRequests]: "Role Requests"
@@ -22,9 +26,16 @@ export function getRouteTitle(pathname: string): string {
   if (pathname.startsWith("/dashboards/")) {
     return ROUTE_TITLES[APP_ROUTES.dashboard];
   }
+  if (pathname.startsWith("/actions/")) {
+    return ROUTE_TITLES[APP_ROUTES.actionRequest];
+  }
   return ROUTE_TITLES[pathname as AppRoutePath] ?? ROUTE_TITLES[APP_ROUTES.home];
 }
 
 export function dashboardPath(dashboardId: string): string {
   return `/dashboards/${encodeURIComponent(dashboardId)}`;
+}
+
+export function actionRequestPath(actionRequestId: string): string {
+  return `/actions/${encodeURIComponent(actionRequestId)}`;
 }
