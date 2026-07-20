@@ -16,7 +16,7 @@ Current PR scope:
 
 `M7 PR4 — Ask Data Redesign & Final UX Hardening` is complete and merged into `main` through PR #28. Milestone 7 is complete.
 
-`Milestone 8 — Actions, Approvals & Audit` is active. M8 PR1 through PR5 are complete and merged through PR #33. `M8 PR6 — Approvals, Audit & Notifications UX` is complete and merged through PR #34; `main` reached `73531f25f4d234cabc1f509931492ea62b78d8df`. `M8 PR7 — E2E, Security Hardening & Completion` is active on `feature/m8-e2e-security-completion`. Milestone 8 remains active until every PR7 release gate passes.
+`Milestone 8 — Actions, Approvals & Audit` is complete. M8 PR1 through PR5 are complete and merged through PR #33. `M8 PR6 — Approvals, Audit & Notifications UX` is complete and merged through PR #34; `main` reached `73531f25f4d234cabc1f509931492ea62b78d8df`. `M8 PR7 — E2E, Security Hardening & Completion` is implementation- and verification-complete on `feature/m8-e2e-security-completion` but is not merged. The next milestone has not started.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
@@ -120,7 +120,7 @@ Explicitly out of scope for M6 PR5:
 - masking
 - tenant/project/region governance
 
-Actions, approvals, audit UI, notifications, real LLM/API-key support, and Supabase Auth remained deferred through Milestone 7. The former Actions, Approvals & Audit Milestone 7 is now Milestone 8 because Product UX & Dashboard Redesign became Milestone 7. Milestone 8 is active through the approved seven-PR sequence in Section 17; PR1 through PR6 are merged and PR7 is active.
+Actions, approvals, audit UI, notifications, real LLM/API-key support, and Supabase Auth remained deferred through Milestone 7. The former Actions, Approvals & Audit Milestone 7 is now Milestone 8 because Product UX & Dashboard Redesign became Milestone 7. Milestone 8 completed the approved seven-PR sequence in Section 17; PR1 through PR6 are merged and PR7 is implementation- and verification-complete but not merged.
 
 ## 2. Product Summary
 
@@ -440,7 +440,7 @@ The latest PR status is:
 
 `M7 PR2 — Role-Aware Home & Dashboard Browser` is complete and merged through PR #26. `M7 PR3 — Dashboard Editor, Grid & Visualizations` is complete and merged through PR #27. `M7 PR4 — Ask Data Redesign & Final UX Hardening` is complete and merged through PR #28.
 
-`Milestone 8 — Actions, Approvals & Audit` is active. M8 PR1 through PR5 are complete and merged through PR #33. M8 PR6 is complete and merged through PR #34. M8 PR7 is active on `feature/m8-e2e-security-completion`; Milestone 8 is not complete until its release gates pass.
+`Milestone 8 — Actions, Approvals & Audit` is complete. M8 PR1 through PR5 are complete and merged through PR #33. M8 PR6 is complete and merged through PR #34. M8 PR7 is implementation- and verification-complete on `feature/m8-e2e-security-completion` but is not merged. The next milestone has not started.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -944,7 +944,7 @@ Milestone 8 is split into seven approved PRs:
 6. `M8 PR6 — Approvals, Audit & Notifications UX`
 7. `M8 PR7 — M8 E2E, Security Hardening & Completion`
 
-M8 PR1 is complete and merged through PR #29. M8 PR2 is complete and merged through PR #30. M8 PR3 is complete and merged through PR #31. M8 PR4 is complete and merged through PR #32. M8 PR5 is complete and merged through PR #33. M8 PR6 is complete and merged through PR #34. M8 PR7 is active on `feature/m8-e2e-security-completion`; Milestone 8 remains active until every PR7 release gate passes.
+M8 PR1 is complete and merged through PR #29. M8 PR2 is complete and merged through PR #30. M8 PR3 is complete and merged through PR #31. M8 PR4 is complete and merged through PR #32. M8 PR5 is complete and merged through PR #33. M8 PR6 is complete and merged through PR #34. M8 PR7 is implementation- and verification-complete on `feature/m8-e2e-security-completion` but is not merged. Milestone 8 is complete; the next milestone has not started.
 
 ### M8 PR1 — Action Persistence & Engine Contracts
 
@@ -1338,7 +1338,7 @@ Branch:
 feature/m8-e2e-security-completion
 ```
 
-Status: active.
+Status: implementation- and verification-complete; not merged.
 
 Goal: close Milestone 8 by automating the real governed requester-to-approver workflow, enforcing PostgreSQL/RLS/action security gates in CI, mapping the required security cases to exact tests, and fixing only defects exposed by those release gates.
 
@@ -1361,3 +1361,18 @@ Guardrails:
 - PR7 adds no schema or migration and does not change normal small/medium seed profiles, permission catalogs, role mappings, RLS policies, action eligibility, lifecycle behavior, notification delivery, or product capabilities.
 - Do not add action types, a separate Execute endpoint, retries or rollback actions, background infrastructure, polling/realtime/external notification delivery, Admin Users or Evaluation UI, real LLM behavior, Supabase Auth, or next-milestone work.
 - Milestone 8 may be marked complete only after every documented PR7 release gate passes on the final committed HEAD and task-owned resources are removed.
+
+Delivered:
+
+- A PostgreSQL-only E2E preparation guard requires explicit disposable opt-in, a loopback endpoint, a test/dev/e2e database marker, canonical separation from the normal application database, and no endpoint query overrides. It idempotently grants Demo Analyst exact Finance manage scope and stabilizes only the disposable workflow's time-sensitive service-account row; normal seed profiles are unchanged.
+- The isolated primary Chromium flow automates Manager Ask Data → deterministic reclaim preview → submission → real logout → exact-scope Analyst review → synchronous approve-and-execute → Audit → requester/approver notifications → governed post-execution zero-row read. It asserts one submission, exact pending/unread totals, terminal state, two mutations, safe rendering, 390px layout, both themes, Escape/focus restoration, and no page/console errors.
+- The negative User flow proves approved-template access without action suggestion or protected navigation, sends a direct preview request with a real current CSRF token, receives `403 FORBIDDEN`, and compares action, approval, audit, and notification persistence counts before and after.
+- The tracked `docs/security/m8-release-test-matrix.md` maps the exact 20 action cases and broader 30 security requirements. Narrow missing evidence was added for Analyst device RLS, Analyst/Admin dashboard detail, and LLM exclusion of approval reasons, security-event descriptions, and application audit tables.
+- CI now has a dedicated PostgreSQL 16 security job and a separate freshly migrated/seeded M8 primary E2E job. The PostgreSQL job runs the exact 20-case suite by name, runs the remaining complete backend suite, emits JUnit reports, and fails if either group skips a test.
+- The only product fix removes an unnecessary requester-only Action detail fetch after an approval becomes terminal, while clearing stale preview timestamps and preserving the approval response as authoritative.
+
+Final verification passed 14 E2E-database safety tests, the exact 20-case action suite plus two concurrency cases, 756 default backend tests with 151 expected PostgreSQL-only skips, all 907 disposable-PostgreSQL backend tests with no skips, 247 frontend tests, both TypeScript checks, the production build, seven general Chromium flows, and two isolated M8 primary/negative flows. A fresh PostgreSQL 16 cluster upgraded through `0010_disable_inactive_user`; Alembic current and no-diff checks passed, and no migration was added.
+
+The final **Manual M8 PR7 release review — not a CodeRabbit result** found 0 Critical, 0 Major, and 4 actionable Minor issues. All were fixed: terminal approval reload no longer makes a requester-only fetch, time-relative seed drift is stabilized only in the disposable E2E database, the Admin export smoke uses the persisted `csv_export` contract, and PostgreSQL CI explicitly fails on skips. The repeated review found no remaining actionable issue.
+
+No schema, migration, normal seed, permission, role mapping, RLS, runtime-role, action policy, lifecycle, execution, audit-writing, notification-recipient, or public API contract changed. The intentional M8 limits remain: only `reclaim_unused_license` and `disable_inactive_user` exist; execution is synchronous; notifications are database-only; there is no automatic retry or rollback action, queue, worker, scheduler, Redis, WebSocket, or external delivery; and operational intervention remains necessary if both execution and separate failure persistence fail. Milestone 8 is complete, and the next milestone has not started.

@@ -294,7 +294,7 @@ POST /api/v1/approvals/{approval_id}/reject
 
 The backend deterministically reads current operational data through `queryops_query_runtime`, a read-only transaction, transaction-local RLS context, and PostgreSQL RLS. Draft previews expire after 30 minutes and submitted approvals after 24 hours. Approval synchronously revalidates current rows and dependencies before entering the narrow write role. License reclaim uses current assignment policy; inactive-user disablement requires an active human with no successful login for at least 90 days. Service accounts are always skipped. Privileged humans, humans with open critical security events, and cross-scope humans require Admin override; more than 20 actionable records is a request-level Admin rule.
 
-Successful execution atomically persists the domain mutation, application lifecycle audit, one domain audit per changed record, lifecycle state, and database-only notifications. Failure rolls back all success-side effects and uses a separate safe failure transaction. M8 PR5 adds requester UX for deterministic current-result suggestions, safe previews, submission, owned action tracking/detail, persisted timelines, and pending cancellation. M8 PR6 adds permission-aware Approvals and Audit workspaces, synchronous decision UX, current-recipient notification access, and exact activity totals without changing those backend guarantees.
+Successful execution atomically persists the domain mutation, application lifecycle audit, one domain audit per changed record, lifecycle state, and database-only notifications. Failure rolls back all success-side effects and uses a separate safe failure transaction. M8 PR5 adds requester UX for deterministic current-result suggestions, safe previews, submission, owned action tracking/detail, persisted timelines, and pending cancellation. M8 PR6 adds permission-aware Approvals and Audit workspaces, synchronous decision UX, current-recipient notification access, and exact activity totals without changing those backend guarantees. M8 PR7 adds isolated release-blocking browser coverage, a tracked security matrix, and explicit no-skip PostgreSQL CI gates. Milestone 8 is complete; the next milestone has not started.
 
 ## Evaluation and Testing
 
@@ -346,7 +346,7 @@ Default local URLs:
 * Backend health endpoint: `http://localhost:8000/health`
 * PostgreSQL: `localhost:5432`
 
-PostgreSQL is included for the local development environment. Milestones 0 through 7 are complete and merged into `main` through PR #28. M8 PR1 through PR5 are merged through PR #33, and M8 PR6 is implementation-complete on `feature/m8-approvals-audit-notifications-ux` but is not merged. The current backend includes both V1 actions, approvals, synchronous execution, action/domain audit, database notification APIs, safe timelines, deterministic template suggestions, requester-owned action lists, and exact authorized activity totals. The frontend includes requester Actions, Approvals, Audit, and database Notifications UX.
+PostgreSQL is included for the local development environment. Milestones 0 through 7 are complete and merged into `main` through PR #28. M8 PR1 through PR5 are merged through PR #33, M8 PR6 is merged through PR #34, and M8 PR7 is implementation- and verification-complete on `feature/m8-e2e-security-completion` but is not merged. Milestone 8 is complete. The current backend includes both V1 actions, approvals, synchronous execution, action/domain audit, database notification APIs, safe timelines, deterministic template suggestions, requester-owned action lists, and exact authorized activity totals. The frontend includes requester Actions, Approvals, Audit, and database Notifications UX.
 
 Stop the stack:
 
@@ -400,6 +400,30 @@ DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .ven
 ```
 
 PostgreSQL is required for true RLS verification. SQLite-based tests can validate helper behavior and migration compatibility, but they do not enforce PostgreSQL Row-Level Security policies.
+
+### Isolated M8 E2E preparation
+
+The state-changing M8 workflow must never use the normal development database. Use a fresh PostgreSQL cluster with no volume, create a separately named E2E database, and keep the normal database URL only as the safety comparator:
+
+```bash
+docker run --rm -d --name queryops-m8-e2e \
+  -e POSTGRES_DB=queryops -e POSTGRES_USER=queryops -e POSTGRES_PASSWORD=queryops \
+  -p 55433:5432 postgres:16-alpine
+docker exec queryops-m8-e2e createdb -U queryops queryops_e2e_test
+
+cd backend
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:55433/queryops_e2e_test \
+  .venv/bin/alembic upgrade head
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:55433/queryops_e2e_test \
+  .venv/bin/python scripts/seed_it_operations.py --profile small --reset
+M8_E2E_DATABASE_DISPOSABLE=1 \
+M8_E2E_DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:55433/queryops_e2e_test \
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:55433/queryops \
+POSTGRES_DB=queryops \
+  .venv/bin/python scripts/prepare_m8_e2e.py
+```
+
+The preparation script is PostgreSQL-only and idempotent. It rejects missing opt-in, non-loopback endpoints, database names without a test/dev/e2e marker, the configured normal application database, ambiguous URLs, and endpoint query overrides. Run the backend with `DATABASE_URL` pointed at `queryops_e2e_test`, run `frontend/e2e/m8-workflow.spec.ts` once with retries disabled, then run `docker stop queryops-m8-e2e` so Docker removes the container. The general E2E suite excludes `@m8-primary`; CI owns a separate fresh database for the state-changing workflow.
 
 RLS runtime context is set transaction-locally before scoped reads using:
 
@@ -752,9 +776,9 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-Milestones 0 through 7 are complete and merged into `main`; M7 PR4 merged through PR #28. Milestone 8 — Actions, Approvals & Audit is active. M8 PR1 through PR5 are merged through PR #33. M8 PR6 is implementation-complete on `feature/m8-approvals-audit-notifications-ux` but is not merged; M8 PR7 has not started.
+Milestones 0 through 7 are complete and merged into `main`; M7 PR4 merged through PR #28. Milestone 8 — Actions, Approvals & Audit is complete. M8 PR1 through PR5 are merged through PR #33, M8 PR6 is merged through PR #34, and M8 PR7 is implementation- and verification-complete on `feature/m8-e2e-security-completion` but is not merged. The next milestone has not started.
 
-The completed Milestone 7 experience is dark-first with a persistent light option, responsive navigation, My Dashboard as the authenticated home, permission-aware routes, Scope terminology, a responsive dashboard editor, safe visualizations, and command-first Ask Data. Milestone 8 is active: PR1 through PR5 are merged and PR6 owns Approvals, Audit, and Notifications UX.
+The completed Milestone 7 experience is dark-first with a persistent light option, responsive navigation, My Dashboard as the authenticated home, permission-aware routes, Scope terminology, a responsive dashboard editor, safe visualizations, and command-first Ask Data. The completed Milestone 8 experience adds the two governed V1 actions, requester Actions, exact-scope/global Approvals, scoped/global Audit, database Notifications, synchronous execution, and release-blocking PostgreSQL/browser evidence.
 
 Implemented foundation functionality includes:
 
@@ -803,13 +827,16 @@ M7 PR3 — Dashboard Editor, Grid & Visualizations is complete and merged throug
 M7 PR4 — Ask Data Redesign & Final UX Hardening is complete and merged through PR #28.
 M8 PR1 through PR4 are complete and merged through PR #32.
 M8 PR5 — Requester Actions UX is complete and merged through PR #33.
-M8 PR6 — Approvals, Audit & Notifications UX is implementation-complete but not merged.
-M8 PR7 has not started.
+M8 PR6 — Approvals, Audit & Notifications UX is complete and merged through PR #34.
+M8 PR7 — E2E, Security Hardening & Completion is implementation- and verification-complete but not merged.
+Milestone 8 — Actions, Approvals & Audit is complete; the next milestone has not started.
 ```
 
 PR6 keeps backend authorization authoritative while adding exact approval/notification activity badges, permission-aware Approvals and Audit workspaces, synchronous approve/reject dialogs, safe related navigation, and current-recipient database notification controls. Under the current permission catalog, Analyst receives exact-scope approval and Audit UX, Admin receives global/override/self-approval UX, Manager retains requester Actions and notifications without Audit access, and User receives notifications without Actions, Approvals, or Audit navigation. The private planning description of a future limited Manager audit view is not implemented because the backend does not currently grant that permission.
 
-PR6 verification passed 740 default backend tests with 150 expected PostgreSQL skips, all 890 disposable-PostgreSQL tests, the exact 20-case action-security suite, 247 frontend tests, TypeScript, the production build, Alembic no-diff verification, responsive role-based browser QA, and isolated live approval workflows. The final manual review fixed three Minor issues and removed one unconsumed activity-state path; no actionable finding remains. M8 PR7 still owns final cross-workflow automated E2E, release hardening, and milestone closure.
+PR7 verification passed 14 guarded-database tests, the exact 20-case action-security suite plus two concurrency cases, 756 default backend tests with 151 expected PostgreSQL-only skips, all 907 disposable-PostgreSQL tests with no skips, 247 frontend tests, TypeScript, the production build, seven general Chromium flows, two isolated primary/negative M8 flows, and a fresh Alembic upgrade/current/no-diff check through migration 0010. The tracked release matrix maps all exact 20 and broader 30 security cases. The final **Manual M8 PR7 release review — not a CodeRabbit result** found and fixed 4 Minor issues with no Critical or Major finding and no unresolved actionable issue.
+
+PR7 changed no schema, migration, normal seed, permission, role mapping, RLS, action policy, lifecycle, execution, audit writer, notification recipient, or public API contract. M8 intentionally remains limited to `reclaim_unused_license` and `disable_inactive_user`, synchronous execution, and database-only notifications. It has no automatic retry or rollback action, queue, worker, scheduler, Redis, WebSocket, or external delivery. Operational intervention is still required if both execution and separate failure persistence fail.
 
 PR5 persists the order of cards in owned personal dashboards through `DashboardCard.position`. It includes accessible drag-and-drop and Move Up / Move Down controls, but does not add card resizing, x/y grid coordinates, width/height persistence, advanced `layout` behavior, scheduled refresh, dashboard starring/cloning, actions, approvals, notifications, real external LLM calls, Supabase Auth, Redis/background jobs, or domain expansion. Those deferred areas remain outside Milestone 6.
 
