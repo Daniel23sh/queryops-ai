@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   authenticatedRoutes,
   backendActionList,
+  backendApprovalDetail,
   backendDashboardLibraryItem,
   backendHomeOverview,
   demoAdmin,
@@ -40,12 +41,13 @@ describe("role-aware Home", () => {
     expect(screen.queryByText("Administrative metrics")).not.toBeInTheDocument();
     expect(screen.queryByText(/device compliance/i)).not.toBeInTheDocument();
     expect(screen.queryByText("My Action Requests")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Approval activity" })).not.toBeInTheDocument();
   });
 
   it.each([
     ["Manager", demoManager],
     ["Analyst", demoAnalyst]
-  ])("shows scoped operational metrics for %s", async (_label, user) => {
+  ])("shows scoped operational metrics for %s", async (label, user) => {
     installApiMock(authenticatedRoutes(user));
 
     renderAppAt("/");
@@ -54,6 +56,9 @@ describe("role-aware Home", () => {
     expect(screen.getByText("93.2%")).toBeInTheDocument();
     expect(screen.getByText("$18,432.50")).toBeInTheDocument();
     expect(screen.queryByText("Administrative metrics")).not.toBeInTheDocument();
+    if (label === "Manager") {
+      expect(screen.queryByRole("heading", { name: "Approval activity" })).not.toBeInTheDocument();
+    }
   });
 
   it("shows global and only returned administrative metrics for Admin", async () => {
@@ -66,6 +71,24 @@ describe("role-aware Home", () => {
     expect(screen.getByText("Active QueryOps users")).toBeInTheDocument();
     expect(screen.getByText("Pending role requests")).toBeInTheDocument();
     expect(screen.queryByText("Audit events · 7 days")).not.toBeInTheDocument();
+  });
+
+  it("shows eligible approval and Audit summaries only to authorized roles", async () => {
+    const approval = backendApprovalDetail();
+    installApiMock(authenticatedRoutes(demoAnalyst, {
+      "GET /api/v1/approvals/pending": successResponse({ items: [approval], pagination: { limit: 3, offset: 0, returned: 1, total: 1 } })
+    }));
+    const analystView = renderAppAt("/");
+    expect(await screen.findByRole("heading", { name: "Approval activity" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Open scoped Audit/ })).toHaveAttribute("href", "/audit");
+    analystView.unmount();
+
+    installApiMock(authenticatedRoutes(demoAdmin, {
+      "GET /api/v1/approvals/pending": successResponse({ items: [approval], pagination: { limit: 3, offset: 0, returned: 1, total: 1 } })
+    }));
+    renderAppAt("/");
+    expect(await screen.findByText("Admin required")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Open global Audit/ })).toHaveAttribute("href", "/audit");
   });
 
   it("shows requester-owned counts and isolates an action-summary failure", async () => {

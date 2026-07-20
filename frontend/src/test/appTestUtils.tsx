@@ -40,6 +40,8 @@ export const demoAnalyst = backendUser({
     "can_export_results",
     "can_view_sql",
     "can_request_action",
+    "can_approve_scoped_action",
+    "can_view_scope_audit",
     "can_star_dashboard",
     "can_view_own_data"
   ]
@@ -59,7 +61,11 @@ export const demoAdmin = backendUser({
     "can_view_sql",
     "can_approve_role_requests",
     "can_manage_users",
-    "can_request_action"
+    "can_request_action",
+    "can_approve_global_action",
+    "can_approve_policy_override",
+    "can_self_approve_admin_action",
+    "can_view_global_audit"
   ]
 });
 
@@ -117,8 +123,16 @@ export function authenticatedRoutes(
     "GET /api/v1/auth/me": successResponse(user),
     "GET /api/v1/home/overview": successResponse(backendHomeOverview(user)),
     "GET /api/v1/dashboards/library": successResponse([]),
+    "GET /api/v1/notifications": successResponse(backendNotificationList()),
     ...(user.permissions.includes("can_request_action")
       ? { "GET /api/v1/actions": successResponse(backendActionList()) }
+      : {}),
+    ...(user.permissions.some((permission) => [
+      "can_approve_scoped_action",
+      "can_approve_global_action",
+      "can_approve_policy_override"
+    ].includes(permission))
+      ? { "GET /api/v1/approvals/pending": successResponse(backendPendingApprovalList()) }
       : {}),
     ...routes
   };
@@ -252,6 +266,70 @@ export function backendHomeOverview(user: BackendUser = demoManager) {
           app_audit_events_last_7_days: null
         }
       : null
+  };
+}
+
+export function backendPendingApprovalList(items: Array<Record<string, unknown>> = []) {
+  return {
+    items,
+    pagination: { limit: 20, offset: 0, returned: items.length, total: items.length }
+  };
+}
+
+export function backendApprovalDetail({
+  canApprove = true,
+  policyFlags = [{ code: "record_count_over_analyst_threshold", reason: "Internal policy text" }],
+  status = "pending"
+}: {
+  canApprove?: boolean;
+  policyFlags?: Array<{ code: string; reason: string }>;
+  status?: string;
+} = {}) {
+  const action = backendActionDetail();
+  return {
+    approval_id: "00000000-0000-4000-8000-000000000701",
+    action_request_id: action.action_request_id,
+    action_type: action.action_type,
+    requester: {
+      id: "00000000-0000-4000-8000-000000000102",
+      display_name: "Demo Manager"
+    },
+    reason: action.reason,
+    priority: action.priority,
+    scope: action.scope,
+    preview: action.preview,
+    expires_at: action.expires_at,
+    affected_count: 1,
+    skipped_count: 0,
+    override_count: 1,
+    estimated_impact: { estimated_monthly_savings: "25.00" },
+    policy_flags: policyFlags,
+    requires_admin: true,
+    status,
+    timeline: [
+      {
+        event_type: "action_requested",
+        timestamp: "2026-07-19T12:01:00Z",
+        actor: { id: "00000000-0000-4000-8000-000000000102", display_name: "Demo Manager" },
+        summary: "Action requested",
+        status: "pending_approval"
+      }
+    ],
+    viewer_capabilities: {
+      can_approve: canApprove,
+      can_reject: canApprove,
+      can_execute_on_approval: canApprove,
+      self_approval: false,
+      reason: canApprove ? null : "Not currently eligible"
+    }
+  };
+}
+
+export function backendNotificationList(items: Array<Record<string, unknown>> = [], unreadCount = 0) {
+  return {
+    items,
+    pagination: { limit: 10, offset: 0, returned: items.length, total: items.length },
+    unread_count: unreadCount
   };
 }
 
@@ -525,10 +603,12 @@ export function backendActionList() {
 
 export function backendActionListItem({
   id = "00000000-0000-4000-8000-000000000501",
-  status = "pending_approval"
+  status = "pending_approval",
+  priority = "high"
 }: {
   id?: string;
   status?: string;
+  priority?: "normal" | "high" | "urgent";
 } = {}) {
   return {
     id,
@@ -536,7 +616,7 @@ export function backendActionListItem({
     action_type: "reclaim_unused_license",
     title: "Reclaim unused licenses",
     status,
-    priority: "high",
+    priority,
     scope: {
       id: "00000000-0000-4000-8000-000000000202",
       type: "department",

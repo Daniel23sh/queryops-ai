@@ -11,6 +11,7 @@ import { OperationalMetrics } from "./components/OperationalMetrics";
 import { PersonalSummary } from "./components/PersonalSummary";
 import { MyActionRequestsSummary } from "./components/MyActionRequestsSummary";
 import { useHomeOverview } from "./hooks/useHomeOverview";
+import { WorkflowSummary } from "./components/WorkflowSummary";
 
 export function HomePage({
   csrfToken,
@@ -83,6 +84,7 @@ export function HomePage({
       ) : null}
 
       {canRequestAction ? <MyActionRequestsSummary /> : null}
+      <WorkflowSummary user={user} />
 
       <DashboardLibrary
         canCreate={canCreate}

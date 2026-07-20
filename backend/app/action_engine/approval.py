@@ -124,6 +124,7 @@ class ApprovalLifecycleService:
                 "limit": limit,
                 "offset": offset,
                 "returned": len(page),
+                "total": len(visible),
             },
         }
 

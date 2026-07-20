@@ -12,7 +12,7 @@ afterEach(() => vi.clearAllMocks());
 describe("ActionsPage", () => {
   it("loads owned metadata, filters, links rows, and paginates", async () => {
     vi.mocked(listOwnActionRequests).mockResolvedValue({
-      items: [backendActionListItem() as never],
+      items: [backendActionListItem({ priority: "urgent" }) as never],
       summary: { pending: 1, completed: 2, closed: 3 },
       pagination: { limit: 10, offset: 0, returned: 1, total: 12 }
     });
@@ -20,6 +20,7 @@ describe("ActionsPage", () => {
 
     expect(await screen.findByRole("heading", { name: "Reclaim unused licenses" })).toBeInTheDocument();
     expect(screen.getByText("Status: Pending approval")).toBeInTheDocument();
+    expect(screen.getByText(/Priority urgent/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Reclaim unused licenses/ })).toHaveAttribute(
       "href",
       "/actions/00000000-0000-4000-8000-000000000501"

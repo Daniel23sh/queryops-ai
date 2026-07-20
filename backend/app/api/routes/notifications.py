@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -26,13 +26,22 @@ def list_notifications(
     current_user: AppUser = Depends(require_authenticated_user),
     db: Session = Depends(get_db),
 ):
-    statement = select(Notification).where(
-        Notification.recipient_user_id == current_user.id
-    )
+    filters = [Notification.recipient_user_id == current_user.id]
     if is_read is True:
-        statement = statement.where(Notification.status == NotificationStatus.READ.value)
+        filters.append(Notification.status == NotificationStatus.READ.value)
     elif is_read is False:
-        statement = statement.where(Notification.status == NotificationStatus.UNREAD.value)
+        filters.append(Notification.status == NotificationStatus.UNREAD.value)
+    statement = select(Notification).where(*filters)
+    total = db.scalar(select(func.count(Notification.id)).where(*filters)) or 0
+    unread_count = (
+        db.scalar(
+            select(func.count(Notification.id)).where(
+                Notification.recipient_user_id == current_user.id,
+                Notification.status == NotificationStatus.UNREAD.value,
+            )
+        )
+        or 0
+    )
     rows = db.scalars(
         statement.order_by(Notification.created_at.desc(), Notification.id.desc())
         .offset(offset)
@@ -41,7 +50,13 @@ def list_notifications(
     return success_response(
         {
             "items": [_serialize_notification(row) for row in rows],
-            "pagination": {"limit": limit, "offset": offset, "returned": len(rows)},
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "returned": len(rows),
+                "total": total,
+            },
+            "unread_count": unread_count,
         }
     )
 

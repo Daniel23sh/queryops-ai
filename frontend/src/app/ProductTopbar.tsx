@@ -15,9 +15,11 @@ import type { AuthUser } from "../auth/types";
 import { formatRole } from "../lib/format";
 import { useTheme } from "./useTheme";
 import { APP_ROUTES } from "./routeConfig";
+import { NotificationCenter } from "../features/notifications/NotificationCenter";
 
 export function ProductTopbar({
   activeScope,
+  csrfToken,
   isLoggingOut,
   isMobile,
   isNavigationExpanded,
@@ -28,6 +30,7 @@ export function ProductTopbar({
   user
 }: {
   activeScope: string;
+  csrfToken: string | null;
   isLoggingOut: boolean;
   isMobile: boolean;
   isNavigationExpanded: boolean;
@@ -105,6 +108,7 @@ export function ProductTopbar({
       </div>
 
       <div className="product-topbar__actions">
+        <NotificationCenter csrfToken={csrfToken} />
         <button
           type="button"
           className="icon-button"

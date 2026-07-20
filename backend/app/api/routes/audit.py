@@ -4,7 +4,7 @@ from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.api.responses import error_response, success_response
@@ -49,7 +49,12 @@ def list_audit_logs(
             return success_response(
                 {
                     "items": [],
-                    "pagination": {"limit": limit, "offset": offset, "returned": 0},
+                    "pagination": {
+                        "limit": limit,
+                        "offset": offset,
+                        "returned": 0,
+                        "total": 0,
+                    },
                 }
             )
         statement = statement.where(AppAuditLog.scope_id.in_(assigned_scope_ids))
@@ -70,6 +75,9 @@ def list_audit_logs(
     if to_date is not None:
         statement = statement.where(AppAuditLog.created_at <= to_date)
 
+    total = db.scalar(
+        select(func.count()).select_from(statement.order_by(None).subquery())
+    ) or 0
     rows = db.scalars(
         statement.order_by(AppAuditLog.created_at.desc(), AppAuditLog.id.desc())
         .offset(offset)
@@ -78,7 +86,12 @@ def list_audit_logs(
     return success_response(
         {
             "items": [_serialize_audit(row, include_global=can_view_global) for row in rows],
-            "pagination": {"limit": limit, "offset": offset, "returned": len(rows)},
+            "pagination": {
+                "limit": limit,
+                "offset": offset,
+                "returned": len(rows),
+                "total": total,
+            },
         }
     )
 

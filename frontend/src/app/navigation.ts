@@ -3,18 +3,21 @@ import {
   LayoutDashboard,
   MessageSquareText,
   ListChecks,
+  ClipboardCheck,
+  ScrollText,
   ShieldCheck,
   type LucideIcon
 } from "lucide-react";
 
-import { hasPermission } from "../auth/permissions";
+import { hasAnyPermission, hasPermission } from "../auth/permissions";
 import type { AuthUser } from "../auth/types";
+import { APPROVAL_PERMISSION_KEYS, AUDIT_PERMISSION_KEYS } from "../features/activity/permissions";
 import { APP_ROUTES, type AppRoutePath } from "./routeConfig";
 
 export type NavigationSection = "workspace" | "admin";
 
 export type NavItem = {
-  id: "my-dashboard" | "ask-data" | "actions" | "profile" | "admin-role-requests";
+  id: "my-dashboard" | "ask-data" | "actions" | "approvals" | "audit" | "profile" | "admin-role-requests";
   label: string;
   title: string;
   summary: string;
@@ -54,6 +57,26 @@ export const WORKSPACE_NAV_ITEMS: NavItem[] = [
     icon: ListChecks,
     section: "workspace",
     canView: (user) => hasPermission(user, "can_request_action")
+  },
+  {
+    id: "approvals",
+    label: "Approvals",
+    title: "Approvals",
+    summary: "Review governed action requests waiting for your decision.",
+    path: APP_ROUTES.approvals,
+    icon: ClipboardCheck,
+    section: "workspace",
+    canView: (user) => hasAnyPermission(user, APPROVAL_PERMISSION_KEYS)
+  },
+  {
+    id: "audit",
+    label: "Audit",
+    title: "Audit",
+    summary: "Review authorized workflow audit events.",
+    path: APP_ROUTES.audit,
+    icon: ScrollText,
+    section: "workspace",
+    canView: (user) => hasAnyPermission(user, AUDIT_PERMISSION_KEYS)
   },
   {
     id: "profile",
