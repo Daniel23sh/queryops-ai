@@ -6,6 +6,7 @@ import {
   backendHomeOverview,
   demoAdmin,
   demoManager,
+  demoUser,
   errorResponse,
   installApiMock,
   renderAppAt,
@@ -94,6 +95,24 @@ describe("application routing", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Role Upgrade" })).toBeInTheDocument();
     expect(window.location.pathname).toBe("/profile");
+  });
+
+  it("renders requester Actions routes and guards users without the permission", async () => {
+    installApiMock(authenticatedRoutes(demoManager));
+    const managerView = renderAppAt("/actions");
+    expect(await screen.findByRole("heading", { name: "Actions" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/actions");
+
+    managerView.unmount();
+    installApiMock(
+      authenticatedRoutes(demoUser, {
+        "GET /api/v1/dashboards/my": successResponse([])
+      })
+    );
+    renderAppAt("/actions");
+    expect(await screen.findByRole("region", { name: "My Dashboard" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Actions" })).not.toBeInTheDocument();
+    expect(window.location.pathname).toBe("/");
   });
 
   it("renders Role Requests for a user with its permission", async () => {

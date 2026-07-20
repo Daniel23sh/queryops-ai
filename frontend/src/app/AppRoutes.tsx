@@ -2,6 +2,8 @@ import { Navigate, Outlet, Route, Routes, useOutletContext } from "react-router-
 
 import { useAuth } from "../auth/AuthProvider";
 import { AskDataPage } from "../features/ask-data";
+import { ActionsPage } from "../features/actions/ActionsPage";
+import { ActionRequestPage } from "../features/actions/ActionRequestPage";
 import { DashboardDetailPage } from "../features/dashboard/DashboardDetailPage";
 import { HomePage } from "../features/home/HomePage";
 import { ProfilePage } from "../features/profile/ProfilePage";
@@ -28,6 +30,22 @@ export function AppRoutes() {
             element={
               <PermissionRoute permission="can_use_query_templates">
                 <AskDataRoute />
+              </PermissionRoute>
+            }
+          />
+          <Route
+            path={APP_ROUTES.actions}
+            element={
+              <PermissionRoute permission="can_request_action">
+                <ActionsRoute />
+              </PermissionRoute>
+            }
+          />
+          <Route
+            path={APP_ROUTES.actionRequest}
+            element={
+              <PermissionRoute permission="can_request_action">
+                <ActionRequestRoute />
               </PermissionRoute>
             }
           />
@@ -109,6 +127,15 @@ function DashboardDetailRoute() {
 function AskDataRoute() {
   const { csrfToken, user } = useOutletContext<AuthenticatedOutletContext>();
   return <AskDataPage user={user} csrfToken={csrfToken} />;
+}
+
+function ActionsRoute() {
+  return <ActionsPage />;
+}
+
+function ActionRequestRoute() {
+  const { csrfToken, user } = useOutletContext<AuthenticatedOutletContext>();
+  return <ActionRequestPage csrfToken={csrfToken} user={user} />;
 }
 
 function ProfileRoute() {

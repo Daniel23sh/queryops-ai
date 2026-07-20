@@ -83,6 +83,35 @@ def test_domain_pack_contains_required_templates_and_terms() -> None:
     assert template.referenced_tables == ("license_assignments", "licenses")
     assert template.sql
 
+    action_templates = {
+        item.id: item.suggested_action
+        for item in pack.query_templates
+        if item.suggested_action is not None
+    }
+    assert set(action_templates) == {
+        "inactive_users_by_department",
+        "unused_licenses_by_department",
+    }
+    assert action_templates["inactive_users_by_department"] is not None
+    assert action_templates["inactive_users_by_department"].action_type == (
+        "disable_inactive_user"
+    )
+    assert action_templates["inactive_users_by_department"].selector_kind == (
+        "directory_user"
+    )
+    assert action_templates["unused_licenses_by_department"] is not None
+    assert action_templates["unused_licenses_by_department"].action_type == (
+        "reclaim_unused_license"
+    )
+    assert action_templates["unused_licenses_by_department"].selector_kind == (
+        "license_assignment"
+    )
+    assert all(
+        item.result_identifier_column == "id"
+        for item in action_templates.values()
+        if item is not None
+    )
+
 
 def test_domain_pack_ordering_is_deterministic() -> None:
     pack = load_it_operations_domain_pack()
@@ -166,6 +195,101 @@ def test_loader_rejects_template_that_references_non_queryable_table(
     _write_minimal_pack(tmp_path, templates=templates)
 
     with pytest.raises(DomainPackValidationError, match="not queryable"):
+        load_domain_pack(tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("suggested_action", "error_match"),
+    [
+        (
+            {
+                "action_type": "unknown_action",
+                "label": "Preview action",
+                "selector_kind": "directory_user",
+                "result_identifier_column": "id",
+            },
+            "Unknown action type",
+        ),
+        (
+            {
+                "action_type": "disable_inactive_user",
+                "selector_kind": "directory_user",
+                "result_identifier_column": "id",
+            },
+            "label",
+        ),
+        (
+            {
+                "action_type": "disable_inactive_user",
+                "label": "Preview action",
+                "selector_kind": "directory_user",
+            },
+            "result_identifier_column",
+        ),
+        (
+            {
+                "action_type": "disable_inactive_user",
+                "label": "Preview action",
+                "selector_kind": "license_assignment",
+                "result_identifier_column": "id",
+            },
+            "Unsupported selector kind",
+        ),
+        (
+            {
+                "action_type": "disable_inactive_user",
+                "label": "Preview action",
+                "selector_kind": "directory_user",
+                "result_identifier_column": "missing_id",
+            },
+            "Unknown result identifier column",
+        ),
+        (
+            {
+                "action_type": "disable_inactive_user",
+                "label": "Preview action",
+                "selector_kind": "directory_user",
+                "result_identifier_column": "id",
+                "sql": "UPDATE directory_users SET account_status = 'disabled'",
+            },
+            "Unsupported action suggestion fields",
+        ),
+    ],
+)
+def test_loader_rejects_malformed_or_executable_action_suggestion_metadata(
+    tmp_path: Path,
+    suggested_action: dict[str, Any],
+    error_match: str,
+) -> None:
+    template = _minimal_template("inactive_users_by_department")
+    template["suggested_action"] = suggested_action
+    _write_minimal_pack(tmp_path, templates={"templates": [template]})
+
+    with pytest.raises(DomainPackValidationError, match=error_match):
+        load_domain_pack(tmp_path)
+
+
+def test_loader_rejects_plural_or_duplicate_action_suggestion_shape(
+    tmp_path: Path,
+) -> None:
+    template = _minimal_template("inactive_users_by_department")
+    template["suggested_actions"] = [
+        {
+            "action_type": "disable_inactive_user",
+            "label": "Preview action",
+            "selector_kind": "directory_user",
+            "result_identifier_column": "id",
+        },
+        {
+            "action_type": "disable_inactive_user",
+            "label": "Preview duplicate",
+            "selector_kind": "directory_user",
+            "result_identifier_column": "id",
+        },
+    ]
+    _write_minimal_pack(tmp_path, templates={"templates": [template]})
+
+    with pytest.raises(DomainPackValidationError, match="suggested_actions"):
         load_domain_pack(tmp_path)
 
 

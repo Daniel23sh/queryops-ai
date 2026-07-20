@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from app.models.product import SupportedActionType
 from app.query_engine.domain_pack import (
     BusinessTerm,
     DomainColumn,
     DomainPack,
     DomainTable,
+    QueryActionSuggestion,
     QueryTemplate,
     QueryTemplateParameter,
 )
@@ -25,6 +28,14 @@ REQUIRED_DOMAIN_PACK_FILES = (
     "business_terms.yaml",
     "query_templates.yaml",
 )
+ACTION_SUGGESTION_FIELDS = frozenset(
+    {"action_type", "label", "selector_kind", "result_identifier_column"}
+)
+ACTION_SELECTOR_KINDS = {
+    SupportedActionType.RECLAIM_UNUSED_LICENSE.value: "license_assignment",
+    SupportedActionType.DISABLE_INACTIVE_USER.value: "directory_user",
+}
+SAFE_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def load_it_operations_domain_pack() -> DomainPack:
@@ -225,6 +236,12 @@ def _parse_query_templates(
             _optional_list(template, "parameters", [], f"{path}.parameters"),
             path,
         )
+        suggested_action = _parse_action_suggestion(
+            template,
+            referenced_tables=referenced_tables,
+            tables_by_name=tables_by_name,
+            path=path,
+        )
         templates.append(
             QueryTemplate(
                 id=_required_str(template, "id", f"{path}.id"),
@@ -259,6 +276,7 @@ def _parse_query_templates(
                     "generation_metadata",
                     f"{path}.generation_metadata",
                 ),
+                suggested_action=suggested_action,
             )
         )
 
@@ -266,6 +284,79 @@ def _parse_query_templates(
     if len(set(ids)) != len(ids):
         raise DomainPackValidationError("Duplicate query template id")
     return tuple(templates)
+
+
+def _parse_action_suggestion(
+    template: Mapping[str, Any],
+    *,
+    referenced_tables: tuple[str, ...],
+    tables_by_name: Mapping[str, DomainTable],
+    path: str,
+) -> QueryActionSuggestion | None:
+    if "suggested_actions" in template:
+        raise DomainPackValidationError(
+            f"{path}.suggested_actions is not supported; define one suggested_action"
+        )
+    raw = template.get("suggested_action")
+    if raw is None:
+        return None
+    metadata = _ensure_mapping(raw, f"{path}.suggested_action")
+    unknown_fields = sorted(set(metadata) - ACTION_SUGGESTION_FIELDS)
+    if unknown_fields:
+        raise DomainPackValidationError(
+            f"Unsupported action suggestion fields in {path}.suggested_action: "
+            f"{', '.join(unknown_fields)}"
+        )
+
+    action_type = _required_str(
+        metadata,
+        "action_type",
+        f"{path}.suggested_action.action_type",
+    )
+    try:
+        supported_action = SupportedActionType(action_type)
+    except ValueError as exc:
+        raise DomainPackValidationError(
+            f"Unknown action type in {path}.suggested_action"
+        ) from exc
+    label = _required_trimmed_str(
+        metadata,
+        "label",
+        f"{path}.suggested_action.label",
+        max_length=120,
+    )
+    selector_kind = _required_str(
+        metadata,
+        "selector_kind",
+        f"{path}.suggested_action.selector_kind",
+    )
+    expected_selector_kind = ACTION_SELECTOR_KINDS[supported_action.value]
+    if selector_kind != expected_selector_kind:
+        raise DomainPackValidationError(
+            f"Unsupported selector kind in {path}.suggested_action"
+        )
+    result_identifier_column = _required_str(
+        metadata,
+        "result_identifier_column",
+        f"{path}.suggested_action.result_identifier_column",
+    )
+    if not SAFE_IDENTIFIER.fullmatch(result_identifier_column):
+        raise DomainPackValidationError(
+            f"Invalid result identifier column in {path}.suggested_action"
+        )
+    if not any(
+        result_identifier_column in tables_by_name[table_name].columns_by_name
+        for table_name in referenced_tables
+    ):
+        raise DomainPackValidationError(
+            f"Unknown result identifier column in {path}.suggested_action"
+        )
+    return QueryActionSuggestion(
+        action_type=supported_action.value,
+        label=label,
+        selector_kind=selector_kind,
+        result_identifier_column=result_identifier_column,
+    )
 
 
 def _parse_template_parameters(
@@ -401,6 +492,23 @@ def _optional_list(
 
 def _required_str(mapping: Mapping[str, Any], key: str, path: str) -> str:
     return _ensure_str(_required_value(mapping, key, path), path)
+
+
+def _required_trimmed_str(
+    mapping: Mapping[str, Any],
+    key: str,
+    path: str,
+    *,
+    max_length: int,
+) -> str:
+    value = _required_str(mapping, key, path).strip()
+    if (
+        not value
+        or len(value) > max_length
+        or any(ord(character) < 32 for character in value)
+    ):
+        raise DomainPackValidationError(f"{path} must be safe presentation text")
+    return value
 
 
 def _optional_str(

@@ -1,8 +1,9 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
   authenticatedRoutes,
+  backendActionList,
   backendDashboardLibraryItem,
   backendHomeOverview,
   demoAdmin,
@@ -38,6 +39,7 @@ describe("role-aware Home", () => {
     expect(screen.queryByText("Operational metrics")).not.toBeInTheDocument();
     expect(screen.queryByText("Administrative metrics")).not.toBeInTheDocument();
     expect(screen.queryByText(/device compliance/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("My Action Requests")).not.toBeInTheDocument();
   });
 
   it.each([
@@ -64,6 +66,33 @@ describe("role-aware Home", () => {
     expect(screen.getByText("Active QueryOps users")).toBeInTheDocument();
     expect(screen.getByText("Pending role requests")).toBeInTheDocument();
     expect(screen.queryByText("Audit events · 7 days")).not.toBeInTheDocument();
+  });
+
+  it("shows requester-owned counts and isolates an action-summary failure", async () => {
+    const summary = backendActionList();
+    summary.summary = { pending: 2, completed: 4, closed: 1 };
+    installApiMock(
+      authenticatedRoutes(demoManager, {
+        "GET /api/v1/actions": successResponse(summary)
+      })
+    );
+    const first = renderAppAt("/");
+    const actionHeading = await screen.findByRole("heading", { name: "My Action Requests" });
+    const actionSection = actionHeading.closest("section");
+    expect(actionSection).not.toBeNull();
+    expect((await within(actionSection!).findByText("Pending")).nextElementSibling).toHaveTextContent("2");
+    expect(screen.getByRole("link", { name: "View Actions" })).toHaveAttribute("href", "/actions");
+
+    first.unmount();
+    installApiMock(
+      authenticatedRoutes(demoManager, {
+        "GET /api/v1/actions": errorResponse("ACTIONS_UNAVAILABLE", 503)
+      })
+    );
+    renderAppAt("/");
+    expect(await screen.findByText(/Action counts are temporarily unavailable/)).toBeInTheDocument();
+    expect(screen.getByText("Operational metrics")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "My dashboards" })).toBeInTheDocument();
   });
 
   it("renders unavailable for null operational values", async () => {

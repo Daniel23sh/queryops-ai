@@ -1,6 +1,7 @@
 import { AlertTriangle, LoaderCircle } from "lucide-react";
 
 import { inferVisualization, VISUALIZATION_LABELS } from "../../dashboard/visualization";
+import type { ReactNode } from "react";
 import type { CurrentQueryResult, QueryRequestState, ResultDisplayMode } from "../types";
 import { QueryResultToolbar } from "./QueryResultToolbar";
 import { QueryResultVisualization } from "./QueryResultVisualization";
@@ -8,6 +9,7 @@ import { ResultDetailsDisclosure } from "./ResultDetailsDisclosure";
 import { ResultTable } from "./ResultTable";
 
 export function AskDataResultWorkspace({
+  actionRecommendation,
   canClarify,
   canExport,
   canSave,
@@ -22,6 +24,7 @@ export function AskDataResultWorkspace({
   requestState,
   resultDisplayMode
 }: {
+  actionRecommendation: ReactNode;
   canClarify: boolean;
   canExport: boolean;
   canSave: boolean;
@@ -53,6 +56,7 @@ export function AskDataResultWorkspace({
         </div>
       ) : (
         <ResultContent
+          actionRecommendation={actionRecommendation}
           canClarify={canClarify}
           canExport={canExport}
           canSave={canSave}
@@ -73,6 +77,7 @@ export function AskDataResultWorkspace({
 }
 
 function ResultContent({
+  actionRecommendation,
   canClarify,
   canExport,
   canSave,
@@ -87,6 +92,7 @@ function ResultContent({
   requestRunning,
   resultDisplayMode
 }: {
+  actionRecommendation: ReactNode;
   canClarify: boolean;
   canExport: boolean;
   canSave: boolean;
@@ -125,6 +131,7 @@ function ResultContent({
 
       {result.warnings.length ? <details className="rounded-control border border-status-warning/40 bg-status-warning/10 px-3 py-2 text-sm text-app-text"><summary className="cursor-pointer font-semibold">{result.warnings.length === 1 ? result.warnings[0] : `${result.warnings.length} query warnings`}</summary>{result.warnings.length > 1 ? <ul className="mb-0 mt-2 pl-5">{result.warnings.map((warning, index) => <li key={`${warning}-${index}`}>{warning}</li>)}</ul> : null}</details> : null}
       {result.truncated ? <p className="m-0 inline-flex items-center gap-2 text-sm text-status-warning"><AlertTriangle aria-hidden="true" size={16} />The result was truncated by the governed row limit.</p> : null}
+      {actionRecommendation}
 
       {result.clarification_required ? (
         <ClarificationState canClarify={canClarify} csrfToken={csrfToken} error={clarificationError} message={result.message} onChange={onClarificationChange} onSubmit={onSubmitClarification} originalQuestion={current.originalQuestion} running={requestRunning} value={clarificationText} />

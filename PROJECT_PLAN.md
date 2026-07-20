@@ -16,7 +16,7 @@ Current PR scope:
 
 `M7 PR4 — Ask Data Redesign & Final UX Hardening` is complete and merged into `main` through PR #28. Milestone 7 is complete.
 
-`Milestone 8 — Actions, Approvals & Audit` is active. `M8 PR1 — Action Persistence & Engine Contracts` is complete and merged into `main` through PR #29. `M8 PR2 — Reclaim License Preview & Request Flow` is complete and merged into `main` through PR #30. `M8 PR3 — Approval Execution, Audit & Notifications` is complete and merged into `main` through PR #31. `M8 PR4 — Disable Inactive User & Backend Security Completion` is implementation-complete on `feature/m8-disable-inactive-user` but is not merged; M8 PR5 through PR7 have not started.
+`Milestone 8 — Actions, Approvals & Audit` is active. `M8 PR1 — Action Persistence & Engine Contracts` is complete and merged into `main` through PR #29. `M8 PR2 — Reclaim License Preview & Request Flow` is complete and merged into `main` through PR #30. `M8 PR3 — Approval Execution, Audit & Notifications` is complete and merged into `main` through PR #31. `M8 PR4 — Disable Inactive User & Backend Security Completion` is complete and merged into `main` through PR #32. `M8 PR5 — Requester Actions UX` is implementation-complete on `feature/m8-requester-actions-ux` but is not merged; M8 PR6 and PR7 have not started.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
@@ -120,7 +120,7 @@ Explicitly out of scope for M6 PR5:
 - masking
 - tenant/project/region governance
 
-Actions, approvals, audit UI, notifications, real LLM/API-key support, and Supabase Auth remained deferred through Milestone 7. The former Actions, Approvals & Audit Milestone 7 is now Milestone 8 because Product UX & Dashboard Redesign became Milestone 7. Milestone 8 is active through the approved seven-PR sequence in Section 17; PR1 through PR3 are merged, and PR4 is implementation-complete but unmerged under the locked backend-only scope below.
+Actions, approvals, audit UI, notifications, real LLM/API-key support, and Supabase Auth remained deferred through Milestone 7. The former Actions, Approvals & Audit Milestone 7 is now Milestone 8 because Product UX & Dashboard Redesign became Milestone 7. Milestone 8 is active through the approved seven-PR sequence in Section 17; PR1 through PR4 are merged and PR5 is implementation-complete under the locked requester-only scope below.
 
 ## 2. Product Summary
 
@@ -440,7 +440,7 @@ The latest PR status is:
 
 `M7 PR2 — Role-Aware Home & Dashboard Browser` is complete and merged through PR #26. `M7 PR3 — Dashboard Editor, Grid & Visualizations` is complete and merged through PR #27. `M7 PR4 — Ask Data Redesign & Final UX Hardening` is complete and merged through PR #28.
 
-`Milestone 8 — Actions, Approvals & Audit` is active. `M8 PR1 — Action Persistence & Engine Contracts` is complete and merged through PR #29. `M8 PR2 — Reclaim License Preview & Request Flow` is complete and merged through PR #30. `M8 PR3 — Approval Execution, Audit & Notifications` is complete and merged through PR #31. M8 PR4 is implementation-complete on `feature/m8-disable-inactive-user` but is not merged; M8 PR5 through PR7 have not started.
+`Milestone 8 — Actions, Approvals & Audit` is active. `M8 PR1 — Action Persistence & Engine Contracts` is complete and merged through PR #29. `M8 PR2 — Reclaim License Preview & Request Flow` is complete and merged through PR #30. `M8 PR3 — Approval Execution, Audit & Notifications` is complete and merged through PR #31. M8 PR4 is complete and merged through PR #32. M8 PR5 is implementation-complete on `feature/m8-requester-actions-ux` but is not merged; M8 PR6 and PR7 have not started.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -944,7 +944,7 @@ Milestone 8 is split into seven approved PRs:
 6. `M8 PR6 — Approvals, Audit & Notifications UX`
 7. `M8 PR7 — M8 E2E, Security Hardening & Completion`
 
-M8 PR1 is complete and merged through PR #29. M8 PR2 is complete and merged through PR #30. M8 PR3 is complete and merged through PR #31. M8 PR4 is implementation-complete on `feature/m8-disable-inactive-user` but is not merged; M8 PR5 through PR7 have not started.
+M8 PR1 is complete and merged through PR #29. M8 PR2 is complete and merged through PR #30. M8 PR3 is complete and merged through PR #31. M8 PR4 is complete and merged through PR #32. M8 PR5 is implementation-complete on `feature/m8-requester-actions-ux` but is not merged; M8 PR6 and PR7 have not started.
 
 ### M8 PR1 — Action Persistence & Engine Contracts
 
@@ -1193,7 +1193,7 @@ Completion evidence:
 - A fifth CodeRabbit pass was rate-limited. After its stated cooldown, the final retry was rejected before launch, so the final post-fix gate used the authorized **Manual CodeRabbit-style self-review — not a CodeRabbit result**. The complete diff and required suspicious-pattern searches were reviewed across migration/grants/RLS, authorization, concurrency, revalidation, transactionality, mutation, audit, notifications, and failure handling; no remaining Critical, Major, or actionable in-scope Minor issue was found. No zero-finding CodeRabbit result is claimed.
 - `git diff --check`, full diff/scope inspection, ignored-planning-file verification, and backend/frontend regression checks passed. No frontend source file or private planning document changed.
 
-Known limitations are intentional: PR3 supports only synchronous `reclaim_unused_license`; notifications are database records only; there is no separate Execute endpoint, automatic retry, rollback action, worker, scheduler, queue, Redis, frontend action/approval/audit/notification UI, or `disable_inactive_user`. If both execution and the separate safe failure-persistence transaction fail, the API returns a generic error and operational intervention is still required. M8 PR4 is implementation-complete under the separate scope below but is not merged.
+Known limitations at PR3 completion were intentional: PR3 supported only synchronous `reclaim_unused_license`; notifications were database records only; and it included no frontend action/approval/audit/notification UI. M8 PR4 later added `disable_inactive_user` and merged through PR #32. There is still no separate Execute endpoint, automatic retry, rollback action, worker, scheduler, queue, or Redis. If both execution and the separate safe failure-persistence transaction fail, the API returns a generic error and operational intervention is required.
 
 ### M8 PR4 — Disable Inactive User & Backend Security Completion
 
@@ -1203,7 +1203,7 @@ Branch:
 feature/m8-disable-inactive-user
 ```
 
-Status: implementation-complete locally; not merged.
+Status: complete and merged into `main` through PR #32.
 
 Goal: add the second and final V1 backend action, `disable_inactive_user`, by extending the deterministic PR1–PR3 action workflow without duplicating approval, execution, audit, notification, or concurrency orchestration.
 
@@ -1237,3 +1237,44 @@ Delivered:
 - Final verification passed 710 default backend tests with 150 expected PostgreSQL skips, all 860 disposable-PostgreSQL backend tests, the exact 20-case suite within 86 focused PostgreSQL action tests, fresh and round-trip migration/refusal/no-diff gates, 188 frontend regression tests, standalone TypeScript checks, and the production build. The final review was **Manual PR4 security and correctness review — not a CodeRabbit result**.
 
 Intentional limitations remain: execution is synchronous; notifications are database-only; service accounts require a future separate action type; there is no action frontend, separate Execute endpoint, automatic retry/rollback, queue, worker, scheduler, Redis, or external delivery. If execution and separate failure persistence both fail, the API returns a generic error and operational intervention is required.
+
+### M8 PR5 — Requester Actions UX
+
+Branch:
+
+```text
+feature/m8-requester-actions-ux
+```
+
+Status: implementation-complete locally; not merged.
+
+Goal: make the requester workflow usable from an approved Ask Data result through deterministic action recommendation, preview, submission, requester tracking, safe detail/timeline display, and pending-request cancellation.
+
+In scope:
+
+- explicit validated action-suggestion metadata on only the two approved action-aware query templates
+- deterministic `suggested_actions` on current successful, non-truncated template results for users with effective `can_request_action`
+- requester-owned metadata-only `GET /api/v1/actions` with bounded pagination, status grouping, safe counts, and SQL-level ownership isolation
+- strict frontend action contracts and transient selector resolution from the current in-memory result only
+- Suggested Action recommendation, accessible Preview Drawer, Submit for Approval, `/actions`, `/actions/:actionRequestId`, requester Home summary, persisted timeline, and pending cancellation
+- Manager, Analyst, and Admin requester UX; User receives no action suggestion, CTA, navigation, or route access
+- focused backend/frontend tests, full PostgreSQL and frontend regressions, Alembic no-diff verification, and manual responsive/accessibility QA
+
+Guardrails:
+
+- Backend permissions, scope authorization, RLS, action eligibility, approval policy, revalidation, execution, audit, notification, concurrency, and failure semantics remain authoritative and unchanged.
+- Suggestions come only from explicit approved Domain Pack metadata. Free queries, historic rows, question text, column-name inference, LLM output, truncated/empty/failed results, and malformed selectors cannot create an action input.
+- Result UUID selectors remain transient in memory and are never persisted in QueryRun metadata, local/session storage, URLs, dashboard config, or card layout.
+- Reuse the existing preview/request/detail/cancel APIs and shared `AccessibleOverlay`; do not duplicate the action lifecycle, focus system, or add a separate Execute endpoint.
+- PR5 has no schema, Alembic migration, seed, permission, or RLS changes.
+- Do not add Approvals, Audit explorer, Notifications UI, approval decisions, external delivery, workers, queues, schedulers, Redis, retries, rollback actions, additional action types, or M8 PR6/PR7 work.
+
+Delivered:
+
+- Only `unused_licenses_by_department` and `inactive_users_by_department` carry validated, non-executable Domain Pack action metadata. Current successful non-truncated template responses expose safe deterministic `suggested_actions` only when the requester has effective `can_request_action`; no selector UUID is persisted in QueryRun metadata.
+- `GET /api/v1/actions` enforces requester ownership in SQL, excludes unsubmitted drafts, validates bounded status/pagination filters, and returns safe metadata, counts, and next-step presentation only.
+- The frontend resolves selectors only from the current in-memory visible result, deduplicates them in result order, fails closed on any malformed selector, and sends exactly one action-specific selector field to the existing preview endpoint.
+- Ask Data now provides the Suggested Action card and accessible Preview Drawer; `/actions`, `/actions/:actionRequestId`, Home summary, safe timeline/detail, and pending cancellation reuse the existing generic lifecycle and shared overlay system. User remains excluded; Manager override records remain summary-only.
+- Final verification passed 739 default backend tests with 150 expected PostgreSQL skips, all 889 disposable-PostgreSQL backend tests, the exact 20-case release-blocking suite, 222 frontend tests, standalone TypeScript checks, the production build, Alembic head/no-diff verification, and manual desktop/mobile browser QA across User, Manager, Analyst, and Admin. The final review was **Manual PR5 requester UX review — not a CodeRabbit result**.
+
+Intentional limitations remain: approval decisions, Audit explorer, and Notifications UX are deferred to M8 PR6; cross-workflow E2E completion remains deferred to M8 PR7. Notifications stay database-only, execution stays synchronous, and there is no separate Execute endpoint, external delivery, retry/rollback action, queue, worker, scheduler, or Redis.

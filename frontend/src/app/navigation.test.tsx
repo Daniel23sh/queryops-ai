@@ -32,14 +32,18 @@ describe("focused navigation", () => {
     ["User", demoUser],
     ["Manager", demoManager],
     ["Analyst", demoAnalyst]
-  ])("shows only active Workspace routes for %s", async (_label, user) => {
+  ])("shows only active Workspace routes for %s", async (label, user) => {
     installHome(user);
     renderAppAt("/");
 
     const nav = await screen.findByRole("navigation", {
       name: "Workspace navigation"
     });
-    expect(getLinkNames(nav)).toEqual(["My Dashboard", "Ask Data", "Profile"]);
+    expect(getLinkNames(nav)).toEqual(
+      label === "User"
+        ? ["My Dashboard", "Ask Data", "Profile"]
+        : ["My Dashboard", "Ask Data", "Actions", "Profile"]
+    );
     expect(screen.queryByText("Admin")).not.toBeInTheDocument();
     for (const label of HIDDEN_NAVIGATION) {
       expect(within(nav).queryByText(label)).not.toBeInTheDocument();
@@ -56,6 +60,7 @@ describe("focused navigation", () => {
     expect(getLinkNames(nav)).toEqual([
       "My Dashboard",
       "Ask Data",
+      "Actions",
       "Profile",
       "Role Requests"
     ]);

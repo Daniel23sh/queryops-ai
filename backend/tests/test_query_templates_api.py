@@ -100,6 +100,15 @@ def test_query_templates_list_returns_allowed_templates_for_query_roles(
         assert "sql" not in template
         assert "referenced_tables" not in template
         assert "generation_metadata" not in template
+        assert isinstance(template["can_suggest_action"], bool)
+    assert {
+        template["id"]
+        for template in templates
+        if template["can_suggest_action"]
+    } == {
+        "inactive_users_by_department",
+        "unused_licenses_by_department",
+    }
     assert_no_sql_payload(templates)
 
 
@@ -167,7 +176,41 @@ def test_query_template_detail_is_available_to_template_user(
     detail = response.json()["data"]
     assert detail["id"] == "inactive_users_by_department"
     assert detail["domain"] == "it_operations"
+    assert detail["can_suggest_action"] is True
     assert_no_sql_payload(detail)
+
+
+@pytest.mark.parametrize(
+    ("filter_value", "expected_ids"),
+    [
+        (
+            "true",
+            ["inactive_users_by_department", "unused_licenses_by_department"],
+        ),
+        (
+            "false",
+            [
+                "high_severity_security_events_by_department",
+                "non_compliant_devices_by_department",
+                "open_support_tickets_by_department",
+                "privileged_group_memberships_by_department",
+            ],
+        ),
+    ],
+)
+def test_query_template_list_supports_action_capability_filter(
+    client: TestClient,
+    filter_value: str,
+    expected_ids: list[str],
+) -> None:
+    _login(client, "demo.manager@queryops.local")
+
+    response = client.get(
+        f"/api/v1/query-templates?can_suggest_action={filter_value}"
+    )
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()["data"]] == expected_ids
 
 
 def test_query_template_detail_does_not_expose_raw_sql_by_default(

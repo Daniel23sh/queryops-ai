@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import uuid
 from collections.abc import Generator
+from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any
@@ -201,6 +202,123 @@ def test_admin_response_includes_sql(client: TestClient) -> None:
     data = response.json()["data"]
     assert data["generated_sql"].startswith("SELECT")
     assert data["executed_sql"].startswith("SELECT")
+
+
+@pytest.mark.parametrize(
+    ("email", "template_id", "expected_action", "expected_selector_kind"),
+    [
+        (
+            "demo.manager@queryops.local",
+            "unused_licenses_by_department",
+            "reclaim_unused_license",
+            "license_assignment",
+        ),
+        (
+            "demo.analyst@queryops.local",
+            "inactive_users_by_department",
+            "disable_inactive_user",
+            "directory_user",
+        ),
+        (
+            "demo.admin@queryops.local",
+            "unused_licenses_by_department",
+            "reclaim_unused_license",
+            "license_assignment",
+        ),
+    ],
+)
+def test_action_aware_successful_template_returns_deterministic_suggestion(
+    client: TestClient,
+    db_session: Session,
+    email: str,
+    template_id: str,
+    expected_action: str,
+    expected_selector_kind: str,
+) -> None:
+    csrf_token = _login(client, email)
+
+    response = _post_action_template_run(client, csrf_token, template_id)
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert data["suggested_actions"] == [
+        {
+            "action_type": expected_action,
+            "label": (
+                "Preview license reclaim"
+                if expected_action == "reclaim_unused_license"
+                else "Preview inactive user disablement"
+            ),
+            "selector_kind": expected_selector_kind,
+            "result_identifier_column": "id",
+        }
+    ]
+    query_run = db_session.get(QueryRun, uuid.UUID(data["query_run_id"]))
+    assert query_run is not None
+    assert "suggested_actions" not in (query_run.query_metadata or {})
+    assert str(data["rows"][0]["id"]) not in json.dumps(
+        query_run.query_metadata or {}
+    )
+
+
+def test_template_user_without_request_permission_receives_no_action_suggestion(
+    client: TestClient,
+) -> None:
+    csrf_token = _login(client, "demo.user@queryops.local")
+
+    response = _post_action_template_run(
+        client,
+        csrf_token,
+        "unused_licenses_by_department",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["suggested_actions"] == []
+
+
+def test_free_query_never_receives_action_suggestion_from_result_or_metadata(
+    client: TestClient,
+) -> None:
+    csrf_token = _login(client, "demo.manager@queryops.local")
+
+    response = client.post(
+        "/api/v1/queries/run",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"question": "Show currently unused licenses."},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["suggested_actions"] == []
+
+
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        "zero_rows",
+        "truncated",
+        "failed",
+        "clarification_required",
+        "missing_query_run_id",
+        "malformed_selector",
+        "too_many_selectors",
+    ],
+)
+def test_action_suggestion_fails_closed_for_ineligible_result_shapes(
+    client: TestClient,
+    fake_service: FakeQueryEngineService,
+    scenario: str,
+) -> None:
+    fake_service.result_scenario = scenario
+    csrf_token = _login(client, "demo.manager@queryops.local")
+
+    response = _post_action_template_run(
+        client,
+        csrf_token,
+        "unused_licenses_by_department",
+    )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["suggested_actions"] == []
 
 
 def test_unsupported_free_text_returns_safe_clarification_and_persists(
@@ -849,6 +967,7 @@ def test_self_correction_metadata_is_safe_and_sql_visibility_is_unchanged(
 class FakeQueryEngineService:
     def __init__(self) -> None:
         self.calls: list[Any] = []
+        self.result_scenario: str | None = None
 
     def run(
         self,
@@ -1004,7 +1123,7 @@ class FakeQueryEngineService:
                     },
                 },
             )
-        return self._persist_and_result(
+        result = self._persist_and_result(
             db,
             user,
             request.question,
@@ -1016,6 +1135,25 @@ class FakeQueryEngineService:
             error_code=None,
             metadata={**SAFE_METADATA, **request_metadata},
         )
+        if self.result_scenario == "zero_rows":
+            return replace(result, columns=[], rows=[], row_count=0)
+        if self.result_scenario == "truncated":
+            return replace(result, truncated=True)
+        if self.result_scenario == "failed":
+            return replace(result, status="failed")
+        if self.result_scenario == "clarification_required":
+            return replace(result, clarification_required=True)
+        if self.result_scenario == "missing_query_run_id":
+            return replace(result, query_run_id=None)
+        if self.result_scenario == "malformed_selector":
+            return replace(result, rows=[{**result.rows[0], "id": "not-a-uuid"}])
+        if self.result_scenario == "too_many_selectors":
+            return replace(
+                result,
+                rows=[{"id": uuid.uuid4()} for _ in range(101)],
+                row_count=101,
+            )
+        return result
 
     def _persist_and_result(
         self,
@@ -1084,6 +1222,23 @@ def _post_template_run(client: TestClient, csrf_token: str):
             "question": "How many open support tickets exist in my department by priority?",
             "template_id": "open_support_tickets_by_department",
         },
+    )
+
+
+def _post_action_template_run(
+    client: TestClient,
+    csrf_token: str,
+    template_id: str,
+):
+    question = (
+        "Show unused paid licenses in my department."
+        if template_id == "unused_licenses_by_department"
+        else "Show inactive users in my department."
+    )
+    return client.post(
+        "/api/v1/queries/run",
+        headers={"X-CSRF-Token": csrf_token},
+        json={"question": question, "template_id": template_id},
     )
 
 
