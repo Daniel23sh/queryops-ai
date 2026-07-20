@@ -36,6 +36,67 @@ jobs:
         working-directory: backend
         run: pytest
 
+  postgres-security:
+    name: PostgreSQL Security
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: queryops
+          POSTGRES_USER: queryops
+          POSTGRES_PASSWORD: queryops
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U queryops -d queryops"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql+psycopg://queryops:queryops@localhost:5432/queryops
+      POSTGRES_TEST_DATABASE_URL: postgresql+psycopg://queryops:queryops@localhost:5432/queryops_security_test
+      POSTGRES_TEST_DATABASE_DISPOSABLE: "1"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -e ".[dev]"
+
+      - name: Create isolated PostgreSQL security database
+        env:
+          PGPASSWORD: queryops
+        run: createdb --host=127.0.0.1 --username=queryops queryops_security_test
+
+      - name: Verify migrations on the isolated database
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ env.POSTGRES_TEST_DATABASE_URL }}
+        run: |
+          alembic upgrade head
+          alembic current
+          alembic check
+
+      - name: Run exact 20-case M8 release-blocking suite
+        working-directory: backend
+        run: |
+          pytest tests/test_action_security_release.py -q -rs --junitxml=/tmp/m8-action-release.xml
+          python -c 'import xml.etree.ElementTree as ET; root = ET.parse("/tmp/m8-action-release.xml").getroot(); skipped = sum(int(suite.attrib.get("skipped", 0)) for suite in root.iter("testsuite")); assert skipped == 0, f"{skipped} release-blocking tests skipped"'
+
+      - name: Run complete PostgreSQL backend suite
+        working-directory: backend
+        run: |
+          pytest --ignore=tests/test_action_security_release.py -q -rs --junitxml=/tmp/postgres-backend.xml
+          python -c 'import xml.etree.ElementTree as ET; root = ET.parse("/tmp/postgres-backend.xml").getroot(); skipped = sum(int(suite.attrib.get("skipped", 0)) for suite in root.iter("testsuite")); assert skipped == 0, f"{skipped} PostgreSQL backend tests skipped"'
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest
@@ -146,17 +207,127 @@ jobs:
         working-directory: frontend
         env:
           PLAYWRIGHT_SKIP_WEBSERVER: "1"
-        run: npm run test:e2e
+        run: npx playwright test --grep-invert @m8-primary
 
       - name: Upload Playwright failure artifacts
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: general-playwright-report
           path: |
             frontend/playwright-report
             frontend/test-results
             /tmp/queryops-backend.log
             /tmp/queryops-frontend.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+  m8-primary-e2e:
+    name: M8 Primary E2E
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: queryops
+          POSTGRES_USER: queryops
+          POSTGRES_PASSWORD: queryops
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U queryops -d queryops"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      AUTH_MODE: demo
+      DATABASE_URL: postgresql+psycopg://queryops:queryops@localhost:5432/queryops
+      M8_E2E_DATABASE_URL: postgresql+psycopg://queryops:queryops@localhost:5432/queryops_e2e_test
+      M8_E2E_DATABASE_DISPOSABLE: "1"
+      POSTGRES_DB: queryops
+      SESSION_SECRET_KEY: queryops-m8-e2e-session-secret
+      SESSION_COOKIE_SECURE: "false"
+      VITE_API_BASE_URL: http://127.0.0.1:8000
+      PLAYWRIGHT_BASE_URL: http://127.0.0.1:5173
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install backend dependencies
+        working-directory: backend
+        run: pip install -e ".[dev]"
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Create isolated M8 E2E database
+        env:
+          PGPASSWORD: queryops
+        run: createdb --host=127.0.0.1 --username=queryops queryops_e2e_test
+
+      - name: Apply migrations, seed, and prepare exact-scope workflow
+        working-directory: backend
+        run: |
+          DATABASE_URL="$M8_E2E_DATABASE_URL" alembic upgrade head
+          DATABASE_URL="$M8_E2E_DATABASE_URL" alembic current
+          DATABASE_URL="$M8_E2E_DATABASE_URL" alembic check
+          DATABASE_URL="$M8_E2E_DATABASE_URL" python scripts/seed_it_operations.py --profile small --reset
+          python scripts/prepare_m8_e2e.py
+
+      - name: Install Playwright Chromium
+        working-directory: frontend
+        run: npx playwright install --with-deps chromium
+
+      - name: Start isolated backend and frontend
+        run: |
+          cd backend
+          DATABASE_URL="$M8_E2E_DATABASE_URL" python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/queryops-m8-backend.log 2>&1 &
+          cd ../frontend
+          npm run dev -- --host 127.0.0.1 --port 5173 > /tmp/queryops-m8-frontend.log 2>&1 &
+
+      - name: Wait for isolated application readiness
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8000/health > /dev/null; then break; fi
+            if [ "$attempt" = 30 ]; then cat /tmp/queryops-m8-backend.log; exit 1; fi
+            sleep 2
+          done
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:5173 > /dev/null; then break; fi
+            if [ "$attempt" = 30 ]; then cat /tmp/queryops-m8-frontend.log; exit 1; fi
+            sleep 2
+          done
+
+      - name: Run governed Manager to Analyst workflow
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_SKIP_WEBSERVER: "1"
+          M8_E2E_PYTHON: python
+        run: npx playwright test e2e/m8-workflow.spec.ts --project=chromium
+
+      - name: Upload M8 Playwright failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: m8-primary-playwright-report
+          path: |
+            frontend/playwright-report
+            frontend/test-results
+            /tmp/queryops-m8-backend.log
+            /tmp/queryops-m8-frontend.log
           if-no-files-found: ignore
           retention-days: 7
