@@ -525,10 +525,12 @@ export function backendActionList() {
 
 export function backendActionListItem({
   id = "00000000-0000-4000-8000-000000000501",
-  status = "pending_approval"
+  status = "pending_approval",
+  priority = "high"
 }: {
   id?: string;
   status?: string;
+  priority?: "normal" | "high" | "urgent";
 } = {}) {
   return {
     id,
@@ -536,7 +538,7 @@ export function backendActionListItem({
     action_type: "reclaim_unused_license",
     title: "Reclaim unused licenses",
     status,
-    priority: "high",
+    priority,
     scope: {
       id: "00000000-0000-4000-8000-000000000202",
       type: "department",

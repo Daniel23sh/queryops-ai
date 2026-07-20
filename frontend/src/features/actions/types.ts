@@ -21,7 +21,7 @@ export type ActionStatus =
   | "cancelled"
   | "expired";
 
-export type ActionPriority = "normal" | "high" | "critical";
+export type ActionPriority = "normal" | "high" | "urgent";
 export type RequesterActionStatusGroup = "all" | "pending" | "completed" | "closed";
 
 export type ActionScope = {

@@ -117,6 +117,12 @@ def test_scoped_analyst_sees_matching_approval_and_safe_detail(
     assert response.status_code == 200
     items = response.json()["data"]["items"]
     assert [item["approval_id"] for item in items] == [str(approval.id)]
+    assert response.json()["data"]["pagination"] == {
+        "limit": 50,
+        "offset": 0,
+        "returned": 1,
+        "total": 1,
+    }
     assert "policy_snapshot" not in str(items)
 
     detail = client.get(f"/api/v1/approvals/{approval.id}")
@@ -258,6 +264,43 @@ def test_pending_list_sorts_by_priority_and_admin_sees_authorized_scopes(
     assert response.status_code == 200
     ids = [item["approval_id"] for item in response.json()["data"]["items"]]
     assert ids == [str(approvals[1].id), str(approvals[2].id), str(approvals[0].id)]
+
+
+def test_pending_total_uses_authorized_post_expiration_collection(
+    client: TestClient, db_session: Session
+) -> None:
+    finance_analyst = _add_finance_analyst(db_session)
+    manager_csrf = _login(client, "demo.manager@queryops.local")
+    visible = _create_pending(client, db_session, manager_csrf, "finance")
+    expired = _create_pending(client, db_session, manager_csrf, "finance")
+    foreign = _create_pending(client, db_session, manager_csrf, "finance")
+    sales = _scope(db_session, "sales")
+    assert expired.action_request is not None and foreign.action_request is not None
+    expired.expires_at = NOW - timedelta(seconds=1)
+    expired.action_request.expires_at = NOW - timedelta(seconds=1)
+    foreign.action_request.scope_id = sales.id
+    foreign.action_request.scope_type = sales.scope_type
+    foreign.action_request.scope_key = sales.scope_key
+    foreign.action_request.department_id = sales.department_id
+    db_session.commit()
+
+    analyst_csrf = _login(client, finance_analyst.email)
+    own = _create_pending(client, db_session, analyst_csrf, "finance")
+    response = client.get("/api/v1/approvals/pending?limit=1&offset=0")
+
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert [item["approval_id"] for item in data["items"]] == [str(visible.id)]
+    assert data["pagination"] == {
+        "limit": 1,
+        "offset": 0,
+        "returned": 1,
+        "total": 1,
+    }
+    assert str(foreign.id) not in str(data)
+    assert str(own.id) not in str(data)
+    db_session.expire_all()
+    assert db_session.get(ApprovalRequest, expired.id).status == "expired"
 
 
 def test_scoped_pending_list_does_not_expire_foreign_scope_requests(
@@ -485,6 +528,14 @@ def test_notification_apis_are_recipient_only_and_idempotent(
         title="Completed",
         body="Safe body.",
         status="unread",
+        payload={"internal": "must-not-be-returned"},
+    )
+    own_read = Notification(
+        recipient_user_id=manager.id,
+        notification_type="action_completed",
+        title="Already read",
+        body="Safe body.",
+        status="read",
     )
     foreign = Notification(
         recipient_user_id=other.id,
@@ -493,13 +544,25 @@ def test_notification_apis_are_recipient_only_and_idempotent(
         body="Safe body.",
         status="unread",
     )
-    db_session.add_all([own, foreign])
+    db_session.add_all([own, own_read, foreign])
     db_session.commit()
     csrf = _login(client, manager.email)
 
     listed = client.get("/api/v1/notifications?is_read=false")
     assert listed.status_code == 200
-    assert [item["id"] for item in listed.json()["data"]["items"]] == [str(own.id)]
+    listed_data = listed.json()["data"]
+    assert [item["id"] for item in listed_data["items"]] == [str(own.id)]
+    assert listed_data["pagination"] == {
+        "limit": 50,
+        "offset": 0,
+        "returned": 1,
+        "total": 1,
+    }
+    assert listed_data["unread_count"] == 1
+    assert "must-not-be-returned" not in str(listed_data)
+    read_data = client.get("/api/v1/notifications?is_read=true&limit=1").json()["data"]
+    assert read_data["pagination"]["total"] == 1
+    assert read_data["unread_count"] == 1
     assert client.post(
         f"/api/v1/notifications/{foreign.id}/read",
         headers={"X-CSRF-Token": csrf},
@@ -587,14 +650,23 @@ def test_audit_api_enforces_scope_and_global_detail_permissions(
     assert scoped.status_code == 200
     scoped_items = scoped.json()["data"]["items"]
     assert len(scoped_items) == 1 and scoped_items[0]["scope"]["key"] == "finance"
+    assert scoped.json()["data"]["pagination"]["total"] == 1
     assert "before_state" not in scoped_items[0]
     assert "raw" not in str(scoped_items)
     bypass = client.get("/api/v1/audit/logs?scope_key=sales")
     assert bypass.status_code == 200
     assert bypass.json()["data"]["items"] == []
+    assert bypass.json()["data"]["pagination"]["total"] == 0
     _login(client, "demo.admin@queryops.local")
-    global_items = client.get("/api/v1/audit/logs").json()["data"]["items"]
-    assert len(global_items) == 2
+    global_response = client.get("/api/v1/audit/logs?event_type=action_executed&limit=1")
+    global_items = global_response.json()["data"]["items"]
+    assert global_response.json()["data"]["pagination"] == {
+        "limit": 1,
+        "offset": 0,
+        "returned": 1,
+        "total": 2,
+    }
+    assert len(global_items) == 1
     assert global_items[0]["before_state"] == {"status": "active"}
     assert global_items[0]["self_approved"] is True
     assert global_items[0]["failure_category"] == "IntegrityError"
