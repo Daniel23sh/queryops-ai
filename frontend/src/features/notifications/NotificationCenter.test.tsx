@@ -7,6 +7,7 @@ import {
   demoManager,
   errorResponse,
   installApiMock,
+  pendingResponse,
   renderAppAt,
   resetAppTestState,
   setCsrfCookie,
@@ -24,7 +25,7 @@ describe("NotificationCenter", () => {
         successResponse(backendNotificationList([], 2)),
         successResponse(backendNotificationList(notifications, 2)),
         successResponse(backendNotificationList([], 2)),
-        successResponse(backendNotificationList(notifications, 2)),
+        pendingResponse(),
         successResponse(backendNotificationList([], 2))
       ],
       "GET /api/v1/dashboards/my": successResponse([])
@@ -36,6 +37,8 @@ describe("NotificationCenter", () => {
     bell.focus();
     fireEvent.click(bell);
     const drawer = await screen.findByRole("dialog", { name: "Notifications" });
+    expect(document.getElementById("notification-center")?.parentElement).toBe(document.body);
+    expect(drawer.parentElement).toHaveAttribute("data-overlay-kind", "dialog");
     expect(bell).toHaveAttribute("aria-expanded", "true");
     expect(within(drawer).getByRole("tab", { name: "All" })).toHaveAttribute("aria-selected", "true");
     expect(within(drawer).getAllByRole("link", { name: "Open related item" })).toHaveLength(1);
@@ -43,6 +46,8 @@ describe("NotificationCenter", () => {
     fireEvent.click(within(drawer).getByRole("tab", { name: "Unread" }));
     expect(within(drawer).getByRole("tab", { name: "Unread" })).toHaveAttribute("aria-selected", "true");
     await waitFor(() => expect(fetchMockUrlCount("is_read=false")).toBeGreaterThan(0));
+    expect(within(drawer).getByRole("status")).toHaveTextContent("Loading notifications");
+    expect(drawer.querySelector('div[aria-hidden="true"]')).toHaveTextContent("Action workflow updated");
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Notifications" })).not.toBeInTheDocument());
     await waitFor(() => expect(bell).toHaveFocus());
