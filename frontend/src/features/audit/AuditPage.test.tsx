@@ -50,6 +50,8 @@ describe("AuditPage", () => {
     }));
     renderAppAt("/audit");
     const opener = (await screen.findAllByRole("button", { name: "View details" }))[0]!;
+    expect(screen.getAllByRole("link", { name: "Action request" })).toHaveLength(2);
+    expect(screen.getAllByRole("link", { name: "Approval" })).toHaveLength(2);
     opener.focus();
     fireEvent.click(opener);
 

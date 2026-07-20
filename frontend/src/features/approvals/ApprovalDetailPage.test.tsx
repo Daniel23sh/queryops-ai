@@ -22,7 +22,15 @@ afterEach(resetAppTestState);
 
 describe("ApprovalDetailPage", () => {
   it("renders safe approval context, controlled policy text, timeline, and exact CTAs", async () => {
-    installDetail();
+    installDetail({
+      detail: backendApprovalDetail({
+        policyFlags: [
+          { code: "mandatory_license", reason: "Internal policy text" },
+          { code: "service_account", reason: "Internal policy text" },
+          { code: "cross_scope", reason: "Internal policy text" }
+        ]
+      })
+    });
     renderAppAt(`/approvals/${APPROVAL_ID}`);
 
     expect(await screen.findByRole("heading", { name: "Reclaim unused licenses" })).toBeInTheDocument();
@@ -31,6 +39,9 @@ describe("ApprovalDetailPage", () => {
     expect(screen.getByText("$25.00")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Approve and Execute" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reject Request" })).toBeInTheDocument();
+    expect(screen.getByText("A mandatory license requires Admin review.")).toBeInTheDocument();
+    expect(screen.getByText("A service account requires Admin review.")).toBeInTheDocument();
+    expect(screen.getByText("A cross-scope record requires global approval.")).toBeInTheDocument();
     expect(screen.queryByText("Internal policy text")).not.toBeInTheDocument();
     expect(screen.queryByText("record_count_over_analyst_threshold")).not.toBeInTheDocument();
   });
@@ -121,8 +132,11 @@ describe("ApprovalDetailPage", () => {
   });
 });
 
-function installDetail({ decision, afterDecision }: { decision?: ReturnType<typeof successResponse> | Promise<ReturnType<typeof successResponse>>; afterDecision?: ReturnType<typeof backendApprovalDetail> } = {}) {
-  const detail = backendApprovalDetail();
+function installDetail({ decision, afterDecision, detail = backendApprovalDetail() }: {
+  decision?: ReturnType<typeof successResponse> | Promise<ReturnType<typeof successResponse>>;
+  afterDecision?: ReturnType<typeof backendApprovalDetail>;
+  detail?: ReturnType<typeof backendApprovalDetail>;
+} = {}) {
   return installApiMock(authenticatedRoutes(demoAnalyst, {
     [`GET /api/v1/approvals/${APPROVAL_ID}`]: afterDecision ? [successResponse(detail), successResponse(afterDecision)] : [successResponse(detail), successResponse(detail)],
     [`GET /api/v1/actions/${ACTION_ID}`]: [successResponse(backendActionDetail()), successResponse(backendActionDetail())],
