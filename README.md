@@ -294,7 +294,7 @@ POST /api/v1/approvals/{approval_id}/reject
 
 The backend deterministically reads current operational data through `queryops_query_runtime`, a read-only transaction, transaction-local RLS context, and PostgreSQL RLS. Draft previews expire after 30 minutes and submitted approvals after 24 hours. Approval synchronously revalidates current rows and dependencies before entering the narrow write role. License reclaim uses current assignment policy; inactive-user disablement requires an active human with no successful login for at least 90 days. Service accounts are always skipped. Privileged humans, humans with open critical security events, and cross-scope humans require Admin override; more than 20 actionable records is a request-level Admin rule.
 
-Successful execution atomically persists the domain mutation, application lifecycle audit, one domain audit per changed record, lifecycle state, and database-only notifications. Failure rolls back all success-side effects and uses a separate safe failure transaction. M8 PR5 adds requester UX for deterministic current-result suggestions, safe previews, submission, owned action tracking/detail, persisted timelines, and pending cancellation. Approval decisions, Audit explorer, and Notifications remain backend-only until later M8 PRs.
+Successful execution atomically persists the domain mutation, application lifecycle audit, one domain audit per changed record, lifecycle state, and database-only notifications. Failure rolls back all success-side effects and uses a separate safe failure transaction. M8 PR5 adds requester UX for deterministic current-result suggestions, safe previews, submission, owned action tracking/detail, persisted timelines, and pending cancellation. M8 PR6 is active and owns the Approvals, Audit, and Notifications website experience without changing those backend guarantees.
 
 ## Evaluation and Testing
 
@@ -346,7 +346,7 @@ Default local URLs:
 * Backend health endpoint: `http://localhost:8000/health`
 * PostgreSQL: `localhost:5432`
 
-PostgreSQL is included for the local development environment. Milestones 0 through 7 are complete and merged into `main` through PR #28. M8 PR1 through PR4 are merged through PR #32, and M8 PR5 is implementation-complete on `feature/m8-requester-actions-ux` but not merged. The current backend includes both V1 actions, approvals, synchronous execution, action/domain audit, database notification APIs, safe timelines, deterministic template suggestions, and requester-owned action lists. The frontend includes requester Actions UX; approval, audit, and notification UX remains deferred.
+PostgreSQL is included for the local development environment. Milestones 0 through 7 are complete and merged into `main` through PR #28. M8 PR1 through PR5 are merged through PR #33, and M8 PR6 is active on `feature/m8-approvals-audit-notifications-ux`. The current backend includes both V1 actions, approvals, synchronous execution, action/domain audit, database notification APIs, safe timelines, deterministic template suggestions, and requester-owned action lists. The frontend includes requester Actions UX; PR6 is adding permission-aware approval decisions, audit browsing, and notification access.
 
 Stop the stack:
 
@@ -474,7 +474,7 @@ Action approval runtime model:
 * The action role is `NOLOGIN`, `NOINHERIT`, `NOSUPERUSER`, and `NOBYPASSRLS`, and is granted to the explicit application login role from `QUERYOPS_APP_DATABASE_ROLE` with inheritance disabled and SET enabled; action code must use `SET LOCAL ROLE`.
 * Its grants are limited to required reads, three `license_assignments` UPDATE columns, `directory_users.account_status`/`updated_at` UPDATE, and scoped `it_audit_events` INSERT. Role-scoped PostgreSQL policies bind mutations to the active scope and allow only active human users to become disabled.
 * Approval, mutation, application/domain audit, and database notifications commit atomically. Failure state is recorded separately after a rollback.
-* Backend APIs provide pending approval review/decisions, current-recipient notification reads, and permission-scoped audit reads. No action or approval frontend is included yet.
+* Backend APIs provide pending approval review/decisions, current-recipient notification reads, and permission-scoped audit reads. Requester Actions UX is merged; PR6 is the active human-facing approval, audit, and notification integration.
 
 Current Query Engine limitations:
 
@@ -484,7 +484,7 @@ Current Query Engine limitations:
 * Query detail endpoints return only the authenticated user's own runs.
 * Scope-aware query history requires assigned access scopes and the appropriate history permission.
 * Full domain pack expansion to 36 templates / 40 evaluation cases is not implemented.
-* Scheduled card refresh, scheduled/background actions, external notification delivery, and action/approval frontend screens are not implemented.
+* Scheduled card refresh, scheduled/background actions, and external notification delivery are not implemented. Approval, audit, and notification frontend screens are limited to the active PR6 scope.
 
 ### Role-Aware Home and Dashboard Browser
 
@@ -752,9 +752,9 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-Milestones 0 through 7 are complete and merged into `main`; M7 PR4 merged through PR #28. Milestone 8 — Actions, Approvals & Audit is active. M8 PR1 through PR4 are merged through PR #32, and M8 PR5 is implementation-complete on `feature/m8-requester-actions-ux` but is not merged.
+Milestones 0 through 7 are complete and merged into `main`; M7 PR4 merged through PR #28. Milestone 8 — Actions, Approvals & Audit is active. M8 PR1 through PR5 are merged through PR #33. M8 PR6 is active on `feature/m8-approvals-audit-notifications-ux`; M8 PR7 has not started.
 
-The completed Milestone 7 experience is dark-first with a persistent light option, responsive navigation, My Dashboard as the authenticated home, permission-aware routes, Scope terminology, a responsive dashboard editor, safe visualizations, and command-first Ask Data. Milestone 8 is active: PR1 through PR4 are merged and PR5 is implementation-complete locally but not merged.
+The completed Milestone 7 experience is dark-first with a persistent light option, responsive navigation, My Dashboard as the authenticated home, permission-aware routes, Scope terminology, a responsive dashboard editor, safe visualizations, and command-first Ask Data. Milestone 8 is active: PR1 through PR5 are merged and PR6 owns Approvals, Audit, and Notifications UX.
 
 Implemented foundation functionality includes:
 
@@ -801,8 +801,9 @@ M7 PR2 — Role-Aware Home & Dashboard Browser is complete and merged through PR
 M7 PR3 — Dashboard Editor, Grid & Visualizations is complete and merged through PR #27.
 M7 PR4 — Ask Data Redesign & Final UX Hardening is complete and merged through PR #28.
 M8 PR1 through PR4 are complete and merged through PR #32.
-M8 PR5 — Requester Actions UX is implementation-complete locally but not merged.
-M8 PR6 and PR7 have not started.
+M8 PR5 — Requester Actions UX is complete and merged through PR #33.
+M8 PR6 — Approvals, Audit & Notifications UX is active.
+M8 PR7 has not started.
 ```
 
 PR5 persists the order of cards in owned personal dashboards through `DashboardCard.position`. It includes accessible drag-and-drop and Move Up / Move Down controls, but does not add card resizing, x/y grid coordinates, width/height persistence, advanced `layout` behavior, scheduled refresh, dashboard starring/cloning, actions, approvals, notifications, real external LLM calls, Supabase Auth, Redis/background jobs, or domain expansion. Those deferred areas remain outside Milestone 6.

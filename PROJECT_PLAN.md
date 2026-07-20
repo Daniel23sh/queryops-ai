@@ -16,7 +16,7 @@ Current PR scope:
 
 `M7 PR4 — Ask Data Redesign & Final UX Hardening` is complete and merged into `main` through PR #28. Milestone 7 is complete.
 
-`Milestone 8 — Actions, Approvals & Audit` is active. `M8 PR1 — Action Persistence & Engine Contracts` is complete and merged into `main` through PR #29. `M8 PR2 — Reclaim License Preview & Request Flow` is complete and merged into `main` through PR #30. `M8 PR3 — Approval Execution, Audit & Notifications` is complete and merged into `main` through PR #31. `M8 PR4 — Disable Inactive User & Backend Security Completion` is complete and merged into `main` through PR #32. `M8 PR5 — Requester Actions UX` is implementation-complete on `feature/m8-requester-actions-ux` but is not merged; M8 PR6 and PR7 have not started.
+`Milestone 8 — Actions, Approvals & Audit` is active. M8 PR1 through PR4 are complete and merged through PR #32. `M8 PR5 — Requester Actions UX` is complete and merged through PR #33; `main` reached `02864273e055f68825b7fa8df95b5ec63a688369`. `M8 PR6 — Approvals, Audit & Notifications UX` is active on `feature/m8-approvals-audit-notifications-ux`; M8 PR7 has not started.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
@@ -120,7 +120,7 @@ Explicitly out of scope for M6 PR5:
 - masking
 - tenant/project/region governance
 
-Actions, approvals, audit UI, notifications, real LLM/API-key support, and Supabase Auth remained deferred through Milestone 7. The former Actions, Approvals & Audit Milestone 7 is now Milestone 8 because Product UX & Dashboard Redesign became Milestone 7. Milestone 8 is active through the approved seven-PR sequence in Section 17; PR1 through PR4 are merged and PR5 is implementation-complete under the locked requester-only scope below.
+Actions, approvals, audit UI, notifications, real LLM/API-key support, and Supabase Auth remained deferred through Milestone 7. The former Actions, Approvals & Audit Milestone 7 is now Milestone 8 because Product UX & Dashboard Redesign became Milestone 7. Milestone 8 is active through the approved seven-PR sequence in Section 17; PR1 through PR5 are merged and PR6 is active under the locked workflow-UX scope below.
 
 ## 2. Product Summary
 
@@ -440,7 +440,7 @@ The latest PR status is:
 
 `M7 PR2 — Role-Aware Home & Dashboard Browser` is complete and merged through PR #26. `M7 PR3 — Dashboard Editor, Grid & Visualizations` is complete and merged through PR #27. `M7 PR4 — Ask Data Redesign & Final UX Hardening` is complete and merged through PR #28.
 
-`Milestone 8 — Actions, Approvals & Audit` is active. `M8 PR1 — Action Persistence & Engine Contracts` is complete and merged through PR #29. `M8 PR2 — Reclaim License Preview & Request Flow` is complete and merged through PR #30. `M8 PR3 — Approval Execution, Audit & Notifications` is complete and merged through PR #31. M8 PR4 is complete and merged through PR #32. M8 PR5 is implementation-complete on `feature/m8-requester-actions-ux` but is not merged; M8 PR6 and PR7 have not started.
+`Milestone 8 — Actions, Approvals & Audit` is active. M8 PR1 through PR4 are complete and merged through PR #32. M8 PR5 is complete and merged through PR #33. M8 PR6 is active on `feature/m8-approvals-audit-notifications-ux`; M8 PR7 has not started.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -944,7 +944,7 @@ Milestone 8 is split into seven approved PRs:
 6. `M8 PR6 — Approvals, Audit & Notifications UX`
 7. `M8 PR7 — M8 E2E, Security Hardening & Completion`
 
-M8 PR1 is complete and merged through PR #29. M8 PR2 is complete and merged through PR #30. M8 PR3 is complete and merged through PR #31. M8 PR4 is complete and merged through PR #32. M8 PR5 is implementation-complete on `feature/m8-requester-actions-ux` but is not merged; M8 PR6 and PR7 have not started.
+M8 PR1 is complete and merged through PR #29. M8 PR2 is complete and merged through PR #30. M8 PR3 is complete and merged through PR #31. M8 PR4 is complete and merged through PR #32. M8 PR5 is complete and merged through PR #33. M8 PR6 is active on `feature/m8-approvals-audit-notifications-ux`; M8 PR7 has not started.
 
 ### M8 PR1 — Action Persistence & Engine Contracts
 
@@ -1246,7 +1246,7 @@ Branch:
 feature/m8-requester-actions-ux
 ```
 
-Status: implementation-complete locally; not merged.
+Status: complete and merged into `main` through PR #33.
 
 Goal: make the requester workflow usable from an approved Ask Data result through deterministic action recommendation, preview, submission, requester tracking, safe detail/timeline display, and pending-request cancellation.
 
@@ -1278,3 +1278,36 @@ Delivered:
 - Final verification passed 739 default backend tests with 150 expected PostgreSQL skips, all 889 disposable-PostgreSQL backend tests, the exact 20-case release-blocking suite, 222 frontend tests, standalone TypeScript checks, the production build, Alembic head/no-diff verification, and manual desktop/mobile browser QA across User, Manager, Analyst, and Admin. The final review was **Manual PR5 requester UX review — not a CodeRabbit result**.
 
 Intentional limitations remain: approval decisions, Audit explorer, and Notifications UX are deferred to M8 PR6; cross-workflow E2E completion remains deferred to M8 PR7. Notifications stay database-only, execution stays synchronous, and there is no separate Execute endpoint, external delivery, retry/rollback action, queue, worker, scheduler, or Redis.
+
+### M8 PR6 — Approvals, Audit & Notifications UX
+
+Branch:
+
+```text
+feature/m8-approvals-audit-notifications-ux
+```
+
+Status: active.
+
+Goal: expose the existing permission-aware pending-approval, synchronous decision, scoped/global audit, and current-recipient database-notification capabilities through the website without changing backend authorization, action execution, persistence, or delivery semantics.
+
+In scope:
+
+- safe authorized totals for pending approvals, filtered notifications plus unread notifications, and audit results under the exact existing visibility and filter rules
+- narrow typed frontend API clients for approvals, audit, and notifications with abort support and existing CSRF/error conventions
+- permission-aware `/approvals`, `/approvals/:approvalId`, and `/audit` routes and navigation
+- responsive pending approval review, safe approval detail, required-reason reject, and synchronous Approve and Execute UX
+- role-aware audit list/filter/detail presentation using only fields explicitly returned by the backend
+- an authenticated notification bell/drawer with unread count, current-recipient reads, safe related navigation, and mark-one/read-all behavior
+- compact Analyst/Admin Home approval and Audit entry points plus shared non-persistent workflow activity counts
+- focused/full frontend and backend regressions, disposable PostgreSQL/Alembic verification, manual browser QA, controlled cleanup, and a final manual PR6 review
+
+Guardrails:
+
+- Effective permission keys and backend responses remain authoritative. Frontend route/navigation checks are UX only, and approval counts must use the existing eligibility decision rather than a second policy implementation.
+- Manager keeps requester Actions behavior but receives no Approvals controls or Audit access under the current backend permission contract, even though private documents 06–08 describe a future limited Manager audit view.
+- Do not change action eligibility, current-state revalidation, dependency locking, execution transactions, runtime roles, RLS, lifecycle transitions, notification recipients, audit writing, snapshots, permissions, role mappings, migrations, or schema.
+- Never render raw audit metadata, arbitrary notification payloads, SQL, QueryRun rows, access-context snapshots, permission catalogs, stack traces, driver errors, or internal failure details.
+- Decision mutations require a current CSRF token, explicit bounded reason, duplicate-submit protection, authoritative response handling, and safe recovery for expiration, races, policy escalation, access loss, and execution failure.
+- Shared activity state is in-memory, resets on authenticated-user changes, aborts stale reads, uses no polling, and cannot break page rendering when a badge request fails.
+- No new frontend dependency, action type, separate Execute endpoint, retry/rollback action, external delivery, WebSocket, queue, worker, scheduler, Redis, real LLM behavior, Supabase Auth, Admin Users UI, Evaluation UI, or M8 PR7 work is allowed.
