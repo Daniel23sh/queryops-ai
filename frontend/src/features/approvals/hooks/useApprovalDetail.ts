@@ -38,6 +38,12 @@ export function useApprovalDetail(approvalId: string | undefined) {
       detailRef.current = approval;
       setStatus("success");
 
+      if (approval.status !== "pending") {
+        setPreviewGeneratedAt(null);
+        setPreviewExpiresAt(null);
+        return "success";
+      }
+
       try {
         const action = await getActionDetail(
           approval.action_request_id,
