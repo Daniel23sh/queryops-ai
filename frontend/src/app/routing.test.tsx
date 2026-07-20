@@ -5,6 +5,7 @@ import {
   authenticatedRoutes,
   backendHomeOverview,
   demoAdmin,
+  demoAnalyst,
   demoManager,
   demoUser,
   errorResponse,
@@ -128,6 +129,21 @@ describe("application routing", () => {
       await screen.findByRole("heading", { name: "Admin Role Requests" })
     ).toBeInTheDocument();
     expect(window.location.pathname).toBe("/admin/role-requests");
+  });
+
+  it("guards Approvals and Audit routes with effective permissions", async () => {
+    installApiMock(authenticatedRoutes(demoAnalyst));
+    const analystView = renderAppAt("/approvals");
+    expect(await screen.findByRole("heading", { name: "Approvals" })).toBeInTheDocument();
+    analystView.unmount();
+
+    installApiMock(authenticatedRoutes(demoManager, {
+      "GET /api/v1/dashboards/my": successResponse([])
+    }));
+    renderAppAt("/audit");
+    expect(await screen.findByRole("region", { name: "My Dashboard" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Audit" })).not.toBeInTheDocument();
+    expect(window.location.pathname).toBe("/");
   });
 
   it("redirects a direct unauthorized Admin route without rendering it", async () => {

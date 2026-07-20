@@ -7,6 +7,7 @@ import {
 import { ApiError } from "../api/client";
 import { useAuth } from "../auth/AuthProvider";
 import type { AuthUser } from "../auth/types";
+import { WorkflowActivityProvider } from "../features/activity/WorkflowActivityProvider";
 import { AppSidebar } from "./AppSidebar";
 import { getVisibleNavItems } from "./navigation";
 import { ProductTopbar } from "./ProductTopbar";
@@ -143,6 +144,7 @@ export function AuthenticatedLayout() {
   }
 
   return (
+    <WorkflowActivityProvider user={user}>
     <div
       className="product-shell"
       data-sidebar-collapsed={!isMobile && isSidebarCollapsed ? "true" : "false"}
@@ -177,6 +179,7 @@ export function AuthenticatedLayout() {
       <div className="product-shell__workspace">
         <ProductTopbar
           activeScope={activeScope}
+          csrfToken={auth.csrfToken}
           isLoggingOut={isLoggingOut}
           isMobile={isMobile}
           isNavigationExpanded={isNavigationExpanded}
@@ -208,6 +211,7 @@ export function AuthenticatedLayout() {
         </main>
       </div>
     </div>
+    </WorkflowActivityProvider>
   );
 }
 

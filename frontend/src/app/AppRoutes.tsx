@@ -4,6 +4,10 @@ import { useAuth } from "../auth/AuthProvider";
 import { AskDataPage } from "../features/ask-data";
 import { ActionsPage } from "../features/actions/ActionsPage";
 import { ActionRequestPage } from "../features/actions/ActionRequestPage";
+import { ApprovalDetailPage } from "../features/approvals/ApprovalDetailPage";
+import { ApprovalsPage } from "../features/approvals/ApprovalsPage";
+import { AuditPage } from "../features/audit/AuditPage";
+import { APPROVAL_PERMISSION_KEYS, AUDIT_PERMISSION_KEYS } from "../features/activity/permissions";
 import { DashboardDetailPage } from "../features/dashboard/DashboardDetailPage";
 import { HomePage } from "../features/home/HomePage";
 import { ProfilePage } from "../features/profile/ProfilePage";
@@ -14,6 +18,7 @@ import {
   type AuthenticatedOutletContext
 } from "./AuthenticatedLayout";
 import { AppShell } from "./AppShell";
+import { AnyPermissionRoute } from "./AnyPermissionRoute";
 import { PermissionRoute } from "./PermissionRoute";
 import { APP_ROUTES } from "./routeConfig";
 
@@ -47,6 +52,30 @@ export function AppRoutes() {
               <PermissionRoute permission="can_request_action">
                 <ActionRequestRoute />
               </PermissionRoute>
+            }
+          />
+          <Route
+            path={APP_ROUTES.approvals}
+            element={
+              <AnyPermissionRoute permissions={APPROVAL_PERMISSION_KEYS}>
+                <ApprovalsPage />
+              </AnyPermissionRoute>
+            }
+          />
+          <Route
+            path={APP_ROUTES.approvalDetail}
+            element={
+              <AnyPermissionRoute permissions={APPROVAL_PERMISSION_KEYS}>
+                <ApprovalDetailRoute />
+              </AnyPermissionRoute>
+            }
+          />
+          <Route
+            path={APP_ROUTES.audit}
+            element={
+              <AnyPermissionRoute permissions={AUDIT_PERMISSION_KEYS}>
+                <AuditRoute />
+              </AnyPermissionRoute>
             }
           />
           <Route path={APP_ROUTES.profile} element={<ProfileRoute />} />
@@ -136,6 +165,16 @@ function ActionsRoute() {
 function ActionRequestRoute() {
   const { csrfToken, user } = useOutletContext<AuthenticatedOutletContext>();
   return <ActionRequestPage csrfToken={csrfToken} user={user} />;
+}
+
+function ApprovalDetailRoute() {
+  const { csrfToken } = useOutletContext<AuthenticatedOutletContext>();
+  return <ApprovalDetailPage csrfToken={csrfToken} />;
+}
+
+function AuditRoute() {
+  const { user } = useOutletContext<AuthenticatedOutletContext>();
+  return <AuditPage user={user} />;
 }
 
 function ProfileRoute() {

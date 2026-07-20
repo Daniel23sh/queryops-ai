@@ -7,6 +7,7 @@ import {
   demoAnalyst,
   demoManager,
   demoUser,
+  errorResponse,
   installApiMock,
   renderAppAt,
   resetAppTestState,
@@ -23,8 +24,7 @@ const HIDDEN_NAVIGATION = [
   "SQL / Technical",
   "Department Dashboards",
   "Admin Console",
-  "Users",
-  "Audit"
+  "Users"
 ];
 
 describe("focused navigation", () => {
@@ -42,12 +42,15 @@ describe("focused navigation", () => {
     expect(getLinkNames(nav)).toEqual(
       label === "User"
         ? ["My Dashboard", "Ask Data", "Profile"]
-        : ["My Dashboard", "Ask Data", "Actions", "Profile"]
+        : label === "Analyst"
+          ? ["My Dashboard", "Ask Data", "Actions", "Approvals", "Audit", "Profile"]
+          : ["My Dashboard", "Ask Data", "Actions", "Profile"]
     );
     expect(screen.queryByText("Admin")).not.toBeInTheDocument();
     for (const label of HIDDEN_NAVIGATION) {
       expect(within(nav).queryByText(label)).not.toBeInTheDocument();
     }
+    if (label !== "Analyst") expect(within(nav).queryByText("Audit")).not.toBeInTheDocument();
   });
 
   it("shows Admin as a section with only Role Requests for the permitted user", async () => {
@@ -61,13 +64,14 @@ describe("focused navigation", () => {
       "My Dashboard",
       "Ask Data",
       "Actions",
+      "Approvals",
+      "Audit",
       "Profile",
       "Role Requests"
     ]);
     expect(within(nav).getByText("Admin")).toBeInTheDocument();
     expect(within(nav).queryByText("Role Upgrade")).not.toBeInTheDocument();
     expect(within(nav).queryByText("Users")).not.toBeInTheDocument();
-    expect(within(nav).queryByText("Audit")).not.toBeInTheDocument();
   });
 
   it("uses permission checks rather than a hard-coded Admin role", async () => {
@@ -89,6 +93,25 @@ describe("focused navigation", () => {
     expect(
       screen.getByRole("link", { name: "Role Requests" })
     ).toBeInTheDocument();
+  });
+
+  it("shows an exact positive pending badge and hides zero or failed counts", async () => {
+    installApiMock(authenticatedRoutes(demoAnalyst, {
+      "GET /api/v1/approvals/pending": successResponse({ items: [], pagination: { limit: 3, offset: 0, returned: 0, total: 4 } }),
+      "GET /api/v1/dashboards/my": successResponse([])
+    }));
+    const counted = renderAppAt("/");
+    expect(await screen.findByLabelText("4 pending approvals")).toBeInTheDocument();
+    counted.unmount();
+
+    installApiMock(authenticatedRoutes(demoAnalyst, {
+      "GET /api/v1/approvals/pending": errorResponse("SERVICE_UNAVAILABLE", 503),
+      "GET /api/v1/dashboards/my": successResponse([])
+    }));
+    renderAppAt("/");
+    const nav = await screen.findByRole("navigation", { name: "Workspace navigation" });
+    expect(within(nav).queryByText("0")).not.toBeInTheDocument();
+    expect(within(nav).queryByLabelText(/pending approvals/)).not.toBeInTheDocument();
   });
 
   it("hides and protects Ask Data when its capability is absent", async () => {

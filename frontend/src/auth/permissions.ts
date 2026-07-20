@@ -6,7 +6,7 @@ export function hasPermission(user: AuthUser, permission: PermissionKey): boolea
 
 export function hasAnyPermission(
   user: AuthUser,
-  permissions: PermissionKey[]
+  permissions: readonly PermissionKey[]
 ): boolean {
   return permissions.some((permission) => hasPermission(user, permission));
 }
