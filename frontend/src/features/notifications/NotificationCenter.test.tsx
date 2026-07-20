@@ -95,6 +95,8 @@ describe("NotificationCenter", () => {
     expect(notificationPath(notification({ type: "action_pending_approval", relatedEntity: null }))).toBe("/approvals");
     expect(notificationPath(notification({ type: "role_request_decided", relatedEntity: null }))).toBe("/profile");
     expect(notificationPath(notification({ type: "unexpected", relatedEntity: { type: "action_request", id: "unsafe" } }))).toBeNull();
+    expect(notificationPath(notification({ type: "action_completed", relatedEntity: { type: "action_request", id: "unsafe" } }))).toBeNull();
+    expect(notificationPath(notification({ type: "action_future", relatedEntity: { type: "action_request", id: "00000000-0000-4000-8000-000000000501" } }))).toBeNull();
   });
 
   it("marks all notifications read and applies the authoritative empty unread filter", async () => {

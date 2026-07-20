@@ -132,9 +132,19 @@ function DetailsButton({ item, onSelect }: { item: AuditLogItem; onSelect: (item
 }
 
 function AuditTarget({ canOpenApprovals, item }: { canOpenApprovals: boolean; item: AuditLogItem }) {
-  if (item.action_request_id) return <Link className="font-bold text-brand-primary" to={`/actions/${encodeURIComponent(item.action_request_id)}`}>Action request</Link>;
-  if (item.approval_request_id && canOpenApprovals) return <Link className="font-bold text-brand-primary" to={`/approvals/${encodeURIComponent(item.approval_request_id)}`}>Approval</Link>;
-  return <span className="text-app-faint">No linked target</span>;
+  const actionPath = item.action_request_id
+    ? `/actions/${encodeURIComponent(item.action_request_id)}`
+    : null;
+  const approvalPath = item.approval_request_id && canOpenApprovals
+    ? `/approvals/${encodeURIComponent(item.approval_request_id)}`
+    : null;
+  if (!actionPath && !approvalPath) return <span className="text-app-faint">No linked target</span>;
+  return (
+    <span className="flex flex-wrap gap-2">
+      {actionPath ? <Link className="font-bold text-brand-primary" to={actionPath}>Action request</Link> : null}
+      {approvalPath ? <Link className="font-bold text-brand-primary" to={approvalPath}>Approval</Link> : null}
+    </span>
+  );
 }
 
 function AuditDetails({ item, onClose, returnFocusRef }: { item: AuditLogItem; onClose: () => void; returnFocusRef: RefObject<HTMLElement> }) {

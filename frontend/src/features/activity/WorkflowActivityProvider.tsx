@@ -23,7 +23,6 @@ type WorkflowActivityContextValue = {
   pendingApprovals: PendingApprovalItem[];
   pendingStatus: ActivityLoadStatus;
   unreadNotificationCount: number | null;
-  notificationStatus: ActivityLoadStatus;
   refreshApprovals: () => Promise<void>;
   refreshNotifications: () => Promise<void>;
   refreshAll: () => Promise<void>;
@@ -45,7 +44,6 @@ export function WorkflowActivityProvider({
   const [pendingApprovals, setPendingApprovals] = useState<PendingApprovalItem[]>([]);
   const [pendingStatus, setPendingStatus] = useState<ActivityLoadStatus>("idle");
   const [unreadNotificationCount, setUnreadNotificationCount] = useState<number | null>(null);
-  const [notificationStatus, setNotificationStatus] = useState<ActivityLoadStatus>("idle");
   const approvalRequestRef = useRef<AbortController | null>(null);
   const notificationRequestRef = useRef<AbortController | null>(null);
 
@@ -81,7 +79,6 @@ export function WorkflowActivityProvider({
     notificationRequestRef.current?.abort();
     const controller = new AbortController();
     notificationRequestRef.current = controller;
-    setNotificationStatus("loading");
     try {
       const result = await listNotifications(
         { limit: 1, offset: 0 },
@@ -89,11 +86,9 @@ export function WorkflowActivityProvider({
       );
       if (controller.signal.aborted) return;
       setUnreadNotificationCount(result.unread_count);
-      setNotificationStatus("success");
     } catch {
       if (controller.signal.aborted) return;
       setUnreadNotificationCount(null);
-      setNotificationStatus("error");
     }
   }, [user.id]);
 
@@ -106,7 +101,6 @@ export function WorkflowActivityProvider({
     setPendingApprovals([]);
     setPendingStatus("idle");
     setUnreadNotificationCount(null);
-    setNotificationStatus("idle");
     void refreshAll();
     return () => {
       approvalRequestRef.current?.abort();
@@ -120,13 +114,11 @@ export function WorkflowActivityProvider({
       pendingApprovals,
       pendingStatus,
       unreadNotificationCount,
-      notificationStatus,
       refreshApprovals,
       refreshNotifications,
       refreshAll
     }),
     [
-      notificationStatus,
       pendingApprovalCount,
       pendingApprovals,
       pendingStatus,

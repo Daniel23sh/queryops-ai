@@ -13,6 +13,14 @@ import { useWorkflowActivity } from "../activity/WorkflowActivityProvider";
 import type { NotificationList, WorkflowNotification } from "./types";
 
 const PAGE_SIZE = 10;
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const ACTION_DETAIL_NOTIFICATION_TYPES = new Set([
+  "action_approved",
+  "action_completed",
+  "action_failed",
+  "action_rejected"
+]);
 type NotificationFilter = "all" | "unread";
 
 export function NotificationCenter({ csrfToken }: { csrfToken: string | null }) {
@@ -168,7 +176,11 @@ function NotificationLink({ notification, onNavigate }: { notification: Workflow
 
 export function notificationPath(notification: WorkflowNotification): string | null {
   if (notification.type === "action_pending_approval") return "/approvals";
-  if (notification.type.startsWith("action_") && notification.related_entity?.type === "action_request") {
+  if (
+    ACTION_DETAIL_NOTIFICATION_TYPES.has(notification.type)
+    && notification.related_entity?.type === "action_request"
+    && UUID_PATTERN.test(notification.related_entity.id)
+  ) {
     return `/actions/${encodeURIComponent(notification.related_entity.id)}`;
   }
   if (notification.type === "role_request_decided") return "/profile";

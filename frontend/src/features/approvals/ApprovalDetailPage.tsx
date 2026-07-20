@@ -22,9 +22,12 @@ const POLICY_MESSAGES: Record<string, string> = {
   record_count_over_analyst_threshold: "This request exceeds the scoped approval threshold.",
   global_scope_request: "This request requires global approval.",
   mandatory_assignment: "A mandatory assignment requires Admin review.",
+  mandatory_license: "A mandatory license requires Admin review.",
   exception_assignment: "An exception assignment requires Admin review.",
   service_account_assignment: "A service-account assignment requires Admin review.",
+  service_account: "A service account requires Admin review.",
   cross_scope_target: "A target outside the requested Scope requires Admin review.",
+  cross_scope: "A cross-scope record requires global approval.",
   privileged_user: "A privileged user requires Admin review.",
   open_critical_security_event: "An open critical security event requires Admin review."
 };
