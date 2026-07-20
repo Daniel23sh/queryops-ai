@@ -107,7 +107,10 @@ describe("ApprovalDetailPage", () => {
 
   it("shows a completed authoritative result and locks decision controls", async () => {
     setCsrfCookie("csrf-token");
-    installDetail({ decision: successResponse({ approval_id: APPROVAL_ID, action_request_id: ACTION_ID, status: "completed", executed_records_count: 1, skipped_records_count: 2 }) });
+    const fetchMock = installDetail({
+      decision: successResponse({ approval_id: APPROVAL_ID, action_request_id: ACTION_ID, status: "completed", executed_records_count: 1, skipped_records_count: 2 }),
+      afterDecision: backendApprovalDetail({ canApprove: false, status: "approved" })
+    });
     renderAppAt(`/approvals/${APPROVAL_ID}`);
     fireEvent.click(await screen.findByRole("button", { name: "Approve and Execute" }));
     fireEvent.change(screen.getByLabelText("Decision reason"), { target: { value: "Current records reviewed" } });
@@ -115,6 +118,7 @@ describe("ApprovalDetailPage", () => {
     expect(await screen.findByRole("heading", { name: "Decision recorded" })).toBeInTheDocument();
     expect(screen.getByText("Executed 1 records · Skipped 2")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Approve and Execute" })).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([input]) => String(input).includes(`/actions/${ACTION_ID}`))).toHaveLength(1);
   });
 
   it.each([

@@ -165,14 +165,34 @@ def test_context_excludes_tables_outside_domain_pack_and_product_tables() -> Non
                 resource_metadata=None,
             )
         )
+        session.add(
+            DataResource(
+                id=uuid.uuid4(),
+                resource_type="table",
+                domain="product",
+                schema_name="public",
+                table_name="app_audit_logs",
+                column_name=None,
+                display_name="Application Audit Logs",
+                sensitivity_level="restricted",
+                scope_type=None,
+                scope_column=None,
+                is_queryable=True,
+                is_exportable=False,
+                llm_exposure_level="schema_only",
+                resource_metadata=None,
+            )
+        )
 
         context = build_schema_context(session, access_context)
 
         serialized = json.dumps(context, sort_keys=True)
         assert "query_runs" not in context["allowed_tables"]
         assert "app_users" not in context["allowed_tables"]
+        assert "app_audit_logs" not in context["allowed_tables"]
         assert "query_runs" not in serialized
         assert "app_users" not in serialized
+        assert "app_audit_logs" not in serialized
 
 
 def test_context_contains_no_row_data_or_internal_policy_details() -> None:
@@ -180,10 +200,14 @@ def test_context_contains_no_row_data_or_internal_policy_details() -> None:
         seed_database(session, profile_name="small", reset=True)
         access_context = access_context_for(session, "demo.manager@queryops.local")
         data_resource_by_table(session, "directory_users").resource_metadata = {
+            "approval_reason": "raw requester approval reason",
             "policy_reason": "missing_scope",
             "sample_values": ["demo.manager@queryops.local"],
             "secret": "do-not-leak",
             "session_cookie": "qo_session=private",
+        }
+        data_resource_by_table(session, "security_events").resource_metadata = {
+            "sample_description": "raw security event description",
         }
 
         context = build_schema_context(session, access_context)
@@ -199,6 +223,8 @@ def test_context_contains_no_row_data_or_internal_policy_details() -> None:
             "missing_scope",
             "resource_not_queryable",
             "do-not-leak",
+            "raw requester approval reason",
+            "raw security event description",
         ):
             assert forbidden not in serialized
 

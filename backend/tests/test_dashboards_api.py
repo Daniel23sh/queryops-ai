@@ -1802,6 +1802,42 @@ def test_dashboard_detail_allows_matching_department_scope(
     assert response.json()["data"]["scope"]["display_name"] == "Finance"
 
 
+@pytest.mark.parametrize(
+    ("email", "visibility_scope", "department_name", "expected_scope"),
+    [
+        ("demo.analyst@queryops.local", "department", "IT", "IT"),
+        ("demo.admin@queryops.local", "global", None, "Global"),
+    ],
+)
+def test_dashboard_detail_allows_analyst_exact_scope_and_admin_global_scope(
+    client: TestClient,
+    db_session: Session,
+    email: str,
+    visibility_scope: str,
+    department_name: str | None,
+    expected_scope: str,
+) -> None:
+    department = (
+        _department_by_name(db_session, department_name)
+        if department_name is not None
+        else None
+    )
+    dashboard = _add_dashboard(
+        db_session,
+        owner=_user_by_email(db_session, "demo.manager@queryops.local"),
+        title=f"{expected_scope} shared",
+        visibility_scope=visibility_scope,
+        department=department,
+    )
+    _login(client, email)
+
+    response = client.get(f"/api/v1/dashboards/{dashboard.id}")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["relationship"] == "shared"
+    assert response.json()["data"]["scope"]["display_name"] == expected_scope
+
+
 def test_static_dashboard_routes_are_not_shadowed_by_detail_route(
     client: TestClient,
 ) -> None:

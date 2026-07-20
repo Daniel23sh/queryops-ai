@@ -98,6 +98,30 @@ def test_analyst_scoped_query_works_for_assigned_it_scope(
     assert {str(row["department_id"]) for row in result.rows} == {it_id}
 
 
+def test_analyst_cannot_see_devices_outside_assigned_department(
+    postgres_engine: Engine,
+) -> None:
+    with Session(postgres_engine) as session:
+        analyst = access_context_for(session, "demo.analyst@queryops.local")
+        finance_id = str(department_id(session, "Finance"))
+        validation = validate_for_user(
+            session,
+            analyst,
+            (
+                "SELECT id, department_id FROM devices "
+                f"WHERE department_id = '{finance_id}' "
+                "ORDER BY id LIMIT 25"
+            ),
+        )
+
+    result = execute_validated_sql(postgres_engine, analyst, validation)
+
+    assert_success(result)
+    assert result.referenced_tables == ["devices"]
+    assert result.rows == []
+    assert result.row_count == 0
+
+
 def test_admin_global_query_returns_allowed_global_data(
     postgres_engine: Engine,
 ) -> None:
