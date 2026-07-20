@@ -1326,6 +1326,6 @@ The final **Manual PR6 correctness, scope, accessibility, and security-boundary 
 
 The private planning documents describe a possible future limited Manager audit view, but the current backend grants Manager no audit permission. PR6 follows the authoritative effective-permission contract, so Manager has requester Actions and notifications but no Audit navigation or route.
 
-Implementation checkpoints are `e3c31c5` (`docs: start m8 approvals audit notifications ux`), `b198b90` (`feat: add safe workflow activity metadata`), `91adede` (`feat: add approvals audit notification ux`), and `ea9f999` (`fix: harden workflow ux boundaries`).
+Implementation checkpoints are `e3c31c5` (`docs: start m8 approvals audit notifications ux`), `b198b90` (`feat: add safe workflow activity metadata`), `91adede` (`feat: add approvals audit notification ux`), `ea9f999` (`fix: harden workflow ux boundaries`), `3a8aa77` (`docs: complete m8 approval activity ux`), and `e295861` (`test: strengthen workflow ux review coverage`).
 
 No schema, migration, seed, permission, role mapping, RLS, runtime-role, action eligibility, revalidation, execution, lifecycle, audit-writing, notification-recipient, QueryRun, or snapshot behavior changed. No new dependency, additional action, separate Execute endpoint, retry/rollback, external delivery, WebSocket, queue, worker, scheduler, Redis, Admin Users UI, Evaluation UI, or M8 PR7 work was added.
