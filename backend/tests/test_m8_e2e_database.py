@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Generator
+from datetime import timedelta
 
 import pytest
 from sqlalchemy import create_engine, func, select
@@ -8,11 +9,13 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from app.db.base import Base
-from app.domains.it_operations.seed import seed_database
+from app.domains.it_operations.models import DirectoryUser, LicenseAssignment
+from app.domains.it_operations.seed import REFERENCE_NOW, seed_database
 from app.models.product import AccessScope, AppUser, UserAccessScope
+from scripts.inspect_m8_e2e import inspect_action_state
 from scripts.prepare_m8_e2e import (
     UnsafeE2EDatabaseError,
-    prepare_analyst_finance_scope,
+    prepare_e2e_state,
     validated_e2e_database_url,
 )
 
@@ -106,11 +109,12 @@ def test_e2e_database_guard_accepts_explicit_disposable_local_targets(
     ) == target
 
 
-def test_finance_scope_preparation_is_idempotent_and_keeps_it_default(
+def test_e2e_preparation_is_idempotent_and_keeps_it_default(
     seeded_session: Session,
 ) -> None:
-    first = prepare_analyst_finance_scope(seeded_session)
-    second = prepare_analyst_finance_scope(seeded_session)
+    now = REFERENCE_NOW + timedelta(days=22)
+    first = prepare_e2e_state(seeded_session, now=now)
+    second = prepare_e2e_state(seeded_session, now=now)
 
     analyst = seeded_session.scalar(
         select(AppUser).where(AppUser.email == "demo.analyst@queryops.local")
@@ -127,6 +131,8 @@ def test_finance_scope_preparation_is_idempotent_and_keeps_it_default(
     ).all()
     assert first.created is True
     assert second.created is False
+    assert first.stabilized_service_assignments == 1
+    assert second.stabilized_service_assignments == 0
     assert len(assignments) == 2
     assert sum(assignment.is_default for assignment in assignments) == 1
     assert next(
@@ -138,6 +144,29 @@ def test_finance_scope_preparation_is_idempotent_and_keeps_it_default(
             UserAccessScope.scope_id == finance.id,
         )
     ) == 1
+    assert seeded_session.scalar(
+        select(func.count())
+        .select_from(LicenseAssignment)
+        .join(DirectoryUser, DirectoryUser.id == LicenseAssignment.user_id)
+        .where(
+            LicenseAssignment.department_id == finance.department_id,
+            LicenseAssignment.status == "active",
+            LicenseAssignment.is_mandatory.is_(False),
+            DirectoryUser.account_type == "service",
+            LicenseAssignment.last_used_at < now - timedelta(days=60),
+        )
+    ) == 0
+
+
+def test_e2e_action_state_inspection_tracks_only_action_lifecycle_rows(
+    seeded_session: Session,
+) -> None:
+    state = inspect_action_state(seeded_session)
+
+    assert state.action_requests == 0
+    assert state.approval_requests == 0
+    assert state.action_audit_events == 0
+    assert state.action_notifications == 0
 
 
 @pytest.fixture

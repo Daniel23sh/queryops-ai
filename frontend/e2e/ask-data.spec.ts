@@ -102,5 +102,19 @@ test.describe("Ask Data governed flows", () => {
     await page.getByRole("button", { name: "Export CSV" }).click();
     const csv = await download;
     expect(csv.suggestedFilename()).toMatch(/\.csv$/);
+
+    await page.goto("/audit");
+    await expect(page.getByRole("heading", { name: "Audit", exact: true })).toBeVisible();
+    await page.getByLabel("Event type").fill("csv_export");
+    await page.getByRole("button", { name: "Apply filters", exact: true }).click();
+    const exportRow = page.getByRole("row").filter({ hasText: "Csv Export" });
+    await expect(exportRow).toHaveCount(1);
+    await exportRow.getByRole("button", { name: "View details", exact: true }).click();
+    const auditDetails = page.getByRole("dialog", { name: "Audit event details", exact: true });
+    await expect(auditDetails).toContainText("Only fields explicitly returned for your current audit permission are shown.");
+    const safeAuditText = await auditDetails.innerText();
+    for (const forbidden of ["generated_sql", "executed_sql", "audit_metadata", "permission catalog"]) {
+      expect(safeAuditText).not.toContain(forbidden);
+    }
   });
 });

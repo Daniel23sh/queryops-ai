@@ -1,6 +1,9 @@
 import { expect, type Page } from "@playwright/test";
 
-export async function loginAs(page: Page, profile: "Demo Admin" | "Demo Analyst" | "Demo User") {
+export async function loginAs(
+  page: Page,
+  profile: "Demo Admin" | "Demo Analyst" | "Demo Manager" | "Demo User"
+) {
   await page.goto("/login");
   const loginResponse = page.waitForResponse((response) =>
     response.url().endsWith("/api/v1/demo/login") && response.request().method() === "POST"
@@ -14,6 +17,18 @@ export async function loginAs(page: Page, profile: "Demo Admin" | "Demo Analyst"
   ).toBeTruthy();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByRole("heading", { name: "My Dashboard", exact: true })).toBeVisible();
+}
+
+export async function logout(page: Page, profile: string) {
+  await page.getByRole("button", { name: `Open user menu for ${profile}`, exact: true }).click();
+  const responsePromise = page.waitForResponse((response) =>
+    response.url().endsWith("/api/v1/auth/logout") && response.request().method() === "POST"
+  );
+  await page.getByRole("menuitem", { name: "Log out", exact: true }).click();
+  const response = await responsePromise;
+  expect(response.ok(), await response.text()).toBeTruthy();
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.getByRole("heading", { name: "Choose a demo profile", exact: true })).toBeVisible();
 }
 
 export async function openAskData(page: Page) {
@@ -73,7 +88,10 @@ export async function saveCurrentResultToDashboard(
 }
 
 export async function chooseTemplate(page: Page, title: string) {
-  await page.getByRole("button", { name: /Templates|Choose a template/ }).first().click();
+  await page
+    .getByRole("region", { name: "Ask Data command", exact: true })
+    .getByRole("button", { name: /^(Templates|Choose a template)$/ })
+    .click();
   const drawer = page.getByRole("dialog", { name: "Templates" });
   await expect(drawer).toBeVisible();
   const item = drawer.locator("li").filter({ hasText: title });

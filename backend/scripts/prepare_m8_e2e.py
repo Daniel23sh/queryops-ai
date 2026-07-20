@@ -4,11 +4,13 @@ import ipaddress
 import os
 import re
 from dataclasses import dataclass
+from datetime import datetime, timedelta
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, func, or_, select
 from sqlalchemy.engine import URL, make_url
 from sqlalchemy.orm import Session
 
+from app.domains.it_operations.models import DirectoryUser, LicenseAssignment
 from app.models.product import AccessScope, AppUser, UserAccessScope
 
 
@@ -33,6 +35,7 @@ class PreparationResult:
     analyst_user_id: str
     finance_scope_id: str
     created: bool
+    stabilized_service_assignments: int
 
 
 def validated_e2e_database_url(
@@ -85,7 +88,7 @@ def validated_e2e_database_url(
     return target_url
 
 
-def prepare_analyst_finance_scope(session: Session) -> PreparationResult:
+def prepare_e2e_state(session: Session, *, now: datetime) -> PreparationResult:
     analyst = session.scalar(select(AppUser).where(AppUser.email == ANALYST_EMAIL))
     finance = session.scalar(
         select(AccessScope).where(
@@ -115,11 +118,29 @@ def prepare_analyst_finance_scope(session: Session) -> PreparationResult:
     else:
         assignment.access_level = "manage"
 
+    service_assignments = session.scalars(
+        select(LicenseAssignment)
+        .join(DirectoryUser, DirectoryUser.id == LicenseAssignment.user_id)
+        .where(
+            LicenseAssignment.department_id == finance.department_id,
+            LicenseAssignment.status == "active",
+            LicenseAssignment.is_mandatory.is_(False),
+            DirectoryUser.account_type == "service",
+            or_(
+                LicenseAssignment.last_used_at.is_(None),
+                LicenseAssignment.last_used_at < now - timedelta(days=60),
+            ),
+        )
+    ).all()
+    for service_assignment in service_assignments:
+        service_assignment.last_used_at = now
+
     session.flush()
     return PreparationResult(
         analyst_user_id=str(analyst.id),
         finance_scope_id=str(finance.id),
         created=created,
+        stabilized_service_assignments=len(service_assignments),
     )
 
 
@@ -167,7 +188,9 @@ def main() -> None:
     engine = create_engine(target_url)
     try:
         with Session(engine) as session:
-            result = prepare_analyst_finance_scope(session)
+            now = session.scalar(select(func.now()))
+            assert now is not None
+            result = prepare_e2e_state(session, now=now)
             session.commit()
     finally:
         engine.dispose()
@@ -175,7 +198,9 @@ def main() -> None:
     status = "created" if result.created else "already present"
     print(
         "M8 E2E Finance scope for Demo Analyst: "
-        f"{status} (user={result.analyst_user_id}, scope={result.finance_scope_id})."
+        f"{status} (user={result.analyst_user_id}, scope={result.finance_scope_id}); "
+        "Finance service-account reclaim candidates stabilized: "
+        f"{result.stabilized_service_assignments}."
     )
 
 
