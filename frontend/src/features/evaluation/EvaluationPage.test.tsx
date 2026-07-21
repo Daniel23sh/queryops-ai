@@ -28,8 +28,12 @@ describe("Evaluation workspace", () => {
     renderAppAt("/evaluation?tab=queries");
 
     expect(await screen.findByRole("heading", { name: "Query measurements" })).toBeInTheDocument();
-    const queryCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/evaluation/queries"));
-    expect(String(queryCall?.[0])).toContain(`run_id=${runId}`);
+    await waitFor(() => {
+      const queryCall = fetchMock.mock.calls.find(([url]) =>
+        String(url).includes("/evaluation/queries")
+      );
+      expect(String(queryCall?.[0])).toContain(`run_id=${runId}`);
+    });
     expect(window.location.search).toContain("tab=queries");
     expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("/evaluation/overview"))).toHaveLength(1);
   });

@@ -114,6 +114,41 @@ def provider_for(client: FakeClient) -> OpenAIProvider:
     )
 
 
+def test_openai_client_disables_ambient_sdk_routing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client_arguments: dict[str, Any] = {}
+    http_arguments: dict[str, Any] = {}
+    fake_client = FakeClient()
+
+    def fake_http_client(**kwargs: Any) -> object:
+        http_arguments.update(kwargs)
+        return object()
+
+    def fake_openai(**kwargs: Any) -> FakeClient:
+        client_arguments.update(kwargs)
+        return fake_client
+
+    monkeypatch.setattr(
+        "app.query_engine.openai_provider.DefaultHttpxClient", fake_http_client
+    )
+    monkeypatch.setattr("app.query_engine.openai_provider.OpenAI", fake_openai)
+
+    OpenAIProvider(OpenAIProviderSettings(api_key="test-key"))
+
+    assert client_arguments == {
+        "api_key": "test-key",
+        "admin_api_key": "",
+        "organization": "",
+        "project": "",
+        "webhook_secret": "",
+        "base_url": "https://api.openai.com/v1",
+        "max_retries": 2,
+        "http_client": client_arguments["http_client"],
+    }
+    assert http_arguments == {"timeout": 45.0, "trust_env": False}
+
+
 def response_for(parsed: Any, *, status: str = "completed") -> Any:
     return SimpleNamespace(
         output_parsed=parsed,

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import os
 import math
+import os
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -22,6 +22,16 @@ MODEL_LABEL_MAX_LENGTH = 128
 MODEL_LABEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 SUPPORTED_REASONING_EFFORTS = frozenset({"none", "low", "medium", "high"})
 OFFICIAL_OPENAI_BASE_URL = "https://api.openai.com/v1"
+UNSUPPORTED_OPENAI_ENVIRONMENT_KEYS = frozenset(
+    {
+        "OPENAI_ADMIN_KEY",
+        "OPENAI_BASE_URL",
+        "OPENAI_CUSTOM_HEADERS",
+        "OPENAI_ORG_ID",
+        "OPENAI_PROJECT_ID",
+        "OPENAI_WEBHOOK_SECRET",
+    }
+)
 
 
 class ProviderId(str, Enum):
@@ -48,6 +58,7 @@ class OpenAIProviderSettings:
     def __post_init__(self) -> None:
         if not isinstance(self.api_key, str) or not self.api_key.strip():
             raise ProviderConfigurationError("provider_credentials_missing")
+        object.__setattr__(self, "api_key", self.api_key.strip())
         if not valid_model_label(self.model):
             raise ProviderConfigurationError("provider_model_invalid")
         if (
@@ -130,7 +141,10 @@ def load_provider_settings(
             raise ProviderConfigurationError("provider_model_mismatch")
         return ProviderSettings(provider=provider)
 
-    if values.get("OPENAI_BASE_URL", "").strip():
+    if any(
+        values.get(key, "").strip()
+        for key in UNSUPPORTED_OPENAI_ENVIRONMENT_KEYS
+    ):
         raise ProviderConfigurationError("unsupported_provider_endpoint")
 
     api_key = values.get("OPENAI_API_KEY", "").strip()

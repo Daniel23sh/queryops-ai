@@ -8,7 +8,7 @@ from enum import Enum
 from typing import Any, Literal, Protocol
 
 import openai
-from openai import OpenAI
+from openai import DefaultHttpxClient, OpenAI
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 
 from app.query_engine.llm_provider import LLMProviderFailure, SQLGenerationResult
@@ -100,9 +100,16 @@ class OpenAIProvider:
         self.model_name = settings.model
         self._client = client or OpenAI(
             api_key=settings.api_key,
+            admin_api_key="",
+            organization="",
+            project="",
+            webhook_secret="",
             base_url=OFFICIAL_OPENAI_BASE_URL,
-            timeout=settings.timeout_seconds,
             max_retries=settings.max_retries,
+            http_client=DefaultHttpxClient(
+                timeout=settings.timeout_seconds,
+                trust_env=False,
+            ),
         )
 
     def generate_sql(

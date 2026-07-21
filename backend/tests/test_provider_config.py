@@ -136,13 +136,26 @@ def test_invalid_provider_configuration_fails_closed(
         load_provider_settings(values, model_override=override)
 
 
-def test_openai_rejects_caller_controlled_endpoint() -> None:
+@pytest.mark.parametrize(
+    "unsupported_key",
+    [
+        "OPENAI_ADMIN_KEY",
+        "OPENAI_BASE_URL",
+        "OPENAI_CUSTOM_HEADERS",
+        "OPENAI_ORG_ID",
+        "OPENAI_PROJECT_ID",
+        "OPENAI_WEBHOOK_SECRET",
+    ],
+)
+def test_openai_rejects_caller_controlled_sdk_configuration(
+    unsupported_key: str,
+) -> None:
     with pytest.raises(ProviderConfigurationError) as exc_info:
         load_provider_settings(
             {
                 "LLM_PROVIDER": "openai",
                 "OPENAI_API_KEY": "test-key",
-                "OPENAI_BASE_URL": "https://attacker.invalid/v1",
+                unsupported_key: "untrusted-value",
             }
         )
 
@@ -155,3 +168,13 @@ def test_provider_settings_repr_does_not_expose_api_key() -> None:
     )
 
     assert "super-secret-key" not in repr(settings)
+
+
+def test_openai_settings_normalize_key_without_exposing_it() -> None:
+    settings = load_provider_settings(
+        {"LLM_PROVIDER": "openai", "OPENAI_API_KEY": "  test-key  "}
+    )
+
+    assert settings.openai is not None
+    assert settings.openai.api_key == "test-key"
+    assert "test-key" not in repr(settings)
