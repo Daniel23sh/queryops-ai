@@ -306,6 +306,7 @@ GET /api/v1/evaluation/queries
 GET /api/v1/evaluation/actions
 GET /api/v1/evaluation/security
 GET /api/v1/evaluation/dashboards
+GET /api/v1/evaluation/readiness
 ```
 
 User is denied evaluation access. Manager requires `can_view_department_evaluation` and receives business-only metrics recalculated for the Manager's assigned department scopes. Analyst requires `can_view_scope_evaluation` and receives recalculated assigned-scope technical metrics; referenced-resource metadata additionally requires `can_view_sql`. Admin requires `can_view_global_evaluation` plus global scope and receives the safe global technical view. Scope selection is server-authoritative and is not accepted from the browser.
@@ -396,6 +397,9 @@ Run backend tests:
 
 ```bash
 pytest
+ruff check app scripts
+pyright
+python -m compileall -q app scripts
 ```
 
 Run Alembic commands from the host with PostgreSQL running:
@@ -665,9 +669,19 @@ DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_eval
   --model gpt-5.6-terra
 ```
 
-Evaluation persistence contains only stable case metadata, expected/actual outcome classifications, bounded error codes, aggregate counts, scores, safe breakdowns, a dataset digest, validated provider/model identity, and bounded latency/attempt/token measurements. It excludes raw actual/expected rows, prompts, provider payloads or responses, reasoning, request/response IDs, headers, secrets, stack traces, raw driver errors, and new copies of generated or baseline SQL. The Evaluation workspace remains read-only. Mock and OpenAI scores are measurements; final M9 release thresholds are not defined or enforced until M9 PR6.
+Evaluation persistence contains only stable case metadata, expected/actual outcome classifications, bounded error codes, aggregate counts, scores, safe breakdowns, a dataset digest, validated provider/model identity, and bounded latency/attempt/token measurements. It excludes raw actual/expected rows, prompts, provider payloads or responses, reasoning, request/response IDs, headers, secrets, stack traces, raw driver errors, and new copies of generated or baseline SQL. The Evaluation workspace remains read-only. Mock and OpenAI scores are measurements; only a full eligible OpenAI run can satisfy the versioned M9 PR6 readiness thresholds.
 
 Metric denominators are explicit: overall score is the mean semantic score across completed cases; expected-behavior match rate is exact outcome matches divided by completed cases; each difficulty/category/case-type score is the mean for completed cases in that group; and security pass rate is passed `security`-difficulty cases divided by completed `security`-difficulty cases. Query execution counts include only cases that reached SQL execution, so expected denials, clarifications, and validator blocks are not mislabeled as execution failures.
+
+M9 PR6 adds the fail-closed `queryops-v1-readiness-v1` policy. Check one persisted run without running evaluation or calling a provider:
+
+```bash
+cd backend
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_eval_test \
+  .venv/bin/python scripts/check_v1_readiness.py --run-id YOUR_RUN_UUID
+```
+
+Add `--json` for the fixed bounded machine-readable projection. Exit 0 means `ready`, exit 1 means complete but `not_ready`, and exit 2 means `incomplete` or safe failure. Mock, filtered, stale, partial, failed, running, duplicate, extra, missing, and malformed evidence cannot pass.
 
 Run PostgreSQL query/RLS tests:
 
@@ -745,6 +759,9 @@ Build and test commands:
 
 ```bash
 npm run build
+npm run lint
+npm run typecheck:app
+npm run typecheck:node
 npm test
 npx playwright install chromium
 npm run test:e2e
