@@ -26,7 +26,9 @@ Current PR scope:
 
 `M9 PR4 — Role-Aware Evaluation Workspace UI` is complete and merged through PR #39. The verified `main` merge commit is `f8990b78e86de1d24a51783270e95fc05a07beca`.
 
-`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` is active. `M9 PR5 — Governed Real-LLM Evaluation Mode` is implementation- and verification-complete on `feature/m9-real-llm-evaluation` but is not merged. `M9 PR6 — V1 Quality Gates, Readiness & Completion` remains planned and inactive.
+`M9 PR5 — Governed Real-LLM Evaluation Mode` is complete and merged through PR #40. The verified `main` merge commit is `695be1358ea2fcd67fc2cd25c66e2281986dd99f`.
+
+`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` is active. `M9 PR6 — V1 Quality Gates, Readiness & Completion` is active on `feature/m9-v1-quality-gates-readiness`. Mock remains the development and CI default. No live OpenAI measurement has been accepted as V1 release evidence; Milestone 9 and V1 remain incomplete until the versioned readiness policy, deterministic release gates, manual QA, and one qualifying full OpenAI measurement all pass.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
@@ -452,7 +454,7 @@ The latest PR status is:
 
 `Milestone 8 — Actions, Approvals & Audit` is complete and merged through PR #35 at verified `main` commit `408190f1cdf5710ed80a83065d65fd9cd01c4f87`.
 
-`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` is active. M9 PR1 is complete through PR #36. M9 PR2 is complete through PR #37. M9 PR3 is complete through PR #38 at verified `main` commit `fd1b8cccba3190714233976daa334364c4b4b080`. M9 PR4 is complete through PR #39 at verified `main` commit `f8990b78e86de1d24a51783270e95fc05a07beca`. `M9 PR5 — Governed Real-LLM Evaluation Mode` is implementation- and verification-complete on `feature/m9-real-llm-evaluation` but is not merged; `M9 PR6 — V1 Quality Gates, Readiness & Completion` remains planned and inactive.
+`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` is active. M9 PR1 is complete through PR #36. M9 PR2 is complete through PR #37. M9 PR3 is complete through PR #38 at verified `main` commit `fd1b8cccba3190714233976daa334364c4b4b080`. M9 PR4 is complete through PR #39 at verified `main` commit `f8990b78e86de1d24a51783270e95fc05a07beca`. M9 PR5 is complete through PR #40 at verified `main` commit `695be1358ea2fcd67fc2cd25c66e2281986dd99f`. `M9 PR6 — V1 Quality Gates, Readiness & Completion` is active; Mock remains the CI default and no live OpenAI run has yet been accepted as V1 release evidence.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -1402,7 +1404,7 @@ Milestone 9 is split into six approved PRs:
 5. `M9 PR5 — Real LLM Evaluation Mode`
 6. `M9 PR6 — V1 Quality Gates, Readiness & Completion`
 
-PR1 through PR4 are complete and merged. Only PR5 is active. PR6's name records sequence and ownership; it does not authorize implementation.
+PR1 through PR5 are complete and merged. PR5 merged through PR #40 at verified `main` commit `695be1358ea2fcd67fc2cd25c66e2281986dd99f`. PR6 is active. Mock remains the CI default, and no live OpenAI measurement has yet been accepted as V1 release evidence.
 
 ### M9 PR1 — Evaluation Dataset & Scoring Foundation
 
@@ -1577,7 +1579,7 @@ Guardrails:
 - The read API supports latest eligible completed runs across `mock` and `openai` without provider filtering, run history/comparison, or a picker. The frontend adds no provider/model selector, key settings, run/rerun controls, or new Manager technical disclosure.
 - Do not tune the dataset, templates, or prompt against case IDs/baselines; add workflows, thresholds, real-provider CI, scheduled/nightly execution, background infrastructure, API mutation endpoints, schema/seed/permission/RLS changes, or any `M9 PR6 — V1 Quality Gates, Readiness & Completion` behavior.
 
-Status: implementation- and verification-complete on `feature/m9-real-llm-evaluation`; not merged. The implementation adds only the explicit `openai` mode, centralized immutable provider configuration, an allowlisted prompt projection, strict Responses API output, governed Query Engine and runner integration, sanitized existing-schema usage persistence, manual CLI selection, and validated read-API/workspace metadata. Mock remains the default, and template-backed queries remain provider-free.
+Status: complete and merged through PR #40 at verified `main` commit `695be1358ea2fcd67fc2cd25c66e2281986dd99f`. The implementation adds only the explicit `openai` mode, centralized immutable provider configuration, an allowlisted prompt projection, strict Responses API output, governed Query Engine and runner integration, sanitized existing-schema usage persistence, manual CLI selection, and validated read-API/workspace metadata. Mock remains the default, and template-backed queries remain provider-free.
 
 Final verification passed 893 default backend tests with 153 expected PostgreSQL-only skips, all 1046 tests against a fresh disposable PostgreSQL database with no skips, the exact 20-case M8 action-security suite, 268 frontend tests, both TypeScript checks, the production frontend build, five Evaluation Chromium flows, two isolated M8 primary/negative Chromium flows, Alembic head/no-diff verification, and focused provider/runner/API/CLI safety coverage. A complete deterministic MockLLM run attempted all 40 cases and measured 10 passed, 30 failed, overall semantic score 0.296, expected-behavior match rate 0.250, and security pass rate 0.800 (4/5). No live OpenAI request was made because billable execution was not authorized. CodeRabbit CLI was installed but unauthenticated, so the final review was **Manual M9 PR5 review — not a CodeRabbit result**; it fixed one Major ambient SDK configuration/proxy-isolation issue and left no unresolved actionable finding.
 
