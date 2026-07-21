@@ -252,7 +252,11 @@ class EvaluationRunner:
                     resolve_evaluation_identity(db, case)
                 table_names = sorted({table for case in cases for table in case.expected_tables})
                 resources = db.scalars(
-                    select(DataResource).where(DataResource.table_name.in_(table_names))
+                    select(DataResource).where(
+                        DataResource.resource_type == "table",
+                        DataResource.domain == "it_operations",
+                        DataResource.table_name.in_(table_names),
+                    )
                 ).all()
                 if {resource.table_name for resource in resources} != set(table_names):
                     raise EvaluationRunnerError(
@@ -454,7 +458,11 @@ def _denied_case_resources(
         return None
     resources = db.scalars(
         select(DataResource)
-        .where(DataResource.table_name.in_(case.expected_tables))
+        .where(
+            DataResource.resource_type == "table",
+            DataResource.domain == "it_operations",
+            DataResource.table_name.in_(case.expected_tables),
+        )
         .order_by(DataResource.table_name)
     ).all()
     if len(resources) != len(case.expected_tables):

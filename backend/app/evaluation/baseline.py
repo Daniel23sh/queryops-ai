@@ -90,7 +90,7 @@ def execute_evaluation_baseline(
                 "resource_not_queryable",
                 "unsafe_sql",
             }
-            else "baseline_execution_failed"
+            else "execution_failed"
         )
         raise EvaluationBaselineError(
             f"baseline_{code}",

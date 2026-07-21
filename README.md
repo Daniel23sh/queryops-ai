@@ -611,6 +611,8 @@ Available filters can be combined without changing dataset order:
 
 Evaluation persistence contains only stable case metadata, expected/actual outcome classifications, bounded error codes, aggregate counts, scores, safe breakdowns, and a dataset digest. It excludes raw actual/expected rows, prompts, provider payloads, secrets, stack traces, raw driver errors, and new copies of generated SQL. MockLLM results are measurements; M9 PR2 does not enforce final release thresholds.
 
+Metric denominators are explicit: overall score is the mean semantic score across completed cases; expected-behavior match rate is exact outcome matches divided by completed cases; each difficulty/category/case-type score is the mean for completed cases in that group; and security pass rate is passed `security`-difficulty cases divided by completed `security`-difficulty cases. Query execution counts include only cases that reached SQL execution, so expected denials, clarifications, and validator blocks are not mislabeled as execution failures.
+
 Run PostgreSQL query/RLS tests:
 
 ```bash

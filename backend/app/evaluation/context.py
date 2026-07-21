@@ -119,6 +119,7 @@ def _resolve_target_scope(
         .where(
             AccessScope.scope_type == scope_type,
             AccessScope.scope_key.not_in(assigned_keys),
+            AccessScope.domain == "it_operations",
         )
         .order_by(AccessScope.scope_key)
         .limit(1)

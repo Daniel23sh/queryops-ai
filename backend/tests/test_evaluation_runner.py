@@ -117,6 +117,8 @@ def test_baseline_is_revalidated_and_uses_restricted_executor() -> None:
     assert captured["access_context"] is identity.access_context
     assert captured["validation"].valid is True
     assert captured["options"].query_action == "query:approved_template"
+    assert captured["options"].statement_timeout_ms == 5_000
+    assert captured["options"].row_limit == 500
 
 
 @pytest.mark.parametrize(
@@ -258,6 +260,54 @@ def test_fatal_baseline_failure_marks_run_terminal(
     assert run is not None and run.status == "failed"
     assert run.completed_at is not None
     assert result_count == 1
+
+
+def test_runner_maps_validator_rejection_to_unsafe_block(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory = _sqlite_session_factory()
+    unsafe_case = load_it_operations_evaluation_set().cases_by_id[
+        "itops-security-003"
+    ]
+    evaluation_set = EvaluationSet(
+        dataset_id="test",
+        domain_id="it_operations",
+        version="1",
+        cases=(unsafe_case,),
+    )
+
+    class UnsafeService:
+        def run(self, _db, _user, _request):
+            return QueryEngineServiceResult(
+                status="failed",
+                query_run_id=None,
+                error_code="validation_failed",
+                metadata={
+                    "referenced_tables": ["directory_users"],
+                    "validation": {
+                        "valid": False,
+                        "error_code": "prohibited_statement",
+                    },
+                },
+            )
+
+    runner = EvaluationRunner(
+        session_factory,
+        dataset_loader=lambda: evaluation_set,
+        query_service_factory=lambda _pack: UnsafeService(),
+    )
+    monkeypatch.setattr(runner, "_verify_prerequisites", lambda _cases: None)
+    monkeypatch.setattr(
+        "app.evaluation.runner.resolve_evaluation_identity",
+        lambda _db, case: _identity(case.requesting_role),
+    )
+
+    summary = runner.run()
+
+    assert summary.passed_count == 1
+    assert summary.cases[0].actual_outcome == "unsafe_blocked"
+    assert summary.cases[0].error_code == "unsafe_sql_blocked"
+    assert summary.query_execution_failed_count == 0
 
 
 class _Baseline:

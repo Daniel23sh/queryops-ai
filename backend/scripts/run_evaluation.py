@@ -104,7 +104,7 @@ def _print_summary(summary: EvaluationRunSummary) -> None:
     print(
         "Query execution: "
         f"succeeded={summary.query_execution_succeeded_count} "
-        f"failed_or_blocked={summary.query_execution_failed_count}"
+        f"failed={summary.query_execution_failed_count}"
     )
     _print_breakdown("Difficulty", summary.by_difficulty)
     _print_breakdown("Category", summary.by_category)
