@@ -66,15 +66,28 @@ Prefer boring, maintainable structure over clever abstractions.
 
 The milestone status is defined in `PROJECT_PLAN.md`.
 
-At the time this file was updated, the most recently completed target is:
+At the time this file was updated, the current target is:
 
 ```txt
-M8 PR7 — E2E, Security Hardening & Completion (implementation-complete; not merged)
+M9 PR1 — Evaluation Dataset & Scoring Foundation
 ```
 
 Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, Milestone 3, Milestone 4, and Milestone 5 are complete under the previous scopes. Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete.
 
-Milestone 6 is complete and merged into `main`. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, `M6 PR3 — CSV Export Backend`, `M6 PR4 — Card Refresh & CSV Export UI`, and `M6 PR5 — Card Reordering & Layout Persistence` plus the final Admin restricted-export policy are complete. PR #24 merged PR5. Milestone 7 — Product UX & Dashboard Redesign is complete. M7 PR1 is complete and merged through PR #25. M7 PR2 is complete and merged through PR #26. M7 PR3 — Dashboard Editor, Grid & Visualizations is complete and merged through PR #27. M7 PR4 — Ask Data Redesign & Final UX Hardening is complete and merged through PR #28. Milestone 8 — Actions, Approvals & Audit is complete. M8 PR1 through PR5 are complete and merged through PR #33. M8 PR6 is complete and merged through PR #34; `main` reached `73531f25f4d234cabc1f509931492ea62b78d8df`. M8 PR7 is implementation- and verification-complete on `feature/m8-e2e-security-completion` but is not merged. The next milestone has not started.
+Milestone 6 is complete and merged into `main`. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, `M6 PR3 — CSV Export Backend`, `M6 PR4 — Card Refresh & CSV Export UI`, and `M6 PR5 — Card Reordering & Layout Persistence` plus the final Admin restricted-export policy are complete. PR #24 merged PR5. Milestone 7 — Product UX & Dashboard Redesign is complete. M7 PR1 is complete and merged through PR #25. M7 PR2 is complete and merged through PR #26. M7 PR3 — Dashboard Editor, Grid & Visualizations is complete and merged through PR #27. M7 PR4 — Ask Data Redesign & Final UX Hardening is complete and merged through PR #28. Milestone 8 — Actions, Approvals & Audit is complete and merged through PR #35; verified `main` reached `408190f1cdf5710ed80a83065d65fd9cd01c4f87`. Milestone 9 — Evaluation, Quality Measurement & V1 Readiness is active, and only M9 PR1 is approved for implementation.
+
+M9 follows this six-PR sequence: dataset/scoring foundation; runner/persistence; APIs/authorization; Evaluation UX; real-LLM evaluation mode; and V1 quality gates/readiness. Do not begin a later PR without explicit activation.
+
+M9 PR1 may add only the 40-case IT Operations evaluation dataset, immutable contracts, strict independent loader, pure semantic scoring utilities, focused tests, and milestone-control documentation.
+
+M9 PR1 guardrails:
+
+* Keep evaluation loading independent from normal Domain Pack and Ask Data loading so malformed evaluator material cannot affect product queries.
+* Treat expected SQL as evaluator-only, read-only, single-statement baseline material over current queryable resources. Never expose it to LLM prompts, schema context, normal APIs, or the browser.
+* Compare result semantics rather than SQL text; preserve duplicate multiplicity and require explicit case-level numeric tolerance.
+* Return safe structured metrics without raw result rows, prompts, secrets, credentials, environment data, or stack traces.
+* Preserve backend authorization, `UserAccessContext`, validator-sanitized execution, `queryops_query_runtime`, transaction-local PostgreSQL RLS, non-queryable `it_audit_events`, and app-user/directory-user identity separation.
+* Do not add execution/orchestration, persistence writes, CLI, APIs, UI, real providers, model calls, API keys, CI workflows, migrations, schema/seed/permission/RLS changes, new actions/templates, broad Domain Pack expansion, or M9 PR2+ behavior.
 
 M8 PR1 may add only the action persistence foundation, SQLAlchemy relationships/enums, typed deterministic Action Engine contracts, explicit fail-closed registry, pure permission/scope policy decisions, the minimum stable access-action vocabulary, and focused foundation tests.
 
@@ -183,7 +196,7 @@ M8 PR7 delivered guarded idempotent disposable E2E preparation; a no-retry Manag
 
 Final verification passed 14 E2E database-safety tests, the exact 20-case suite plus two concurrency cases, 756 default backend tests with 151 expected PostgreSQL-only skips, all 907 disposable-PostgreSQL backend tests with no skips, 247 frontend tests, both TypeScript checks, the production build, seven general Chromium flows, two isolated M8 flows, and a fresh PostgreSQL upgrade/current/no-diff check through migration 0010. The final **Manual M8 PR7 release review — not a CodeRabbit result** found and fixed 4 Minor issues with no Critical or Major finding and no remaining actionable issue.
 
-No schema, migration, normal seed, permission, role mapping, RLS, runtime-role, action policy, lifecycle, execution, audit-writing, notification-recipient, or public API behavior changed. The intentional M8 limits remain: two V1 actions only, synchronous execution, database-only notifications, no automatic retry/rollback or background/external delivery, and operational intervention if execution and separate failure persistence both fail. Milestone 8 is complete; the next milestone has not started.
+No schema, migration, normal seed, permission, role mapping, RLS, runtime-role, action policy, lifecycle, execution, audit-writing, notification-recipient, or public API behavior changed. The intentional M8 limits remain: two V1 actions only, synchronous execution, database-only notifications, no automatic retry/rollback or background/external delivery, and operational intervention if execution and separate failure persistence both fail. Milestone 8 is complete and merged; M9 PR1 is active.
 
 Milestone 2.5 introduced `access_scopes`, `user_access_scopes`, `data_resources`, `UserAccessContext`, `AccessDecision`, and `evaluate_access(subject, action, resource, context)`.
 

@@ -16,7 +16,9 @@ Current PR scope:
 
 `M7 PR4 — Ask Data Redesign & Final UX Hardening` is complete and merged into `main` through PR #28. Milestone 7 is complete.
 
-`Milestone 8 — Actions, Approvals & Audit` is complete. M8 PR1 through PR5 are complete and merged through PR #33. `M8 PR6 — Approvals, Audit & Notifications UX` is complete and merged through PR #34; `main` reached `73531f25f4d234cabc1f509931492ea62b78d8df`. `M8 PR7 — E2E, Security Hardening & Completion` is implementation- and verification-complete on `feature/m8-e2e-security-completion` but is not merged. The next milestone has not started.
+`Milestone 8 — Actions, Approvals & Audit` is complete. M8 PR1 through PR6 are merged through PR #34, and `M8 PR7 — E2E, Security Hardening & Completion` is merged through PR #35. The verified `main` merge commit is `408190f1cdf5710ed80a83065d65fd9cd01c4f87`.
+
+`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` is active. The current scope is `M9 PR1 — Evaluation Dataset & Scoring Foundation`; do not begin M9 PR2 or later work.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
@@ -120,7 +122,7 @@ Explicitly out of scope for M6 PR5:
 - masking
 - tenant/project/region governance
 
-Actions, approvals, audit UI, notifications, real LLM/API-key support, and Supabase Auth remained deferred through Milestone 7. The former Actions, Approvals & Audit Milestone 7 is now Milestone 8 because Product UX & Dashboard Redesign became Milestone 7. Milestone 8 completed the approved seven-PR sequence in Section 17; PR1 through PR6 are merged and PR7 is implementation- and verification-complete but not merged.
+Actions, approvals, audit UI, notifications, real LLM/API-key support, and Supabase Auth remained deferred through Milestone 7. The former Actions, Approvals & Audit Milestone 7 is now Milestone 8 because Product UX & Dashboard Redesign became Milestone 7. Milestone 8 completed and merged the approved seven-PR sequence in Section 17 through PR #35.
 
 ## 2. Product Summary
 
@@ -440,7 +442,9 @@ The latest PR status is:
 
 `M7 PR2 — Role-Aware Home & Dashboard Browser` is complete and merged through PR #26. `M7 PR3 — Dashboard Editor, Grid & Visualizations` is complete and merged through PR #27. `M7 PR4 — Ask Data Redesign & Final UX Hardening` is complete and merged through PR #28.
 
-`Milestone 8 — Actions, Approvals & Audit` is complete. M8 PR1 through PR5 are complete and merged through PR #33. M8 PR6 is complete and merged through PR #34. M8 PR7 is implementation- and verification-complete on `feature/m8-e2e-security-completion` but is not merged. The next milestone has not started.
+`Milestone 8 — Actions, Approvals & Audit` is complete and merged through PR #35 at verified `main` commit `408190f1cdf5710ed80a83065d65fd9cd01c4f87`.
+
+`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` is active. `M9 PR1 — Evaluation Dataset & Scoring Foundation` is the only approved implementation scope.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -944,7 +948,7 @@ Milestone 8 is split into seven approved PRs:
 6. `M8 PR6 — Approvals, Audit & Notifications UX`
 7. `M8 PR7 — M8 E2E, Security Hardening & Completion`
 
-M8 PR1 is complete and merged through PR #29. M8 PR2 is complete and merged through PR #30. M8 PR3 is complete and merged through PR #31. M8 PR4 is complete and merged through PR #32. M8 PR5 is complete and merged through PR #33. M8 PR6 is complete and merged through PR #34. M8 PR7 is implementation- and verification-complete on `feature/m8-e2e-security-completion` but is not merged. Milestone 8 is complete; the next milestone has not started.
+M8 PR1 is complete and merged through PR #29. M8 PR2 is complete and merged through PR #30. M8 PR3 is complete and merged through PR #31. M8 PR4 is complete and merged through PR #32. M8 PR5 is complete and merged through PR #33. M8 PR6 is complete and merged through PR #34. M8 PR7 is complete and merged through PR #35. Milestone 8 is complete; M9 PR1 is active.
 
 ### M8 PR1 — Action Persistence & Engine Contracts
 
@@ -1338,7 +1342,7 @@ Branch:
 feature/m8-e2e-security-completion
 ```
 
-Status: implementation- and verification-complete; not merged.
+Status: complete and merged through PR #35.
 
 Goal: close Milestone 8 by automating the real governed requester-to-approver workflow, enforcing PostgreSQL/RLS/action security gates in CI, mapping the required security cases to exact tests, and fixing only defects exposed by those release gates.
 
@@ -1375,4 +1379,56 @@ Final verification passed 14 E2E-database safety tests, the exact 20-case action
 
 The final **Manual M8 PR7 release review — not a CodeRabbit result** found 0 Critical, 0 Major, and 4 actionable Minor issues. All were fixed: terminal approval reload no longer makes a requester-only fetch, time-relative seed drift is stabilized only in the disposable E2E database, the Admin export smoke uses the persisted `csv_export` contract, and PostgreSQL CI explicitly fails on skips. The repeated review found no remaining actionable issue.
 
-No schema, migration, normal seed, permission, role mapping, RLS, runtime-role, action policy, lifecycle, execution, audit-writing, notification-recipient, or public API contract changed. The intentional M8 limits remain: only `reclaim_unused_license` and `disable_inactive_user` exist; execution is synchronous; notifications are database-only; there is no automatic retry or rollback action, queue, worker, scheduler, Redis, WebSocket, or external delivery; and operational intervention remains necessary if both execution and separate failure persistence fail. Milestone 8 is complete, and the next milestone has not started.
+No schema, migration, normal seed, permission, role mapping, RLS, runtime-role, action policy, lifecycle, execution, audit-writing, notification-recipient, or public API contract changed. The intentional M8 limits remain: only `reclaim_unused_license` and `disable_inactive_user` exist; execution is synchronous; notifications are database-only; there is no automatic retry or rollback action, queue, worker, scheduler, Redis, WebSocket, or external delivery; and operational intervention remains necessary if both execution and separate failure persistence fail. Milestone 8 is complete and merged; M9 PR1 is active.
+
+## 18. Milestone 9 Implementation Plan
+
+The original private planning documents called Evaluation, Testing & CI Hardening Milestone 8. It is Milestone 9 in this authoritative plan because Product UX became M7 and Actions, Approvals & Audit became M8.
+
+Milestone 9 is split into six approved PRs:
+
+1. `M9 PR1 — Evaluation Dataset & Scoring Foundation`
+2. `M9 PR2 — Evaluation Runner & Persistence`
+3. `M9 PR3 — Evaluation APIs & Authorization`
+4. `M9 PR4 — Evaluation UX`
+5. `M9 PR5 — Real LLM Evaluation Mode`
+6. `M9 PR6 — V1 Quality Gates, Readiness & Completion`
+
+Only PR1 is active. Later PR names record sequence and ownership; they do not authorize implementation.
+
+### M9 PR1 — Evaluation Dataset & Scoring Foundation
+
+Branch:
+
+```text
+feature/m9-evaluation-foundation
+```
+
+Goal: add the committed 40-case IT Operations evaluation dataset, immutable typed contracts, a strict independent loader, and pure semantic scoring primitives with focused tests.
+
+In scope:
+
+- exactly 40 deterministic cases: 10 easy, 15 medium, 10 hard, and 5 security/permission cases
+- representation of the six existing template-backed MockLLM evaluation cases
+- strict validation of case shape, enums, roles, scopes, schema references, expectations, and evaluator-only baseline SQL
+- semantic result comparison for ordered/unordered rows, aggregates, stable keys, duplicates, normalized values, explicit tolerances, expected outcomes, and referenced tables
+- safe structured metrics and failure reasons that contain no raw rows
+- milestone-control documentation and focused/full backend regression tests
+
+Guardrails:
+
+- Keep normal Domain Pack and Ask Data loading independent from evaluation loading; a malformed evaluation file must not degrade product queries.
+- Baseline SQL is evaluator-only, read-only, single-statement material over known queryable resources. It is never prompt/schema-context input or a normal product response.
+- Compare result semantics, never generated SQL text. Numeric tolerance is explicit per case and defaults to exact comparison.
+- Do not persist raw result rows, prompts, secrets, credentials, environment values, or stack traces in score output.
+- Preserve backend authorization, `UserAccessContext`, validator-sanitized SQL, `queryops_query_runtime`, transaction-local PostgreSQL RLS, non-queryable `it_audit_events`, and app-user/directory-user identity separation.
+- Preserve all existing security tests and M8 action, approval, audit, and notification behavior.
+
+Explicit exclusions:
+
+- evaluation execution/orchestration, runner, CLI, or scheduling
+- `evaluation_runs` or `evaluation_results` writes
+- evaluation API endpoints, frontend routes, components, or browser tests
+- real LLM providers, external model calls, API keys, or real-LLM CI
+- migrations, schema, normal seed, permissions, role mappings, RLS, or runtime-role changes
+- new query templates/actions, broad Domain Pack expansion, raw result persistence, Supabase Auth, or any M9 PR2+ work
