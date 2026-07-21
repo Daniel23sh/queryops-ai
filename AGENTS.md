@@ -69,25 +69,28 @@ The milestone status is defined in `PROJECT_PLAN.md`.
 At the time this file was updated, the current target is:
 
 ```txt
-M9 PR1 — Evaluation Dataset & Scoring Foundation
+M9 PR2 — Evaluation Runner, Persistence & CLI
 ```
 
 Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, Milestone 3, Milestone 4, and Milestone 5 are complete under the previous scopes. Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete.
 
-Milestone 6 is complete and merged into `main`. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, `M6 PR3 — CSV Export Backend`, `M6 PR4 — Card Refresh & CSV Export UI`, and `M6 PR5 — Card Reordering & Layout Persistence` plus the final Admin restricted-export policy are complete. PR #24 merged PR5. Milestone 7 — Product UX & Dashboard Redesign is complete. M7 PR1 is complete and merged through PR #25. M7 PR2 is complete and merged through PR #26. M7 PR3 — Dashboard Editor, Grid & Visualizations is complete and merged through PR #27. M7 PR4 — Ask Data Redesign & Final UX Hardening is complete and merged through PR #28. Milestone 8 — Actions, Approvals & Audit is complete and merged through PR #35; verified `main` reached `408190f1cdf5710ed80a83065d65fd9cd01c4f87`. Milestone 9 — Evaluation, Quality Measurement & V1 Readiness is active, and only M9 PR1 is approved for implementation.
+Milestone 6 is complete and merged into `main`. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, `M6 PR3 — CSV Export Backend`, `M6 PR4 — Card Refresh & CSV Export UI`, and `M6 PR5 — Card Reordering & Layout Persistence` plus the final Admin restricted-export policy are complete. PR #24 merged PR5. Milestone 7 — Product UX & Dashboard Redesign is complete. M7 PR1 is complete and merged through PR #25. M7 PR2 is complete and merged through PR #26. M7 PR3 — Dashboard Editor, Grid & Visualizations is complete and merged through PR #27. M7 PR4 — Ask Data Redesign & Final UX Hardening is complete and merged through PR #28. Milestone 8 — Actions, Approvals & Audit is complete and merged through PR #35; verified `main` reached `408190f1cdf5710ed80a83065d65fd9cd01c4f87`. M9 PR1 is complete and merged through PR #36; verified `main` reached `a21cdce59f7c3cd05e3e6fec72699554ffbb9979`. Milestone 9 — Evaluation, Quality Measurement & V1 Readiness is active, and only M9 PR2 is approved for implementation.
 
 M9 follows this six-PR sequence: dataset/scoring foundation; runner/persistence; APIs/authorization; Evaluation UX; real-LLM evaluation mode; and V1 quality gates/readiness. Do not begin a later PR without explicit activation.
 
-M9 PR1 may add only the 40-case IT Operations evaluation dataset, immutable contracts, strict independent loader, pure semantic scoring utilities, focused tests, and milestone-control documentation.
+M9 PR1 delivered the 40-case IT Operations evaluation dataset, immutable contracts, strict independent loader, evaluator-only baseline validation, and pure semantic scoring utilities. Preserve its exact 10/15/10/5 distribution and six template-backed cases.
 
-M9 PR1 guardrails:
+M9 PR2 may add only the synchronous governed evaluation runner, deterministic seeded actor/scope resolution, restricted evaluator baseline execution, sanitized `EvaluationRun`/`EvaluationResult` persistence, developer CLI, documentation, and focused/full backend verification.
 
-* Keep evaluation loading independent from normal Domain Pack and Ask Data loading so malformed evaluator material cannot affect product queries.
-* Treat expected SQL as evaluator-only, read-only, single-statement baseline material over current queryable resources. Never expose it to LLM prompts, schema context, normal APIs, or the browser.
-* Compare result semantics rather than SQL text; preserve duplicate multiplicity and require explicit case-level numeric tolerance.
-* Return safe structured metrics without raw result rows, prompts, secrets, credentials, environment data, or stack traces.
-* Preserve backend authorization, `UserAccessContext`, validator-sanitized execution, `queryops_query_runtime`, transaction-local PostgreSQL RLS, non-queryable `it_audit_events`, and app-user/directory-user identity separation.
-* Do not add execution/orchestration, persistence writes, CLI, APIs, UI, real providers, model calls, API keys, CI workflows, migrations, schema/seed/permission/RLS changes, new actions/templates, broad Domain Pack expansion, or M9 PR2+ behavior.
+M9 PR2 guardrails:
+
+* Run generated queries through the production Query Engine service and its existing authorization, validator, restricted runtime role, read-only executor, and transaction-local PostgreSQL RLS boundaries.
+* Resolve seeded evaluation actors by stable application identifiers and exact role/scope requirements. Never embed seed UUIDs, substitute Admin, infer AppUser/DirectoryUser identity, or reseed/reset/migrate automatically.
+* Revalidate evaluator-only baselines and execute them through the same restricted read-only executor and equivalent access context. Never pass baseline SQL to a provider, schema context, product API, or browser.
+* Persist safe outcomes, counts, controlled metrics, and bounded error codes only. Never persist raw rows, prompts, provider payloads, secrets, stack traces, raw driver errors, or new generated SQL copies.
+* Execute cases synchronously in dataset order with isolated session/transaction lifecycles. Continue after ordinary case failures, but terminate safely on fatal configuration, database, or persistence failures.
+* Default to `MockLLMProvider`; unsupported cases remain visible in honest measurements. Do not add templates or provider behavior solely to improve scores.
+* Do not add evaluation APIs/UI, external providers or calls, API keys, GitHub workflows, release thresholds, migrations unless strictly required, schema/seed/permission/RLS changes, queues/workers/retries, or M9 PR3+ behavior.
 
 M8 PR1 may add only the action persistence foundation, SQLAlchemy relationships/enums, typed deterministic Action Engine contracts, explicit fail-closed registry, pure permission/scope policy decisions, the minimum stable access-action vocabulary, and focused foundation tests.
 

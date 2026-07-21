@@ -294,11 +294,11 @@ POST /api/v1/approvals/{approval_id}/reject
 
 The backend deterministically reads current operational data through `queryops_query_runtime`, a read-only transaction, transaction-local RLS context, and PostgreSQL RLS. Draft previews expire after 30 minutes and submitted approvals after 24 hours. Approval synchronously revalidates current rows and dependencies before entering the narrow write role. License reclaim uses current assignment policy; inactive-user disablement requires an active human with no successful login for at least 90 days. Service accounts are always skipped. Privileged humans, humans with open critical security events, and cross-scope humans require Admin override; more than 20 actionable records is a request-level Admin rule.
 
-Successful execution atomically persists the domain mutation, application lifecycle audit, one domain audit per changed record, lifecycle state, and database-only notifications. Failure rolls back all success-side effects and uses a separate safe failure transaction. M8 PR5 adds requester UX for deterministic current-result suggestions, safe previews, submission, owned action tracking/detail, persisted timelines, and pending cancellation. M8 PR6 adds permission-aware Approvals and Audit workspaces, synchronous decision UX, current-recipient notification access, and exact activity totals without changing those backend guarantees. M8 PR7 adds isolated release-blocking browser coverage, a tracked security matrix, and explicit no-skip PostgreSQL CI gates. Milestone 8 is complete; the next milestone has not started.
+Successful execution atomically persists the domain mutation, application lifecycle audit, one domain audit per changed record, lifecycle state, and database-only notifications. Failure rolls back all success-side effects and uses a separate safe failure transaction. M8 PR5 adds requester UX for deterministic current-result suggestions, safe previews, submission, owned action tracking/detail, persisted timelines, and pending cancellation. M8 PR6 adds permission-aware Approvals and Audit workspaces, synchronous decision UX, current-recipient notification access, and exact activity totals without changing those backend guarantees. M8 PR7 adds isolated release-blocking browser coverage, a tracked security matrix, and explicit no-skip PostgreSQL CI gates. Milestone 8 is complete and merged through PR #35.
 
 ## Evaluation and Testing
 
-The project should include evaluation and testing for both regular software behavior and AI-assisted behavior.
+M9 PR1 adds the authoritative 40-case IT Operations evaluation dataset, strict loader, and semantic scoring foundation. M9 PR2 adds a synchronous backend runner that uses the production Query Engine boundary, executes evaluator-only baselines through the restricted read-only PostgreSQL runtime and transaction-local RLS, persists sanitized measurements, and provides a manual MockLLM CLI.
 
 Planned testing areas:
 
@@ -346,7 +346,7 @@ Default local URLs:
 * Backend health endpoint: `http://localhost:8000/health`
 * PostgreSQL: `localhost:5432`
 
-PostgreSQL is included for the local development environment. Milestones 0 through 7 are complete and merged into `main` through PR #28. M8 PR1 through PR5 are merged through PR #33, M8 PR6 is merged through PR #34, and M8 PR7 is implementation- and verification-complete on `feature/m8-e2e-security-completion` but is not merged. Milestone 8 is complete. The current backend includes both V1 actions, approvals, synchronous execution, action/domain audit, database notification APIs, safe timelines, deterministic template suggestions, requester-owned action lists, and exact authorized activity totals. The frontend includes requester Actions, Approvals, Audit, and database Notifications UX.
+PostgreSQL is included for the local development environment. Milestones 0 through 8 are complete and merged through PR #35. M9 PR1 is complete and merged through PR #36; M9 PR2 is the active backend-only scope. The current backend includes both V1 actions, approvals, synchronous execution, action/domain audit, database notification APIs, safe timelines, deterministic template suggestions, requester-owned action lists, exact authorized activity totals, and the evaluation dataset/scoring foundation. The frontend includes requester Actions, Approvals, Audit, and database Notifications UX; no Evaluation UI exists yet.
 
 Stop the stack:
 
@@ -507,7 +507,7 @@ Current Query Engine limitations:
 * Real LLM providers are not implemented.
 * Query detail endpoints return only the authenticated user's own runs.
 * Scope-aware query history requires assigned access scopes and the appropriate history permission.
-* Full domain pack expansion to 36 templates / 40 evaluation cases is not implemented.
+* Evaluation APIs, frontend Evaluation UX, real LLM providers, and enforced M9 release thresholds are not implemented.
 * Scheduled card refresh, scheduled/background actions, and external notification delivery are not implemented. Approval, audit, and notification frontend screens are limited to the active PR6 scope.
 
 ### Role-Aware Home and Dashboard Browser
@@ -589,6 +589,29 @@ cd backend
   tests/test_query_engine_security_regression.py \
   tests/test_query_evaluation_set.py -q
 ```
+
+Run the manual deterministic evaluation after migrating and seeding a PostgreSQL database explicitly:
+
+```bash
+cd backend
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops \
+  .venv/bin/python scripts/run_evaluation.py
+```
+
+The runner defaults to `MockLLMProvider` and runs all 40 cases in stable order. The database must already be at the current Alembic head and contain the deterministic IT Operations seed. The runner never migrates, resets, or seeds the database. Use a disposable database when preparing isolated evaluation data.
+
+Available filters can be combined without changing dataset order:
+
+```bash
+.venv/bin/python scripts/run_evaluation.py --case-id itops-easy-001
+.venv/bin/python scripts/run_evaluation.py --difficulty security
+.venv/bin/python scripts/run_evaluation.py --category licenses
+.venv/bin/python scripts/run_evaluation.py --case-type authorization --security-only
+```
+
+Evaluation persistence contains only stable case metadata, expected/actual outcome classifications, bounded error codes, aggregate counts, scores, safe breakdowns, and a dataset digest. It excludes raw actual/expected rows, prompts, provider payloads, secrets, stack traces, raw driver errors, and new copies of generated SQL. MockLLM results are measurements; M9 PR2 does not enforce final release thresholds.
+
+Metric denominators are explicit: overall score is the mean semantic score across completed cases; expected-behavior match rate is exact outcome matches divided by completed cases; each difficulty/category/case-type score is the mean for completed cases in that group; and security pass rate is passed `security`-difficulty cases divided by completed `security`-difficulty cases. Query execution counts include only cases that reached SQL execution, so expected denials, clarifications, and validator blocks are not mislabeled as execution failures.
 
 Run PostgreSQL query/RLS tests:
 
@@ -776,7 +799,7 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-Milestones 0 through 7 are complete and merged into `main`; M7 PR4 merged through PR #28. Milestone 8 — Actions, Approvals & Audit is complete. M8 PR1 through PR5 are merged through PR #33, M8 PR6 is merged through PR #34, and M8 PR7 is implementation- and verification-complete on `feature/m8-e2e-security-completion` but is not merged. The next milestone has not started.
+Milestones 0 through 8 are complete and merged into `main`; M8 PR7 merged through PR #35. Milestone 9 — Evaluation, Quality Measurement & V1 Readiness is active. M9 PR1 is merged through PR #36, and M9 PR2 — Evaluation Runner, Persistence & CLI is the current scope.
 
 The completed Milestone 7 experience is dark-first with a persistent light option, responsive navigation, My Dashboard as the authenticated home, permission-aware routes, Scope terminology, a responsive dashboard editor, safe visualizations, and command-first Ask Data. The completed Milestone 8 experience adds the two governed V1 actions, requester Actions, exact-scope/global Approvals, scoped/global Audit, database Notifications, synchronous execution, and release-blocking PostgreSQL/browser evidence.
 
@@ -815,6 +838,8 @@ Implemented foundation functionality includes:
 * requester Actions UX with deterministic current-template recommendations, safe preview/submission, owned tracking/detail, timelines, and cancellation
 * permission-aware Approvals and Audit workspaces, synchronous decision UX, exact activity badges, and current-recipient database notification controls
 * deterministic Chromium Playwright coverage in CI
+* authoritative 40-case evaluation dataset, strict loader, and semantic scoring primitives
+* synchronous governed MockLLM evaluation runner with sanitized persistence and a manual CLI
 
 Current milestone status:
 
@@ -828,8 +853,10 @@ M7 PR4 — Ask Data Redesign & Final UX Hardening is complete and merged through
 M8 PR1 through PR4 are complete and merged through PR #32.
 M8 PR5 — Requester Actions UX is complete and merged through PR #33.
 M8 PR6 — Approvals, Audit & Notifications UX is complete and merged through PR #34.
-M8 PR7 — E2E, Security Hardening & Completion is implementation- and verification-complete but not merged.
-Milestone 8 — Actions, Approvals & Audit is complete; the next milestone has not started.
+M8 PR7 — E2E, Security Hardening & Completion is complete and merged through PR #35.
+Milestone 8 — Actions, Approvals & Audit is complete.
+M9 PR1 — Evaluation Dataset & Scoring Foundation is complete and merged through PR #36.
+M9 PR2 — Evaluation Runner, Persistence & CLI is active; M9 PR3 and later work has not started.
 ```
 
 PR6 keeps backend authorization authoritative while adding exact approval/notification activity badges, permission-aware Approvals and Audit workspaces, synchronous approve/reject dialogs, safe related navigation, and current-recipient database notification controls. Under the current permission catalog, Analyst receives exact-scope approval and Audit UX, Admin receives global/override/self-approval UX, Manager retains requester Actions and notifications without Audit access, and User receives notifications without Actions, Approvals, or Audit navigation. The private planning description of a future limited Manager audit view is not implemented because the backend does not currently grant that permission.

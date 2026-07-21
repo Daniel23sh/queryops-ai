@@ -18,7 +18,9 @@ Current PR scope:
 
 `Milestone 8 — Actions, Approvals & Audit` is complete. M8 PR1 through PR6 are merged through PR #34, and `M8 PR7 — E2E, Security Hardening & Completion` is merged through PR #35. The verified `main` merge commit is `408190f1cdf5710ed80a83065d65fd9cd01c4f87`.
 
-`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` is active. The current scope is `M9 PR1 — Evaluation Dataset & Scoring Foundation`; do not begin M9 PR2 or later work.
+`M9 PR1 — Evaluation Dataset & Scoring Foundation` is complete and merged through PR #36. The verified `main` merge commit is `a21cdce59f7c3cd05e3e6fec72699554ffbb9979`.
+
+`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` is active. The current scope is `M9 PR2 — Evaluation Runner, Persistence & CLI`; do not begin M9 PR3 or later work.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
@@ -444,7 +446,7 @@ The latest PR status is:
 
 `Milestone 8 — Actions, Approvals & Audit` is complete and merged through PR #35 at verified `main` commit `408190f1cdf5710ed80a83065d65fd9cd01c4f87`.
 
-`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` is active. `M9 PR1 — Evaluation Dataset & Scoring Foundation` is the only approved implementation scope.
+`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` is active. M9 PR1 is complete and merged through PR #36 at verified `main` commit `a21cdce59f7c3cd05e3e6fec72699554ffbb9979`. `M9 PR2 — Evaluation Runner, Persistence & CLI` is the only approved implementation scope.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -1379,7 +1381,7 @@ Final verification passed 14 E2E-database safety tests, the exact 20-case action
 
 The final **Manual M8 PR7 release review — not a CodeRabbit result** found 0 Critical, 0 Major, and 4 actionable Minor issues. All were fixed: terminal approval reload no longer makes a requester-only fetch, time-relative seed drift is stabilized only in the disposable E2E database, the Admin export smoke uses the persisted `csv_export` contract, and PostgreSQL CI explicitly fails on skips. The repeated review found no remaining actionable issue.
 
-No schema, migration, normal seed, permission, role mapping, RLS, runtime-role, action policy, lifecycle, execution, audit-writing, notification-recipient, or public API contract changed. The intentional M8 limits remain: only `reclaim_unused_license` and `disable_inactive_user` exist; execution is synchronous; notifications are database-only; there is no automatic retry or rollback action, queue, worker, scheduler, Redis, WebSocket, or external delivery; and operational intervention remains necessary if both execution and separate failure persistence fail. Milestone 8 is complete and merged; M9 PR1 is active.
+No schema, migration, normal seed, permission, role mapping, RLS, runtime-role, action policy, lifecycle, execution, audit-writing, notification-recipient, or public API contract changed. The intentional M8 limits remain: only `reclaim_unused_license` and `disable_inactive_user` exist; execution is synchronous; notifications are database-only; there is no automatic retry or rollback action, queue, worker, scheduler, Redis, WebSocket, or external delivery; and operational intervention remains necessary if both execution and separate failure persistence fail. Milestone 8 is complete and merged; M9 PR1 is complete and M9 PR2 is active.
 
 ## 18. Milestone 9 Implementation Plan
 
@@ -1394,7 +1396,7 @@ Milestone 9 is split into six approved PRs:
 5. `M9 PR5 — Real LLM Evaluation Mode`
 6. `M9 PR6 — V1 Quality Gates, Readiness & Completion`
 
-Only PR1 is active. Later PR names record sequence and ownership; they do not authorize implementation.
+PR1 is complete and merged. Only PR2 is active. Later PR names record sequence and ownership; they do not authorize implementation.
 
 ### M9 PR1 — Evaluation Dataset & Scoring Foundation
 
@@ -1432,3 +1434,40 @@ Explicit exclusions:
 - real LLM providers, external model calls, API keys, or real-LLM CI
 - migrations, schema, normal seed, permissions, role mappings, RLS, or runtime-role changes
 - new query templates/actions, broad Domain Pack expansion, raw result persistence, Supabase Auth, or any M9 PR2+ work
+
+Status: complete and merged through PR #36.
+
+### M9 PR2 — Evaluation Runner, Persistence & CLI
+
+Branch:
+
+```text
+feature/m9-evaluation-runner
+```
+
+Goal: execute the authoritative 40-case dataset synchronously through the governed Query Engine, compare actual results with evaluator-only RLS-scoped baselines, persist sanitized measurements, and provide a manual MockLLM CLI.
+
+In scope:
+
+- deterministic seeded AppUser role/scope resolution without dataset UUIDs or identity inference
+- production `QueryEngineService` orchestration and existing authorization/validation/read-only/RLS execution boundaries
+- separately validated evaluator-only baseline execution through `queryops_query_runtime` with equivalent `UserAccessContext`
+- stable filtering, dataset digest, honest aggregate metrics, sanitized `EvaluationRun`/`EvaluationResult` persistence, and case isolation
+- a synchronous developer CLI that defaults to MockLLM and never migrates, resets, or seeds a database
+- focused unit/CLI tests and disposable-PostgreSQL integration coverage
+
+Guardrails:
+
+- Persist no raw actual/expected rows, prompts, provider payloads, secrets, stack traces, raw driver errors, or new generated SQL copies.
+- Keep baseline SQL out of provider/schema-context input and all public/browser data; revalidate it as read-only and execute it only through the restricted runtime role and transaction-local RLS.
+- Resolve the exact requested role and scope from deterministic seed records; fail closed rather than substituting Admin or inferring AppUser/DirectoryUser identity.
+- Execute sequentially in stable dataset order with isolated sessions. Ordinary case failures remain visible and do not hide later cases; fatal setup/database/persistence failures finalize safely.
+- MockLLM scores are measurements, not release thresholds. Unsupported cases must not be skipped or hidden, and the template catalog must not be expanded to improve results.
+- Preserve all M8 authorization, RLS, action, approval, audit, notification, export, and security gates.
+
+Explicit exclusions:
+
+- evaluation APIs, frontend/navigation/components, browser evaluation controls, or M9 PR3 work
+- real LLM providers, external model calls, API keys, real-provider CI, GitHub evaluation workflows, or release thresholds
+- migrations unless the existing generic evaluation tables prove insufficient; schema/seed/permission/role/RLS/runtime-role changes
+- asynchronous execution, workers, queues, schedulers, Redis, retries, WebSockets, automatic database preparation, or raw result persistence
