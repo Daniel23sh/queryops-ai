@@ -7,6 +7,7 @@ export const APP_ROUTES = {
   approvals: "/approvals",
   approvalDetail: "/approvals/:approvalId",
   audit: "/audit",
+  evaluation: "/evaluation",
   dashboard: "/dashboards/:dashboardId",
   profile: "/profile",
   adminRoleRequests: "/admin/role-requests"
@@ -23,6 +24,7 @@ const ROUTE_TITLES: Record<AppRoutePath, string> = {
   [APP_ROUTES.approvals]: "Approvals",
   [APP_ROUTES.approvalDetail]: "Approval Review",
   [APP_ROUTES.audit]: "Audit",
+  [APP_ROUTES.evaluation]: "Evaluation",
   [APP_ROUTES.dashboard]: "Dashboard",
   [APP_ROUTES.profile]: "Profile",
   [APP_ROUTES.adminRoleRequests]: "Role Requests"
