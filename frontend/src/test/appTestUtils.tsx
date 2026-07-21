@@ -156,16 +156,20 @@ export function backendEvaluationOverview({
   completed = 40,
   failed = 30,
   passed = 10,
+  provider = "mock",
+  modelLabel,
   runId = "00000000-0000-4000-8000-000000000901"
 }: {
   availability?: string;
   completed?: number;
   failed?: number;
   passed?: number;
+  provider?: "mock" | "openai" | string;
+  modelLabel?: string;
   runId?: string | null;
 } = {}) {
   return {
-    run: runId ? backendEvaluationRun(runId) : null,
+    run: runId ? backendEvaluationRun(runId, provider, modelLabel) : null,
     metrics: backendEvaluationMetrics({ availability, completed, failed, passed }),
     by_difficulty: [
       evaluationBreakdown("easy", 10, 10, 6, 4, 0.6),
@@ -226,8 +230,12 @@ export function backendEvaluationCapability(capability: "actions" | "dashboards"
   };
 }
 
-function backendEvaluationRun(id = "00000000-0000-4000-8000-000000000901") {
-  return { id, provider: "mock", model_label: "mock-queryops-v1", dataset_id: "it_operations_v1", dataset_version: "1.0.0", dataset_digest: "a".repeat(64), status: "succeeded", started_at: "2026-07-20T11:00:00Z", completed_at: "2026-07-20T11:02:00Z" };
+function backendEvaluationRun(
+  id = "00000000-0000-4000-8000-000000000901",
+  provider = "mock",
+  modelLabel?: string
+) {
+  return { id, provider, model_label: modelLabel ?? (provider === "openai" ? "gpt-5.6-terra" : "mock-queryops-v1"), dataset_id: "it_operations_v1", dataset_version: "1.0.0", dataset_digest: "a".repeat(64), status: "succeeded", started_at: "2026-07-20T11:00:00Z", completed_at: "2026-07-20T11:02:00Z" };
 }
 
 function backendEvaluationMetrics({ availability = "measured", completed, failed, passed }: { availability?: string; completed: number; failed: number; passed: number }) {

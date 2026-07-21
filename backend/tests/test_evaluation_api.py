@@ -386,6 +386,84 @@ def test_latest_default_ignores_running_and_uses_stable_completed_order(
     assert response.json()["data"]["run"]["id"] not in {str(older.id), str(running.id)}
 
 
+@pytest.mark.parametrize(
+    ("older_provider", "newer_provider"),
+    [("mock", "openai"), ("openai", "mock")],
+)
+def test_latest_default_selects_newest_supported_provider_run(
+    client: TestClient,
+    db_session: Session,
+    older_provider: str,
+    newer_provider: str,
+) -> None:
+    _create_run(
+        db_session,
+        completed_at=datetime.now(UTC) - timedelta(hours=1),
+        provider=older_provider,
+    )
+    newer = _create_run(
+        db_session,
+        completed_at=datetime.now(UTC),
+        provider=newer_provider,
+    )
+    _login(client, "demo.admin@queryops.local")
+
+    run = client.get("/api/v1/evaluation/overview").json()["data"]["run"]
+
+    assert run["id"] == str(newer.id)
+    assert run["provider"] == newer_provider
+    assert run["model_label"] == (
+        "gpt-5.6-terra" if newer_provider == "openai" else "mock-queryops-v1"
+    )
+
+
+def test_explicit_openai_run_serializes_validated_identity(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run = _create_run(db_session, provider="openai", model_label="gpt-5.6-terra")
+    _login(client, "demo.admin@queryops.local")
+
+    response = client.get(f"/api/v1/evaluation/overview?run_id={run.id}")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["run"]["provider"] == "openai"
+    assert response.json()["data"]["run"]["model_label"] == "gpt-5.6-terra"
+
+
+@pytest.mark.parametrize(
+    ("provider", "model_label"),
+    [
+        ("anthropic", "claude"),
+        ("openai", ""),
+        ("openai", "bad model with spaces"),
+        ("openai", "x" * 129),
+        ("mock", "not-the-mock-model"),
+    ],
+)
+def test_malformed_or_unknown_persisted_provider_identity_is_rejected(
+    client: TestClient,
+    db_session: Session,
+    provider: str,
+    model_label: str,
+) -> None:
+    run = _create_run(db_session)
+    run.summary = {
+        **run.summary,
+        "provider": provider,
+        "model_label": model_label,
+    }
+    db_session.commit()
+    _login(client, "demo.admin@queryops.local")
+
+    explicit = client.get(f"/api/v1/evaluation/overview?run_id={run.id}")
+    default = client.get("/api/v1/evaluation/overview")
+
+    assert explicit.status_code == 404
+    assert default.status_code == 200
+    assert default.json()["data"]["run"] is None
+
+
 def test_default_and_explicit_selection_reject_stale_dataset_identity(
     client: TestClient,
     db_session: Session,
@@ -716,6 +794,8 @@ def _create_run(
     case_ids: set[str] | None = None,
     status: str = RunStatus.SUCCEEDED.value,
     completed_at: datetime | None = None,
+    provider: str = "mock",
+    model_label: str | None = None,
 ) -> EvaluationRun:
     evaluation_set = load_it_operations_evaluation_set()
     selected = tuple(
@@ -724,7 +804,7 @@ def _create_run(
     now = datetime.now(UTC)
     run = EvaluationRun(
         requested_by_user_id=None,
-        name=f"{evaluation_set.dataset_id}:mock",
+        name=f"{evaluation_set.dataset_id}:{provider}",
         run_type="manual_evaluation",
         status=status,
         started_at=now - timedelta(seconds=1),
@@ -734,8 +814,9 @@ def _create_run(
             else completed_at
         ),
         summary={
-            "provider": "mock",
-            "model_label": "mock-queryops-v1",
+            "provider": provider,
+            "model_label": model_label
+            or ("gpt-5.6-terra" if provider == "openai" else "mock-queryops-v1"),
             "dataset_id": evaluation_set.dataset_id,
             "dataset_version": evaluation_set.version,
             "dataset_digest": evaluation_dataset_digest(evaluation_set),

@@ -53,6 +53,10 @@ class SafeEvaluationErrorCode(str, Enum):
     BASELINE_FAILED = "evaluation_baseline_failed"
     CASE_INTERNAL_ERROR = "evaluation_case_internal_error"
     SETUP_FAILED = "evaluation_setup_failed"
+    PROVIDER_AUTHENTICATION_FAILED = "provider_authentication_failed"
+    PROVIDER_TIMEOUT = "provider_timeout"
+    PROVIDER_UNAVAILABLE = "provider_unavailable"
+    PROVIDER_RESPONSE_INVALID = "provider_response_invalid"
 
 
 class SecurityBehavior(str, Enum):
@@ -65,8 +69,12 @@ class SecurityBehavior(str, Enum):
 
 class EvaluationRunView(StrictModel):
     id: UUID
-    provider: Literal["mock"]
-    model_label: Literal["mock-queryops-v1"]
+    provider: Literal["mock", "openai"]
+    model_label: str = Field(
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+    )
     dataset_id: str = Field(min_length=1, max_length=128)
     dataset_version: str = Field(min_length=1, max_length=64)
     dataset_digest: str = Field(pattern=r"^[0-9a-f]{64}$")

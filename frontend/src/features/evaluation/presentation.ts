@@ -4,8 +4,17 @@ import type {
   EvaluationCaseType,
   EvaluationExpectedOutcome,
   EvaluationFailureReason,
+  EvaluationProvider,
   EvaluationRun
 } from "./types";
+
+export function evaluationProviderLabel(
+  value: EvaluationProvider | string
+): string | null {
+  if (value === "mock") return "MockLLM";
+  if (value === "openai") return "OpenAI";
+  return null;
+}
 
 export function matchesSelectedRun(
   run: Pick<EvaluationRun, "id"> | null,
