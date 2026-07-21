@@ -14,7 +14,7 @@ from app.auth.access_policy import APPROVED_TEMPLATE_QUERY_ACTION
 from app.models.product import AppUser, QueryRun, RunStatus
 from app.query_engine.domain_pack import DomainPack
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
-from app.query_engine.llm_provider import LLMProvider
+from app.query_engine.llm_provider import LLMProvider, sanitize_provider_measurement
 from app.query_engine.mock_llm_provider import MockLLMProvider
 from app.query_engine.result_formatter import (
     QUERY_RESULT_CLARIFICATION_MESSAGE,
@@ -368,8 +368,6 @@ def _execution_options_for_request(request: QueryEngineRequest) -> SQLExecutionO
 
 def _user_generation_context(access_context: UserAccessContext) -> dict[str, Any]:
     return {
-        "user_id": str(access_context.user_id),
-        "role": access_context.role,
         "scope_type": access_context.default_scope.type
         if access_context.default_scope is not None
         else ("global" if access_context.has_global_scope else "none"),
@@ -384,7 +382,7 @@ def _base_metadata(
 ) -> dict[str, Any]:
     generation_metadata = generation_result.generation_metadata
     referenced_tables = generation_metadata.get("referenced_tables", [])
-    return {
+    metadata = {
         "provider": generation_result.provider_name,
         "model": generation_result.model_name,
         "template_id": request.template_id or generation_metadata.get("template_id"),
@@ -393,6 +391,23 @@ def _base_metadata(
         "clarification_required": generation_result.clarification_required,
         **_safe_request_metadata(request.metadata),
     }
+    measurement = sanitize_provider_measurement(
+        generation_metadata.get("provider_measurement")
+    )
+    if measurement is not None:
+        metadata["provider_measurement"] = measurement
+    failure_code = generation_metadata.get("provider_failure_code")
+    if isinstance(failure_code, str) and failure_code in {
+        "provider_authentication_failed",
+        "provider_timeout",
+        "provider_unavailable",
+        "provider_response_invalid",
+    }:
+        metadata["provider_failure_code"] = failure_code
+        metadata["provider_failure_fatal"] = (
+            generation_metadata.get("provider_failure_fatal") is True
+        )
+    return metadata
 
 
 def _safe_request_metadata(metadata: dict[str, Any]) -> dict[str, Any]:

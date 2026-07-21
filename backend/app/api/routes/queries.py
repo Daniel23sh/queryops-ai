@@ -17,6 +17,7 @@ from app.auth.session import csrf_is_valid, session_from_request
 from app.db.session import get_db
 from app.models.product import AppUser, QueryRun, UserAccessScope
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
+from app.query_engine.provider_config import create_provider, load_provider_settings
 from app.query_engine.request_authorization import authorize_query_request
 from app.query_engine.service import QueryEngineRequest, QueryEngineService
 
@@ -33,7 +34,11 @@ DEFAULT_HISTORY_LIMIT = 25
 
 
 def get_query_engine_service() -> QueryEngineService:
-    return QueryEngineService()
+    domain_pack = load_it_operations_domain_pack()
+    return QueryEngineService(
+        provider=create_provider(load_provider_settings(), domain_pack),
+        domain_pack_loader=lambda: domain_pack,
+    )
 
 
 @router.post("/queries/run")
