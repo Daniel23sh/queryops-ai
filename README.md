@@ -366,7 +366,7 @@ Default local URLs:
 * Backend health endpoint: `http://localhost:8000/health`
 * PostgreSQL: `localhost:5432`
 
-PostgreSQL is included for the local development environment. Milestones 0 through 8 are complete and merged through PR #35. M9 PR1 through PR3 are complete and merged through PR #38; M9 PR4 is implementation- and verification-complete on its feature branch but is not merged. The current backend includes both V1 actions, approvals, synchronous execution, action/domain audit, database notification APIs, safe timelines, deterministic template suggestions, requester-owned action lists, exact authorized activity totals, the evaluation dataset/scoring foundation, the governed manual MockLLM runner, and role-aware read-only evaluation metrics. The frontend feature branch includes requester Actions, Approvals, Audit, database Notifications, and the protected role-aware Evaluation workspace.
+PostgreSQL is included for the local development environment. Milestones 0 through 8 are complete and merged through PR #35. M9 PR1 through PR4 are complete and merged through PR #39 at verified `main` commit `f8990b78e86de1d24a51783270e95fc05a07beca`; M9 PR5 is active. The application includes both V1 actions, approvals, synchronous execution, action/domain audit, database notification APIs, safe timelines, deterministic template suggestions, requester-owned action lists, exact authorized activity totals, the evaluation dataset/scoring foundation, the governed manual MockLLM runner, role-aware read-only evaluation metrics, and the protected Evaluation workspace.
 
 Stop the stack:
 
@@ -819,7 +819,7 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-Milestones 0 through 8 are complete and merged into `main`; M8 PR7 merged through PR #35. Milestone 9 — Evaluation, Quality Measurement & V1 Readiness is active. M9 PR1 through M9 PR3 are complete and merged through PR #38, and M9 PR4 — Role-Aware Evaluation Workspace UI is the current scope.
+Milestones 0 through 8 are complete and merged into `main`; M8 PR7 merged through PR #35. Milestone 9 — Evaluation, Quality Measurement & V1 Readiness is active. M9 PR1 through M9 PR4 are complete and merged through PR #39, and M9 PR5 — Governed Real-LLM Evaluation Mode is the current scope.
 
 The completed Milestone 7 experience is dark-first with a persistent light option, responsive navigation, My Dashboard as the authenticated home, permission-aware routes, Scope terminology, a responsive dashboard editor, safe visualizations, and command-first Ask Data. The completed Milestone 8 experience adds the two governed V1 actions, requester Actions, exact-scope/global Approvals, scoped/global Audit, database Notifications, synchronous execution, and release-blocking PostgreSQL/browser evidence.
 
@@ -878,7 +878,8 @@ Milestone 8 — Actions, Approvals & Audit is complete.
 M9 PR1 — Evaluation Dataset & Scoring Foundation is complete and merged through PR #36.
 M9 PR2 — Evaluation Runner, Persistence & CLI is complete and merged through PR #37.
 M9 PR3 — Role-Aware Evaluation Metrics API is complete and merged through PR #38.
-M9 PR4 — Role-Aware Evaluation Workspace UI is implementation- and verification-complete on its feature branch but is not merged; M9 PR5 and later work has not started.
+M9 PR4 — Role-Aware Evaluation Workspace UI is complete and merged through PR #39 at verified `main` commit `f8990b78e86de1d24a51783270e95fc05a07beca`.
+M9 PR5 — Governed Real-LLM Evaluation Mode is active; M9 PR6 — V1 Quality Gates, Readiness & Completion remains planned and inactive.
 ```
 
 PR6 keeps backend authorization authoritative while adding exact approval/notification activity badges, permission-aware Approvals and Audit workspaces, synchronous approve/reject dialogs, safe related navigation, and current-recipient database notification controls. Under the current permission catalog, Analyst receives exact-scope approval and Audit UX, Admin receives global/override/self-approval UX, Manager retains requester Actions and notifications without Audit access, and User receives notifications without Actions, Approvals, or Audit navigation. The private planning description of a future limited Manager audit view is not implemented because the backend does not currently grant that permission.

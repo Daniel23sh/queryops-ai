@@ -24,7 +24,9 @@ Current PR scope:
 
 `M9 PR3 — Role-Aware Evaluation Metrics API` is complete and merged through PR #38. The verified `main` merge commit is `fd1b8cccba3190714233976daa334364c4b4b080`.
 
-`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` is active. `M9 PR4 — Role-Aware Evaluation Workspace UI` is implementation- and verification-complete on `feature/m9-evaluation-workspace` but is not merged; do not begin M9 PR5 or later work.
+`M9 PR4 — Role-Aware Evaluation Workspace UI` is complete and merged through PR #39. The verified `main` merge commit is `f8990b78e86de1d24a51783270e95fc05a07beca`.
+
+`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` is active. `M9 PR5 — Governed Real-LLM Evaluation Mode` is the only active scope; `M9 PR6 — V1 Quality Gates, Readiness & Completion` remains planned and inactive.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
@@ -450,7 +452,7 @@ The latest PR status is:
 
 `Milestone 8 — Actions, Approvals & Audit` is complete and merged through PR #35 at verified `main` commit `408190f1cdf5710ed80a83065d65fd9cd01c4f87`.
 
-`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` is active. M9 PR1 is complete through PR #36. M9 PR2 is complete through PR #37. M9 PR3 is complete through PR #38 at verified `main` commit `fd1b8cccba3190714233976daa334364c4b4b080`. `M9 PR4 — Role-Aware Evaluation Workspace UI` is implementation- and verification-complete but is not merged; M9 PR5 and later work has not started.
+`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` is active. M9 PR1 is complete through PR #36. M9 PR2 is complete through PR #37. M9 PR3 is complete through PR #38 at verified `main` commit `fd1b8cccba3190714233976daa334364c4b4b080`. M9 PR4 is complete through PR #39 at verified `main` commit `f8990b78e86de1d24a51783270e95fc05a07beca`. `M9 PR5 — Governed Real-LLM Evaluation Mode` is active; `M9 PR6 — V1 Quality Gates, Readiness & Completion` remains planned and inactive.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -1400,7 +1402,7 @@ Milestone 9 is split into six approved PRs:
 5. `M9 PR5 — Real LLM Evaluation Mode`
 6. `M9 PR6 — V1 Quality Gates, Readiness & Completion`
 
-PR1, PR2, and PR3 are complete and merged. Only PR4 is active. Later PR names record sequence and ownership; they do not authorize implementation.
+PR1 through PR4 are complete and merged. Only PR5 is active. PR6's name records sequence and ownership; it does not authorize implementation.
 
 ### M9 PR1 — Evaluation Dataset & Scoring Foundation
 
@@ -1542,4 +1544,37 @@ Guardrails:
 - Never render SQL, rows, prompts, provider payloads, credentials, stack traces, raw errors, protected resource names, cross-scope identities/totals, or evaluator internals.
 - Do not change backend behavior/schema/permissions, the dataset, MockLLM templates or scores, Query Engine/RLS/actions/audit/notifications/exports, add dependencies, real providers, workflows, thresholds, or M9 PR5+ work.
 
-Status: implementation- and verification-complete on `feature/m9-evaluation-workspace`; not merged. The workspace uses only the five PR3 GET endpoints and has no evaluation execution, run history, provider, workflow, or threshold behavior.
+Status: complete and merged through PR #39 at verified `main` commit `f8990b78e86de1d24a51783270e95fc05a07beca`. The workspace uses only the five PR3 GET endpoints and has no evaluation execution, run history, provider, workflow, or threshold behavior.
+
+### M9 PR5 — Governed Real-LLM Evaluation Mode
+
+Branch:
+
+```text
+feature/m9-real-llm-evaluation
+```
+
+Goal: add exactly one explicit, opt-in OpenAI mode for governed free-text Query Engine generation and manual evaluation while preserving MockLLM as the deterministic default and all existing authorization, validation, runtime-role, RLS, and disclosure boundaries.
+
+In scope:
+
+- centralized immutable configuration and a provider factory for `mock` and `openai`, with OpenAI selected only explicitly
+- one OpenAI Responses API provider using `gpt-5.6-terra` by default, synchronous strict structured output, `store=false`, and no tools, retrieval, streaming, background mode, or conversation state
+- explicit minimized prompt projection containing only the question, authorized queryable schema descriptions, approved business terms, scope type, and global-scope boolean
+- bounded safe provider failure classifications and validated provider/model, latency, attempt, and token measurements
+- injection at the existing Query Engine dependency seam so templates remain provider-free and candidates still use the governed validator/executor/RLS path
+- one immutable provider/model per sequential evaluation run, semantic scoring, sanitized existing-schema persistence, and manual CLI `--provider`/`--model` controls
+- strict `mock | openai` persisted-run metadata support in the existing role-aware read API and a safe human-readable provider/model label in the read-only Evaluation workspace
+- environment/developer documentation plus network-free provider, runner, CLI, API, frontend, and security regression coverage
+
+Guardrails:
+
+- Mock remains the default for development, automated tests, and CI. `OPENAI_API_KEY` alone never activates OpenAI, and no live call occurs without explicit OpenAI selection and valid bounded configuration.
+- Never send app-user identity, names/emails, raw scope keys or IDs, permissions, rows, prior SQL, evaluator baseline SQL/expected rows/case IDs, keys/environment/database values, protected/non-queryable resources, or action targets to the provider.
+- Treat provider output as an untrusted SQL candidate. Existing backend authorization, schema authorization, single read-only statement validation, row/timeout limits, `queryops_query_runtime`, transaction-local access context, and PostgreSQL RLS remain authoritative.
+- Persist only allowlisted bounded identity/usage metadata in existing JSON fields. Never store or expose prompts, provider payloads, response/request IDs, headers, reasoning, generated or baseline SQL in Evaluation persistence, result rows, secrets, raw SDK/database errors, tracebacks, or arbitrary objects. Add no migration or cost calculation.
+- Fatal provider configuration/authentication errors stop a real run safely; ordinary invalid/output/availability failures remain visible without hiding later cases. Do not add concurrency, retries beyond the bounded SDK setting, fallback, automatic provider switching, or a second provider.
+- The read API supports latest eligible completed runs across `mock` and `openai` without provider filtering, run history/comparison, or a picker. The frontend adds no provider/model selector, key settings, run/rerun controls, or new Manager technical disclosure.
+- Do not tune the dataset, templates, or prompt against case IDs/baselines; add workflows, thresholds, real-provider CI, scheduled/nightly execution, background infrastructure, API mutation endpoints, schema/seed/permission/RLS changes, or any `M9 PR6 — V1 Quality Gates, Readiness & Completion` behavior.
+
+Status: active. Live OpenAI verification is conditional on an available key, an explicitly disposable PostgreSQL database, and separate authorization for billable execution; normal automated verification is network-free.
