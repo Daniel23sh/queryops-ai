@@ -56,6 +56,44 @@ export type EvaluationErrorCode =
 
 export type EvaluationProvider = "mock" | "openai";
 
+export type ReadinessVerdict = "ready" | "not_ready" | "incomplete";
+export type ReadinessGateStatus = "passed" | "failed" | "incomplete";
+
+export type ReadinessGate = {
+  code: string;
+  label: string;
+  status: ReadinessGateStatus;
+  threshold: number | null;
+  actual: number | null;
+  reason_code: string | null;
+};
+
+export type EvaluationReadiness = {
+  policy_id: "queryops-v1-readiness-v1";
+  verdict: ReadinessVerdict;
+  provider: "openai" | null;
+  model_label: string | null;
+  dataset_version: string;
+  completed_count: number | null;
+  gates: ReadinessGate[];
+  technical: {
+    run_id: string;
+    dataset_id: string;
+    dataset_digest: string;
+    selected_count: number;
+    average_latency_ms: number;
+    usage: {
+      call_count: number;
+      attempt_count: number;
+      duration_ms: number;
+      input_tokens: number;
+      cached_input_tokens: number;
+      output_tokens: number;
+      total_tokens: number;
+    };
+  } | null;
+};
+
 export type EvaluationRun = {
   id: string;
   provider: EvaluationProvider;

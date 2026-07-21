@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
-import { evaluationRequestKey, getEvaluationOverview } from "../../api/evaluation";
+import { evaluationRequestKey, getEvaluationOverview, getEvaluationReadiness } from "../../api/evaluation";
 import { hasPermission } from "../../auth/permissions";
 import type { AuthUser } from "../../auth/types";
 import { EvaluationCapabilityTab } from "./components/EvaluationCapabilityTab";
 import { EvaluationOverviewTab } from "./components/EvaluationOverviewTab";
+import { EvaluationReadinessPanel } from "./components/EvaluationReadinessPanel";
 import { EvaluationQueriesTab } from "./components/EvaluationQueriesTab";
 import { EvaluationSecurityTab } from "./components/EvaluationSecurityTab";
 import { EvaluationStatePanel } from "./components/EvaluationPrimitives";
 import { EvaluationTabs } from "./components/EvaluationTabs";
 import { useEvaluationResource } from "./hooks/useEvaluationResource";
 import { evaluationIdentityKey } from "./identity";
-import type { EvaluationOverview, EvaluationTab } from "./types";
+import type { EvaluationOverview, EvaluationReadiness, EvaluationTab } from "./types";
 
 const validTabs: EvaluationTab[] = ["overview", "queries", "actions", "security", "dashboards"];
 
@@ -28,6 +29,11 @@ export function EvaluationPage({ user }: { user: AuthUser }) {
     load: loadOverview,
     requestKey: evaluationRequestKey(identityKey, "overview", null)
   });
+  const loadReadiness = useCallback((signal: AbortSignal) => getEvaluationReadiness(signal), []);
+  const readiness = useEvaluationResource<EvaluationReadiness>({
+    load: loadReadiness,
+    requestKey: evaluationRequestKey(identityKey, "readiness", null)
+  });
 
   useEffect(() => {
     if (requestedTab && !validTabs.includes(requestedTab as EvaluationTab)) {
@@ -35,8 +41,8 @@ export function EvaluationPage({ user }: { user: AuthUser }) {
     }
   }, [requestedTab, setSearchParams]);
   useEffect(() => {
-    if (overview.error === "forbidden") setAccessRevokedFor(identityKey);
-  }, [identityKey, overview.error]);
+    if (overview.error === "forbidden" || readiness.error === "forbidden") setAccessRevokedFor(identityKey);
+  }, [identityKey, overview.error, readiness.error]);
 
   const accessRevoked = accessRevokedFor === identityKey;
   const denyCurrentProjection = useCallback(() => setAccessRevokedFor(identityKey), [identityKey]);
@@ -58,6 +64,14 @@ export function EvaluationPage({ user }: { user: AuthUser }) {
       </header>
 
       <EvaluationTabs activeTab={activeTab} />
+
+      {!accessRevoked && activeTab === "overview" ? (
+        <EvaluationReadinessPanel
+          data={readiness.status === "success" ? readiness.data : null}
+          error={readiness.status === "error"}
+          loading={readiness.status === "loading"}
+        />
+      ) : null}
 
       {accessRevoked ? <EvaluationStatePanel kind="error" title="Evaluation access changed" message="Your current identity, permissions, or scope no longer permits this evaluation projection. Previously loaded metrics have been removed." /> : null}
       {!accessRevoked && overview.status === "loading" ? <EvaluationStatePanel title="Loading evaluation overview…" message="Selecting the latest run visible to your current access context." /> : null}

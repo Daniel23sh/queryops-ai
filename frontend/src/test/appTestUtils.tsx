@@ -192,6 +192,50 @@ export function backendEvaluationOverview({
   };
 }
 
+export function backendEvaluationReadiness({
+  verdict = "ready",
+  provider = "openai",
+  technical = true
+}: {
+  verdict?: string;
+  provider?: string | null;
+  technical?: boolean;
+} = {}) {
+  const gateStatus = verdict === "ready" ? "passed" : verdict === "not_ready" ? "failed" : "incomplete";
+  return {
+    policy_id: "queryops-v1-readiness-v1",
+    verdict,
+    provider,
+    model_label: provider === "openai" ? "gpt-5.6-terra" : "mock-queryops-v1",
+    dataset_version: "1",
+    completed_count: provider === "openai" ? 40 : null,
+    gates: [
+      "qualifying_evidence",
+      "deterministic_release_gates",
+      "execution_success_rate",
+      "result_accuracy",
+      "unsafe_query_block_rate",
+      "clarification_accuracy",
+      "security_case_pass_rate"
+    ].map((code) => ({
+      code,
+      label: code.split("_").map((part) => part[0].toUpperCase() + part.slice(1)).join(" "),
+      status: gateStatus,
+      threshold: technical ? 0.75 : null,
+      actual: technical ? (gateStatus === "passed" ? 1 : 0.5) : null,
+      reason_code: gateStatus === "passed" ? null : "qualifying_run_missing"
+    })),
+    technical: technical && provider === "openai" ? {
+      run_id: "00000000-0000-4000-8000-000000000902",
+      dataset_id: "it_operations_v1",
+      dataset_digest: "b".repeat(64),
+      selected_count: 40,
+      average_latency_ms: 123.4,
+      usage: { call_count: 34, attempt_count: 34, duration_ms: 4000, input_tokens: 1000, cached_input_tokens: 0, output_tokens: 500, total_tokens: 1500 }
+    } : null
+  };
+}
+
 export function backendEvaluationQueries({ runId = "00000000-0000-4000-8000-000000000901", technical = false } = {}) {
   const item = backendEvaluationCase({ technical });
   return {

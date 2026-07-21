@@ -6,6 +6,7 @@ import {
   getEvaluationDashboards,
   getEvaluationOverview,
   getEvaluationQueries,
+  getEvaluationReadiness,
   getEvaluationSecurity
 } from "./evaluation";
 
@@ -17,12 +18,14 @@ describe("evaluation API client", () => {
     vi.stubGlobal("fetch", fetchMock);
     const signal = new AbortController().signal;
     await getEvaluationOverview(undefined, signal);
+    await getEvaluationReadiness(signal);
     await getEvaluationActions("run/id", signal);
     await getEvaluationSecurity("run/id", signal);
     await getEvaluationDashboards("run/id", signal);
 
     expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
       "http://localhost:8000/api/v1/evaluation/overview",
+      "http://localhost:8000/api/v1/evaluation/readiness",
       "http://localhost:8000/api/v1/evaluation/actions?run_id=run%2Fid",
       "http://localhost:8000/api/v1/evaluation/security?run_id=run%2Fid",
       "http://localhost:8000/api/v1/evaluation/dashboards?run_id=run%2Fid"
