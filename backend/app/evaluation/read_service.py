@@ -20,11 +20,19 @@ from app.evaluation.contracts import (
     EvaluationSet,
     ExpectedOutcome,
     RequestingRole,
+    ScopeMode,
 )
 from app.evaluation.loader import load_it_operations_evaluation_set
 from app.evaluation.scoring import SAFE_FAILURE_REASONS
 from app.evaluation.selection import evaluation_dataset_digest
-from app.models.product import AppUser, EvaluationResult, EvaluationRun, Role, RunStatus
+from app.models.product import (
+    AppUser,
+    DataResource,
+    EvaluationResult,
+    EvaluationRun,
+    Role,
+    RunStatus,
+)
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.schemas.evaluation import (
     CoverageAvailability,
@@ -42,7 +50,6 @@ from app.schemas.evaluation import (
 )
 
 
-MAX_DEFAULT_RUN_CANDIDATES = 50
 MODEL_LABEL = "mock-queryops-v1"
 SAFE_RUN_STATUSES = frozenset(
     {"queued", "running", "succeeded", "failed", "cancelled"}
@@ -178,9 +185,24 @@ class EvaluationReadService:
         self._dataset_digest = evaluation_dataset_digest(self._evaluation_set)
         self._actor_scopes = _load_actor_scopes(db)
         domain_pack = load_it_operations_domain_pack()
-        self._queryable_tables = frozenset(
+        pack_queryable_tables = frozenset(
             table.name for table in domain_pack.tables if table.queryable
         )
+        current_queryable_tables = (
+            frozenset(
+                self._db.scalars(
+                    select(DataResource.table_name).where(
+                        DataResource.domain == self._evaluation_set.domain_id,
+                        DataResource.resource_type == "table",
+                        DataResource.is_queryable.is_(True),
+                        DataResource.table_name.in_(pack_queryable_tables),
+                    )
+                ).all()
+            )
+            if self._visibility.include_resource_metadata
+            else frozenset()
+        )
+        self._queryable_tables = pack_queryable_tables & current_queryable_tables
 
     def overview(self, run_id: UUID | None) -> EvaluationOverview:
         snapshot = self._load_snapshot(run_id)
@@ -226,16 +248,18 @@ class EvaluationReadService:
             else snapshot.selected_case_ids & filtered_eligible_ids
         )
         page = filtered[offset : offset + limit]
+        filtered_snapshot = _snapshot_with_results(
+            snapshot,
+            filtered,
+            eligible_cases=filtered_eligible,
+            selected_case_ids=filtered_selected_ids,
+        )
         return EvaluationQueryMetrics(
             run=snapshot.run_view,
-            metrics=_metric_summary(
-                _snapshot_with_results(
-                    snapshot,
-                    filtered,
-                    eligible_cases=filtered_eligible,
-                    selected_case_ids=filtered_selected_ids,
-                )
-            ),
+            metrics=_metric_summary(filtered_snapshot),
+            by_difficulty=_breakdowns(filtered_snapshot, "difficulty"),
+            by_category=_breakdowns(filtered_snapshot, "category"),
+            by_case_type=_breakdowns(filtered_snapshot, "case_type"),
             items=[self._case_metric(result) for result in page],
             pagination=Pagination(
                 limit=limit,
@@ -260,10 +284,12 @@ class EvaluationReadService:
             snapshot,
             security_results,
             eligible_cases=security_cases,
+            selected_case_ids=snapshot.selected_case_ids & security_ids,
         )
         return EvaluationSecurityMetrics(
             run=snapshot.run_view,
             metrics=_metric_summary(security_snapshot),
+            by_expected_behavior=_security_breakdowns(security_snapshot),
             items=[self._case_metric(result) for result in security_results],
         )
 
@@ -282,9 +308,13 @@ class EvaluationReadService:
             run=snapshot.run_view,
             capability=capability,
             availability=available,
-            measured_case_count=0,
+            measured_cases=0,
             score=None,
-            reason_code="dataset_has_no_capability_cases",
+            reason_code=(
+                "action_evaluation_not_available"
+                if capability == "actions"
+                else "dashboard_evaluation_not_available"
+            ),
         )
 
     def _load_snapshot(self, run_id: UUID | None) -> _ReadSnapshot:
@@ -307,38 +337,44 @@ class EvaluationReadService:
                 raise _not_found()
             return snapshot
 
-        candidates = tuple(
-            self._db.scalars(
-                select(EvaluationRun)
-                .where(
-                    EvaluationRun.status == RunStatus.SUCCEEDED.value,
-                    EvaluationRun.completed_at.is_not(None),
+        statement = select(EvaluationRun).where(
+            EvaluationRun.status == RunStatus.SUCCEEDED.value,
+            EvaluationRun.completed_at.is_not(None),
+            EvaluationRun.summary["provider"].as_string() == "mock",
+            EvaluationRun.summary["model_label"].as_string() == MODEL_LABEL,
+            EvaluationRun.summary["dataset_id"].as_string()
+            == self._evaluation_set.dataset_id,
+            EvaluationRun.summary["dataset_version"].as_string()
+            == self._evaluation_set.version,
+            EvaluationRun.summary["dataset_digest"].as_string()
+            == self._dataset_digest,
+        )
+        if self._visibility.mode is VisibilityMode.SCOPED:
+            visible_case_ids = [case.id for case in eligible_cases]
+            statement = (
+                statement.join(
+                    EvaluationResult,
+                    EvaluationResult.evaluation_run_id == EvaluationRun.id,
                 )
-                .order_by(EvaluationRun.completed_at.desc(), EvaluationRun.id.desc())
-                .limit(MAX_DEFAULT_RUN_CANDIDATES)
+                .where(EvaluationResult.case_name.in_(visible_case_ids))
+                .distinct()
+            )
+        run = self._db.scalar(
+            statement.order_by(
+                EvaluationRun.completed_at.desc(),
+                EvaluationRun.id.desc(),
+            ).limit(1)
+        )
+        if run is None:
+            return self._empty_snapshot(eligible_cases)
+        rows = tuple(
+            self._db.scalars(
+                select(EvaluationResult)
+                .where(EvaluationResult.evaluation_run_id == run.id)
+                .order_by(EvaluationResult.case_name, EvaluationResult.id)
             ).all()
         )
-        candidates = tuple(run for run in candidates if self._run_matches_dataset(run))
-        if not candidates:
-            return self._empty_snapshot(eligible_cases)
-        candidate_ids = [run.id for run in candidates]
-        rows = self._db.scalars(
-            select(EvaluationResult)
-            .where(EvaluationResult.evaluation_run_id.in_(candidate_ids))
-            .order_by(
-                EvaluationResult.evaluation_run_id,
-                EvaluationResult.case_name,
-                EvaluationResult.id,
-            )
-        ).all()
-        by_run: dict[UUID, list[EvaluationResult]] = defaultdict(list)
-        for row in rows:
-            by_run[row.evaluation_run_id].append(row)
-        for run in candidates:
-            snapshot = self._build_snapshot(run, tuple(by_run[run.id]), eligible_cases)
-            if self._visibility.mode is VisibilityMode.GLOBAL or snapshot.selected_count:
-                return snapshot
-        return self._empty_snapshot(eligible_cases)
+        return self._build_snapshot(run, rows, eligible_cases)
 
     def _build_snapshot(
         self,
@@ -526,13 +562,21 @@ def _parse_result(
     if duration_ms is None or duration_ms > 86_400_000:
         return None
     failure_reasons = metrics.get("failure_reasons")
-    if not isinstance(failure_reasons, list) or any(
-        not isinstance(reason, str) or reason not in SAFE_FAILURE_REASONS
-        for reason in failure_reasons
+    if (
+        not isinstance(failure_reasons, list)
+        or len(failure_reasons) > len(SAFE_FAILURE_REASONS)
+        or any(
+            not isinstance(reason, str) or reason not in SAFE_FAILURE_REASONS
+            for reason in failure_reasons
+        )
     ):
         return None
     error_code = actual.get("error_code")
-    if error_code is not None and error_code not in SAFE_ERROR_CODES:
+    if error_code is not None and (
+        not isinstance(error_code, str)
+        or len(error_code) > 64
+        or error_code not in SAFE_ERROR_CODES
+    ):
         error_code = "internal_error"
     references = actual.get("referenced_tables")
     if (
@@ -572,6 +616,11 @@ def _metric_summary(snapshot: _ReadSnapshot) -> MetricSummary:
     execution_results = tuple(
         result for result in snapshot.results if result.query_execution_attempted
     )
+    security_results = tuple(
+        result
+        for result in snapshot.results
+        if result.case.difficulty is EvaluationDifficulty.SECURITY
+    )
     return MetricSummary(
         availability=_availability(snapshot),
         eligible_count=len(snapshot.eligible_cases),
@@ -586,6 +635,15 @@ def _metric_summary(snapshot: _ReadSnapshot) -> MetricSummary:
         ),
         expected_behavior_match_rate=(
             round(outcome_matches / completed, 6) if completed else None
+        ),
+        security_pass_rate=(
+            round(
+                sum(result.passed for result in security_results)
+                / len(security_results),
+                6,
+            )
+            if security_results
+            else None
         ),
         query_execution_succeeded_count=sum(
             result.execution_succeeded for result in execution_results
@@ -685,6 +743,8 @@ def _security_availability(snapshot: _ReadSnapshot) -> CoverageAvailability:
         for result in snapshot.results
         if result.case.difficulty is EvaluationDifficulty.SECURITY
     )
+    security_case_ids = {case.id for case in cases}
+    selected_count = len(snapshot.selected_case_ids & security_case_ids)
     if snapshot.run is None:
         return CoverageAvailability.UNAVAILABLE
     if (
@@ -693,7 +753,7 @@ def _security_availability(snapshot: _ReadSnapshot) -> CoverageAvailability:
         and len(results) == len(cases)
     ):
         return CoverageAvailability.MEASURED
-    if results:
+    if results or selected_count:
         return CoverageAvailability.PARTIALLY_MEASURED
     return CoverageAvailability.UNAVAILABLE
 
@@ -705,6 +765,42 @@ def _security_score(snapshot: _ReadSnapshot) -> float | None:
         if result.case.difficulty is EvaluationDifficulty.SECURITY
     )
     return round(sum(result.score for result in results) / len(results), 6) if results else None
+
+
+def _security_breakdowns(snapshot: _ReadSnapshot) -> list[MetricBreakdown]:
+    eligible: Counter[str] = Counter(
+        _security_behavior(case) for case in snapshot.eligible_cases
+    )
+    groups: dict[str, list[_ParsedResult]] = defaultdict(list)
+    for result in snapshot.results:
+        groups[_security_behavior(result.case)].append(result)
+    return [
+        MetricBreakdown(
+            key=key,
+            eligible_count=eligible[key],
+            completed_count=len(groups[key]),
+            passed_count=sum(result.passed for result in groups[key]),
+            failed_count=sum(not result.passed for result in groups[key]),
+            score=(
+                round(sum(result.score for result in groups[key]) / len(groups[key]), 6)
+                if groups[key]
+                else None
+            ),
+        )
+        for key in sorted(eligible)
+    ]
+
+
+def _security_behavior(case: EvaluationCase) -> str:
+    if case.scope_mode is ScopeMode.CROSS_SCOPE:
+        return "scope_denial"
+    if case.category == "protected_data":
+        return "protected_resource_denial"
+    if case.expected_outcome is ExpectedOutcome.UNSAFE_BLOCKED:
+        return "unsafe_query_block"
+    if case.expected_outcome is ExpectedOutcome.CLARIFICATION:
+        return "clarification"
+    return "authorization_denial"
 
 
 def _snapshot_with_results(

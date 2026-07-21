@@ -117,6 +117,7 @@ def test_complete_mock_evaluation_persists_exact_safe_measurement(
     security_metrics = security.json()["data"]["metrics"]
     assert security_metrics["completed_count"] == 5
     assert security_metrics["passed_count"] == 4
+    assert security_metrics["security_pass_rate"] == 0.8
 
 
 def test_baseline_rls_context_is_scoped_per_case_without_leak(

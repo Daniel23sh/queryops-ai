@@ -312,6 +312,8 @@ User is denied evaluation access. Manager requires `can_view_department_evaluati
 
 `run_id` selects an accessible run explicitly. Without it, the API selects the latest eligible completed MockLLM run by completion time and ID; running runs never become the default. Unknown and inaccessible run IDs share the same safe not-found response. Partially completed or malformed measurements are labeled as partial or unavailable instead of being converted to fabricated zero scores. The current dataset measures query and security behavior only, so Actions and Dashboards return `not_measured`, zero measured cases, and a null score.
 
+All counts and ratios use only visible, structurally valid case measurements. Overall score and expected-behavior match rate use completed visible cases as their denominator; security pass rate uses completed visible security cases; breakdown scores use completed visible cases in that group. A zero-case denominator produces `null`, never a fabricated zero score.
+
 The metrics API never executes evaluation, Query Engine requests, provider calls, trusted baselines, or product-domain SQL. It never returns SQL, raw rows, prompts, provider payloads, secrets, stack traces, raw database errors, or arbitrary stored JSON. Evaluation remains MockLLM-only; no Evaluation frontend exists and no final M9 release thresholds are enforced.
 
 Planned testing areas:

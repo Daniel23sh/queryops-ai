@@ -28,9 +28,20 @@ from app.schemas.evaluation import (
 
 
 router = APIRouter(prefix="/api/v1/evaluation", tags=["evaluation"])
+ERROR_RESPONSES = {
+    401: {"description": "Authentication is required."},
+    403: {"description": "The current role, permission, or scope is not authorized."},
+    404: {"description": "The requested run is unknown or inaccessible."},
+    422: {"description": "A query parameter failed strict validation."},
+    503: {"description": "Safe evaluation metrics cannot currently be resolved."},
+}
 
 
-@router.get("/overview", response_model=EvaluationOverviewResponse)
+@router.get(
+    "/overview",
+    response_model=EvaluationOverviewResponse,
+    responses=ERROR_RESPONSES,
+)
 def evaluation_overview(
     run_id: UUID | None = None,
     current_user: AppUser = Depends(require_authenticated_user),
@@ -39,13 +50,17 @@ def evaluation_overview(
     return _respond(lambda: _service(db, current_user).overview(run_id))
 
 
-@router.get("/queries", response_model=EvaluationQueryMetricsResponse)
+@router.get(
+    "/queries",
+    response_model=EvaluationQueryMetricsResponse,
+    responses=ERROR_RESPONSES,
+)
 def evaluation_queries(
     run_id: UUID | None = None,
     difficulty: EvaluationDifficulty | None = None,
     category: str | None = Query(default=None, min_length=1, max_length=64),
     case_type: CaseType | None = None,
-    actual_outcome: ActualOutcome | None = None,
+    outcome: ActualOutcome | None = None,
     passed: bool | None = None,
     limit: int = Query(default=25, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
@@ -59,7 +74,7 @@ def evaluation_queries(
                 difficulty=difficulty,
                 category=category,
                 case_type=case_type,
-                actual_outcome=actual_outcome,
+                actual_outcome=outcome,
                 passed=passed,
             ),
             limit=limit,
@@ -68,7 +83,11 @@ def evaluation_queries(
     )
 
 
-@router.get("/security", response_model=EvaluationSecurityMetricsResponse)
+@router.get(
+    "/security",
+    response_model=EvaluationSecurityMetricsResponse,
+    responses=ERROR_RESPONSES,
+)
 def evaluation_security(
     run_id: UUID | None = None,
     current_user: AppUser = Depends(require_authenticated_user),
@@ -77,7 +96,11 @@ def evaluation_security(
     return _respond(lambda: _service(db, current_user).security(run_id))
 
 
-@router.get("/actions", response_model=EvaluationCapabilityMetricsResponse)
+@router.get(
+    "/actions",
+    response_model=EvaluationCapabilityMetricsResponse,
+    responses=ERROR_RESPONSES,
+)
 def evaluation_actions(
     run_id: UUID | None = None,
     current_user: AppUser = Depends(require_authenticated_user),
@@ -86,7 +109,11 @@ def evaluation_actions(
     return _respond(lambda: _service(db, current_user).capability(run_id, "actions"))
 
 
-@router.get("/dashboards", response_model=EvaluationCapabilityMetricsResponse)
+@router.get(
+    "/dashboards",
+    response_model=EvaluationCapabilityMetricsResponse,
+    responses=ERROR_RESPONSES,
+)
 def evaluation_dashboards(
     run_id: UUID | None = None,
     current_user: AppUser = Depends(require_authenticated_user),

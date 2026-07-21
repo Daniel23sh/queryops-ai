@@ -120,6 +120,7 @@ def test_admin_overview_recomputes_full_metrics_and_honest_coverage(
         "failed_count": 0,
         "overall_score": 1.0,
         "expected_behavior_match_rate": 1.0,
+        "security_pass_rate": 1.0,
         "query_execution_succeeded_count": 35,
         "query_execution_failed_count": 0,
     }
@@ -158,6 +159,18 @@ def test_scoped_roles_receive_only_visible_recomputed_totals(
     assert analyst["eligible_count"] == analyst_expected
     assert analyst["selected_count"] == analyst_expected
     assert analyst["eligible_count"] < 40
+
+
+def test_client_scope_parameters_cannot_widen_manager_visibility(
+    client: TestClient,
+    complete_run: EvaluationRun,
+) -> None:
+    _login(client, "demo.manager@queryops.local")
+    baseline = client.get("/api/v1/evaluation/overview").json()["data"]
+    attempted = client.get(
+        "/api/v1/evaluation/overview?scope_type=global&scope_key=global"
+    ).json()["data"]
+    assert attempted == baseline
 
 
 def test_manager_business_projection_omits_technical_details_even_with_sql_permission(
@@ -273,6 +286,46 @@ def test_admin_without_global_scope_fails_closed(
     assert client.get("/api/v1/evaluation/overview").status_code == 403
 
 
+@pytest.mark.parametrize(
+    "email",
+    ["demo.manager@queryops.local", "demo.analyst@queryops.local"],
+)
+def test_scoped_viewer_without_assigned_scope_fails_closed(
+    client: TestClient,
+    db_session: Session,
+    complete_run: EvaluationRun,
+    email: str,
+) -> None:
+    user = db_session.scalar(select(AppUser).where(AppUser.email == email))
+    assert user is not None
+    links = db_session.scalars(
+        select(UserAccessScope).where(UserAccessScope.user_id == user.id)
+    ).all()
+    assert links
+    for link in links:
+        db_session.delete(link)
+    db_session.commit()
+    _login(client, email)
+    assert client.get("/api/v1/evaluation/overview").status_code == 403
+
+
+def test_inactive_authenticated_user_is_rejected(
+    client: TestClient,
+    db_session: Session,
+    complete_run: EvaluationRun,
+) -> None:
+    _login(client, "demo.manager@queryops.local")
+    user = db_session.scalar(
+        select(AppUser).where(AppUser.email == "demo.manager@queryops.local")
+    )
+    assert user is not None
+    user.status = "disabled"
+    db_session.commit()
+    response = client.get("/api/v1/evaluation/overview")
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "UNAUTHORIZED"
+
+
 def test_missing_evaluation_actor_attribution_returns_safe_unavailable(
     client: TestClient,
     db_session: Session,
@@ -378,6 +431,16 @@ def test_query_filters_pagination_and_invalid_category_are_strict(
     data = response.json()["data"]
     assert data["pagination"] == {"limit": 2, "offset": 1, "returned": 2, "total": 5}
     assert all(item["difficulty"] == "security" for item in data["items"])
+    assert data["by_difficulty"] == [
+        {
+            "key": "security",
+            "eligible_count": 5,
+            "completed_count": 5,
+            "passed_count": 5,
+            "failed_count": 0,
+            "score": 1.0,
+        }
+    ]
 
     invalid = client.get("/api/v1/evaluation/queries?category=not-a-category")
     assert invalid.status_code == 400
@@ -390,7 +453,7 @@ def test_query_filters_pagination_and_invalid_category_are_strict(
         "run_id=not-a-uuid",
         "difficulty=impossible",
         "case_type=impossible",
-        "actual_outcome=impossible",
+        "outcome=impossible",
         "limit=101",
         "limit=0",
         "offset=-1",
@@ -415,6 +478,14 @@ def test_security_endpoint_uses_only_five_security_cases(
     data = client.get("/api/v1/evaluation/security").json()["data"]
     assert data["metrics"]["eligible_count"] == 5
     assert data["metrics"]["completed_count"] == 5
+    assert data["metrics"]["security_pass_rate"] == 1.0
+    assert {item["key"] for item in data["by_expected_behavior"]} == {
+        "authorization_denial",
+        "scope_denial",
+        "unsafe_query_block",
+        "protected_resource_denial",
+        "clarification",
+    }
     assert [item["case_id"] for item in data["items"]] == [
         f"itops-security-{index:03d}" for index in range(1, 6)
     ]
@@ -429,8 +500,9 @@ def test_unmeasured_capabilities_are_not_fabricated(
     _login(client, "demo.admin@queryops.local")
     data = client.get(f"/api/v1/evaluation/{capability}").json()["data"]
     assert data["availability"] == "not_measured"
-    assert data["measured_case_count"] == 0
+    assert data["measured_cases"] == 0
     assert data["score"] is None
+    assert data["reason_code"] == f"{capability[:-1]}_evaluation_not_available"
 
 
 def test_api_ignores_untrusted_json_and_never_leaks_sensitive_fields(
@@ -518,6 +590,42 @@ def test_full_read_fetches_evaluation_results_in_one_bounded_query(
     ]
     assert len(result_selects) == 1
     assert len(statements) < 30
+    serialized_statements = "\n".join(statements).lower()
+    for forbidden_table in (
+        "query_runs",
+        "action_requests",
+        "approval_requests",
+        "dashboards",
+        "it_audit_events",
+    ):
+        assert forbidden_table not in serialized_statements
+
+
+def test_internal_database_failure_returns_controlled_error_without_raw_detail(
+    client: TestClient,
+    complete_run: EvaluationRun,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from sqlalchemy.exc import OperationalError
+
+    def fail_read(*_args, **_kwargs):
+        raise OperationalError(
+            "SELECT secret",
+            {"password": "raw-secret"},
+            RuntimeError("raw-driver-error"),
+        )
+
+    monkeypatch.setattr(
+        "app.evaluation.read_service.EvaluationReadService.overview",
+        fail_read,
+    )
+    _login(client, "demo.admin@queryops.local")
+    response = client.get("/api/v1/evaluation/overview")
+    assert response.status_code == 503
+    serialized = json.dumps(response.json())
+    assert response.json()["error"]["code"] == "EVALUATION_METRICS_UNAVAILABLE"
+    for sentinel in ("SELECT secret", "raw-secret", "raw-driver-error"):
+        assert sentinel not in serialized
 
 
 def test_malformed_and_duplicate_case_rows_are_partial_not_double_counted(
@@ -551,6 +659,37 @@ def test_malformed_and_duplicate_case_rows_are_partial_not_double_counted(
     assert metrics["availability"] == "partially_measured"
 
 
+def test_duplicate_security_result_is_partial_not_unavailable_or_double_counted(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run = _create_run(db_session, case_ids={"itops-security-003"})
+    original = db_session.scalar(
+        select(EvaluationResult).where(EvaluationResult.evaluation_run_id == run.id)
+    )
+    assert original is not None
+    db_session.add(
+        EvaluationResult(
+            evaluation_run_id=run.id,
+            case_name=original.case_name,
+            status=original.status,
+            score=original.score,
+            expected_output=original.expected_output,
+            actual_output=original.actual_output,
+            metrics=original.metrics,
+            error_message=None,
+        )
+    )
+    db_session.commit()
+    _login(client, "demo.admin@queryops.local")
+    metrics = client.get(
+        f"/api/v1/evaluation/security?run_id={run.id}"
+    ).json()["data"]["metrics"]
+    assert metrics["selected_count"] == 1
+    assert metrics["completed_count"] == 0
+    assert metrics["availability"] == "partially_measured"
+
+
 def test_openapi_documents_exactly_the_five_read_only_routes(client: TestClient) -> None:
     paths = client.get("/openapi.json").json()["paths"]
     evaluation_paths = {
@@ -562,6 +701,11 @@ def test_openapi_documents_exactly_the_five_read_only_routes(client: TestClient)
     assert all(set(operations) == {"get"} for operations in evaluation_paths.values())
     assert all(
         "200" in operations["get"]["responses"]
+        for operations in evaluation_paths.values()
+    )
+    assert all(
+        {"200", "401", "403", "404", "422", "503"}
+        <= set(operations["get"]["responses"])
         for operations in evaluation_paths.values()
     )
 
