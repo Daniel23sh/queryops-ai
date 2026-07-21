@@ -69,28 +69,31 @@ The milestone status is defined in `PROJECT_PLAN.md`.
 At the time this file was updated, the current target is:
 
 ```txt
-M9 PR2 — Evaluation Runner, Persistence & CLI
+M9 PR3 — Role-Aware Evaluation Metrics API
 ```
 
 Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, Milestone 3, Milestone 4, and Milestone 5 are complete under the previous scopes. Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete.
 
-Milestone 6 is complete and merged into `main`. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, `M6 PR3 — CSV Export Backend`, `M6 PR4 — Card Refresh & CSV Export UI`, and `M6 PR5 — Card Reordering & Layout Persistence` plus the final Admin restricted-export policy are complete. PR #24 merged PR5. Milestone 7 — Product UX & Dashboard Redesign is complete. M7 PR1 is complete and merged through PR #25. M7 PR2 is complete and merged through PR #26. M7 PR3 — Dashboard Editor, Grid & Visualizations is complete and merged through PR #27. M7 PR4 — Ask Data Redesign & Final UX Hardening is complete and merged through PR #28. Milestone 8 — Actions, Approvals & Audit is complete and merged through PR #35; verified `main` reached `408190f1cdf5710ed80a83065d65fd9cd01c4f87`. M9 PR1 is complete and merged through PR #36; verified `main` reached `a21cdce59f7c3cd05e3e6fec72699554ffbb9979`. Milestone 9 — Evaluation, Quality Measurement & V1 Readiness is active, and only M9 PR2 is approved for implementation.
+Milestone 6 is complete and merged into `main`. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, `M6 PR3 — CSV Export Backend`, `M6 PR4 — Card Refresh & CSV Export UI`, and `M6 PR5 — Card Reordering & Layout Persistence` plus the final Admin restricted-export policy are complete. PR #24 merged PR5. Milestone 7 — Product UX & Dashboard Redesign is complete. M7 PR1 is complete and merged through PR #25. M7 PR2 is complete and merged through PR #26. M7 PR3 — Dashboard Editor, Grid & Visualizations is complete and merged through PR #27. M7 PR4 — Ask Data Redesign & Final UX Hardening is complete and merged through PR #28. Milestone 8 — Actions, Approvals & Audit is complete and merged through PR #35; verified `main` reached `408190f1cdf5710ed80a83065d65fd9cd01c4f87`. M9 PR1 is complete and merged through PR #36 at `a21cdce59f7c3cd05e3e6fec72699554ffbb9979`. M9 PR2 is complete and merged through PR #37; verified `main` reached `800b2f4006057d7a046d28da8ddb28aebc2f6176`. Milestone 9 — Evaluation, Quality Measurement & V1 Readiness is active, and only M9 PR3 is approved for implementation.
 
 M9 follows this six-PR sequence: dataset/scoring foundation; runner/persistence; APIs/authorization; Evaluation UX; real-LLM evaluation mode; and V1 quality gates/readiness. Do not begin a later PR without explicit activation.
 
 M9 PR1 delivered the 40-case IT Operations evaluation dataset, immutable contracts, strict independent loader, evaluator-only baseline validation, and pure semantic scoring utilities. Preserve its exact 10/15/10/5 distribution and six template-backed cases.
 
-M9 PR2 may add only the synchronous governed evaluation runner, deterministic seeded actor/scope resolution, restricted evaluator baseline execution, sanitized `EvaluationRun`/`EvaluationResult` persistence, developer CLI, documentation, and focused/full backend verification.
+M9 PR2 delivered the synchronous governed evaluation runner, deterministic actor/scope resolution, restricted evaluator baselines, sanitized persistence, honest metrics, and manual MockLLM CLI. Preserve its measured 10/40 result and 4/5 security result without reinterpretation.
 
-M9 PR2 guardrails:
+M9 PR3 may add only the five read-only Evaluation Metrics endpoints, centralized permission/scope visibility policy, strict safe response schemas, persisted-measurement read service, documentation, and focused/full backend verification.
 
-* Run generated queries through the production Query Engine service and its existing authorization, validator, restricted runtime role, read-only executor, and transaction-local PostgreSQL RLS boundaries.
-* Resolve seeded evaluation actors by stable application identifiers and exact role/scope requirements. Never embed seed UUIDs, substitute Admin, infer AppUser/DirectoryUser identity, or reseed/reset/migrate automatically.
-* Revalidate evaluator-only baselines and execute them through the same restricted read-only executor and equivalent access context. Never pass baseline SQL to a provider, schema context, product API, or browser.
-* Persist safe outcomes, counts, controlled metrics, and bounded error codes only. Never persist raw rows, prompts, provider payloads, secrets, stack traces, raw driver errors, or new generated SQL copies.
-* Execute cases synchronously in dataset order with isolated session/transaction lifecycles. Continue after ordinary case failures, but terminate safely on fatal configuration, database, or persistence failures.
-* Default to `MockLLMProvider`; unsupported cases remain visible in honest measurements. Do not add templates or provider behavior solely to improve scores.
-* Do not add evaluation APIs/UI, external providers or calls, API keys, GitHub workflows, release thresholds, migrations unless strictly required, schema/seed/permission/RLS changes, queues/workers/retries, or M9 PR3+ behavior.
+M9 PR3 guardrails:
+
+* Implement only `GET /api/v1/evaluation/overview`, `/queries`, `/actions`, `/security`, and `/dashboards`; no endpoint may start evaluation or execute SQL.
+* Authorize from current effective permissions and `UserAccessContext`: User is forbidden, Manager requires department-evaluation permission and an assigned department, Analyst requires scope-evaluation permission and assigned scopes, and Admin requires global-evaluation permission plus global scope.
+* Recalculate scoped totals from only visible `EvaluationResult` records. Never copy global `EvaluationRun.summary` aggregates into Manager or Analyst responses or leak inaccessible run existence.
+* Use authoritative case contracts and deterministic evaluation-actor attribution to filter scope; fail closed when attribution, persisted shapes, or scope mappings are missing or inconsistent.
+* Manager receives business-safe fields only. Analyst/Admin receive only explicitly allowlisted technical metadata, and SQL-adjacent metadata additionally requires `can_view_sql`.
+* Never expose baseline/generated SQL, QueryRun SQL, rows, prompts, provider payloads, secrets, stack traces, raw database errors, arbitrary JSON blobs, hidden-scope totals, or internal evaluator configuration.
+* Actions and Dashboards must report `not_measured`, zero measured cases, null score, and controlled reason codes; do not infer quality from product tables or query cases.
+* Do not add evaluation mutation endpoints, frontend/UI, real providers, external calls, workflows, thresholds, migrations, schema/seed/permission/RLS/runtime-role changes, background infrastructure, or M9 PR4+ behavior.
 
 M8 PR1 may add only the action persistence foundation, SQLAlchemy relationships/enums, typed deterministic Action Engine contracts, explicit fail-closed registry, pure permission/scope policy decisions, the minimum stable access-action vocabulary, and focused foundation tests.
 
