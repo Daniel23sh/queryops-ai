@@ -17,7 +17,6 @@ from app.evaluation.contracts import (
     CaseType,
     EvaluationCase,
     EvaluationDifficulty,
-    EvaluationSet,
     ExpectedOutcome,
     RequestingRole,
     ScopeMode,

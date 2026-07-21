@@ -32,6 +32,18 @@ jobs:
         working-directory: backend
         run: pip install -e ".[dev]"
 
+      - name: Run Ruff
+        working-directory: backend
+        run: ruff check app scripts
+
+      - name: Run Pyright readiness boundary
+        working-directory: backend
+        run: pyright
+
+      - name: Verify Python compilation
+        working-directory: backend
+        run: python -m compileall -q app scripts
+
       - name: Run backend tests
         working-directory: backend
         run: pytest
@@ -115,6 +127,18 @@ jobs:
       - name: Install frontend dependencies
         working-directory: frontend
         run: npm ci
+
+      - name: Run ESLint
+        working-directory: frontend
+        run: npm run lint
+
+      - name: Type-check application
+        working-directory: frontend
+        run: npm run typecheck:app
+
+      - name: Type-check Node and Vite configuration
+        working-directory: frontend
+        run: npm run typecheck:node
 
       - name: Run frontend tests
         working-directory: frontend
@@ -331,3 +355,28 @@ jobs:
             /tmp/queryops-m8-frontend.log
           if-no-files-found: ignore
           retention-days: 7
+
+  v1-deterministic-release-gates:
+    name: V1 Deterministic Release Gates
+    if: always()
+    needs:
+      - backend
+      - postgres-security
+      - frontend
+      - e2e
+      - m8-primary-e2e
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every deterministic release job
+        env:
+          BACKEND_RESULT: ${{ needs.backend.result }}
+          POSTGRES_RESULT: ${{ needs.postgres-security.result }}
+          FRONTEND_RESULT: ${{ needs.frontend.result }}
+          E2E_RESULT: ${{ needs.e2e.result }}
+          M8_PRIMARY_RESULT: ${{ needs.m8-primary-e2e.result }}
+        run: |
+          test "$BACKEND_RESULT" = success
+          test "$POSTGRES_RESULT" = success
+          test "$FRONTEND_RESULT" = success
+          test "$E2E_RESULT" = success
+          test "$M8_PRIMARY_RESULT" = success

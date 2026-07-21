@@ -5,7 +5,6 @@ import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
-from typing import Iterable
 
 from faker import Faker
 from sqlalchemy import func, select

@@ -1,4 +1,4 @@
-import { ArrowLeft, Check, Edit3, Plus, RotateCcw, Save, X } from "lucide-react";
+import { ArrowLeft, Edit3, Plus, RotateCcw, Save, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
@@ -49,8 +49,7 @@ type DialogState =
   | null;
 
 export function DashboardDetailPage({
-  csrfToken,
-  user: _user
+  csrfToken
 }: {
   csrfToken: string | null;
   user: AuthUser;

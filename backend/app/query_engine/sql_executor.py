@@ -14,7 +14,7 @@ from app.auth.access_context import UserAccessContext
 from app.auth.access_policy import QUERY_ACTIONS, authorize_resource_access
 from app.core.rls import build_rls_context, set_rls_context
 from app.models.product import DataResource
-from app.query_engine.runtime_role import QUERY_RUNTIME_ROLE, set_query_runtime_role
+from app.query_engine.runtime_role import set_query_runtime_role
 from app.query_engine.sql_validator import SQLValidationResult
 
 

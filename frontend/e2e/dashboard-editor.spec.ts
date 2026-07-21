@@ -1,4 +1,4 @@
-import type { Locator, Page, Response } from "@playwright/test";
+import type { Locator, Page } from "@playwright/test";
 
 import { expect, test } from "./fixtures";
 import {
@@ -306,7 +306,6 @@ test("expanded presets keep compact tables and charts usable across breakpoints"
   await expect(chartCard.locator(".recharts-responsive-container")).toBeVisible();
 
   const tableItem = gridItemFor(page.getByRole("button", { name: `Drag ${question}`, exact: true }));
-  const chartItem = gridItemFor(page.getByRole("button", { name: `Drag ${chartQuestion}`, exact: true }));
   await settleGridLayout(page);
   await expect.poll(async () => {
     const editorBox = await editor.boundingBox();
@@ -553,11 +552,6 @@ async function waitForStatusListResults(page: Page, ...titles: string[]) {
     });
     await expect(card.getByRole("list")).toBeVisible();
   }
-}
-
-async function dashboardDetail(response: Response) {
-  expect(response.ok()).toBeTruthy();
-  return response.json() as Promise<DashboardDetailEnvelope>;
 }
 
 async function readCurrentDashboardDetail(page: Page) {
