@@ -52,7 +52,7 @@ export function EvaluationPage({ user }: { user: AuthUser }) {
         <div>
           <p className="m-0 text-xs font-bold uppercase tracking-wide text-brand-primary">Quality measurement</p>
           <h1 className="mb-0 mt-1 text-3xl font-bold tracking-tight text-app-text">Evaluation</h1>
-          <p className="mb-0 mt-2 max-w-4xl text-sm leading-6 text-app-subtle">Review the latest stored MockLLM evaluation through your {projectionLabel(user)}. This workspace is read-only and cannot start or rerun evaluation.</p>
+          <p className="mb-0 mt-2 max-w-4xl text-sm leading-6 text-app-subtle">Review the latest supported stored evaluation through your {projectionLabel(user)}. This workspace is read-only and cannot start or rerun evaluation.</p>
         </div>
         {overview.data?.run && !accessRevoked ? <p className="m-0 text-xs text-app-faint">Run {overview.data.run.id}</p> : null}
       </header>

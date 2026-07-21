@@ -298,7 +298,7 @@ Successful execution atomically persists the domain mutation, application lifecy
 
 ## Evaluation and Testing
 
-M9 PR1 adds the authoritative 40-case IT Operations evaluation dataset, strict loader, and semantic scoring foundation. M9 PR2 adds a synchronous backend runner that uses the production Query Engine boundary, executes evaluator-only baselines through the restricted read-only PostgreSQL runtime and transaction-local RLS, persists sanitized measurements, and provides a manual MockLLM CLI. M9 PR3 adds five read-only, role-aware metrics endpoints over that sanitized persistence, and M9 PR4 adds the protected read-only Evaluation workspace at `/evaluation`:
+M9 PR1 adds the authoritative 40-case IT Operations evaluation dataset, strict loader, and semantic scoring foundation. M9 PR2 adds a synchronous backend runner that uses the production Query Engine boundary, executes evaluator-only baselines through the restricted read-only PostgreSQL runtime and transaction-local RLS, persists sanitized measurements, and provides a manual MockLLM CLI. M9 PR3 adds five read-only, role-aware metrics endpoints over that sanitized persistence, M9 PR4 adds the protected read-only Evaluation workspace at `/evaluation`, and M9 PR5 adds the one explicit opt-in governed OpenAI mode while keeping MockLLM as the default:
 
 ```txt
 GET /api/v1/evaluation/overview
@@ -310,7 +310,7 @@ GET /api/v1/evaluation/dashboards
 
 User is denied evaluation access. Manager requires `can_view_department_evaluation` and receives business-only metrics recalculated for the Manager's assigned department scopes. Analyst requires `can_view_scope_evaluation` and receives recalculated assigned-scope technical metrics; referenced-resource metadata additionally requires `can_view_sql`. Admin requires `can_view_global_evaluation` plus global scope and receives the safe global technical view. Scope selection is server-authoritative and is not accepted from the browser.
 
-`run_id` selects an accessible run explicitly. Without it, the API selects the latest eligible completed MockLLM run by completion time and ID; running runs never become the default. Unknown and inaccessible run IDs share the same safe not-found response. Partially completed or malformed measurements are labeled as partial or unavailable instead of being converted to fabricated zero scores. The current dataset measures query and security behavior only, so Actions and Dashboards return `not_measured`, zero measured cases, and a null score.
+`run_id` selects an accessible run explicitly. Without it, the API selects the latest eligible completed run for the current dataset across the supported `mock` and `openai` providers by completion time and ID; running runs never become the default. Unknown and inaccessible run IDs share the same safe not-found response. Partially completed or malformed measurements are labeled as partial or unavailable instead of being converted to fabricated zero scores. The current dataset measures query and security behavior only, so Actions and Dashboards return `not_measured`, zero measured cases, and a null score.
 
 The Evaluation workspace is available only with `can_view_department_evaluation`, `can_view_scope_evaluation`, or `can_view_global_evaluation`; `can_view_sql` alone does not grant route access. It loads Overview without a caller-selected run and reuses the exact latest visible run returned by the backend for Queries, Actions, Security, and Dashboards. Tabs and supported Query filters are URL-addressable for back/forward navigation, but the browser provides no run history or arbitrary run-ID control. Manager receives the business-only API projection. Analyst and Admin see technical fields only when the backend returns them, and referenced-resource metadata is never inferred from role.
 
@@ -318,7 +318,7 @@ The workspace cannot start, rerun, delete, or configure evaluation and does not 
 
 All counts and ratios use only visible, structurally valid case measurements. Overall score and expected-behavior match rate use completed visible cases as their denominator; security pass rate uses completed visible security cases; breakdown scores use completed visible cases in that group. A zero-case denominator produces `null`, never a fabricated zero score.
 
-The metrics API never executes evaluation, Query Engine requests, provider calls, trusted baselines, or product-domain SQL. It never returns SQL, raw rows, prompts, provider payloads, secrets, stack traces, raw database errors, or arbitrary stored JSON. Evaluation remains MockLLM-only; the read-only workspace does not expand that disclosure contract, and no final M9 release thresholds are enforced.
+The metrics API never executes evaluation, Query Engine requests, provider calls, trusted baselines, or product-domain SQL. It never returns SQL, raw rows, prompts, provider payloads, secrets, stack traces, raw database errors, usage internals, or arbitrary stored JSON. The read-only workspace shows only the validated provider/model label already selected by the server and adds no provider selector, key settings, or execution control. No final M9 release thresholds are enforced.
 
 Planned testing areas:
 
@@ -366,7 +366,7 @@ Default local URLs:
 * Backend health endpoint: `http://localhost:8000/health`
 * PostgreSQL: `localhost:5432`
 
-PostgreSQL is included for the local development environment. Milestones 0 through 8 are complete and merged through PR #35. M9 PR1 through PR3 are complete and merged through PR #38; M9 PR4 is implementation- and verification-complete on its feature branch but is not merged. The current backend includes both V1 actions, approvals, synchronous execution, action/domain audit, database notification APIs, safe timelines, deterministic template suggestions, requester-owned action lists, exact authorized activity totals, the evaluation dataset/scoring foundation, the governed manual MockLLM runner, and role-aware read-only evaluation metrics. The frontend feature branch includes requester Actions, Approvals, Audit, database Notifications, and the protected role-aware Evaluation workspace.
+PostgreSQL is included for the local development environment. Milestones 0 through 8 are complete and merged through PR #35. M9 PR1 through PR4 are complete and merged through PR #39 at verified `main` commit `f8990b78e86de1d24a51783270e95fc05a07beca`; M9 PR5 is implementation- and verification-complete on its feature branch but is not merged. The application includes both V1 actions, approvals, synchronous execution, action/domain audit, database notification APIs, safe timelines, deterministic template suggestions, requester-owned action lists, exact authorized activity totals, the evaluation dataset/scoring foundation, the governed manual MockLLM/OpenAI runner, role-aware read-only evaluation metrics, and the protected Evaluation workspace.
 
 Stop the stack:
 
@@ -465,6 +465,7 @@ Milestone 4 implemented the backend Query Engine foundation, and Milestone 5 PR1
 * IT Operations domain pack files under `backend/app/domains/it_operations/domain_pack/`
 * Query Templates API
 * `LLMProvider` interface and deterministic `MockLLMProvider`
+* explicit opt-in `OpenAIProvider` using the synchronous Responses API and strict structured output
 * SQL generator wrapper
 * Schema Context Builder
 * read-only SQL Validator
@@ -479,7 +480,19 @@ Milestone 4 implemented the backend Query Engine foundation, and Milestone 5 PR1
 * hardened safe query metadata for future Ask Data UI technical states
 * PostgreSQL/RLS-backed query tests and security regression tests
 
-The Domain Pack Loader loads the local IT Operations schema, business terms, and approved query templates. It is the source for safe schema context and deterministic template-backed SQL generation. `MockLLMProvider` maps known domain-pack questions to structured SQL generation results and returns safe clarification for unsupported questions. No real LLM provider, network call, API key, OpenAI, Groq, or Anthropic integration is required.
+The Domain Pack Loader loads the local IT Operations schema, business terms, and approved query templates. It is the source for safe schema context and deterministic template-backed SQL generation. `MockLLMProvider` remains the default, maps known domain-pack questions to structured SQL generation results, and requires no key or network call. The only optional real provider is OpenAI (`LLM_PROVIDER=openai`), using `gpt-5.6-terra` by default through the synchronous Responses API with strict structured output, `store=false`, and no tools, retrieval, streaming, background mode, or conversation state. Merely setting `OPENAI_API_KEY` does not activate it.
+
+OpenAI mode sends only the natural-language question, authorized queryable table and column names/types, approved schema descriptions and business terms, scope type, and whether scope is global. It does not send application identities, names/emails, scope keys or IDs, permission catalogs, database rows, prior SQL, evaluation case IDs/baselines/expected rows, protected resources, action targets, environment values, or credentials. Generated SQL remains an untrusted candidate: backend authorization, schema authorization, the read-only validator, row and timeout limits, `queryops_query_runtime`, transaction-local context, and PostgreSQL RLS remain authoritative.
+
+To opt into OpenAI for local free-text Ask Data, keep the key outside tracked files and set deployment configuration before starting the backend:
+
+```bash
+export LLM_PROVIDER=openai
+export OPENAI_API_KEY='replace-with-a-local-secret'
+export OPENAI_MODEL=gpt-5.6-terra
+```
+
+OpenAI API access and billing are separate from ChatGPT access or subscriptions. Do not commit or print the key. Real requests can incur API usage costs; MockLLM stays the default for normal development, automated tests, and CI.
 
 Query Templates API:
 
@@ -524,10 +537,10 @@ Current Query Engine limitations:
 
 * User-supplied template parameters are not supported through the public API.
 * Raw SQL input is not supported.
-* Real LLM providers are not implemented.
+* OpenAI is the only optional real provider and must be selected explicitly; no fallback or second provider is implemented.
 * Query detail endpoints return only the authenticated user's own runs.
 * Scope-aware query history requires assigned access scopes and the appropriate history permission.
-* Evaluation execution controls, run history, real LLM providers, and enforced M9 release thresholds are not implemented.
+* Evaluation execution controls, run history, browser provider/model selection, and enforced M9 release thresholds are not implemented.
 * Scheduled card refresh, scheduled/background actions, and external notification delivery are not implemented. Approval, audit, and notification frontend screens are limited to the active PR6 scope.
 
 ### Role-Aware Home and Dashboard Browser
@@ -601,6 +614,8 @@ cd backend
   tests/test_domain_pack_loader.py \
   tests/test_query_templates_api.py \
   tests/test_llm_provider.py \
+  tests/test_provider_config.py \
+  tests/test_openai_provider.py \
   tests/test_sql_generator.py \
   tests/test_schema_context.py \
   tests/test_sql_validator.py \
@@ -629,7 +644,28 @@ Available filters can be combined without changing dataset order:
 .venv/bin/python scripts/run_evaluation.py --case-type authorization --security-only
 ```
 
-Evaluation persistence contains only stable case metadata, expected/actual outcome classifications, bounded error codes, aggregate counts, scores, safe breakdowns, and a dataset digest. It excludes raw actual/expected rows, prompts, provider payloads, secrets, stack traces, raw driver errors, and new copies of generated SQL. MockLLM results are measurements; M9 PR2 does not enforce final release thresholds.
+OpenAI evaluation is manual and explicitly selected. Run one case first against an already migrated, deterministically seeded disposable PostgreSQL database:
+
+```bash
+cd backend
+export OPENAI_API_KEY='replace-with-a-local-secret'
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_eval_test \
+  .venv/bin/python scripts/run_evaluation.py \
+  --provider openai \
+  --model gpt-5.6-terra \
+  --case-id itops-easy-001
+```
+
+Run all 40 cases only when the billable manual measurement is intended:
+
+```bash
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_eval_test \
+  .venv/bin/python scripts/run_evaluation.py \
+  --provider openai \
+  --model gpt-5.6-terra
+```
+
+Evaluation persistence contains only stable case metadata, expected/actual outcome classifications, bounded error codes, aggregate counts, scores, safe breakdowns, a dataset digest, validated provider/model identity, and bounded latency/attempt/token measurements. It excludes raw actual/expected rows, prompts, provider payloads or responses, reasoning, request/response IDs, headers, secrets, stack traces, raw driver errors, and new copies of generated or baseline SQL. The Evaluation workspace remains read-only. Mock and OpenAI scores are measurements; final M9 release thresholds are not defined or enforced until M9 PR6.
 
 Metric denominators are explicit: overall score is the mean semantic score across completed cases; expected-behavior match rate is exact outcome matches divided by completed cases; each difficulty/category/case-type score is the mean for completed cases in that group; and security pass rate is passed `security`-difficulty cases divided by completed `security`-difficulty cases. Query execution counts include only cases that reached SQL execution, so expected denials, clarifications, and validator blocks are not mislabeled as execution failures.
 
@@ -819,7 +855,7 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-Milestones 0 through 8 are complete and merged into `main`; M8 PR7 merged through PR #35. Milestone 9 — Evaluation, Quality Measurement & V1 Readiness is active. M9 PR1 through M9 PR3 are complete and merged through PR #38, and M9 PR4 — Role-Aware Evaluation Workspace UI is the current scope.
+Milestones 0 through 8 are complete and merged into `main`; M8 PR7 merged through PR #35. Milestone 9 — Evaluation, Quality Measurement & V1 Readiness is active. M9 PR1 through M9 PR4 are complete and merged through PR #39. M9 PR5 — Governed Real-LLM Evaluation Mode is implementation- and verification-complete on its feature branch but is not merged; M9 PR6 remains planned and inactive.
 
 The completed Milestone 7 experience is dark-first with a persistent light option, responsive navigation, My Dashboard as the authenticated home, permission-aware routes, Scope terminology, a responsive dashboard editor, safe visualizations, and command-first Ask Data. The completed Milestone 8 experience adds the two governed V1 actions, requester Actions, exact-scope/global Approvals, scoped/global Audit, database Notifications, synchronous execution, and release-blocking PostgreSQL/browser evidence.
 
@@ -859,7 +895,8 @@ Implemented foundation functionality includes:
 * permission-aware Approvals and Audit workspaces, synchronous decision UX, exact activity badges, and current-recipient database notification controls
 * deterministic Chromium Playwright coverage in CI
 * authoritative 40-case evaluation dataset, strict loader, and semantic scoring primitives
-* synchronous governed MockLLM evaluation runner with sanitized persistence and a manual CLI
+* synchronous governed MockLLM/OpenAI evaluation runner with sanitized persistence and an explicit manual CLI
+* one opt-in OpenAI Responses API provider with minimized authorized context, strict structured output, bounded failure/usage metadata, and no ambient SDK routing
 
 Current milestone status:
 
@@ -878,7 +915,8 @@ Milestone 8 — Actions, Approvals & Audit is complete.
 M9 PR1 — Evaluation Dataset & Scoring Foundation is complete and merged through PR #36.
 M9 PR2 — Evaluation Runner, Persistence & CLI is complete and merged through PR #37.
 M9 PR3 — Role-Aware Evaluation Metrics API is complete and merged through PR #38.
-M9 PR4 — Role-Aware Evaluation Workspace UI is implementation- and verification-complete on its feature branch but is not merged; M9 PR5 and later work has not started.
+M9 PR4 — Role-Aware Evaluation Workspace UI is complete and merged through PR #39 at verified `main` commit `f8990b78e86de1d24a51783270e95fc05a07beca`.
+M9 PR5 — Governed Real-LLM Evaluation Mode is implementation- and verification-complete on `feature/m9-real-llm-evaluation` but is not merged. M9 PR6 — V1 Quality Gates, Readiness & Completion remains planned and inactive.
 ```
 
 PR6 keeps backend authorization authoritative while adding exact approval/notification activity badges, permission-aware Approvals and Audit workspaces, synchronous approve/reject dialogs, safe related navigation, and current-recipient database notification controls. Under the current permission catalog, Analyst receives exact-scope approval and Audit UX, Admin receives global/override/self-approval UX, Manager retains requester Actions and notifications without Audit access, and User receives notifications without Actions, Approvals, or Audit navigation. The private planning description of a future limited Manager audit view is not implemented because the backend does not currently grant that permission.

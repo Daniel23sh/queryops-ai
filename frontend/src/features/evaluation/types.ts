@@ -48,12 +48,18 @@ export type EvaluationErrorCode =
   | "unsafe_sql_blocked"
   | "evaluation_baseline_failed"
   | "evaluation_case_internal_error"
-  | "evaluation_setup_failed";
+  | "evaluation_setup_failed"
+  | "provider_authentication_failed"
+  | "provider_timeout"
+  | "provider_unavailable"
+  | "provider_response_invalid";
+
+export type EvaluationProvider = "mock" | "openai";
 
 export type EvaluationRun = {
   id: string;
-  provider: "mock";
-  model_label: "mock-queryops-v1";
+  provider: EvaluationProvider;
+  model_label: string;
   dataset_id: string;
   dataset_version: string;
   dataset_digest: string;

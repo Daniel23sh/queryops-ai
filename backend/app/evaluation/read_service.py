@@ -7,7 +7,7 @@ from enum import Enum
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.auth.access_context import UserAccessContext, build_user_access_context
@@ -34,6 +34,7 @@ from app.models.product import (
     RunStatus,
 )
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
+from app.query_engine.provider_config import ProviderId, valid_model_label
 from app.schemas.evaluation import (
     CoverageAvailability,
     CoverageItem,
@@ -50,7 +51,9 @@ from app.schemas.evaluation import (
 )
 
 
-MODEL_LABEL = "mock-queryops-v1"
+MOCK_MODEL_LABEL = "mock-queryops-v1"
+SUPPORTED_PROVIDERS = frozenset(item.value for item in ProviderId)
+MAX_LATEST_RUN_CANDIDATES = 100
 SAFE_RUN_STATUSES = frozenset(
     {"queued", "running", "succeeded", "failed", "cancelled"}
 )
@@ -65,6 +68,10 @@ SAFE_ERROR_CODES = frozenset(
         "evaluation_baseline_failed",
         "evaluation_case_internal_error",
         "evaluation_setup_failed",
+        "provider_authentication_failed",
+        "provider_timeout",
+        "provider_unavailable",
+        "provider_response_invalid",
     }
 )
 
@@ -340,8 +347,10 @@ class EvaluationReadService:
         statement = select(EvaluationRun).where(
             EvaluationRun.status == RunStatus.SUCCEEDED.value,
             EvaluationRun.completed_at.is_not(None),
-            EvaluationRun.summary["provider"].as_string() == "mock",
-            EvaluationRun.summary["model_label"].as_string() == MODEL_LABEL,
+            EvaluationRun.summary["provider"].as_string().in_(SUPPORTED_PROVIDERS),
+            func.length(EvaluationRun.summary["model_label"].as_string()).between(
+                1, 128
+            ),
             EvaluationRun.summary["dataset_id"].as_string()
             == self._evaluation_set.dataset_id,
             EvaluationRun.summary["dataset_version"].as_string()
@@ -359,11 +368,15 @@ class EvaluationReadService:
                 .where(EvaluationResult.case_name.in_(visible_case_ids))
                 .distinct()
             )
-        run = self._db.scalar(
+        candidates = self._db.scalars(
             statement.order_by(
                 EvaluationRun.completed_at.desc(),
                 EvaluationRun.id.desc(),
-            ).limit(1)
+            ).limit(MAX_LATEST_RUN_CANDIDATES)
+        ).all()
+        run = next(
+            (candidate for candidate in candidates if self._run_matches_dataset(candidate)),
+            None,
         )
         if run is None:
             return self._empty_snapshot(eligible_cases)
@@ -419,8 +432,7 @@ class EvaluationReadService:
             and summary.get("dataset_id") == self._evaluation_set.dataset_id
             and summary.get("dataset_version") == self._evaluation_set.version
             and summary.get("dataset_digest") == self._dataset_digest
-            and summary.get("provider") == "mock"
-            and summary.get("model_label") == MODEL_LABEL
+            and _valid_run_identity(summary)
         )
 
     def _case_is_visible(self, case: EvaluationCase) -> bool:
@@ -856,11 +868,15 @@ def _case_dimension(case: EvaluationCase, dimension: str) -> str:
 
 def _run_view(run: EvaluationRun) -> EvaluationRunView:
     summary = run.summary if isinstance(run.summary, dict) else {}
+    identity = _validated_run_identity(summary)
+    if identity is None:
+        raise _not_found()
+    provider, model_label = identity
     status = run.status if run.status in SAFE_RUN_STATUSES else "failed"
     return EvaluationRunView(
         id=run.id,
-        provider="mock",
-        model_label=str(summary["model_label"]),
+        provider=provider,
+        model_label=model_label,
         dataset_id=str(summary["dataset_id"]),
         dataset_version=str(summary["dataset_version"]),
         dataset_digest=str(summary["dataset_digest"]),
@@ -868,6 +884,20 @@ def _run_view(run: EvaluationRun) -> EvaluationRunView:
         started_at=run.started_at,
         completed_at=run.completed_at,
     )
+
+
+def _valid_run_identity(summary: dict[str, Any]) -> bool:
+    return _validated_run_identity(summary) is not None
+
+
+def _validated_run_identity(summary: dict[str, Any]) -> tuple[str, str] | None:
+    provider = summary.get("provider")
+    model_label = summary.get("model_label")
+    if provider not in SUPPORTED_PROVIDERS or not valid_model_label(model_label):
+        return None
+    if provider == ProviderId.MOCK.value and model_label != MOCK_MODEL_LABEL:
+        return None
+    return provider, model_label
 
 
 def _bounded_number(value: Any) -> float | None:

@@ -7,11 +7,16 @@ import {
   MeasurementProgress,
   MetricCard
 } from "./EvaluationPrimitives";
-import { formatEvaluationDate, formatEvaluationPercent } from "../presentation";
+import {
+  evaluationProviderLabel,
+  formatEvaluationDate,
+  formatEvaluationPercent
+} from "../presentation";
 import type { EvaluationOverview } from "../types";
 
 export function EvaluationOverviewTab({ data }: { data: EvaluationOverview }) {
   const { metrics, run } = data;
+  const providerLabel = run ? evaluationProviderLabel(run.provider) : null;
   const queryCoverage = data.coverage.find((item) => item.capability === "queries");
   return (
     <div className="grid gap-6">
@@ -20,13 +25,13 @@ export function EvaluationOverviewTab({ data }: { data: EvaluationOverview }) {
           <div>
             <p className="m-0 text-xs font-bold uppercase tracking-wide text-app-faint">Latest visible run</p>
             <h2 className="mb-0 mt-1 text-xl font-bold text-app-text" id="evaluation-summary-title">
-              MockLLM quality measurement
+              {providerLabel ?? "Evaluation"} quality measurement
             </h2>
           </div>
           <AvailabilityBadge value={metrics.availability} />
         </div>
         <p className="m-0 max-w-4xl text-sm leading-6 text-app-subtle">
-          These metrics report observed behavior for the deterministic MockLLM dataset. They are measurements, not release thresholds or a quality certification.
+          These metrics report observed behavior from a governed {providerLabel ?? "evaluation"} run. They are measurements, not release thresholds or a quality certification.
         </p>
         <MeasurementProgress label="Visible evaluation coverage" metrics={metrics} />
         {metrics.availability === "partially_measured" ? (
@@ -51,7 +56,10 @@ export function EvaluationOverviewTab({ data }: { data: EvaluationOverview }) {
         <section className="grid gap-3 rounded-card border border-app-border bg-app-surface p-5" aria-labelledby="evaluation-run-title">
           <h2 className="m-0 text-lg font-bold text-app-text" id="evaluation-run-title">Run details</h2>
           <dl className="m-0 grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
-            <RunDetail label="Provider" value={`${run.provider} · ${run.model_label}`} />
+            <RunDetail
+              label="Provider"
+              value={providerLabel ? `${providerLabel} · ${run.model_label}` : "Unavailable"}
+            />
             <RunDetail label="Dataset" value={`${run.dataset_id} · ${run.dataset_version}`} />
             <RunDetail label="Started" value={formatEvaluationDate(run.started_at)} />
             <RunDetail label="Completed" value={formatEvaluationDate(run.completed_at)} />

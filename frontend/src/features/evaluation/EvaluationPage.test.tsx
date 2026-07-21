@@ -28,8 +28,12 @@ describe("Evaluation workspace", () => {
     renderAppAt("/evaluation?tab=queries");
 
     expect(await screen.findByRole("heading", { name: "Query measurements" })).toBeInTheDocument();
-    const queryCall = fetchMock.mock.calls.find(([url]) => String(url).includes("/evaluation/queries"));
-    expect(String(queryCall?.[0])).toContain(`run_id=${runId}`);
+    await waitFor(() => {
+      const queryCall = fetchMock.mock.calls.find(([url]) =>
+        String(url).includes("/evaluation/queries")
+      );
+      expect(String(queryCall?.[0])).toContain(`run_id=${runId}`);
+    });
     expect(window.location.search).toContain("tab=queries");
     expect(fetchMock.mock.calls.filter(([url]) => String(url).includes("/evaluation/overview"))).toHaveLength(1);
   });
@@ -48,6 +52,44 @@ describe("Evaluation workspace", () => {
     await waitFor(() => expect(window.location.search).toBe(""));
     expect(await screen.findByRole("heading", { name: "MockLLM quality measurement" })).toBeInTheDocument();
     expect(screen.queryByRole("textbox", { name: /run/i })).not.toBeInTheDocument();
+  });
+
+  it("renders safe human-readable Mock and OpenAI run metadata without controls", async () => {
+    installApiMock(authenticatedRoutes(demoAnalyst, {
+      "GET /api/v1/evaluation/overview": successResponse(
+        backendEvaluationOverview({
+          provider: "openai",
+          modelLabel: "gpt-5.6-terra"
+        })
+      )
+    }));
+    renderAppAt("/evaluation");
+
+    expect(
+      await screen.findByRole("heading", { name: "OpenAI quality measurement" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("OpenAI · gpt-5.6-terra")).toBeInTheDocument();
+    expect(screen.getByText(/measurements, not release thresholds/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /start|run|rerun/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /provider|model/i })).not.toBeInTheDocument();
+  });
+
+  it("fails closed for an unknown runtime provider value", async () => {
+    installApiMock(authenticatedRoutes(demoAnalyst, {
+      "GET /api/v1/evaluation/overview": successResponse(
+        backendEvaluationOverview({
+          provider: "untrusted-provider",
+          modelLabel: "untrusted-model"
+        })
+      )
+    }));
+    renderAppAt("/evaluation");
+
+    expect(
+      await screen.findByRole("heading", { name: "Evaluation quality measurement" })
+    ).toBeInTheDocument();
+    expect(screen.getByText("Unavailable")).toBeInTheDocument();
+    expect(screen.queryByText(/untrusted-provider|untrusted-model/)).not.toBeInTheDocument();
   });
 
   it("keeps Manager results business-level even when SQL visibility is unrelated", async () => {

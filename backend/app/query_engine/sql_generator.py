@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.query_engine.llm_provider import LLMProvider
+from app.query_engine.llm_provider import LLMProvider, LLMProviderFailure
 
 
 @dataclass(frozen=True)
@@ -74,13 +74,22 @@ class SQLGenerator:
         )
 
     def _provider_error_result(self, exc: Exception) -> SQLGeneratorResult:
+        if isinstance(exc, LLMProviderFailure):
+            metadata = {
+                "provider_failure_code": exc.code,
+                "provider_failure_fatal": exc.fatal,
+            }
+            unsupported_reason = exc.code
+        else:
+            metadata = {"provider_failure_code": "provider_unavailable"}
+            unsupported_reason = "provider_error"
         return SQLGeneratorResult(
             generated_sql=None,
             provider_name=self.provider.provider_name,
             model_name=self.provider.model_name,
-            generation_metadata={"provider_error_type": type(exc).__name__},
+            generation_metadata=metadata,
             clarification_required=True,
-            unsupported_reason="provider_error",
+            unsupported_reason=unsupported_reason,
             safe_error="SQL generation is unavailable.",
         )
 
@@ -93,4 +102,3 @@ def _normalize_sql(generated_sql: str | None) -> str | None:
     if normalized.endswith(";"):
         normalized = normalized[:-1].strip()
     return normalized or None
-

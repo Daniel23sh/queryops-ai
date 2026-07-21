@@ -58,7 +58,7 @@ export function EvaluationQueriesTab({ categories, identityKey, onForbidden, onL
   return (
     <div className="grid gap-6">
       <section className="grid gap-4" aria-labelledby="query-evaluation-title">
-        <div><h2 className="m-0 text-xl font-bold text-app-text" id="query-evaluation-title">Query measurements</h2><p className="mb-0 mt-2 max-w-4xl text-sm leading-6 text-app-subtle">Filter the authorized case projection for this exact run. MockLLM gaps remain visible and are not skipped.</p></div>
+        <div><h2 className="m-0 text-xl font-bold text-app-text" id="query-evaluation-title">Query measurements</h2><p className="mb-0 mt-2 max-w-4xl text-sm leading-6 text-app-subtle">Filter the authorized case projection for this exact run. Provider gaps remain visible and are not skipped.</p></div>
         <div className="grid gap-3 rounded-card border border-app-border bg-app-surface p-4 sm:grid-cols-2 xl:grid-cols-6" aria-label="Query measurement filters">
           <FilterSelect label="Difficulty" value={parsed.difficulty ?? ""} onChange={(value) => updateFilter("difficulty", value)} options={difficulties.map((value) => [value, safeBreakdownLabel(value)])} />
           <FilterSelect label="Category" value={parsed.category ?? ""} onChange={(value) => updateFilter("category", value)} options={categories.map((value) => [value, safeBreakdownLabel(value)])} />

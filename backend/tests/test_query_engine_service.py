@@ -472,6 +472,70 @@ def test_service_never_executes_unsupported_provider_output(
     assert executor.seen_sql == []
 
 
+def test_selected_provider_receives_authorized_context_and_persists_only_safe_usage(
+    db_session: Session,
+) -> None:
+    executor = FakeExecutor()
+    provider = RecordingMeasuredProvider()
+    service = QueryEngineService(provider=provider, executor=executor)
+    user = user_by_email(db_session, "demo.analyst@queryops.local")
+
+    result = service.run(
+        db_session,
+        user,
+        QueryEngineRequest(question="Show device operating systems."),
+    )
+
+    query_run = only_query_run(db_session)
+    assert result.status == "succeeded"
+    assert provider.calls == 1
+    assert provider.user_context == {
+        "scope_type": "department",
+        "has_global_scope": False,
+    }
+    assert "it_audit_events" not in provider.schema_context["allowed_tables"]
+    assert query_run.query_metadata["provider"] == "openai"
+    assert query_run.query_metadata["model"] == "gpt-5.6-terra"
+    assert query_run.query_metadata["provider_measurement"] == {
+        "provider": "openai",
+        "model_label": "gpt-5.6-terra",
+        "duration_ms": 7.5,
+        "attempt_count": 1,
+        "input_tokens": 100,
+        "cached_input_tokens": 20,
+        "output_tokens": 15,
+        "total_tokens": 115,
+    }
+    persisted = str(query_run.query_metadata)
+    assert "raw-provider-payload" not in persisted
+    assert str(user.id) not in persisted
+    assert user.email not in persisted
+
+
+def test_template_request_bypasses_selected_real_provider(
+    db_session: Session,
+) -> None:
+    executor = FakeExecutor()
+    provider = RecordingMeasuredProvider()
+    service = QueryEngineService(provider=provider, executor=executor)
+    user = user_by_email(db_session, "demo.manager@queryops.local")
+
+    result = service.run(
+        db_session,
+        user,
+        QueryEngineRequest(
+            question="How many open support tickets exist in my department by priority?",
+            template_id="open_support_tickets_by_department",
+        ),
+    )
+
+    assert result.status == "succeeded"
+    assert provider.calls == 0
+    assert only_query_run(db_session).query_metadata["provider"] == (
+        "domain_pack_template"
+    )
+
+
 def test_result_formatter_is_deterministic() -> None:
     execution_result = SQLExecutionResult(
         status="succeeded",
@@ -572,6 +636,49 @@ class StaticSQLProvider:
             model_name=self.model_name,
             generation_metadata={"source": "self_correction_test"},
             clarification_required=False,
+        )
+
+
+class RecordingMeasuredProvider:
+    provider_name = "openai"
+    model_name = "gpt-5.6-terra"
+
+    def __init__(self) -> None:
+        self.calls = 0
+        self.schema_context: dict[str, Any] = {}
+        self.user_context: dict[str, Any] = {}
+
+    def generate_sql(
+        self,
+        _question: str,
+        schema_context: dict[str, Any],
+        user_context: dict[str, Any],
+        _options: dict[str, Any],
+    ) -> SQLGenerationResult:
+        self.calls += 1
+        self.schema_context = schema_context
+        self.user_context = user_context
+        return SQLGenerationResult(
+            generated_sql=(
+                "SELECT id, operating_system FROM devices "
+                "ORDER BY operating_system, id LIMIT 25"
+            ),
+            provider_name=self.provider_name,
+            model_name=self.model_name,
+            generation_metadata={
+                "provider_measurement": {
+                    "provider": "openai",
+                    "model_label": "gpt-5.6-terra",
+                    "duration_ms": 7.5,
+                    "attempt_count": 1,
+                    "input_tokens": 100,
+                    "cached_input_tokens": 20,
+                    "output_tokens": 15,
+                    "total_tokens": 115,
+                    "response_id": "raw-provider-payload",
+                },
+                "raw_payload": "raw-provider-payload",
+            },
         )
 
 
