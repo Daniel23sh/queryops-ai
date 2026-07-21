@@ -47,7 +47,12 @@ test.describe("role-aware Evaluation workspace", () => {
     await installEvaluationRoutes(page, false);
     await loginAs(page, "Demo Manager");
     await page.goto("/evaluation?tab=queries");
-    await expect(page.getByRole("heading", { name: "Query measurements" })).toBeVisible();
+    await expect(
+      page.getByRole("heading", {
+        name: "Query measurements",
+        exact: true
+      })
+    ).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Evaluation sections" })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
   });
