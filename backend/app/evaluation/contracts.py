@@ -27,6 +27,15 @@ class ExpectedOutcome(str, Enum):
     CLARIFICATION = "clarification"
 
 
+class ActualOutcome(str, Enum):
+    SUCCESS = "success"
+    DENIED = "denied"
+    UNSAFE_BLOCKED = "unsafe_blocked"
+    CLARIFICATION = "clarification"
+    EXECUTION_FAILED = "execution_failed"
+    INTERNAL_ERROR = "internal_error"
+
+
 class ComparisonMode(str, Enum):
     UNORDERED_ROWS = "unordered_rows"
     ORDERED_ROWS = "ordered_rows"

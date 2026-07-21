@@ -11,13 +11,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.responses import error_response, success_response
-from app.api.routes.query_templates import _template_is_allowed
 from app.auth.access_context import UserAccessContext, build_user_access_context
 from app.auth.permissions import require_authenticated_user
 from app.auth.session import csrf_is_valid, session_from_request
 from app.db.session import get_db
 from app.models.product import AppUser, QueryRun, UserAccessScope
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
+from app.query_engine.request_authorization import authorize_query_request
 from app.query_engine.service import QueryEngineRequest, QueryEngineService
 
 
@@ -59,11 +59,14 @@ def run_query(
     if parameters not in (None, {}):
         return _parameters_not_supported_response()
 
-    if template_id:
-        template_error = _template_request_error(template_id, access_context)
-        if template_error is not None:
-            return template_error
-    elif not access_context.has_permission("can_run_free_query"):
+    request_authorization = authorize_query_request(
+        access_context,
+        load_it_operations_domain_pack(),
+        template_id=template_id,
+    )
+    if not request_authorization.allowed:
+        if request_authorization.error_code == "query_template_not_found":
+            return _query_template_not_found_response()
         return _forbidden_response()
 
     result = service.run(
@@ -329,20 +332,6 @@ def _parse_query_clarify_payload(payload: Any):
         return _invalid_query_request_response()
 
     return {"question": question.strip()}
-
-
-def _template_request_error(
-    template_id: str,
-    access_context: UserAccessContext,
-):
-    if not access_context.has_permission("can_use_query_templates"):
-        return _forbidden_response()
-
-    domain_pack = load_it_operations_domain_pack()
-    template = domain_pack.templates_by_id.get(template_id)
-    if template is None or not _template_is_allowed(template, access_context):
-        return _query_template_not_found_response()
-    return None
 
 
 def _query_run_for_result(db: Session, query_run_id: str | None) -> QueryRun | None:

@@ -8,7 +8,12 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from app.evaluation.contracts import ComparisonMode, EvaluationCase, ExpectedOutcome
+from app.evaluation.contracts import (
+    ActualOutcome,
+    ComparisonMode,
+    EvaluationCase,
+    ExpectedOutcome,
+)
 
 
 SAFE_FAILURE_REASONS = frozenset(
@@ -53,13 +58,13 @@ class EvaluationScore:
 def score_evaluation_case(
     case: EvaluationCase,
     *,
-    actual_outcome: ExpectedOutcome,
+    actual_outcome: ExpectedOutcome | ActualOutcome,
     execution_succeeded: bool,
     actual_referenced_tables: Sequence[str] = (),
     expected_rows: Sequence[Mapping[str, Any]] = (),
     actual_rows: Sequence[Mapping[str, Any]] = (),
 ) -> EvaluationScore:
-    outcome_correct = actual_outcome is case.expected_outcome
+    outcome_correct = actual_outcome.value == case.expected_outcome.value
     execution_correct = execution_succeeded == (
         case.expected_outcome is ExpectedOutcome.SUCCESS
     )
