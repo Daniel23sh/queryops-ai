@@ -7,6 +7,7 @@ from app.api.routes.approvals import router as approvals_router
 from app.api.routes.audit import router as audit_router
 from app.api.routes.auth import router as auth_router
 from app.api.routes.dashboards import router as dashboards_router
+from app.api.routes.evaluation import router as evaluation_router
 from app.api.routes.exports import router as exports_router
 from app.api.routes.health import router as health_router
 from app.api.routes.home import router as home_router
@@ -30,6 +31,7 @@ app.include_router(approvals_router)
 app.include_router(audit_router)
 app.include_router(auth_router)
 app.include_router(dashboards_router)
+app.include_router(evaluation_router)
 app.include_router(exports_router)
 app.include_router(health_router)
 app.include_router(home_router)
