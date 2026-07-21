@@ -2,7 +2,7 @@ import { useCallback, useEffect } from "react";
 
 import { evaluationRequestKey, getEvaluationSecurity } from "../../../api/evaluation";
 import { useEvaluationResource } from "../hooks/useEvaluationResource";
-import { formatEvaluationPercent } from "../presentation";
+import { formatEvaluationPercent, matchesSelectedRun } from "../presentation";
 import type { EvaluationSecurity } from "../types";
 import { EvaluationCaseCard } from "./EvaluationCaseDetails";
 import { BreakdownTable, EvaluationStatePanel, MeasurementProgress, MetricCard } from "./EvaluationPrimitives";
@@ -15,6 +15,7 @@ export function EvaluationSecurityTab({ identityKey, onForbidden, onLatest, runI
   if (state.status === "loading") return <EvaluationStatePanel title="Loading security measurements…" message="Loading the authorized security-case projection." />;
   if (state.status === "error") return <EvaluationChildError error={state.error} onLatest={onLatest} onRetry={state.reload} />;
   if (!state.data) return null;
+  if (!matchesSelectedRun(state.data.run, runId)) return <EvaluationStatePanel kind="error" title="The selected run could not be verified" message="The response did not match the run selected by Overview. No security metrics are shown." actionLabel="Load latest run" onAction={onLatest} />;
   const { metrics } = state.data;
   return (
     <div className="grid gap-6">

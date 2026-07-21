@@ -366,7 +366,7 @@ Default local URLs:
 * Backend health endpoint: `http://localhost:8000/health`
 * PostgreSQL: `localhost:5432`
 
-PostgreSQL is included for the local development environment. Milestones 0 through 8 are complete and merged through PR #35. M9 PR1 through PR3 are complete and merged through PR #38; M9 PR4 is the active frontend-only scope. The current backend includes both V1 actions, approvals, synchronous execution, action/domain audit, database notification APIs, safe timelines, deterministic template suggestions, requester-owned action lists, exact authorized activity totals, the evaluation dataset/scoring foundation, the governed manual MockLLM runner, and role-aware read-only evaluation metrics. The frontend includes requester Actions, Approvals, Audit, database Notifications, and the protected role-aware Evaluation workspace.
+PostgreSQL is included for the local development environment. Milestones 0 through 8 are complete and merged through PR #35. M9 PR1 through PR3 are complete and merged through PR #38; M9 PR4 is implementation- and verification-complete on its feature branch but is not merged. The current backend includes both V1 actions, approvals, synchronous execution, action/domain audit, database notification APIs, safe timelines, deterministic template suggestions, requester-owned action lists, exact authorized activity totals, the evaluation dataset/scoring foundation, the governed manual MockLLM runner, and role-aware read-only evaluation metrics. The frontend feature branch includes requester Actions, Approvals, Audit, database Notifications, and the protected role-aware Evaluation workspace.
 
 Stop the stack:
 
@@ -878,7 +878,7 @@ Milestone 8 — Actions, Approvals & Audit is complete.
 M9 PR1 — Evaluation Dataset & Scoring Foundation is complete and merged through PR #36.
 M9 PR2 — Evaluation Runner, Persistence & CLI is complete and merged through PR #37.
 M9 PR3 — Role-Aware Evaluation Metrics API is complete and merged through PR #38.
-M9 PR4 — Role-Aware Evaluation Workspace UI is active; M9 PR5 and later work has not started.
+M9 PR4 — Role-Aware Evaluation Workspace UI is implementation- and verification-complete on its feature branch but is not merged; M9 PR5 and later work has not started.
 ```
 
 PR6 keeps backend authorization authoritative while adding exact approval/notification activity badges, permission-aware Approvals and Audit workspaces, synchronous approve/reject dialogs, safe related navigation, and current-recipient database notification controls. Under the current permission catalog, Analyst receives exact-scope approval and Audit UX, Admin receives global/override/self-approval UX, Manager retains requester Actions and notifications without Audit access, and User receives notifications without Actions, Approvals, or Audit navigation. The private planning description of a future limited Manager audit view is not implemented because the backend does not currently grant that permission.

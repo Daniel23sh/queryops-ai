@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   authenticatedRoutes,
   backendHomeOverview,
+  backendEvaluationOverview,
   demoAdmin,
   demoAnalyst,
   demoManager,
@@ -144,6 +145,21 @@ describe("application routing", () => {
     expect(await screen.findByRole("region", { name: "My Dashboard" })).toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Audit" })).not.toBeInTheDocument();
     expect(window.location.pathname).toBe("/");
+  });
+
+  it("deep-links Evaluation for an authorized viewer and guards a User", async () => {
+    installApiMock(authenticatedRoutes(demoManager, {
+      "GET /api/v1/evaluation/overview": successResponse(backendEvaluationOverview())
+    }));
+    const managerView = renderAppAt("/evaluation?tab=overview");
+    expect(await screen.findByRole("heading", { name: "Evaluation" })).toBeInTheDocument();
+    expect(window.location.pathname).toBe("/evaluation");
+    managerView.unmount();
+
+    installApiMock(authenticatedRoutes(demoUser, { "GET /api/v1/dashboards/my": successResponse([]) }));
+    renderAppAt("/evaluation");
+    expect(await screen.findByRole("region", { name: "My Dashboard" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Evaluation" })).not.toBeInTheDocument();
   });
 
   it("redirects a direct unauthorized Admin route without rendering it", async () => {

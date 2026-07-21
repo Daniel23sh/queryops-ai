@@ -3,7 +3,7 @@ import { useCallback, useEffect } from "react";
 import { evaluationRequestKey, getEvaluationActions, getEvaluationDashboards } from "../../../api/evaluation";
 import { useEvaluationResource } from "../hooks/useEvaluationResource";
 import { AvailabilityBadge, EvaluationStatePanel, MetricCard } from "./EvaluationPrimitives";
-import { formatEvaluationPercent } from "../presentation";
+import { formatEvaluationPercent, matchesSelectedRun } from "../presentation";
 import type { EvaluationCapability } from "../types";
 
 export function EvaluationCapabilityTab({ capability, identityKey, onForbidden, onLatest, runId }: {
@@ -20,6 +20,7 @@ export function EvaluationCapabilityTab({ capability, identityKey, onForbidden, 
   if (state.status === "loading") return <EvaluationStatePanel title={`Loading ${capability} measurement…`} message="Loading the authorized projection for this run." />;
   if (state.status === "error") return <EvaluationChildError error={state.error} onLatest={onLatest} onRetry={state.reload} />;
   if (!state.data) return null;
+  if (!matchesSelectedRun(state.data.run, runId)) return <EvaluationStatePanel kind="error" title="The selected run could not be verified" message="The response did not match the run selected by Overview. No capability metrics are shown." actionLabel="Load latest run" onAction={onLatest} />;
   const title = capability === "actions" ? "Action evaluation" : "Dashboard evaluation";
   return (
     <section className="grid gap-5" aria-labelledby={`${capability}-evaluation-title`}>

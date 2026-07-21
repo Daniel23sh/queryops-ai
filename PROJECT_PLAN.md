@@ -24,7 +24,7 @@ Current PR scope:
 
 `M9 PR3 — Role-Aware Evaluation Metrics API` is complete and merged through PR #38. The verified `main` merge commit is `fd1b8cccba3190714233976daa334364c4b4b080`.
 
-`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` is active. The current scope is `M9 PR4 — Role-Aware Evaluation Workspace UI`; do not begin M9 PR5 or later work.
+`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` is active. `M9 PR4 — Role-Aware Evaluation Workspace UI` is implementation- and verification-complete on `feature/m9-evaluation-workspace` but is not merged; do not begin M9 PR5 or later work.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
@@ -450,7 +450,7 @@ The latest PR status is:
 
 `Milestone 8 — Actions, Approvals & Audit` is complete and merged through PR #35 at verified `main` commit `408190f1cdf5710ed80a83065d65fd9cd01c4f87`.
 
-`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` is active. M9 PR1 is complete through PR #36. M9 PR2 is complete through PR #37 at verified `main` commit `800b2f4006057d7a046d28da8ddb28aebc2f6176`. `M9 PR3 — Role-Aware Evaluation Metrics API` is the only approved implementation scope.
+`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` is active. M9 PR1 is complete through PR #36. M9 PR2 is complete through PR #37. M9 PR3 is complete through PR #38 at verified `main` commit `fd1b8cccba3190714233976daa334364c4b4b080`. `M9 PR4 — Role-Aware Evaluation Workspace UI` is implementation- and verification-complete but is not merged; M9 PR5 and later work has not started.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -1541,3 +1541,5 @@ Guardrails:
 - Actions and Dashboards remain `not_measured`, zero measured cases, and null score with no fabricated visualization or execution control.
 - Never render SQL, rows, prompts, provider payloads, credentials, stack traces, raw errors, protected resource names, cross-scope identities/totals, or evaluator internals.
 - Do not change backend behavior/schema/permissions, the dataset, MockLLM templates or scores, Query Engine/RLS/actions/audit/notifications/exports, add dependencies, real providers, workflows, thresholds, or M9 PR5+ work.
+
+Status: implementation- and verification-complete on `feature/m9-evaluation-workspace`; not merged. The workspace uses only the five PR3 GET endpoints and has no evaluation execution, run history, provider, workflow, or threshold behavior.

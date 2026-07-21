@@ -3,8 +3,16 @@ import type {
   EvaluationAvailability,
   EvaluationCaseType,
   EvaluationExpectedOutcome,
-  EvaluationFailureReason
+  EvaluationFailureReason,
+  EvaluationRun
 } from "./types";
+
+export function matchesSelectedRun(
+  run: Pick<EvaluationRun, "id"> | null,
+  selectedRunId: string
+): boolean {
+  return run?.id === selectedRunId;
+}
 
 export function formatEvaluationPercent(value: number | null): string {
   return value === null ? "Not available" : `${(value * 100).toFixed(1)}%`;

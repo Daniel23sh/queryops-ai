@@ -4,7 +4,7 @@ import { useSearchParams } from "react-router-dom";
 
 import { evaluationRequestKey, getEvaluationQueries } from "../../../api/evaluation";
 import { useEvaluationResource } from "../hooks/useEvaluationResource";
-import { formatEvaluationPercent, safeBreakdownLabel } from "../presentation";
+import { formatEvaluationPercent, matchesSelectedRun, safeBreakdownLabel } from "../presentation";
 import type {
   EvaluationActualOutcome,
   EvaluationCaseType,
@@ -72,7 +72,8 @@ export function EvaluationQueriesTab({ categories, identityKey, onForbidden, onL
 
       {state.status === "loading" ? <EvaluationStatePanel title="Loading query measurements…" message="Loading the selected authorized case page." /> : null}
       {state.status === "error" ? <EvaluationChildError error={state.error} onLatest={onLatest} onRetry={state.reload} /> : null}
-      {state.status === "success" && state.data ? <QueryResults data={state.data} page={parsed.page} onPage={(page) => { const next = new URLSearchParams(searchParams); if (page <= 1) next.delete("page"); else next.set("page", String(page)); setSearchParams(next); }} /> : null}
+      {state.status === "success" && state.data && !matchesSelectedRun(state.data.run, runId) ? <EvaluationStatePanel kind="error" title="The selected run could not be verified" message="The response did not match the run selected by Overview. No query metrics are shown." actionLabel="Load latest run" onAction={onLatest} /> : null}
+      {state.status === "success" && state.data && matchesSelectedRun(state.data.run, runId) ? <QueryResults data={state.data} page={parsed.page} onPage={(page) => { const next = new URLSearchParams(searchParams); if (page <= 1) next.delete("page"); else next.set("page", String(page)); setSearchParams(next); }} /> : null}
     </div>
   );
 }
@@ -86,7 +87,7 @@ function QueryResults({ data, onPage, page }: { data: EvaluationQueries; onPage:
     </section>
     <section className="grid gap-4 lg:grid-cols-3" aria-label="Filtered query breakdowns"><BreakdownPanel title="Difficulty"><BreakdownTable caption="Filtered query results by difficulty" items={data.by_difficulty} /></BreakdownPanel><BreakdownPanel title="Category"><BreakdownTable caption="Filtered query results by category" items={data.by_category} /></BreakdownPanel><BreakdownPanel title="Case type"><BreakdownTable caption="Filtered query results by case type" items={data.by_case_type} /></BreakdownPanel></section>
     <section className="grid gap-3" aria-labelledby="query-cases-title"><h3 className="m-0 text-lg font-bold text-app-text" id="query-cases-title">Cases</h3>{data.items.length ? data.items.map((item) => <EvaluationCaseCard item={item} key={item.case_id} />) : <EvaluationStatePanel title="No cases match these filters" message="Change or reset the filters to see another authorized measurement set." />}</section>
-    {data.pagination.total ? <nav aria-label="Query measurement pages" className="flex flex-wrap items-center justify-between gap-3"><button className="qops-button-secondary" disabled={page <= 1} onClick={() => onPage(page - 1)} type="button">Previous</button><span className="text-sm text-app-subtle">Page {page} of {maxPage}</span><button className="qops-button-secondary" disabled={page >= maxPage} onClick={() => onPage(page + 1)} type="button">Next</button></nav> : null}
+    {data.pagination.total ? <nav aria-label="Query measurement pages" className="flex flex-wrap items-center justify-between gap-3"><button className="qops-button-secondary" disabled={page <= 1} onClick={() => onPage(Math.min(page - 1, maxPage))} type="button">Previous</button><span className="text-sm text-app-subtle">Page {page} of {maxPage}</span><button className="qops-button-secondary" disabled={page >= maxPage} onClick={() => onPage(page + 1)} type="button">Next</button></nav> : null}
   </>;
 }
 

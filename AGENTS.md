@@ -69,7 +69,7 @@ The milestone status is defined in `PROJECT_PLAN.md`.
 At the time this file was updated, the current target is:
 
 ```txt
-M9 PR4 — Role-Aware Evaluation Workspace UI
+M9 PR4 — Role-Aware Evaluation Workspace UI (implementation- and verification-complete; not merged)
 ```
 
 Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, Milestone 3, Milestone 4, and Milestone 5 are complete under the previous scopes. Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete.
@@ -108,6 +108,8 @@ M9 PR4 guardrails:
 * Never render or request baseline/generated/QueryRun SQL, result rows, prompts, provider payloads, secrets, raw errors, protected resources, cross-scope totals, or evaluator internals. Do not log or persist Evaluation responses.
 * Abort stale reads and key in-memory state by authenticated identity, effective permissions, scopes, selected run, endpoint, filters, and pagination so logout or access changes cannot reveal previous data.
 * Do not change backend APIs/schemas/permissions, evaluation scores/dataset/templates, Query Engine/RLS/actions/audit/export behavior, add a real provider/workflow/threshold, or begin M9 PR5+ work.
+
+M9 PR4 delivered the permission-gated `/evaluation` workspace, exact stable-run reuse, five deep-linkable read-only tabs, bounded URL-backed Query filters, honest partial/not-measured/security states, server-projected technical details, and identity/scope-keyed abortable reads. Final verification passed 266 frontend tests, TypeScript and the production build, five Chromium role/responsive flows, 154 focused backend evaluation/access tests, 848 default backend tests with 153 expected PostgreSQL-only skips, all 1001 tests on a fresh disposable PostgreSQL container, and Alembic head/no-diff verification. CodeRabbit CLI was installed but unauthenticated, so the final review was **Manual M9 PR4 review — not a CodeRabbit result**; it fixed one Major fail-closed run-response consistency issue and two Minor issues (out-of-range pagination and test-fixture metric drift), with no remaining actionable issue. No backend, migration, dependency, evaluation execution/history, real provider, workflow, threshold, or M9 PR5 work was added. Preserve these boundaries through review and merge.
 
 M8 PR1 may add only the action persistence foundation, SQLAlchemy relationships/enums, typed deterministic Action Engine contracts, explicit fail-closed registry, pure permission/scope policy decisions, the minimum stable access-action vocabulary, and focused foundation tests.
 
