@@ -298,7 +298,7 @@ Successful execution atomically persists the domain mutation, application lifecy
 
 ## Evaluation and Testing
 
-M9 PR1 adds the authoritative 40-case IT Operations evaluation dataset, strict loader, and semantic scoring foundation. M9 PR2 adds a synchronous backend runner that uses the production Query Engine boundary, executes evaluator-only baselines through the restricted read-only PostgreSQL runtime and transaction-local RLS, persists sanitized measurements, and provides a manual MockLLM CLI. M9 PR3 adds five read-only, role-aware metrics endpoints over that sanitized persistence:
+M9 PR1 adds the authoritative 40-case IT Operations evaluation dataset, strict loader, and semantic scoring foundation. M9 PR2 adds a synchronous backend runner that uses the production Query Engine boundary, executes evaluator-only baselines through the restricted read-only PostgreSQL runtime and transaction-local RLS, persists sanitized measurements, and provides a manual MockLLM CLI. M9 PR3 adds five read-only, role-aware metrics endpoints over that sanitized persistence, and M9 PR4 adds the protected read-only Evaluation workspace at `/evaluation`:
 
 ```txt
 GET /api/v1/evaluation/overview
@@ -312,9 +312,13 @@ User is denied evaluation access. Manager requires `can_view_department_evaluati
 
 `run_id` selects an accessible run explicitly. Without it, the API selects the latest eligible completed MockLLM run by completion time and ID; running runs never become the default. Unknown and inaccessible run IDs share the same safe not-found response. Partially completed or malformed measurements are labeled as partial or unavailable instead of being converted to fabricated zero scores. The current dataset measures query and security behavior only, so Actions and Dashboards return `not_measured`, zero measured cases, and a null score.
 
+The Evaluation workspace is available only with `can_view_department_evaluation`, `can_view_scope_evaluation`, or `can_view_global_evaluation`; `can_view_sql` alone does not grant route access. It loads Overview without a caller-selected run and reuses the exact latest visible run returned by the backend for Queries, Actions, Security, and Dashboards. Tabs and supported Query filters are URL-addressable for back/forward navigation, but the browser provides no run history or arbitrary run-ID control. Manager receives the business-only API projection. Analyst and Admin see technical fields only when the backend returns them, and referenced-resource metadata is never inferred from role.
+
+The workspace cannot start, rerun, delete, or configure evaluation and does not cache metrics in local storage. Actions and Dashboards remain explicitly **Not measured**, and the Security view preserves exact mismatches such as a failed unsafe-SQL expectation. Loading, unavailable, partial, forbidden, invalid-filter, and not-found states use controlled messages and do not render backend error detail.
+
 All counts and ratios use only visible, structurally valid case measurements. Overall score and expected-behavior match rate use completed visible cases as their denominator; security pass rate uses completed visible security cases; breakdown scores use completed visible cases in that group. A zero-case denominator produces `null`, never a fabricated zero score.
 
-The metrics API never executes evaluation, Query Engine requests, provider calls, trusted baselines, or product-domain SQL. It never returns SQL, raw rows, prompts, provider payloads, secrets, stack traces, raw database errors, or arbitrary stored JSON. Evaluation remains MockLLM-only; no Evaluation frontend exists and no final M9 release thresholds are enforced.
+The metrics API never executes evaluation, Query Engine requests, provider calls, trusted baselines, or product-domain SQL. It never returns SQL, raw rows, prompts, provider payloads, secrets, stack traces, raw database errors, or arbitrary stored JSON. Evaluation remains MockLLM-only; the read-only workspace does not expand that disclosure contract, and no final M9 release thresholds are enforced.
 
 Planned testing areas:
 
@@ -362,7 +366,7 @@ Default local URLs:
 * Backend health endpoint: `http://localhost:8000/health`
 * PostgreSQL: `localhost:5432`
 
-PostgreSQL is included for the local development environment. Milestones 0 through 8 are complete and merged through PR #35. M9 PR1 and PR2 are complete and merged through PR #37; M9 PR3 is the active backend-only scope. The current backend includes both V1 actions, approvals, synchronous execution, action/domain audit, database notification APIs, safe timelines, deterministic template suggestions, requester-owned action lists, exact authorized activity totals, the evaluation dataset/scoring foundation, the governed manual MockLLM runner, and role-aware read-only evaluation metrics. The frontend includes requester Actions, Approvals, Audit, and database Notifications UX; no Evaluation UI exists yet.
+PostgreSQL is included for the local development environment. Milestones 0 through 8 are complete and merged through PR #35. M9 PR1 through PR3 are complete and merged through PR #38; M9 PR4 is implementation- and verification-complete on its feature branch but is not merged. The current backend includes both V1 actions, approvals, synchronous execution, action/domain audit, database notification APIs, safe timelines, deterministic template suggestions, requester-owned action lists, exact authorized activity totals, the evaluation dataset/scoring foundation, the governed manual MockLLM runner, and role-aware read-only evaluation metrics. The frontend feature branch includes requester Actions, Approvals, Audit, database Notifications, and the protected role-aware Evaluation workspace.
 
 Stop the stack:
 
@@ -523,7 +527,7 @@ Current Query Engine limitations:
 * Real LLM providers are not implemented.
 * Query detail endpoints return only the authenticated user's own runs.
 * Scope-aware query history requires assigned access scopes and the appropriate history permission.
-* Evaluation frontend UX, real LLM providers, and enforced M9 release thresholds are not implemented.
+* Evaluation execution controls, run history, real LLM providers, and enforced M9 release thresholds are not implemented.
 * Scheduled card refresh, scheduled/background actions, and external notification delivery are not implemented. Approval, audit, and notification frontend screens are limited to the active PR6 scope.
 
 ### Role-Aware Home and Dashboard Browser
@@ -815,7 +819,7 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-Milestones 0 through 8 are complete and merged into `main`; M8 PR7 merged through PR #35. Milestone 9 — Evaluation, Quality Measurement & V1 Readiness is active. M9 PR1 and M9 PR2 are complete and merged through PR #37, and M9 PR3 — Role-Aware Evaluation Metrics API is the current scope.
+Milestones 0 through 8 are complete and merged into `main`; M8 PR7 merged through PR #35. Milestone 9 — Evaluation, Quality Measurement & V1 Readiness is active. M9 PR1 through M9 PR3 are complete and merged through PR #38, and M9 PR4 — Role-Aware Evaluation Workspace UI is the current scope.
 
 The completed Milestone 7 experience is dark-first with a persistent light option, responsive navigation, My Dashboard as the authenticated home, permission-aware routes, Scope terminology, a responsive dashboard editor, safe visualizations, and command-first Ask Data. The completed Milestone 8 experience adds the two governed V1 actions, requester Actions, exact-scope/global Approvals, scoped/global Audit, database Notifications, synchronous execution, and release-blocking PostgreSQL/browser evidence.
 
@@ -873,7 +877,8 @@ M8 PR7 — E2E, Security Hardening & Completion is complete and merged through P
 Milestone 8 — Actions, Approvals & Audit is complete.
 M9 PR1 — Evaluation Dataset & Scoring Foundation is complete and merged through PR #36.
 M9 PR2 — Evaluation Runner, Persistence & CLI is complete and merged through PR #37.
-M9 PR3 — Role-Aware Evaluation Metrics API is active; M9 PR4 and later work has not started.
+M9 PR3 — Role-Aware Evaluation Metrics API is complete and merged through PR #38.
+M9 PR4 — Role-Aware Evaluation Workspace UI is implementation- and verification-complete on its feature branch but is not merged; M9 PR5 and later work has not started.
 ```
 
 PR6 keeps backend authorization authoritative while adding exact approval/notification activity badges, permission-aware Approvals and Audit workspaces, synchronous approve/reject dialogs, safe related navigation, and current-recipient database notification controls. Under the current permission catalog, Analyst receives exact-scope approval and Audit UX, Admin receives global/override/self-approval UX, Manager retains requester Actions and notifications without Audit access, and User receives notifications without Actions, Approvals, or Audit navigation. The private planning description of a future limited Manager audit view is not implemented because the backend does not currently grant that permission.

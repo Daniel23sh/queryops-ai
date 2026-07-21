@@ -9,6 +9,8 @@ import { ApprovalsPage } from "../features/approvals/ApprovalsPage";
 import { AuditPage } from "../features/audit/AuditPage";
 import { APPROVAL_PERMISSION_KEYS, AUDIT_PERMISSION_KEYS } from "../features/activity/permissions";
 import { DashboardDetailPage } from "../features/dashboard/DashboardDetailPage";
+import { EvaluationPage } from "../features/evaluation/EvaluationPage";
+import { EVALUATION_PERMISSION_KEYS } from "../features/evaluation/permissions";
 import { HomePage } from "../features/home/HomePage";
 import { ProfilePage } from "../features/profile/ProfilePage";
 import { RoleRequestsPage } from "../features/role-requests/RoleRequestsPage";
@@ -75,6 +77,14 @@ export function AppRoutes() {
             element={
               <AnyPermissionRoute permissions={AUDIT_PERMISSION_KEYS}>
                 <AuditRoute />
+              </AnyPermissionRoute>
+            }
+          />
+          <Route
+            path={APP_ROUTES.evaluation}
+            element={
+              <AnyPermissionRoute permissions={EVALUATION_PERMISSION_KEYS}>
+                <EvaluationRoute />
               </AnyPermissionRoute>
             }
           />
@@ -175,6 +185,11 @@ function ApprovalDetailRoute() {
 function AuditRoute() {
   const { user } = useOutletContext<AuthenticatedOutletContext>();
   return <AuditPage user={user} />;
+}
+
+function EvaluationRoute() {
+  const { user } = useOutletContext<AuthenticatedOutletContext>();
+  return <EvaluationPage user={user} />;
 }
 
 function ProfileRoute() {

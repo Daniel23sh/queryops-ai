@@ -20,6 +20,7 @@ export const demoManager = backendUser({
     "can_run_free_query",
     "can_query_scoped_data",
     "can_view_scoped_data",
+    "can_view_department_evaluation",
     "can_request_action",
     "can_create_personal_dashboard",
     "can_star_dashboard",
@@ -42,6 +43,7 @@ export const demoAnalyst = backendUser({
     "can_request_action",
     "can_approve_scoped_action",
     "can_view_scope_audit",
+    "can_view_scope_evaluation",
     "can_star_dashboard",
     "can_view_own_data"
   ]
@@ -65,7 +67,8 @@ export const demoAdmin = backendUser({
     "can_approve_global_action",
     "can_approve_policy_override",
     "can_self_approve_admin_action",
-    "can_view_global_audit"
+    "can_view_global_audit",
+    "can_view_global_evaluation"
   ]
 });
 
@@ -146,6 +149,118 @@ export function successResponse(data: unknown) {
       timestamp: "2026-07-13T12:00:00Z"
     }
   });
+}
+
+export function backendEvaluationOverview({
+  availability = "measured",
+  completed = 40,
+  failed = 30,
+  passed = 10,
+  runId = "00000000-0000-4000-8000-000000000901"
+}: {
+  availability?: string;
+  completed?: number;
+  failed?: number;
+  passed?: number;
+  runId?: string | null;
+} = {}) {
+  return {
+    run: runId ? backendEvaluationRun(runId) : null,
+    metrics: backendEvaluationMetrics({ availability, completed, failed, passed }),
+    by_difficulty: [
+      evaluationBreakdown("easy", 10, 10, 6, 4, 0.6),
+      evaluationBreakdown("medium", 15, 15, 0, 15, 0),
+      evaluationBreakdown("hard", 10, 10, 0, 10, 0),
+      evaluationBreakdown("security", 5, 5, 4, 1, 0.8)
+    ],
+    by_category: [evaluationBreakdown("directory_users", 8, 8, 3, 5, 0.375)],
+    by_case_type: [
+      evaluationBreakdown("template_query", 6, 6, 6, 0, 1),
+      evaluationBreakdown("free_query", 29, 29, 2, 27, 0.069),
+      evaluationBreakdown("unsafe_sql", 1, 1, 0, 1, 0)
+    ],
+    coverage: [
+      { capability: "queries", availability, measured_case_count: completed, score: completed ? passed / completed : null },
+      { capability: "actions", availability: "not_measured", measured_case_count: 0, score: null },
+      { capability: "security", availability: "measured", measured_case_count: 5, score: 0.8 },
+      { capability: "dashboards", availability: "not_measured", measured_case_count: 0, score: null }
+    ]
+  };
+}
+
+export function backendEvaluationQueries({ runId = "00000000-0000-4000-8000-000000000901", technical = false } = {}) {
+  const item = backendEvaluationCase({ technical });
+  return {
+    run: backendEvaluationRun(runId),
+    metrics: backendEvaluationMetrics({ completed: 1, failed: 1, passed: 0 }),
+    by_difficulty: [evaluationBreakdown("security", 1, 1, 0, 1, 0)],
+    by_category: [evaluationBreakdown("directory_users", 1, 1, 0, 1, 0)],
+    by_case_type: [evaluationBreakdown("unsafe_sql", 1, 1, 0, 1, 0)],
+    items: [item],
+    pagination: { limit: 25, offset: 0, returned: 1, total: 1 }
+  };
+}
+
+export function backendEvaluationSecurity({ technical = false } = {}) {
+  return {
+    run: backendEvaluationRun(),
+    metrics: backendEvaluationMetrics({ completed: 5, failed: 1, passed: 4 }),
+    by_expected_behavior: [
+      evaluationBreakdown("authorization_denial", 2, 2, 2, 0, 1),
+      evaluationBreakdown("scope_denial", 1, 1, 1, 0, 1),
+      evaluationBreakdown("unsafe_query_block", 1, 1, 0, 1, 0),
+      evaluationBreakdown("clarification", 1, 1, 1, 0, 1)
+    ],
+    items: [backendEvaluationCase({ technical })]
+  };
+}
+
+export function backendEvaluationCapability(capability: "actions" | "dashboards") {
+  return {
+    run: backendEvaluationRun(),
+    capability,
+    availability: "not_measured",
+    measured_cases: 0,
+    score: null,
+    reason_code: capability === "actions" ? "action_evaluation_not_available" : "dashboard_evaluation_not_available"
+  };
+}
+
+function backendEvaluationRun(id = "00000000-0000-4000-8000-000000000901") {
+  return { id, provider: "mock", model_label: "mock-queryops-v1", dataset_id: "it_operations_v1", dataset_version: "1.0.0", dataset_digest: "a".repeat(64), status: "succeeded", started_at: "2026-07-20T11:00:00Z", completed_at: "2026-07-20T11:02:00Z" };
+}
+
+function backendEvaluationMetrics({ availability = "measured", completed, failed, passed }: { availability?: string; completed: number; failed: number; passed: number }) {
+  return { availability, eligible_count: completed, selected_count: completed, completed_count: completed, passed_count: passed, failed_count: failed, overall_score: completed ? passed / completed : null, expected_behavior_match_rate: completed ? passed / completed : null, security_pass_rate: completed === 5 ? passed / completed : null, query_execution_succeeded_count: passed, query_execution_failed_count: failed };
+}
+
+function evaluationBreakdown(key: string, eligible: number, completed: number, passed: number, failed: number, score: number | null) {
+  return { key, eligible_count: eligible, completed_count: completed, passed_count: passed, failed_count: failed, score };
+}
+
+function backendEvaluationCase({ technical }: { technical: boolean }) {
+  return {
+    case_id: "itops-security-003",
+    category: "directory_users",
+    difficulty: "security",
+    case_type: "unsafe_sql",
+    passed: false,
+    score: 0,
+    technical: technical ? {
+      expected_outcome: "unsafe_blocked",
+      actual_outcome: "execution_failed",
+      execution_succeeded: false,
+      query_execution_attempted: true,
+      expected_row_count: 0,
+      actual_row_count: 0,
+      missing_row_count: 0,
+      extra_row_count: 0,
+      failure_reasons: ["unexpected_outcome"],
+      error_code: "execution_failed",
+      duration_ms: 12.4,
+      referenced_tables: ["directory_users"]
+    } : null
+  };
 }
 
 export function errorResponse(

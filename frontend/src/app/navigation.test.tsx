@@ -43,8 +43,8 @@ describe("focused navigation", () => {
       label === "User"
         ? ["My Dashboard", "Ask Data", "Profile"]
         : label === "Analyst"
-          ? ["My Dashboard", "Ask Data", "Actions", "Approvals", "Audit", "Profile"]
-          : ["My Dashboard", "Ask Data", "Actions", "Profile"]
+          ? ["My Dashboard", "Ask Data", "Actions", "Approvals", "Audit", "Evaluation", "Profile"]
+          : ["My Dashboard", "Ask Data", "Actions", "Evaluation", "Profile"]
     );
     expect(screen.queryByText("Admin")).not.toBeInTheDocument();
     for (const label of HIDDEN_NAVIGATION) {
@@ -66,6 +66,7 @@ describe("focused navigation", () => {
       "Actions",
       "Approvals",
       "Audit",
+      "Evaluation",
       "Profile",
       "Role Requests"
     ]);
@@ -134,6 +135,19 @@ describe("focused navigation", () => {
     ).toBeInTheDocument();
     const nav = screen.getByRole("navigation", { name: "Workspace navigation" });
     expect(within(nav).queryByRole("link", { name: "Ask Data" })).not.toBeInTheDocument();
+    expect(window.location.pathname).toBe("/");
+  });
+
+  it("gates Evaluation by evaluation permissions rather than SQL visibility", async () => {
+    const sqlOnlyUser = {
+      ...demoUser,
+      permissions: [...demoUser.permissions, "can_view_sql"]
+    } as BackendUser;
+    installApiMock(authenticatedRoutes(sqlOnlyUser, { "GET /api/v1/dashboards/my": successResponse([]) }));
+    renderAppAt("/evaluation");
+
+    expect(await screen.findByRole("region", { name: "My Dashboard" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Evaluation" })).not.toBeInTheDocument();
     expect(window.location.pathname).toBe("/");
   });
 });

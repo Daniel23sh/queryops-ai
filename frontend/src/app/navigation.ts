@@ -5,6 +5,7 @@ import {
   ListChecks,
   ClipboardCheck,
   ScrollText,
+  Gauge,
   ShieldCheck,
   type LucideIcon
 } from "lucide-react";
@@ -12,12 +13,13 @@ import {
 import { hasAnyPermission, hasPermission } from "../auth/permissions";
 import type { AuthUser } from "../auth/types";
 import { APPROVAL_PERMISSION_KEYS, AUDIT_PERMISSION_KEYS } from "../features/activity/permissions";
+import { EVALUATION_PERMISSION_KEYS } from "../features/evaluation/permissions";
 import { APP_ROUTES, type AppRoutePath } from "./routeConfig";
 
 export type NavigationSection = "workspace" | "admin";
 
 export type NavItem = {
-  id: "my-dashboard" | "ask-data" | "actions" | "approvals" | "audit" | "profile" | "admin-role-requests";
+  id: "my-dashboard" | "ask-data" | "actions" | "approvals" | "audit" | "evaluation" | "profile" | "admin-role-requests";
   label: string;
   title: string;
   summary: string;
@@ -77,6 +79,16 @@ export const WORKSPACE_NAV_ITEMS: NavItem[] = [
     icon: ScrollText,
     section: "workspace",
     canView: (user) => hasAnyPermission(user, AUDIT_PERMISSION_KEYS)
+  },
+  {
+    id: "evaluation",
+    label: "Evaluation",
+    title: "Evaluation",
+    summary: "Review role-aware quality measurements for the latest evaluation run.",
+    path: APP_ROUTES.evaluation,
+    icon: Gauge,
+    section: "workspace",
+    canView: (user) => hasAnyPermission(user, EVALUATION_PERMISSION_KEYS)
   },
   {
     id: "profile",
