@@ -6,17 +6,20 @@ from collections.abc import Generator
 from dataclasses import replace
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.domains.it_operations.seed import seed_database
+from app.db.session import get_db
 from app.evaluation.baseline import execute_evaluation_baseline
 from app.evaluation.context import resolve_evaluation_identity
 from app.evaluation.contracts import RequestingRole
 from app.evaluation.loader import load_it_operations_evaluation_set
 from app.evaluation.runner import EvaluationRunner
 from app.models.product import EvaluationResult, EvaluationRun
+from app.main import app
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from tests.action_postgres_test_db import validated_disposable_database_url
 
@@ -85,6 +88,36 @@ def test_complete_mock_evaluation_persists_exact_safe_measurement(
         "rows",
     ):
         assert forbidden not in persisted
+
+    def override_get_db() -> Generator[Session, None, None]:
+        with factory() as api_db:
+            yield api_db
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        with TestClient(app) as client:
+            login = client.post(
+                "/api/v1/demo/login",
+                json={"email": "demo.admin@queryops.local"},
+            )
+            assert login.status_code == 200
+            overview = client.get("/api/v1/evaluation/overview")
+            security = client.get("/api/v1/evaluation/security")
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+
+    assert overview.status_code == 200
+    metrics = overview.json()["data"]["metrics"]
+    assert metrics["selected_count"] == 40
+    assert metrics["completed_count"] == 40
+    assert metrics["passed_count"] == 10
+    assert metrics["failed_count"] == 30
+    assert metrics["overall_score"] == summary.overall_score
+    assert security.status_code == 200
+    security_metrics = security.json()["data"]["metrics"]
+    assert security_metrics["completed_count"] == 5
+    assert security_metrics["passed_count"] == 4
+    assert security_metrics["security_pass_rate"] == 0.8
 
 
 def test_baseline_rls_context_is_scoped_per_case_without_leak(

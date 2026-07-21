@@ -20,7 +20,9 @@ Current PR scope:
 
 `M9 PR1 — Evaluation Dataset & Scoring Foundation` is complete and merged through PR #36. The verified `main` merge commit is `a21cdce59f7c3cd05e3e6fec72699554ffbb9979`.
 
-`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` is active. The current scope is `M9 PR2 — Evaluation Runner, Persistence & CLI`; do not begin M9 PR3 or later work.
+`M9 PR2 — Evaluation Runner, Persistence & CLI` is complete and merged through PR #37. The verified `main` merge commit is `800b2f4006057d7a046d28da8ddb28aebc2f6176`.
+
+`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` is active. The current scope is `M9 PR3 — Role-Aware Evaluation Metrics API`; do not begin M9 PR4 or later work.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
@@ -446,7 +448,7 @@ The latest PR status is:
 
 `Milestone 8 — Actions, Approvals & Audit` is complete and merged through PR #35 at verified `main` commit `408190f1cdf5710ed80a83065d65fd9cd01c4f87`.
 
-`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` is active. M9 PR1 is complete and merged through PR #36 at verified `main` commit `a21cdce59f7c3cd05e3e6fec72699554ffbb9979`. `M9 PR2 — Evaluation Runner, Persistence & CLI` is the only approved implementation scope.
+`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` is active. M9 PR1 is complete through PR #36. M9 PR2 is complete through PR #37 at verified `main` commit `800b2f4006057d7a046d28da8ddb28aebc2f6176`. `M9 PR3 — Role-Aware Evaluation Metrics API` is the only approved implementation scope.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -1396,7 +1398,7 @@ Milestone 9 is split into six approved PRs:
 5. `M9 PR5 — Real LLM Evaluation Mode`
 6. `M9 PR6 — V1 Quality Gates, Readiness & Completion`
 
-PR1 is complete and merged. Only PR2 is active. Later PR names record sequence and ownership; they do not authorize implementation.
+PR1 and PR2 are complete and merged. Only PR3 is active. Later PR names record sequence and ownership; they do not authorize implementation.
 
 ### M9 PR1 — Evaluation Dataset & Scoring Foundation
 
@@ -1471,3 +1473,37 @@ Explicit exclusions:
 - real LLM providers, external model calls, API keys, real-provider CI, GitHub evaluation workflows, or release thresholds
 - migrations unless the existing generic evaluation tables prove insufficient; schema/seed/permission/role/RLS/runtime-role changes
 - asynchronous execution, workers, queues, schedulers, Redis, retries, WebSockets, automatic database preparation, or raw result persistence
+
+Status: complete and merged through PR #37.
+
+### M9 PR3 — Role-Aware Evaluation Metrics API
+
+Branch:
+
+```text
+feature/m9-evaluation-api
+```
+
+Goal: expose persisted PR2 measurements through five backend-only, read-only, role-aware endpoints without running evaluation or disclosing evaluator-internal data.
+
+In scope:
+
+- `GET /api/v1/evaluation/overview`
+- `GET /api/v1/evaluation/queries`
+- `GET /api/v1/evaluation/actions`
+- `GET /api/v1/evaluation/security`
+- `GET /api/v1/evaluation/dashboards`
+- centralized effective-permission, scope visibility, field-projection, run-selection, and safe persisted-shape validation
+- scoped recalculation of counts, scores, rates, breakdowns, coverage, pagination, and explicit safe response schemas
+- honest `not_measured` coverage for Actions and Dashboards
+- focused authorization, scope, leakage, OpenAPI, read-only, and disposable-PostgreSQL verification
+
+Guardrails:
+
+- User is forbidden. Manager requires `can_view_department_evaluation` and an assigned department. Analyst requires `can_view_scope_evaluation` and assigned scopes. Admin requires `can_view_global_evaluation` and global scope.
+- Scope authority comes from current `UserAccessContext`; client parameters never widen it. Scoped totals are recalculated from visible results and inaccessible run IDs use the same not-found response as unknown IDs.
+- Use explicit allowlisted projections only. Manager remains business-facing; Analyst/Admin technical fields are controlled, and SQL-adjacent metadata additionally requires `can_view_sql`.
+- Never return baseline/generated SQL, QueryRun SQL, rows, prompts, provider payloads, credentials, stack traces, raw database errors, arbitrary persisted JSON, hidden totals, or private evaluator configuration.
+- The service reads `EvaluationRun`/`EvaluationResult` only. It never invokes the runner, Query Engine, provider, baseline executor, seed, migration, Action Engine, dashboard product data, or another mutation path.
+- Actions and Dashboards return `availability: not_measured`, `measured_cases: 0`, `score: null`, and controlled reason codes until dedicated evaluators exist.
+- Do not add frontend behavior, real-provider mode, workflows, thresholds, migrations, permission/role/RLS changes, background infrastructure, or M9 PR4+ work.
