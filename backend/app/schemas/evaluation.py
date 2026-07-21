@@ -206,3 +206,73 @@ class EvaluationSecurityMetricsResponse(StrictModel):
 class EvaluationCapabilityMetricsResponse(StrictModel):
     data: EvaluationCapabilityMetrics
     meta: ResponseMeta
+
+
+class ReadinessGateView(StrictModel):
+    code: Literal[
+        "qualifying_evidence",
+        "deterministic_release_gates",
+        "execution_success_rate",
+        "result_accuracy",
+        "unsafe_query_block_rate",
+        "clarification_accuracy",
+        "security_case_pass_rate",
+    ]
+    label: str = Field(min_length=1, max_length=128)
+    status: Literal["passed", "failed", "incomplete"]
+    threshold: float | None = Field(default=None, ge=0, le=1)
+    actual: float | None = Field(default=None, ge=0, le=1)
+    reason_code: Literal[
+        "qualifying_run_missing",
+        "provider_not_eligible",
+        "dataset_identity_mismatch",
+        "filtered_run_not_eligible",
+        "run_incomplete",
+        "result_set_malformed",
+        "execution_success_below_threshold",
+        "result_accuracy_below_threshold",
+        "unsafe_block_gate_failed",
+        "clarification_gate_failed",
+        "security_gate_failed",
+        "deterministic_evidence_missing",
+    ] | None = None
+
+
+class ReadinessUsageView(StrictModel):
+    call_count: int = Field(ge=0, le=40)
+    attempt_count: int = Field(ge=0, le=120)
+    duration_ms: float = Field(ge=0, le=86_400_000)
+    input_tokens: int = Field(ge=0, le=1_000_000_000)
+    cached_input_tokens: int = Field(ge=0, le=1_000_000_000)
+    output_tokens: int = Field(ge=0, le=1_000_000_000)
+    total_tokens: int = Field(ge=0, le=1_000_000_000)
+
+
+class ReadinessTechnicalView(StrictModel):
+    run_id: UUID
+    dataset_id: str = Field(min_length=1, max_length=128)
+    dataset_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    selected_count: int = Field(ge=0, le=40)
+    average_latency_ms: float = Field(ge=0, le=86_400_000)
+    usage: ReadinessUsageView
+
+
+class EvaluationReadiness(StrictModel):
+    policy_id: Literal["queryops-v1-readiness-v1"]
+    verdict: Literal["ready", "not_ready", "incomplete"]
+    provider: Literal["openai"] | None
+    model_label: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$",
+    )
+    dataset_version: str = Field(min_length=1, max_length=64)
+    completed_count: int | None = Field(default=None, ge=0, le=40)
+    gates: list[ReadinessGateView] = Field(min_length=7, max_length=7)
+    technical: ReadinessTechnicalView | None
+
+
+class EvaluationReadinessResponse(StrictModel):
+    data: EvaluationReadiness
+    meta: ResponseMeta
