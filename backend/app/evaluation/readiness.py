@@ -185,7 +185,7 @@ def evaluate_v1_readiness(
     evaluation_set: EvaluationSet,
     evidence: ReadinessRunEvidence | None,
     *,
-    deterministic_evidence_passed: bool = True,
+    deterministic_evidence_passed: bool,
 ) -> ReadinessAssessment:
     digest = evaluation_dataset_digest(evaluation_set)
     if evidence is None:
@@ -243,6 +243,13 @@ def evaluate_v1_readiness(
         if evaluation_set.cases_by_id[result.case_id].difficulty
         is EvaluationDifficulty.SECURITY
     )
+    if len(security_cases) != 5:
+        return _incomplete(
+            evaluation_set,
+            digest,
+            "result_set_malformed",
+            evidence=evidence,
+        )
     metric_inputs = (
         (
             "execution_success_rate",

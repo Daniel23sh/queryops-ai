@@ -12,6 +12,15 @@ const gateLabels: Record<ReadinessGateStatus, string> = {
   failed: "Failed",
   incomplete: "Incomplete"
 };
+const gateCodes = [
+  "qualifying_evidence",
+  "deterministic_release_gates",
+  "execution_success_rate",
+  "result_accuracy",
+  "unsafe_query_block_rate",
+  "clarification_accuracy",
+  "security_case_pass_rate"
+] as const;
 
 export function EvaluationReadinessPanel({
   data,
@@ -25,7 +34,7 @@ export function EvaluationReadinessPanel({
   if (loading) {
     return <EvaluationStatePanel title="Loading V1 readiness…" message="Checking the latest qualifying full OpenAI evidence against the versioned release policy." />;
   }
-  if (error || !data || !isVerdict(data.verdict) || data.policy_id !== "queryops-v1-readiness-v1") {
+  if (error || !data || !isSafeReadiness(data)) {
     return <EvaluationStatePanel kind="error" title="V1 readiness unavailable" message="Readiness evidence could not be validated safely. No pass state is inferred." />;
   }
   const evidenceIsOpenAI = data.provider === "openai";
@@ -76,4 +85,46 @@ function isVerdict(value: string): value is ReadinessVerdict {
 
 function isGateStatus(value: string): value is ReadinessGateStatus {
   return value === "passed" || value === "failed" || value === "incomplete";
+}
+
+function isSafeReadiness(data: EvaluationReadiness): boolean {
+  if (
+    data.policy_id !== "queryops-v1-readiness-v1" ||
+    !isVerdict(data.verdict) ||
+    (data.provider !== null && data.provider !== "openai") ||
+    !Array.isArray(data.gates) ||
+    data.gates.length !== gateCodes.length ||
+    !data.gates.every((gate, index) =>
+      gate.code === gateCodes[index] &&
+      typeof gate.label === "string" &&
+      gate.label.length > 0 &&
+      isGateStatus(gate.status) &&
+      isBoundedRate(gate.threshold) &&
+      isBoundedRate(gate.actual)
+    )
+  ) {
+    return false;
+  }
+  if (data.provider === null) {
+    return data.verdict === "incomplete" && data.model_label === null && data.completed_count === null;
+  }
+  if (
+    typeof data.model_label !== "string" ||
+    data.model_label.length === 0 ||
+    data.completed_count !== 40
+  ) {
+    return false;
+  }
+  const statuses = data.gates.map((gate) => gate.status);
+  if (data.verdict === "ready") return statuses.every((status) => status === "passed");
+  if (data.verdict === "not_ready") {
+    return statuses.includes("failed") && !statuses.includes("incomplete");
+  }
+  return statuses.includes("incomplete");
+}
+
+function isBoundedRate(value: number | null): boolean {
+  return value === null || (
+    typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1
+  );
 }

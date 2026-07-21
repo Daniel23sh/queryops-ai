@@ -80,8 +80,8 @@ export type EvaluationReadiness = {
     run_id: string;
     dataset_id: string;
     dataset_digest: string;
-    selected_count: number;
-    average_latency_ms: number;
+    selected_count: number | null;
+    average_latency_ms: number | null;
     usage: {
       call_count: number;
       attempt_count: number;
@@ -90,7 +90,7 @@ export type EvaluationReadiness = {
       cached_input_tokens: number;
       output_tokens: number;
       total_tokens: number;
-    };
+    } | null;
   } | null;
 };
 

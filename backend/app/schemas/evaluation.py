@@ -252,9 +252,9 @@ class ReadinessTechnicalView(StrictModel):
     run_id: UUID
     dataset_id: str = Field(min_length=1, max_length=128)
     dataset_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
-    selected_count: int = Field(ge=0, le=40)
-    average_latency_ms: float = Field(ge=0, le=86_400_000)
-    usage: ReadinessUsageView
+    selected_count: int | None = Field(default=None, ge=0, le=40)
+    average_latency_ms: float | None = Field(default=None, ge=0, le=86_400_000)
+    usage: ReadinessUsageView | None = None
 
 
 class EvaluationReadiness(StrictModel):

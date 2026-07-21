@@ -421,7 +421,13 @@ def test_readiness_role_projections_remain_bounded(
 
     _login(client, "demo.analyst@queryops.local")
     analyst = client.get("/api/v1/evaluation/readiness").json()["data"]
-    assert analyst["technical"] is None
+    assert analyst["technical"]["run_id"]
+    assert analyst["technical"]["dataset_id"] == "it_operations_v1"
+    assert analyst["technical"]["selected_count"] is None
+    assert analyst["technical"]["average_latency_ms"] is None
+    assert analyst["technical"]["usage"] is None
+    assert all(gate["actual"] is None for gate in analyst["gates"])
+    assert all(gate["threshold"] is None for gate in analyst["gates"])
 
     _login(client, "demo.admin@queryops.local")
     admin = client.get("/api/v1/evaluation/readiness").json()["data"]

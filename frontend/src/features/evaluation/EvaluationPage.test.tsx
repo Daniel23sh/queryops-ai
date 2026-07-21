@@ -44,9 +44,21 @@ describe("Evaluation workspace", () => {
     }));
     renderAppAt("/evaluation");
 
-    expect(await screen.findByRole("heading", { name: "V1 readiness: Incomplete" })).toBeInTheDocument();
-    expect(screen.getByText("No qualifying OpenAI evidence")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "V1 readiness unavailable" })).toBeInTheDocument();
     expect(screen.queryByText("mock-queryops-v1")).not.toBeInTheDocument();
+  });
+
+  it("fails closed for an unknown or contradictory readiness gate payload", async () => {
+    const malformed = backendEvaluationReadiness();
+    malformed.gates[0].code = "future_gate";
+    installApiMock(authenticatedRoutes(demoAnalyst, {
+      "GET /api/v1/evaluation/overview": successResponse(backendEvaluationOverview()),
+      "GET /api/v1/evaluation/readiness": successResponse(malformed)
+    }));
+    renderAppAt("/evaluation");
+
+    expect(await screen.findByRole("heading", { name: "V1 readiness unavailable" })).toBeInTheDocument();
+    expect(screen.queryByText("gpt-5.6-terra")).not.toBeInTheDocument();
   });
 
   it("keeps Manager readiness business-safe", async () => {
@@ -59,6 +71,7 @@ describe("Evaluation workspace", () => {
     expect(await screen.findByRole("heading", { name: "V1 readiness: Ready" })).toBeInTheDocument();
     expect(screen.queryByText(/Measured 100/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Threshold/)).not.toBeInTheDocument();
+    expect(screen.getByText("Status: Ready")).not.toHaveTextContent("gpt-5.6-terra");
   });
 
   it("uses the overview-selected run for tab requests and preserves deep links", async () => {

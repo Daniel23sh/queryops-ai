@@ -27,7 +27,11 @@ from app.evaluation.selection import evaluation_dataset_digest
 
 def test_complete_openai_evidence_passes_exact_policy() -> None:
     dataset = load_it_operations_evaluation_set()
-    assessment = evaluate_v1_readiness(dataset, _evidence())
+    assessment = evaluate_v1_readiness(
+        dataset,
+        _evidence(),
+        deterministic_evidence_passed=True,
+    )
 
     assert assessment.policy_id == V1_READINESS_POLICY_ID
     assert assessment.verdict is ReadinessVerdict.READY
@@ -44,6 +48,28 @@ def test_complete_openai_evidence_passes_exact_policy() -> None:
     assert assessment.gates[2].actual == 1.0
     assert assessment.gates[2].threshold == 0.85
     assert assessment.average_latency_ms == 1.0
+
+
+def test_smallest_discrete_execution_and_accuracy_boundary_values_pass() -> None:
+    evidence = _evidence()
+    rows = _fail_success_rows(list(evidence.results), 5, execution=True)
+    rows = _fail_success_rows(list(rows), 3, result=True, offset=5)
+
+    assessment = evaluate_v1_readiness(
+        load_it_operations_evaluation_set(),
+        replace(evidence, results=tuple(rows)),
+        deterministic_evidence_passed=True,
+    )
+
+    execution = next(
+        gate for gate in assessment.gates if gate.code == "execution_success_rate"
+    )
+    accuracy = next(gate for gate in assessment.gates if gate.code == "result_accuracy")
+    assert assessment.verdict is ReadinessVerdict.READY
+    assert execution.actual == round(30 / 35, 6)
+    assert execution.actual >= execution.threshold
+    assert accuracy.actual == round(27 / 35, 6)
+    assert accuracy.actual >= accuracy.threshold
 
 
 @pytest.mark.parametrize(
@@ -79,7 +105,11 @@ def test_complete_openai_evidence_passes_exact_policy() -> None:
 def test_just_below_each_threshold_is_not_ready(metric, mutator, reason) -> None:
     evidence = _evidence()
     mutated = replace(evidence, results=mutator(list(evidence.results)))
-    assessment = evaluate_v1_readiness(load_it_operations_evaluation_set(), mutated)
+    assessment = evaluate_v1_readiness(
+        load_it_operations_evaluation_set(),
+        mutated,
+        deterministic_evidence_passed=True,
+    )
 
     gate = next(item for item in assessment.gates if item.code == metric)
     assert assessment.verdict is ReadinessVerdict.NOT_READY
@@ -89,11 +119,19 @@ def test_just_below_each_threshold_is_not_ready(metric, mutator, reason) -> None
 
 def test_missing_mock_filtered_partial_and_nonterminal_evidence_are_incomplete() -> None:
     dataset = load_it_operations_evaluation_set()
-    assert evaluate_v1_readiness(dataset, None).verdict is ReadinessVerdict.INCOMPLETE
+    assert evaluate_v1_readiness(
+        dataset,
+        None,
+        deterministic_evidence_passed=True,
+    ).verdict is ReadinessVerdict.INCOMPLETE
 
     evidence = _evidence()
     mock = _with_summary(evidence, provider="mock", model_label="mock-queryops-v1")
-    assert evaluate_v1_readiness(dataset, mock).gates[0].reason_code == "provider_not_eligible"
+    assert evaluate_v1_readiness(
+        dataset,
+        mock,
+        deterministic_evidence_passed=True,
+    ).gates[0].reason_code == "provider_not_eligible"
 
     filtered = _with_summary(
         evidence,
@@ -105,19 +143,35 @@ def test_missing_mock_filtered_partial_and_nonterminal_evidence_are_incomplete()
             "security_only": False,
         },
     )
-    assert evaluate_v1_readiness(dataset, filtered).gates[0].reason_code == "filtered_run_not_eligible"
+    assert evaluate_v1_readiness(
+        dataset,
+        filtered,
+        deterministic_evidence_passed=True,
+    ).gates[0].reason_code == "filtered_run_not_eligible"
 
     partial = replace(evidence, results=evidence.results[:-1])
-    assert evaluate_v1_readiness(dataset, partial).verdict is ReadinessVerdict.INCOMPLETE
+    assert evaluate_v1_readiness(
+        dataset,
+        partial,
+        deterministic_evidence_passed=True,
+    ).verdict is ReadinessVerdict.INCOMPLETE
     for status in ("running", "failed"):
         nonterminal = replace(evidence, status=status, completed_at=None)
-        assert evaluate_v1_readiness(dataset, nonterminal).gates[0].reason_code == "run_incomplete"
+        assert evaluate_v1_readiness(
+            dataset,
+            nonterminal,
+            deterministic_evidence_passed=True,
+        ).gates[0].reason_code == "run_incomplete"
 
 
 @pytest.mark.parametrize("identity_key", ["dataset_id", "dataset_version", "dataset_digest"])
 def test_stale_dataset_identity_is_incomplete(identity_key: str) -> None:
     evidence = _with_summary(_evidence(), **{identity_key: "stale"})
-    assessment = evaluate_v1_readiness(load_it_operations_evaluation_set(), evidence)
+    assessment = evaluate_v1_readiness(
+        load_it_operations_evaluation_set(),
+        evidence,
+        deterministic_evidence_passed=True,
+    )
     assert assessment.gates[0].reason_code == "dataset_identity_mismatch"
 
 
@@ -134,7 +188,9 @@ def test_missing_duplicate_extra_or_malformed_results_are_incomplete(mutation: s
     else:
         rows[0] = replace(rows[0], metrics={**rows[0].metrics, "passed": "yes"})
     assessment = evaluate_v1_readiness(
-        load_it_operations_evaluation_set(), replace(evidence, results=tuple(rows))
+        load_it_operations_evaluation_set(),
+        replace(evidence, results=tuple(rows)),
+        deterministic_evidence_passed=True,
     )
     assert assessment.verdict is ReadinessVerdict.INCOMPLETE
     assert assessment.gates[0].reason_code == "result_set_malformed"
@@ -166,9 +222,61 @@ def test_invalid_rates_booleans_durations_and_usage_fail_closed(field: str, valu
         metrics["provider_measurement"] = measurement
     rows = (replace(row, score=score, metrics=metrics), *evidence.results[1:])
     assessment = evaluate_v1_readiness(
-        load_it_operations_evaluation_set(), replace(evidence, results=tuple(rows))
+        load_it_operations_evaluation_set(),
+        replace(evidence, results=tuple(rows)),
+        deterministic_evidence_passed=True,
     )
     assert assessment.verdict is ReadinessVerdict.INCOMPLETE
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("selected_count", True),
+        ("selected_count", 39),
+        ("completed_count", -1),
+        ("completed_count", 40.0),
+    ],
+)
+def test_invalid_run_counts_fail_closed(field: str, value: Any) -> None:
+    evidence = _with_summary(_evidence(), **{field: value})
+    assessment = evaluate_v1_readiness(
+        load_it_operations_evaluation_set(),
+        evidence,
+        deterministic_evidence_passed=True,
+    )
+    assert assessment.verdict is ReadinessVerdict.INCOMPLETE
+    assert assessment.gates[0].reason_code == "run_incomplete"
+
+
+def test_zero_required_metric_denominator_is_incomplete() -> None:
+    dataset = load_it_operations_evaluation_set()
+    without_unsafe = replace(
+        dataset,
+        cases=tuple(
+            replace(
+                case,
+                case_type=CaseType.AUTHORIZATION,
+                expected_outcome=ExpectedOutcome.DENIED,
+                expected_tables=(),
+                baseline_sql=None,
+            )
+            if case.case_type is CaseType.UNSAFE_SQL
+            else case
+            for case in dataset.cases
+        ),
+    )
+    assessment = evaluate_v1_readiness(
+        without_unsafe,
+        _evidence(without_unsafe),
+        deterministic_evidence_passed=True,
+    )
+    unsafe_gate = next(
+        gate for gate in assessment.gates if gate.code == "unsafe_query_block_rate"
+    )
+    assert assessment.verdict is ReadinessVerdict.INCOMPLETE
+    assert unsafe_gate.status is GateStatus.INCOMPLETE
+    assert unsafe_gate.reason_code == "result_set_malformed"
 
 
 def test_stored_aggregate_disagreement_cannot_override_recomputed_results() -> None:
@@ -179,7 +287,9 @@ def test_stored_aggregate_disagreement_cannot_override_recomputed_results() -> N
         security_pass_rate=0.0,
     )
     assert evaluate_v1_readiness(
-        load_it_operations_evaluation_set(), evidence
+        load_it_operations_evaluation_set(),
+        evidence,
+        deterministic_evidence_passed=True,
     ).verdict is ReadinessVerdict.READY
 
 
@@ -194,6 +304,7 @@ def test_provider_model_measurement_mismatch_is_incomplete() -> None:
     assessment = evaluate_v1_readiness(
         load_it_operations_evaluation_set(),
         replace(evidence, results=(replace(row, metrics=metrics), *evidence.results[1:])),
+        deterministic_evidence_passed=True,
     )
     assert assessment.gates[0].reason_code == "result_set_malformed"
 
@@ -203,7 +314,9 @@ def test_unsafe_and_clarification_execution_attempts_fail_even_with_expected_lab
     rows = _mutate_type(list(evidence.results), CaseType.UNSAFE_SQL, attempted=True)
     rows = list(_mutate_type(list(rows), CaseType.CLARIFICATION, attempted=True))
     assessment = evaluate_v1_readiness(
-        load_it_operations_evaluation_set(), replace(evidence, results=tuple(rows))
+        load_it_operations_evaluation_set(),
+        replace(evidence, results=tuple(rows)),
+        deterministic_evidence_passed=True,
     )
     assert assessment.verdict is ReadinessVerdict.NOT_READY
     assert next(g for g in assessment.gates if g.code == "unsafe_query_block_rate").actual == 0
@@ -223,8 +336,8 @@ def test_deterministic_evidence_is_mandatory_and_no_sensitive_fields_are_project
         assert sentinel not in serialized
 
 
-def _evidence() -> ReadinessRunEvidence:
-    dataset = load_it_operations_evaluation_set()
+def _evidence(dataset=None) -> ReadinessRunEvidence:
+    dataset = dataset or load_it_operations_evaluation_set()
     rows = tuple(_result(case) for case in dataset.cases)
     usage = {
         "call_count": 40,
@@ -316,14 +429,21 @@ def _with_summary(evidence: ReadinessRunEvidence, **updates: Any) -> ReadinessRu
     return replace(evidence, summary={**evidence.summary, **updates})
 
 
-def _fail_success_rows(rows, count: int, *, execution=False, result=False):
+def _fail_success_rows(
+    rows,
+    count: int,
+    *,
+    execution=False,
+    result=False,
+    offset: int = 0,
+):
     dataset = load_it_operations_evaluation_set()
     output = list(rows)
     indexes = [
         index
         for index, row in enumerate(output)
         if dataset.cases_by_id[row.case_id].expected_outcome is ExpectedOutcome.SUCCESS
-    ][:count]
+    ][offset : offset + count]
     for index in indexes:
         row = output[index]
         metrics = dict(row.metrics)
@@ -335,11 +455,13 @@ def _fail_success_rows(rows, count: int, *, execution=False, result=False):
                 {
                     "outcome_correct": False,
                     "execution_correct": False,
+                    "result_correct": False,
                     "passed": False,
-                    "score": 0.5,
+                    "score": 0.25,
                     "failure_reasons": [
                         "unexpected_outcome",
                         "execution_state_mismatch",
+                        "result_semantics_mismatch",
                     ],
                 }
             )
