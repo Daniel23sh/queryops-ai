@@ -27,6 +27,7 @@ from app.evaluation.selection import (
 from app.models.product import AppUser, EvaluationResult, EvaluationRun
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.result_formatter import QueryEngineServiceResult
+from app.query_engine.provider_config import ProviderDescriptor, ProviderId
 from app.query_engine.sql_executor import SQLExecutionResult
 
 
@@ -308,6 +309,153 @@ def test_runner_maps_validator_rejection_to_unsafe_block(
     assert summary.cases[0].actual_outcome == "unsafe_blocked"
     assert summary.cases[0].error_code == "unsafe_sql_blocked"
     assert summary.query_execution_failed_count == 0
+
+
+def test_runner_persists_real_provider_identity_and_aggregates_safe_usage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory = _sqlite_session_factory()
+    evaluation_set = _small_evaluation_set()
+
+    class MeasuredService:
+        calls = 0
+
+        def run(self, _db, _user, request):
+            self.calls += 1
+            clarification = request.question == "Who is inactive?"
+            return QueryEngineServiceResult(
+                status=("clarification_required" if clarification else "succeeded"),
+                query_run_id=None,
+                rows=[] if clarification else [{"id": "secret-row"}],
+                row_count=0 if clarification else 1,
+                clarification_required=clarification,
+                metadata={
+                    "provider": "openai",
+                    "model": "gpt-5.6-terra",
+                    "referenced_tables": [] if clarification else ["devices"],
+                    "provider_measurement": {
+                        "provider": "openai",
+                        "model_label": "gpt-5.6-terra",
+                        "duration_ms": 12.5,
+                        "attempt_count": 1,
+                        "input_tokens": 100,
+                        "cached_input_tokens": 25,
+                        "output_tokens": 20,
+                        "total_tokens": 120,
+                        "raw_payload": "must-not-persist",
+                    },
+                    "raw_prompt": "must-not-persist",
+                },
+            )
+
+    service = MeasuredService()
+    factory_calls = []
+    runner = EvaluationRunner(
+        session_factory,
+        dataset_loader=lambda: evaluation_set,
+        query_service_factory=lambda _pack: factory_calls.append(True) or service,
+        provider_descriptor=ProviderDescriptor(
+            provider=ProviderId.OPENAI,
+            model_label="gpt-5.6-terra",
+        ),
+    )
+    monkeypatch.setattr(runner, "_verify_prerequisites", lambda _cases: None)
+    monkeypatch.setattr(
+        "app.evaluation.runner.resolve_evaluation_identity",
+        lambda _db, case: _identity(case.requesting_role),
+    )
+    monkeypatch.setattr(
+        "app.evaluation.runner.execute_evaluation_baseline",
+        lambda *_args, **_kwargs: _Baseline(({ "id": "secret-row"},)),
+    )
+
+    summary = runner.run()
+
+    assert factory_calls == [True]
+    assert service.calls == 2
+    assert summary.provider == "openai"
+    assert summary.model_label == "gpt-5.6-terra"
+    assert summary.provider_usage == {
+        "call_count": 2,
+        "attempt_count": 2,
+        "duration_ms": 25.0,
+        "input_tokens": 200,
+        "cached_input_tokens": 50,
+        "output_tokens": 40,
+        "total_tokens": 240,
+    }
+    with session_factory() as db:
+        run = db.scalar(select(EvaluationRun))
+        results = db.scalars(select(EvaluationResult)).all()
+    assert run is not None
+    assert run.name == "test:openai"
+    assert run.summary["provider"] == "openai"
+    assert run.summary["model_label"] == "gpt-5.6-terra"
+    assert run.summary["provider_usage"] == summary.provider_usage
+    assert all("provider_measurement" in result.metrics for result in results)
+    persisted = repr([run.summary, *[result.metrics for result in results]])
+    assert "must-not-persist" not in persisted
+    assert "secret-row" not in persisted
+
+
+def test_fatal_provider_authentication_failure_stops_and_finalizes_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory = _sqlite_session_factory()
+    evaluation_set = _small_evaluation_set()
+
+    class AuthenticationFailureService:
+        calls = 0
+
+        def run(self, _db, _user, _request):
+            self.calls += 1
+            return QueryEngineServiceResult(
+                status="clarification_required",
+                query_run_id=None,
+                clarification_required=True,
+                metadata={
+                    "provider": "openai",
+                    "model": "gpt-5.6-terra",
+                    "referenced_tables": [],
+                    "provider_failure_code": "provider_authentication_failed",
+                    "provider_failure_fatal": True,
+                },
+            )
+
+    service = AuthenticationFailureService()
+    runner = EvaluationRunner(
+        session_factory,
+        dataset_loader=lambda: evaluation_set,
+        query_service_factory=lambda _pack: service,
+        provider_descriptor=ProviderDescriptor(
+            provider=ProviderId.OPENAI,
+            model_label="gpt-5.6-terra",
+        ),
+    )
+    monkeypatch.setattr(runner, "_verify_prerequisites", lambda _cases: None)
+    monkeypatch.setattr(
+        "app.evaluation.runner.resolve_evaluation_identity",
+        lambda _db, case: _identity(case.requesting_role),
+    )
+    monkeypatch.setattr(
+        "app.evaluation.runner.execute_evaluation_baseline",
+        lambda *_args, **_kwargs: pytest.fail("baseline must not run after fatal auth"),
+    )
+
+    with pytest.raises(EvaluationRunnerError) as exc_info:
+        runner.run()
+
+    assert exc_info.value.code == "provider_authentication_failed"
+    assert service.calls == 1
+    with session_factory() as db:
+        run = db.scalar(select(EvaluationRun))
+        results = db.scalars(select(EvaluationResult)).all()
+    assert run is not None
+    assert run.status == "failed"
+    assert run.completed_at is not None
+    assert run.summary["failure_code"] == "provider_authentication_failed"
+    assert len(results) == 1
+    assert results[0].actual_output["error_code"] == "provider_authentication_failed"
 
 
 class _Baseline:

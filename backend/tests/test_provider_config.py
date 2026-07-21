@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pytest
 
+from app.api.responses import ApiError
+from app.api.routes.queries import get_query_engine_service
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.mock_llm_provider import MockLLMProvider
 from app.query_engine.openai_provider import OpenAIProvider
@@ -13,7 +15,6 @@ from app.query_engine.provider_config import (
     load_provider_settings,
     provider_descriptor,
 )
-from app.api.routes.queries import get_query_engine_service
 
 
 def test_provider_settings_default_to_mock_without_credentials() -> None:
@@ -43,6 +44,20 @@ def test_query_engine_dependency_remains_mock_with_api_key_alone(
     service = get_query_engine_service()
 
     assert isinstance(service._provider, MockLLMProvider)
+
+
+def test_query_engine_dependency_sanitizes_invalid_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LLM_PROVIDER", "openai")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    with pytest.raises(ApiError) as exc_info:
+        get_query_engine_service()
+
+    assert exc_info.value.code == "QUERY_PROVIDER_UNAVAILABLE"
+    assert exc_info.value.status_code == 503
+    assert "key" not in exc_info.value.message.lower()
 
 
 def test_explicit_openai_uses_bounded_defaults_and_injected_client() -> None:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from time import perf_counter
 from typing import Any
@@ -39,14 +39,14 @@ from app.evaluation.selection import (
 from app.models.product import DataResource, EvaluationResult, EvaluationRun, RunStatus
 from app.query_engine.domain_pack import DomainPack
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
+from app.query_engine.llm_provider import LLMProvider, sanitize_provider_measurement
 from app.query_engine.mock_llm_provider import MockLLMProvider
+from app.query_engine.provider_config import ProviderDescriptor, ProviderId
 from app.query_engine.request_authorization import authorize_query_request
 from app.query_engine.result_formatter import QueryEngineServiceResult
 from app.query_engine.service import QueryEngineRequest, QueryEngineService
 
 
-PROVIDER_ID = "mock"
-MODEL_LABEL = "mock-queryops-v1"
 SAFE_UNSAFE_VALIDATION_CODES = frozenset(
     {"multiple_statements", "not_read_only_select", "prohibited_statement"}
 )
@@ -57,6 +57,10 @@ SAFE_ACTUAL_ERROR_CODES = frozenset(
         "execution_failed",
         "internal_error",
         "unsafe_sql_blocked",
+        "provider_authentication_failed",
+        "provider_timeout",
+        "provider_unavailable",
+        "provider_response_invalid",
     }
 )
 
@@ -110,6 +114,7 @@ class EvaluationRunSummary:
     by_category: dict[str, dict[str, int | float]]
     by_case_type: dict[str, dict[str, int | float]]
     cases: tuple[EvaluationCaseSummary, ...]
+    provider_usage: dict[str, int | float] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -122,6 +127,8 @@ class _CaseExecution:
     actual_rows: tuple[Mapping[str, Any], ...]
     actual_referenced_tables: tuple[str, ...]
     error_code: str | None
+    provider_measurement: dict[str, Any] | None = None
+    provider_failure_fatal: bool = False
 
 
 @dataclass(frozen=True)
@@ -134,6 +141,7 @@ class _CompletedCase:
 
 SessionFactory = Callable[[], Session]
 QueryServiceFactory = Callable[[DomainPack], QueryEngineService]
+ProviderFactory = Callable[[DomainPack], LLMProvider]
 
 
 class EvaluationRunner:
@@ -144,12 +152,26 @@ class EvaluationRunner:
         dataset_loader: Callable[[], EvaluationSet] = load_it_operations_evaluation_set,
         domain_pack_loader: Callable[[], DomainPack] = load_it_operations_domain_pack,
         query_service_factory: QueryServiceFactory | None = None,
+        provider_factory: ProviderFactory | None = None,
+        provider_descriptor: ProviderDescriptor | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._dataset_loader = dataset_loader
         self._domain_pack_loader = domain_pack_loader
+        if query_service_factory is not None and provider_factory is not None:
+            raise ValueError("Choose a query service factory or a provider factory")
+        self._provider_descriptor = provider_descriptor or ProviderDescriptor(
+            provider=ProviderId.MOCK,
+            model_label=MockLLMProvider.model_name,
+        )
+        selected_provider_factory = provider_factory or (
+            lambda pack: MockLLMProvider(pack)
+        )
         self._query_service_factory = query_service_factory or (
-            lambda pack: QueryEngineService(provider=MockLLMProvider(pack))
+            lambda pack: QueryEngineService(
+                provider=selected_provider_factory(pack),
+                domain_pack_loader=lambda: pack,
+            )
         )
 
     def run(
@@ -161,6 +183,7 @@ class EvaluationRunner:
         domain_pack = self._domain_pack_loader()
         digest = evaluation_dataset_digest(evaluation_set)
         self._verify_prerequisites(cases)
+        query_service = self._query_service_factory(domain_pack)
         run_id = self._create_run(evaluation_set, digest, cases, filters)
 
         completed: list[_CompletedCase] = []
@@ -168,7 +191,9 @@ class EvaluationRunner:
         for case in cases:
             started_at = perf_counter()
             try:
-                execution, expected_rows = self._execute_case(case, domain_pack)
+                execution, expected_rows = self._execute_case(
+                    case, domain_pack, query_service
+                )
                 score = score_evaluation_case(
                     case,
                     actual_outcome=execution.actual_outcome,
@@ -177,6 +202,12 @@ class EvaluationRunner:
                     expected_rows=expected_rows,
                     actual_rows=execution.actual_rows,
                 )
+                if execution.provider_failure_fatal:
+                    fatal_error = EvaluationRunnerError(
+                        execution.error_code or "provider_unavailable",
+                        "The selected evaluation provider is unavailable.",
+                        run_id=run_id,
+                    )
             except EvaluationBaselineError as exc:
                 execution = _internal_failure("internal_error")
                 score = score_evaluation_case(
@@ -233,6 +264,7 @@ class EvaluationRunner:
             digest,
             cases,
             completed,
+            self._provider_descriptor,
             status=status,
         )
         self._finalize_run(run_id, summary, fatal_error)
@@ -282,13 +314,13 @@ class EvaluationRunner:
     ) -> UUID:
         run = EvaluationRun(
             requested_by_user_id=None,
-            name=f"{evaluation_set.dataset_id}:{PROVIDER_ID}",
+            name=f"{evaluation_set.dataset_id}:{self._provider_descriptor.provider.value}",
             run_type="manual_evaluation",
             status=RunStatus.RUNNING.value,
             started_at=datetime.now(UTC),
             summary={
-                "provider": PROVIDER_ID,
-                "model_label": MODEL_LABEL,
+                "provider": self._provider_descriptor.provider.value,
+                "model_label": self._provider_descriptor.model_label,
                 "dataset_id": evaluation_set.dataset_id,
                 "dataset_version": evaluation_set.version,
                 "dataset_digest": digest,
@@ -312,12 +344,18 @@ class EvaluationRunner:
         self,
         case: EvaluationCase,
         domain_pack: DomainPack,
+        query_service: QueryEngineService,
     ) -> tuple[_CaseExecution, tuple[Mapping[str, Any], ...]]:
         with self._session_factory() as db:
             identity = resolve_evaluation_identity(db, case)
-            execution = self._execute_actual(db, identity, case, domain_pack)
+            execution = self._execute_actual(
+                db, identity, case, domain_pack, query_service
+            )
             expected_rows: tuple[Mapping[str, Any], ...] = ()
-            if case.expected_outcome is ExpectedOutcome.SUCCESS:
+            if (
+                case.expected_outcome is ExpectedOutcome.SUCCESS
+                and not execution.provider_failure_fatal
+            ):
                 baseline = execute_evaluation_baseline(
                     db,
                     identity.access_context,
@@ -333,6 +371,7 @@ class EvaluationRunner:
         identity: EvaluationIdentity,
         case: EvaluationCase,
         domain_pack: DomainPack,
+        query_service: QueryEngineService,
     ) -> _CaseExecution:
         authorization = authorize_query_request(
             identity.access_context,
@@ -346,7 +385,7 @@ class EvaluationRunner:
         if denied_tables is not None:
             return _denied_execution(denied_tables)
 
-        result = self._query_service_factory(domain_pack).run(
+        result = query_service.run(
             db,
             identity.user,
             QueryEngineRequest(
@@ -354,12 +393,45 @@ class EvaluationRunner:
                 template_id=case.template_id,
             ),
         )
+        if case.template_id is None and not self._result_provider_matches_run(result):
+            return _provider_identity_failure()
         return _classify_query_result(result)
+
+    def _result_provider_matches_run(
+        self,
+        result: QueryEngineServiceResult,
+    ) -> bool:
+        provider = result.metadata.get("provider")
+        model_label = result.metadata.get("model")
+        if provider is None and model_label is None:
+            return self._provider_descriptor.provider is ProviderId.MOCK
+        return (
+            provider == self._provider_descriptor.provider.value
+            and model_label == self._provider_descriptor.model_label
+        )
 
     def _persist_result(self, run_id: UUID, completed: _CompletedCase) -> None:
         score_metrics = completed.score.as_safe_metrics()
         expected_count = completed.score.expected_row_count
         actual_count = completed.score.actual_row_count
+        metrics: dict[str, Any] = {
+            **score_metrics,
+            "difficulty": completed.case.difficulty.value,
+            "category": completed.case.category,
+            "case_type": completed.case.case_type.value,
+            "security_sensitive": completed.case.security_sensitive,
+            "duration_ms": round(completed.duration_ms, 3),
+            "missing_row_count": max(0, expected_count - actual_count),
+            "extra_row_count": max(0, actual_count - expected_count),
+            "query_invoked": completed.execution.query_invoked,
+            "query_execution_attempted": (
+                completed.execution.query_execution_attempted
+            ),
+        }
+        if completed.execution.provider_measurement is not None:
+            metrics["provider_measurement"] = dict(
+                completed.execution.provider_measurement
+            )
         result = EvaluationResult(
             evaluation_run_id=run_id,
             query_run_id=completed.execution.query_run_id,
@@ -378,20 +450,7 @@ class EvaluationRunner:
                 "execution_succeeded": completed.execution.execution_succeeded,
                 "error_code": completed.execution.error_code,
             },
-            metrics={
-                **score_metrics,
-                "difficulty": completed.case.difficulty.value,
-                "category": completed.case.category,
-                "case_type": completed.case.case_type.value,
-                "security_sensitive": completed.case.security_sensitive,
-                "duration_ms": round(completed.duration_ms, 3),
-                "missing_row_count": max(0, expected_count - actual_count),
-                "extra_row_count": max(0, actual_count - expected_count),
-                "query_invoked": completed.execution.query_invoked,
-                "query_execution_attempted": (
-                    completed.execution.query_execution_attempted
-                ),
-            },
+            metrics=metrics,
             error_message=None,
         )
         try:
@@ -495,6 +554,30 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
     referenced_tables = tuple(
         sorted(str(item) for item in result.metadata.get("referenced_tables", []))
     )
+    provider_measurement = sanitize_provider_measurement(
+        result.metadata.get("provider_measurement")
+    )
+    provider_failure_code = result.metadata.get("provider_failure_code")
+    if provider_failure_code in {
+        "provider_authentication_failed",
+        "provider_timeout",
+        "provider_unavailable",
+        "provider_response_invalid",
+    }:
+        return _CaseExecution(
+            actual_outcome=ActualOutcome.INTERNAL_ERROR,
+            execution_succeeded=False,
+            query_invoked=True,
+            query_execution_attempted=False,
+            query_run_id=query_run_id,
+            actual_rows=(),
+            actual_referenced_tables=referenced_tables,
+            error_code=provider_failure_code,
+            provider_measurement=provider_measurement,
+            provider_failure_fatal=(
+                result.metadata.get("provider_failure_fatal") is True
+            ),
+        )
     if result.status == "succeeded":
         return _CaseExecution(
             actual_outcome=ActualOutcome.SUCCESS,
@@ -505,6 +588,7 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
             actual_rows=tuple(dict(row) for row in result.rows),
             actual_referenced_tables=referenced_tables,
             error_code=None,
+            provider_measurement=provider_measurement,
         )
     if result.clarification_required:
         return _CaseExecution(
@@ -516,6 +600,7 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
             actual_rows=(),
             actual_referenced_tables=referenced_tables,
             error_code="clarification_required",
+            provider_measurement=provider_measurement,
         )
     validation = result.metadata.get("validation")
     validation_code = validation.get("error_code") if isinstance(validation, dict) else None
@@ -529,6 +614,7 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
             actual_rows=(),
             actual_referenced_tables=referenced_tables,
             error_code="unsafe_sql_blocked",
+            provider_measurement=provider_measurement,
         )
     return _CaseExecution(
         actual_outcome=ActualOutcome.EXECUTION_FAILED,
@@ -539,6 +625,7 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
         actual_rows=(),
         actual_referenced_tables=referenced_tables,
         error_code="execution_failed",
+        provider_measurement=provider_measurement,
     )
 
 
@@ -569,12 +656,27 @@ def _internal_failure(error_code: str) -> _CaseExecution:
     )
 
 
+def _provider_identity_failure() -> _CaseExecution:
+    return _CaseExecution(
+        actual_outcome=ActualOutcome.INTERNAL_ERROR,
+        execution_succeeded=False,
+        query_invoked=True,
+        query_execution_attempted=False,
+        query_run_id=None,
+        actual_rows=(),
+        actual_referenced_tables=(),
+        error_code="provider_response_invalid",
+        provider_failure_fatal=True,
+    )
+
+
 def _build_summary(
     run_id: UUID,
     evaluation_set: EvaluationSet,
     digest: str,
     selected: Sequence[EvaluationCase],
     completed: Sequence[_CompletedCase],
+    descriptor: ProviderDescriptor,
     *,
     status: str,
 ) -> EvaluationRunSummary:
@@ -594,8 +696,8 @@ def _build_summary(
     ]
     return EvaluationRunSummary(
         run_id=run_id,
-        provider=PROVIDER_ID,
-        model_label=MODEL_LABEL,
+        provider=descriptor.provider.value,
+        model_label=descriptor.model_label,
         dataset_id=evaluation_set.dataset_id,
         dataset_version=evaluation_set.version,
         dataset_digest=digest,
@@ -637,6 +739,7 @@ def _build_summary(
             )
             for item in completed
         ),
+        provider_usage=_aggregate_provider_usage(completed),
     )
 
 
@@ -656,6 +759,40 @@ def _group_metrics(
         }
         for name, items in sorted(groups.items())
     }
+
+
+def _aggregate_provider_usage(
+    completed: Sequence[_CompletedCase],
+) -> dict[str, int | float]:
+    measurements = [
+        item.execution.provider_measurement
+        for item in completed
+        if item.execution.provider_measurement is not None
+    ]
+    totals: dict[str, int | float] = {
+        "call_count": len(measurements),
+        "attempt_count": sum(
+            int(item.get("attempt_count", 0)) for item in measurements
+        ),
+        "duration_ms": round(
+            min(
+                sum(float(item.get("duration_ms", 0.0)) for item in measurements),
+                86_400_000.0,
+            ),
+            3,
+        ),
+    }
+    for key in (
+        "input_tokens",
+        "cached_input_tokens",
+        "output_tokens",
+        "total_tokens",
+    ):
+        totals[key] = min(
+            sum(int(item.get(key, 0)) for item in measurements),
+            1_000_000_000,
+        )
+    return totals
 
 
 def _summary_for_persistence(
@@ -680,5 +817,6 @@ def _summary_for_persistence(
         "by_difficulty": summary.by_difficulty,
         "by_category": summary.by_category,
         "by_case_type": summary.by_case_type,
+        "provider_usage": summary.provider_usage,
         "failure_code": fatal_error.code if fatal_error else None,
     }

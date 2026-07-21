@@ -10,14 +10,18 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.api.responses import error_response, success_response
+from app.api.responses import ApiError, error_response, success_response
 from app.auth.access_context import UserAccessContext, build_user_access_context
 from app.auth.permissions import require_authenticated_user
 from app.auth.session import csrf_is_valid, session_from_request
 from app.db.session import get_db
 from app.models.product import AppUser, QueryRun, UserAccessScope
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
-from app.query_engine.provider_config import create_provider, load_provider_settings
+from app.query_engine.provider_config import (
+    ProviderConfigurationError,
+    create_provider,
+    load_provider_settings,
+)
 from app.query_engine.request_authorization import authorize_query_request
 from app.query_engine.service import QueryEngineRequest, QueryEngineService
 
@@ -34,11 +38,18 @@ DEFAULT_HISTORY_LIMIT = 25
 
 
 def get_query_engine_service() -> QueryEngineService:
-    domain_pack = load_it_operations_domain_pack()
-    return QueryEngineService(
-        provider=create_provider(load_provider_settings(), domain_pack),
-        domain_pack_loader=lambda: domain_pack,
-    )
+    try:
+        domain_pack = load_it_operations_domain_pack()
+        return QueryEngineService(
+            provider=create_provider(load_provider_settings(), domain_pack),
+            domain_pack_loader=lambda: domain_pack,
+        )
+    except ProviderConfigurationError as exc:
+        raise ApiError(
+            code="QUERY_PROVIDER_UNAVAILABLE",
+            message="The query provider is unavailable.",
+            status_code=503,
+        ) from exc
 
 
 @router.post("/queries/run")

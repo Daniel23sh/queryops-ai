@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import math
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
@@ -44,11 +45,44 @@ class OpenAIProviderSettings:
     reasoning_effort: str = DEFAULT_OPENAI_REASONING_EFFORT
     max_output_tokens: int = DEFAULT_OPENAI_MAX_OUTPUT_TOKENS
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.api_key, str) or not self.api_key.strip():
+            raise ProviderConfigurationError("provider_credentials_missing")
+        if not valid_model_label(self.model):
+            raise ProviderConfigurationError("provider_model_invalid")
+        if (
+            isinstance(self.timeout_seconds, bool)
+            or not isinstance(self.timeout_seconds, int | float)
+            or not math.isfinite(float(self.timeout_seconds))
+            or not 1.0 <= float(self.timeout_seconds) <= 120.0
+        ):
+            raise ProviderConfigurationError("provider_timeout_invalid")
+        if (
+            isinstance(self.max_retries, bool)
+            or not isinstance(self.max_retries, int)
+            or not 0 <= self.max_retries <= 2
+        ):
+            raise ProviderConfigurationError("provider_retries_invalid")
+        if self.reasoning_effort not in SUPPORTED_REASONING_EFFORTS:
+            raise ProviderConfigurationError("provider_reasoning_effort_invalid")
+        if (
+            isinstance(self.max_output_tokens, bool)
+            or not isinstance(self.max_output_tokens, int)
+            or not 128 <= self.max_output_tokens <= 4096
+        ):
+            raise ProviderConfigurationError("provider_output_tokens_invalid")
+
 
 @dataclass(frozen=True)
 class ProviderSettings:
     provider: ProviderId = ProviderId.MOCK
     openai: OpenAIProviderSettings | None = None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.provider, ProviderId):
+            raise ProviderConfigurationError()
+        if (self.provider is ProviderId.OPENAI) != (self.openai is not None):
+            raise ProviderConfigurationError()
 
     @property
     def model_label(self) -> str:
@@ -63,6 +97,17 @@ class ProviderSettings:
 class ProviderDescriptor:
     provider: ProviderId
     model_label: str
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.provider, ProviderId) or not valid_model_label(
+            self.model_label
+        ):
+            raise ProviderConfigurationError()
+        if (
+            self.provider is ProviderId.MOCK
+            and self.model_label != MockLLMProvider.model_name
+        ):
+            raise ProviderConfigurationError("provider_model_mismatch")
 
 
 def load_provider_settings(
