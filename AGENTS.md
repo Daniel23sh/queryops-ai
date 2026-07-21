@@ -69,12 +69,12 @@ The milestone status is defined in `PROJECT_PLAN.md`.
 At the time this file was updated, the current target is:
 
 ```txt
-M9 PR3 — Role-Aware Evaluation Metrics API
+M9 PR4 — Role-Aware Evaluation Workspace UI
 ```
 
 Milestone 0, Milestone 1, Milestone 2, Milestone 2.5, Post-Milestone 2.5 hardening, Milestone 3, Milestone 4, and Milestone 5 are complete under the previous scopes. Milestone 5 PR6 has been merged into `main`. M5 Ask Data and the M5 frontend redesign are complete.
 
-Milestone 6 is complete and merged into `main`. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, `M6 PR3 — CSV Export Backend`, `M6 PR4 — Card Refresh & CSV Export UI`, and `M6 PR5 — Card Reordering & Layout Persistence` plus the final Admin restricted-export policy are complete. PR #24 merged PR5. Milestone 7 — Product UX & Dashboard Redesign is complete. M7 PR1 is complete and merged through PR #25. M7 PR2 is complete and merged through PR #26. M7 PR3 — Dashboard Editor, Grid & Visualizations is complete and merged through PR #27. M7 PR4 — Ask Data Redesign & Final UX Hardening is complete and merged through PR #28. Milestone 8 — Actions, Approvals & Audit is complete and merged through PR #35; verified `main` reached `408190f1cdf5710ed80a83065d65fd9cd01c4f87`. M9 PR1 is complete and merged through PR #36 at `a21cdce59f7c3cd05e3e6fec72699554ffbb9979`. M9 PR2 is complete and merged through PR #37; verified `main` reached `800b2f4006057d7a046d28da8ddb28aebc2f6176`. Milestone 9 — Evaluation, Quality Measurement & V1 Readiness is active, and only M9 PR3 is approved for implementation.
+Milestone 6 is complete and merged into `main`. `M6 PR1 — Dashboards/Cards Backend Foundation`, `M6 PR2 — Dashboard/Card UI`, `M6 PR3 — CSV Export Backend`, `M6 PR4 — Card Refresh & CSV Export UI`, and `M6 PR5 — Card Reordering & Layout Persistence` plus the final Admin restricted-export policy are complete. PR #24 merged PR5. Milestone 7 — Product UX & Dashboard Redesign is complete. M7 PR1 is complete and merged through PR #25. M7 PR2 is complete and merged through PR #26. M7 PR3 — Dashboard Editor, Grid & Visualizations is complete and merged through PR #27. M7 PR4 — Ask Data Redesign & Final UX Hardening is complete and merged through PR #28. Milestone 8 — Actions, Approvals & Audit is complete and merged through PR #35; verified `main` reached `408190f1cdf5710ed80a83065d65fd9cd01c4f87`. M9 PR1 is complete and merged through PR #36 at `a21cdce59f7c3cd05e3e6fec72699554ffbb9979`. M9 PR2 is complete and merged through PR #37 at `800b2f4006057d7a046d28da8ddb28aebc2f6176`. M9 PR3 is complete and merged through PR #38; verified `main` reached `fd1b8cccba3190714233976daa334364c4b4b080`. Milestone 9 — Evaluation, Quality Measurement & V1 Readiness is active, and only M9 PR4 is approved for implementation.
 
 M9 follows this six-PR sequence: dataset/scoring foundation; runner/persistence; APIs/authorization; Evaluation UX; real-LLM evaluation mode; and V1 quality gates/readiness. Do not begin a later PR without explicit activation.
 
@@ -94,6 +94,20 @@ M9 PR3 guardrails:
 * Never expose baseline/generated SQL, QueryRun SQL, rows, prompts, provider payloads, secrets, stack traces, raw database errors, arbitrary JSON blobs, hidden-scope totals, or internal evaluator configuration.
 * Actions and Dashboards must report `not_measured`, zero measured cases, null score, and controlled reason codes; do not infer quality from product tables or query cases.
 * Do not add evaluation mutation endpoints, frontend/UI, real providers, external calls, workflows, thresholds, migrations, schema/seed/permission/RLS/runtime-role changes, background infrastructure, or M9 PR4+ behavior.
+
+M9 PR3 delivered five read-only role-aware Evaluation endpoints, centralized current-permission and scope visibility, deterministic latest-run selection, scoped metric recalculation, strict safe projections, honest Actions/Dashboards coverage, and authorization/leakage/PostgreSQL verification. It is merged through PR #38.
+
+M9 PR4 may add only the permission-gated `/evaluation` frontend workspace, its Overview/Queries/Actions/Security/Dashboards tabs, typed read-only PR3 clients, stable in-memory selected-run reuse, responsive/accessibility behavior, documentation, and focused/full frontend verification.
+
+M9 PR4 guardrails:
+
+* Show navigation and permit the route only for effective `can_view_department_evaluation`, `can_view_scope_evaluation`, or `can_view_global_evaluation`; `can_view_sql` alone never grants Evaluation access, and frontend checks remain UX only.
+* Load Overview first, retain its returned run ID only in current workspace memory, and use that exact ID for every other tab. Do not add run history, run enumeration, arbitrary run-ID input, durable Evaluation caching, or browser-triggered execution.
+* Render the server projection rather than role-inferred fields. Manager remains business-only; Analyst/Admin technical details render only when returned, and absent resource metadata remains absent.
+* Keep Actions and Dashboards visibly `not_measured` with zero measured cases and null score. Do not infer quality from queries or product tables and do not add execution controls.
+* Never render or request baseline/generated/QueryRun SQL, result rows, prompts, provider payloads, secrets, raw errors, protected resources, cross-scope totals, or evaluator internals. Do not log or persist Evaluation responses.
+* Abort stale reads and key in-memory state by authenticated identity, effective permissions, scopes, selected run, endpoint, filters, and pagination so logout or access changes cannot reveal previous data.
+* Do not change backend APIs/schemas/permissions, evaluation scores/dataset/templates, Query Engine/RLS/actions/audit/export behavior, add a real provider/workflow/threshold, or begin M9 PR5+ work.
 
 M8 PR1 may add only the action persistence foundation, SQLAlchemy relationships/enums, typed deterministic Action Engine contracts, explicit fail-closed registry, pure permission/scope policy decisions, the minimum stable access-action vocabulary, and focused foundation tests.
 

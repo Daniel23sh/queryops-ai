@@ -22,7 +22,9 @@ Current PR scope:
 
 `M9 PR2 — Evaluation Runner, Persistence & CLI` is complete and merged through PR #37. The verified `main` merge commit is `800b2f4006057d7a046d28da8ddb28aebc2f6176`.
 
-`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` is active. The current scope is `M9 PR3 — Role-Aware Evaluation Metrics API`; do not begin M9 PR4 or later work.
+`M9 PR3 — Role-Aware Evaluation Metrics API` is complete and merged through PR #38. The verified `main` merge commit is `fd1b8cccba3190714233976daa334364c4b4b080`.
+
+`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` is active. The current scope is `M9 PR4 — Role-Aware Evaluation Workspace UI`; do not begin M9 PR5 or later work.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
@@ -1398,7 +1400,7 @@ Milestone 9 is split into six approved PRs:
 5. `M9 PR5 — Real LLM Evaluation Mode`
 6. `M9 PR6 — V1 Quality Gates, Readiness & Completion`
 
-PR1 and PR2 are complete and merged. Only PR3 is active. Later PR names record sequence and ownership; they do not authorize implementation.
+PR1, PR2, and PR3 are complete and merged. Only PR4 is active. Later PR names record sequence and ownership; they do not authorize implementation.
 
 ### M9 PR1 — Evaluation Dataset & Scoring Foundation
 
@@ -1507,3 +1509,35 @@ Guardrails:
 - The service reads `EvaluationRun`/`EvaluationResult` only. It never invokes the runner, Query Engine, provider, baseline executor, seed, migration, Action Engine, dashboard product data, or another mutation path.
 - Actions and Dashboards return `availability: not_measured`, `measured_cases: 0`, `score: null`, and controlled reason codes until dedicated evaluators exist.
 - Do not add frontend behavior, real-provider mode, workflows, thresholds, migrations, permission/role/RLS changes, background infrastructure, or M9 PR4+ work.
+
+Status: complete and merged through PR #38 at verified `main` commit `fd1b8cccba3190714233976daa334364c4b4b080`.
+
+### M9 PR4 — Role-Aware Evaluation Workspace UI
+
+Branch:
+
+```text
+feature/m9-evaluation-workspace
+```
+
+Goal: add a permission-gated `/evaluation` workspace that reads the five PR3 endpoints, keeps one stable selected run across tabs, and faithfully renders each server-selected business or technical projection.
+
+In scope:
+
+- Evaluation navigation and direct-route gating from current effective Evaluation permissions
+- one responsive workspace with Overview, Queries, Actions, Security, and Dashboards deep-linkable tabs
+- typed authenticated clients for the five read-only PR3 endpoints
+- latest eligible Overview loading followed by exact in-memory `run_id` reuse across other tabs
+- visible scoped counts, scores, ratios, breakdowns, coverage, bounded Query filters/pagination, and safe per-case presentation
+- deliberate loading, empty, partial, not-measured, forbidden, inaccessible, invalid-filter, and unavailable states
+- identity/access-context keyed in-memory reads with abort-based stale-response isolation
+- focused route, client, role projection, state isolation, leakage, accessibility, responsive, and browser verification
+
+Guardrails:
+
+- User has no navigation or direct route. Manager, Analyst, and Admin access is based on current Evaluation permissions, not client role labels; `can_view_sql` alone is insufficient.
+- The browser never supplies scope/department selection, enumerates runs, persists Evaluation data, starts evaluation, replays cases, or calls a mutation endpoint.
+- Manager renders business-safe fields only. Analyst/Admin render only technical fields actually returned by PR3; no field is reconstructed from role, QueryRun, or another endpoint.
+- Actions and Dashboards remain `not_measured`, zero measured cases, and null score with no fabricated visualization or execution control.
+- Never render SQL, rows, prompts, provider payloads, credentials, stack traces, raw errors, protected resource names, cross-scope identities/totals, or evaluator internals.
+- Do not change backend behavior/schema/permissions, the dataset, MockLLM templates or scores, Query Engine/RLS/actions/audit/notifications/exports, add dependencies, real providers, workflows, thresholds, or M9 PR5+ work.
