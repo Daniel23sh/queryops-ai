@@ -648,25 +648,24 @@ Available filters can be combined without changing dataset order:
 .venv/bin/python scripts/run_evaluation.py --case-type authorization --security-only
 ```
 
-OpenAI evaluation is manual and explicitly selected. Run one case first against an already migrated, deterministically seeded disposable PostgreSQL database:
+OpenAI evaluation is manual and explicitly selected. A live-provider smoke must use a non-template free-query case so it cannot bypass the provider. `itops-easy-005` is the frozen easy `free_query` success case with no `template_id`. Set the API key through a secure local environment mechanism without printing or recording it, obtain explicit authorization for the exact API model ID, and run:
 
 ```bash
 cd backend
-export OPENAI_API_KEY='replace-with-a-local-secret'
 DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_eval_test \
   .venv/bin/python scripts/run_evaluation.py \
   --provider openai \
-  --model gpt-5.6-terra \
-  --case-id itops-easy-001
+  --model EXACT_AUTHORIZED_MODEL \
+  --case-id itops-easy-005
 ```
 
-Run all 40 cases only when the billable manual measurement is intended:
+The smoke is valid provider evidence only when the persisted safe usage reports at least one OpenAI call and the semantic case contract passes. `itops-easy-001` is template-backed and therefore must not be used to validate the provider. Run all 40 cases only after the smoke passes and the operator separately or conditionally authorizes the billable full measurement:
 
 ```bash
 DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_eval_test \
   .venv/bin/python scripts/run_evaluation.py \
   --provider openai \
-  --model gpt-5.6-terra
+  --model EXACT_AUTHORIZED_MODEL
 ```
 
 Evaluation persistence contains only stable case metadata, expected/actual outcome classifications, bounded error codes, aggregate counts, scores, safe breakdowns, a dataset digest, validated provider/model identity, and bounded latency/attempt/token measurements. It excludes raw actual/expected rows, prompts, provider payloads or responses, reasoning, request/response IDs, headers, secrets, stack traces, raw driver errors, and new copies of generated or baseline SQL. The Evaluation workspace remains read-only. Mock and OpenAI scores are measurements; only a full eligible OpenAI run can satisfy the versioned M9 PR6 readiness thresholds.

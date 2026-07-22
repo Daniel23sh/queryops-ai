@@ -13,6 +13,8 @@ Policy: `queryops-v1-readiness-v1`
 
 Not performed. No billable live OpenAI execution was authorized during this task, and no prior live OpenAI run has been accepted as V1 release evidence.
 
+The release-validation smoke procedure uses frozen case `itops-easy-005`, an easy `free_query` success case with no template. Template-backed `itops-easy-001` is not accepted as provider validation because it can complete without an OpenAI call. A qualifying smoke must show at least one sanitized provider call, and the exact API model ID must be explicitly authorized before execution.
+
 - Provider/model: not available
 - Run ID: not available
 - Completion: not available

@@ -34,8 +34,9 @@ The frozen dataset has no independently identified self-correction subset. PR6 d
 
 - Mock is the normal development, test, and CI provider.
 - Real evaluation is manual and billable; every live execution requires explicit operator authorization.
-- One easy smoke case must precede a full 40-case run.
-- A successful supported `gpt-5.6-luna` smoke may precede a full Luna measurement. Terra requires separate authorization if Luna misses a gate.
+- One non-template easy smoke case, `itops-easy-005`, must precede a full 40-case run. It is a frozen `free_query` success case with `template_id: null`; template-backed `itops-easy-001` is not valid provider evidence because it can bypass OpenAI.
+- A valid smoke must complete its semantic contract and report at least one sanitized OpenAI provider call. Provider identity without a call is not validation.
+- The operator must authorize the exact OpenAI API model ID, the smoke case, whether the authorization conditionally covers the full run, and the maximum number of billable runs. Product labels such as Luna are not assumed to be API model IDs. The repository default remains `gpt-5.6-terra`, but it is not authorized merely by being configured.
 - Thresholds, questions, baselines, templates, and prompts must not be weakened or case-tuned after observing results.
 - Reports record only safe call, attempt, token, and latency totals. Volatile monetary prices are not embedded in product code.
 - There is no scheduled, nightly, recurring, fallback, browser-triggered, or CI live evaluation, and no GitHub OpenAI secret.
