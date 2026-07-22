@@ -872,7 +872,7 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-Milestones 0 through 8 are complete and merged into `main`; M8 PR7 merged through PR #35. Milestone 9 — Evaluation, Quality Measurement & V1 Readiness is active. M9 PR1 through M9 PR5 are complete and merged through PR #40 at verified `main` commit `695be1358ea2fcd67fc2cd25c66e2281986dd99f`. M9 PR6 — V1 Quality Gates, Readiness & Completion is implementation-complete, while V1 readiness remains incomplete. Mock remains the CI default; no live OpenAI measurement has yet been accepted as V1 release evidence and full manual QA has not been completed.
+Milestones 0 through 8 are complete and merged into `main`; M8 PR7 merged through PR #35. M9 PR1 through M9 PR6 are complete and merged through PR #41 at verified `main` commit `c6691a204ccbb9eb007e2e0c6fe419c346745b13`. PR6's Backend, PostgreSQL Security, Frontend, E2E, M8 Primary E2E, and V1 Deterministic Release Gates GitHub checks passed. Milestone 9 — Evaluation, Quality Measurement & V1 Readiness remains active, and M9 PR7 is the release-validation follow-up. Mock remains the CI default; no live OpenAI measurement has yet been accepted as V1 release evidence and full manual QA has not been completed, so Milestone 9 and V1 remain incomplete.
 
 The completed Milestone 7 experience is dark-first with a persistent light option, responsive navigation, My Dashboard as the authenticated home, permission-aware routes, Scope terminology, a responsive dashboard editor, safe visualizations, and command-first Ask Data. The completed Milestone 8 experience adds the two governed V1 actions, requester Actions, exact-scope/global Approvals, scoped/global Audit, database Notifications, synchronous execution, and release-blocking PostgreSQL/browser evidence.
 
@@ -934,7 +934,8 @@ M9 PR2 — Evaluation Runner, Persistence & CLI is complete and merged through P
 M9 PR3 — Role-Aware Evaluation Metrics API is complete and merged through PR #38.
 M9 PR4 — Role-Aware Evaluation Workspace UI is complete and merged through PR #39 at verified `main` commit `f8990b78e86de1d24a51783270e95fc05a07beca`.
 M9 PR5 — Governed Real-LLM Evaluation Mode is complete and merged through PR #40 at verified `main` commit `695be1358ea2fcd67fc2cd25c66e2281986dd99f`.
-M9 PR6 — V1 Quality Gates, Readiness & Completion is implementation-complete. No live OpenAI measurement has yet been accepted as V1 release evidence, full manual QA remains open, and Milestone 9/V1 therefore remain incomplete.
+M9 PR6 — V1 Quality Gates, Readiness & Completion is complete and merged through PR #41 at verified `main` commit `c6691a204ccbb9eb007e2e0c6fe419c346745b13`; all required deterministic GitHub checks passed.
+M9 PR7 — V1 Live Validation, Manual QA, and Release Completion is active. No live OpenAI measurement has yet been accepted as V1 release evidence, full manual QA remains open, and Milestone 9/V1 therefore remain incomplete.
 ```
 
 PR6 keeps backend authorization authoritative while adding exact approval/notification activity badges, permission-aware Approvals and Audit workspaces, synchronous approve/reject dialogs, safe related navigation, and current-recipient database notification controls. Under the current permission catalog, Analyst receives exact-scope approval and Audit UX, Admin receives global/override/self-approval UX, Manager retains requester Actions and notifications without Audit access, and User receives notifications without Actions, Approvals, or Audit navigation. The private planning description of a future limited Manager audit view is not implemented because the backend does not currently grant that permission.
