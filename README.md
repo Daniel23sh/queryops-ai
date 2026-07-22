@@ -306,6 +306,7 @@ GET /api/v1/evaluation/queries
 GET /api/v1/evaluation/actions
 GET /api/v1/evaluation/security
 GET /api/v1/evaluation/dashboards
+GET /api/v1/evaluation/readiness
 ```
 
 User is denied evaluation access. Manager requires `can_view_department_evaluation` and receives business-only metrics recalculated for the Manager's assigned department scopes. Analyst requires `can_view_scope_evaluation` and receives recalculated assigned-scope technical metrics; referenced-resource metadata additionally requires `can_view_sql`. Admin requires `can_view_global_evaluation` plus global scope and receives the safe global technical view. Scope selection is server-authoritative and is not accepted from the browser.
@@ -318,7 +319,7 @@ The workspace cannot start, rerun, delete, or configure evaluation and does not 
 
 All counts and ratios use only visible, structurally valid case measurements. Overall score and expected-behavior match rate use completed visible cases as their denominator; security pass rate uses completed visible security cases; breakdown scores use completed visible cases in that group. A zero-case denominator produces `null`, never a fabricated zero score.
 
-The metrics API never executes evaluation, Query Engine requests, provider calls, trusted baselines, or product-domain SQL. It never returns SQL, raw rows, prompts, provider payloads, secrets, stack traces, raw database errors, usage internals, or arbitrary stored JSON. The read-only workspace shows only the validated provider/model label already selected by the server and adds no provider selector, key settings, or execution control. No final M9 release thresholds are enforced.
+The metrics and readiness APIs never execute evaluation, Query Engine requests, provider calls, trusted baselines, or product-domain SQL. They never return SQL, raw rows, prompts, provider payloads, secrets, stack traces, raw database errors, arbitrary usage objects, or arbitrary stored JSON. The read-only workspace shows only the validated provider/model label already selected by the server and adds no provider selector, key settings, or execution control. The centralized `queryops-v1-readiness-v1` policy recomputes release thresholds only from complete eligible persisted evidence; it does not make provider identity a pass condition.
 
 Planned testing areas:
 
@@ -366,7 +367,7 @@ Default local URLs:
 * Backend health endpoint: `http://localhost:8000/health`
 * PostgreSQL: `localhost:5432`
 
-PostgreSQL is included for the local development environment. Milestones 0 through 8 are complete and merged through PR #35. M9 PR1 through PR4 are complete and merged through PR #39 at verified `main` commit `f8990b78e86de1d24a51783270e95fc05a07beca`; M9 PR5 is implementation- and verification-complete on its feature branch but is not merged. The application includes both V1 actions, approvals, synchronous execution, action/domain audit, database notification APIs, safe timelines, deterministic template suggestions, requester-owned action lists, exact authorized activity totals, the evaluation dataset/scoring foundation, the governed manual MockLLM/OpenAI runner, role-aware read-only evaluation metrics, and the protected Evaluation workspace.
+PostgreSQL is included for the local development environment. Milestones 0 through 8 are complete and merged through PR #35. M9 PR1 through PR5 are complete and merged through PR #40 at verified `main` commit `695be1358ea2fcd67fc2cd25c66e2281986dd99f`; M9 PR6 is implementation-complete but V1 readiness remains incomplete. Mock remains the development and CI default, no live OpenAI measurement has yet been accepted as V1 release evidence, and the full manual QA checklist remains open. The application includes both V1 actions, approvals, synchronous execution, action/domain audit, database notification APIs, safe timelines, deterministic template suggestions, requester-owned action lists, exact authorized activity totals, the evaluation dataset/scoring foundation, the governed manual MockLLM/OpenAI runner, role-aware read-only evaluation metrics, and the protected Evaluation workspace.
 
 Stop the stack:
 
@@ -396,6 +397,9 @@ Run backend tests:
 
 ```bash
 pytest
+ruff check app scripts
+pyright
+python -m compileall -q app scripts
 ```
 
 Run Alembic commands from the host with PostgreSQL running:
@@ -531,7 +535,7 @@ Action approval runtime model:
 * The action role is `NOLOGIN`, `NOINHERIT`, `NOSUPERUSER`, and `NOBYPASSRLS`, and is granted to the explicit application login role from `QUERYOPS_APP_DATABASE_ROLE` with inheritance disabled and SET enabled; action code must use `SET LOCAL ROLE`.
 * Its grants are limited to required reads, three `license_assignments` UPDATE columns, `directory_users.account_status`/`updated_at` UPDATE, and scoped `it_audit_events` INSERT. Role-scoped PostgreSQL policies bind mutations to the active scope and allow only active human users to become disabled.
 * Approval, mutation, application/domain audit, and database notifications commit atomically. Failure state is recorded separately after a rollback.
-* Backend APIs provide pending approval review/decisions, current-recipient notification reads, and permission-scoped audit reads. Requester Actions UX is merged; PR6 is the active human-facing approval, audit, and notification integration.
+* Backend APIs provide pending approval review/decisions, current-recipient notification reads, and permission-scoped audit reads. Requester Actions plus the approval, audit, and notification workspaces are complete under Milestone 8.
 
 Current Query Engine limitations:
 
@@ -540,8 +544,8 @@ Current Query Engine limitations:
 * OpenAI is the only optional real provider and must be selected explicitly; no fallback or second provider is implemented.
 * Query detail endpoints return only the authenticated user's own runs.
 * Scope-aware query history requires assigned access scopes and the appropriate history permission.
-* Evaluation execution controls, run history, browser provider/model selection, and enforced M9 release thresholds are not implemented.
-* Scheduled card refresh, scheduled/background actions, and external notification delivery are not implemented. Approval, audit, and notification frontend screens are limited to the active PR6 scope.
+* Evaluation execution controls, run history, browser provider/model selection, and live-provider CI execution are not implemented. V1 readiness is a read-only policy over explicit persisted evidence.
+* Scheduled card refresh, scheduled/background actions, and external notification delivery are not implemented.
 
 ### Role-Aware Home and Dashboard Browser
 
@@ -665,9 +669,19 @@ DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_eval
   --model gpt-5.6-terra
 ```
 
-Evaluation persistence contains only stable case metadata, expected/actual outcome classifications, bounded error codes, aggregate counts, scores, safe breakdowns, a dataset digest, validated provider/model identity, and bounded latency/attempt/token measurements. It excludes raw actual/expected rows, prompts, provider payloads or responses, reasoning, request/response IDs, headers, secrets, stack traces, raw driver errors, and new copies of generated or baseline SQL. The Evaluation workspace remains read-only. Mock and OpenAI scores are measurements; final M9 release thresholds are not defined or enforced until M9 PR6.
+Evaluation persistence contains only stable case metadata, expected/actual outcome classifications, bounded error codes, aggregate counts, scores, safe breakdowns, a dataset digest, validated provider/model identity, and bounded latency/attempt/token measurements. It excludes raw actual/expected rows, prompts, provider payloads or responses, reasoning, request/response IDs, headers, secrets, stack traces, raw driver errors, and new copies of generated or baseline SQL. The Evaluation workspace remains read-only. Mock and OpenAI scores are measurements; only a full eligible OpenAI run can satisfy the versioned M9 PR6 readiness thresholds.
 
 Metric denominators are explicit: overall score is the mean semantic score across completed cases; expected-behavior match rate is exact outcome matches divided by completed cases; each difficulty/category/case-type score is the mean for completed cases in that group; and security pass rate is passed `security`-difficulty cases divided by completed `security`-difficulty cases. Query execution counts include only cases that reached SQL execution, so expected denials, clarifications, and validator blocks are not mislabeled as execution failures.
+
+M9 PR6 adds the fail-closed `queryops-v1-readiness-v1` policy. Check one persisted run without running evaluation or calling a provider:
+
+```bash
+cd backend
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_eval_test \
+  .venv/bin/python scripts/check_v1_readiness.py --run-id YOUR_RUN_UUID
+```
+
+Add `--json` for the fixed bounded machine-readable projection. Exit 0 means `ready`, exit 1 means complete but `not_ready`, and exit 2 means `incomplete` or safe failure. Mock, filtered, stale, partial, failed, running, duplicate, extra, missing, and malformed evidence cannot pass.
 
 Run PostgreSQL query/RLS tests:
 
@@ -745,6 +759,9 @@ Build and test commands:
 
 ```bash
 npm run build
+npm run lint
+npm run typecheck:app
+npm run typecheck:node
 npm test
 npx playwright install chromium
 npm run test:e2e
@@ -855,7 +872,7 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-Milestones 0 through 8 are complete and merged into `main`; M8 PR7 merged through PR #35. Milestone 9 — Evaluation, Quality Measurement & V1 Readiness is active. M9 PR1 through M9 PR4 are complete and merged through PR #39. M9 PR5 — Governed Real-LLM Evaluation Mode is implementation- and verification-complete on its feature branch but is not merged; M9 PR6 remains planned and inactive.
+Milestones 0 through 8 are complete and merged into `main`; M8 PR7 merged through PR #35. Milestone 9 — Evaluation, Quality Measurement & V1 Readiness is active. M9 PR1 through M9 PR5 are complete and merged through PR #40 at verified `main` commit `695be1358ea2fcd67fc2cd25c66e2281986dd99f`. M9 PR6 — V1 Quality Gates, Readiness & Completion is implementation-complete, while V1 readiness remains incomplete. Mock remains the CI default; no live OpenAI measurement has yet been accepted as V1 release evidence and full manual QA has not been completed.
 
 The completed Milestone 7 experience is dark-first with a persistent light option, responsive navigation, My Dashboard as the authenticated home, permission-aware routes, Scope terminology, a responsive dashboard editor, safe visualizations, and command-first Ask Data. The completed Milestone 8 experience adds the two governed V1 actions, requester Actions, exact-scope/global Approvals, scoped/global Audit, database Notifications, synchronous execution, and release-blocking PostgreSQL/browser evidence.
 
@@ -916,7 +933,8 @@ M9 PR1 — Evaluation Dataset & Scoring Foundation is complete and merged throug
 M9 PR2 — Evaluation Runner, Persistence & CLI is complete and merged through PR #37.
 M9 PR3 — Role-Aware Evaluation Metrics API is complete and merged through PR #38.
 M9 PR4 — Role-Aware Evaluation Workspace UI is complete and merged through PR #39 at verified `main` commit `f8990b78e86de1d24a51783270e95fc05a07beca`.
-M9 PR5 — Governed Real-LLM Evaluation Mode is implementation- and verification-complete on `feature/m9-real-llm-evaluation` but is not merged. M9 PR6 — V1 Quality Gates, Readiness & Completion remains planned and inactive.
+M9 PR5 — Governed Real-LLM Evaluation Mode is complete and merged through PR #40 at verified `main` commit `695be1358ea2fcd67fc2cd25c66e2281986dd99f`.
+M9 PR6 — V1 Quality Gates, Readiness & Completion is implementation-complete. No live OpenAI measurement has yet been accepted as V1 release evidence, full manual QA remains open, and Milestone 9/V1 therefore remain incomplete.
 ```
 
 PR6 keeps backend authorization authoritative while adding exact approval/notification activity badges, permission-aware Approvals and Audit workspaces, synchronous approve/reject dialogs, safe related navigation, and current-recipient database notification controls. Under the current permission catalog, Analyst receives exact-scope approval and Audit UX, Admin receives global/override/self-approval UX, Manager retains requester Actions and notifications without Audit access, and User receives notifications without Actions, Approvals, or Audit navigation. The private planning description of a future limited Manager audit view is not implemented because the backend does not currently grant that permission.

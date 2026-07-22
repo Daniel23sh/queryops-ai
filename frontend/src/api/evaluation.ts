@@ -1,6 +1,7 @@
 import type {
   EvaluationCapability,
   EvaluationOverview,
+  EvaluationReadiness,
   EvaluationQueries,
   EvaluationQueryFilters,
   EvaluationSecurity
@@ -8,6 +9,15 @@ import type {
 import { apiRequest } from "./client";
 
 const MAX_QUERY_PAGE_SIZE = 100;
+
+export function getEvaluationReadiness(
+  signal?: AbortSignal
+): Promise<EvaluationReadiness> {
+  return apiRequest<EvaluationReadiness>("/api/v1/evaluation/readiness", {
+    method: "GET",
+    signal
+  });
+}
 
 export function getEvaluationOverview(
   runId?: string,
@@ -70,7 +80,7 @@ export function getEvaluationDashboards(
 
 export function evaluationRequestKey(
   identityKey: string,
-  endpoint: "overview" | "queries" | "actions" | "security" | "dashboards",
+  endpoint: "overview" | "queries" | "actions" | "security" | "dashboards" | "readiness",
   runId: string | null,
   filters = ""
 ): string {

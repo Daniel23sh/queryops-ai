@@ -183,7 +183,12 @@ function downloadFilename(
   const safeFilename = decodedFilename
     .split(/[\\/]/)
     .pop()
-    ?.replace(/[\u0000-\u001f\u007f]/g, "")
+    ?.split("")
+    .filter((character) => {
+      const code = character.charCodeAt(0);
+      return code > 31 && code !== 127;
+    })
+    .join("")
     .trim();
   if (
     !safeFilename ||

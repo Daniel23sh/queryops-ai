@@ -37,6 +37,7 @@ ENDPOINTS = (
     "/api/v1/evaluation/actions",
     "/api/v1/evaluation/security",
     "/api/v1/evaluation/dashboards",
+    "/api/v1/evaluation/readiness",
 )
 LEAK_SENTINELS = (
     "SELECT secret FROM private_table",
@@ -358,6 +359,83 @@ def test_no_eligible_run_uses_unavailable_and_null_scores(client: TestClient) ->
     assert actions["run"] is None
     assert actions["availability"] == "unavailable"
     assert actions["score"] is None
+
+
+def test_no_openai_run_returns_incomplete_readiness(client: TestClient) -> None:
+    _login(client, "demo.admin@queryops.local")
+    data = client.get("/api/v1/evaluation/readiness").json()["data"]
+    assert data["verdict"] == "incomplete"
+    assert data["provider"] is None
+    assert data["technical"] is None
+    assert data["gates"][0]["reason_code"] == "qualifying_run_missing"
+
+
+def test_readiness_selects_latest_qualifying_openai_and_ignores_newer_ineligible_runs(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    qualifying = _create_run(
+        db_session,
+        provider="openai",
+        completed_at=datetime.now(UTC) - timedelta(hours=2),
+    )
+    _create_run(db_session, provider="mock", completed_at=datetime.now(UTC))
+    filtered = _create_run(
+        db_session,
+        provider="openai",
+        completed_at=datetime.now(UTC) - timedelta(hours=1),
+    )
+    filtered.summary = {
+        **filtered.summary,
+        "filters": {**filtered.summary["filters"], "category": "licenses"},
+    }
+    _create_run(db_session, provider="openai", status=RunStatus.FAILED.value)
+    _create_run(
+        db_session,
+        provider="openai",
+        status=RunStatus.RUNNING.value,
+        completed_at=None,
+    )
+    db_session.commit()
+    _login(client, "demo.admin@queryops.local")
+
+    data = client.get("/api/v1/evaluation/readiness").json()["data"]
+
+    assert data["verdict"] == "ready"
+    assert data["provider"] == "openai"
+    assert data["model_label"] == "gpt-5.6-terra"
+    assert data["completed_count"] == 40
+    assert data["technical"]["run_id"] == str(qualifying.id)
+
+
+def test_readiness_role_projections_remain_bounded(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    _create_run(db_session, provider="openai")
+    _login(client, "demo.manager@queryops.local")
+    manager = client.get("/api/v1/evaluation/readiness").json()["data"]
+    assert manager["technical"] is None
+    assert all(gate["actual"] is None for gate in manager["gates"])
+    assert all(gate["threshold"] is None for gate in manager["gates"])
+
+    _login(client, "demo.analyst@queryops.local")
+    analyst = client.get("/api/v1/evaluation/readiness").json()["data"]
+    assert analyst["technical"]["run_id"]
+    assert analyst["technical"]["dataset_id"] == "it_operations_v1"
+    assert analyst["technical"]["selected_count"] is None
+    assert analyst["technical"]["average_latency_ms"] is None
+    assert analyst["technical"]["usage"] is None
+    assert all(gate["actual"] is None for gate in analyst["gates"])
+    assert all(gate["threshold"] is None for gate in analyst["gates"])
+
+    _login(client, "demo.admin@queryops.local")
+    admin = client.get("/api/v1/evaluation/readiness").json()["data"]
+    assert admin["technical"]["selected_count"] == 40
+    assert admin["technical"]["usage"]["call_count"] == 40
+    assert next(
+        gate for gate in admin["gates"] if gate["code"] == "result_accuracy"
+    )["actual"] == 1.0
 
 
 def test_unknown_and_inaccessible_runs_share_safe_not_found(
@@ -768,7 +846,7 @@ def test_duplicate_security_result_is_partial_not_unavailable_or_double_counted(
     assert metrics["availability"] == "partially_measured"
 
 
-def test_openapi_documents_exactly_the_five_read_only_routes(client: TestClient) -> None:
+def test_openapi_documents_exactly_the_six_read_only_routes(client: TestClient) -> None:
     paths = client.get("/openapi.json").json()["paths"]
     evaluation_paths = {
         path: operations
@@ -821,6 +899,24 @@ def _create_run(
             "dataset_version": evaluation_set.version,
             "dataset_digest": evaluation_dataset_digest(evaluation_set),
             "selected_count": len(selected),
+            "completed_count": len(selected),
+            "filters": {
+                "case_id": None,
+                "difficulty": None,
+                "category": None,
+                "case_type": None,
+                "security_only": False,
+            },
+            "provider_usage": {
+                "call_count": len(selected) if provider == "openai" else 0,
+                "attempt_count": len(selected) if provider == "openai" else 0,
+                "duration_ms": round(1.25 * len(selected), 3) if provider == "openai" else 0.0,
+                "input_tokens": len(selected) if provider == "openai" else 0,
+                "cached_input_tokens": 0,
+                "output_tokens": len(selected) if provider == "openai" else 0,
+                "total_tokens": 2 * len(selected) if provider == "openai" else 0,
+            },
+            "failure_code": None,
             "raw_prompt": LEAK_SENTINELS[2],
         },
     )
@@ -863,6 +959,22 @@ def _create_run(
                     "extra_row_count": 0,
                     "query_invoked": case.requesting_role.value != "user",
                     "query_execution_attempted": success,
+                    **(
+                        {
+                            "provider_measurement": {
+                                "provider": "openai",
+                                "model_label": model_label or "gpt-5.6-terra",
+                                "duration_ms": 1.25,
+                                "attempt_count": 1,
+                                "input_tokens": 1,
+                                "cached_input_tokens": 0,
+                                "output_tokens": 1,
+                                "total_tokens": 2,
+                            }
+                        }
+                        if provider == "openai"
+                        else {}
+                    ),
                 },
                 error_message=None,
             )

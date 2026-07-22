@@ -5,6 +5,7 @@ import {
   authenticatedRoutes,
   backendEvaluationCapability,
   backendEvaluationOverview,
+  backendEvaluationReadiness,
   backendEvaluationQueries,
   backendEvaluationSecurity,
   demoAnalyst,
@@ -19,6 +20,60 @@ import {
 afterEach(resetAppTestState);
 
 describe("Evaluation workspace", () => {
+  it.each([
+    ["ready", "V1 readiness: Ready"],
+    ["not_ready", "V1 readiness: Not ready"],
+    ["incomplete", "V1 readiness: Incomplete"]
+  ])("renders the %s readiness state without execution controls", async (verdict, heading) => {
+    installApiMock(authenticatedRoutes(demoAnalyst, {
+      "GET /api/v1/evaluation/overview": successResponse(backendEvaluationOverview()),
+      "GET /api/v1/evaluation/readiness": successResponse(backendEvaluationReadiness({ verdict }))
+    }));
+    renderAppAt("/evaluation");
+
+    expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument();
+    expect(screen.getByText(/Provider identity identifies evidence; it never proves readiness/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /start|run|rerun/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: /provider|model|key/i })).not.toBeInTheDocument();
+  });
+
+  it("does not treat Mock metadata or unknown runtime values as qualifying readiness", async () => {
+    installApiMock(authenticatedRoutes(demoManager, {
+      "GET /api/v1/evaluation/overview": successResponse(backendEvaluationOverview()),
+      "GET /api/v1/evaluation/readiness": successResponse(backendEvaluationReadiness({ verdict: "ready", provider: "mock", technical: false }))
+    }));
+    renderAppAt("/evaluation");
+
+    expect(await screen.findByRole("heading", { name: "V1 readiness unavailable" })).toBeInTheDocument();
+    expect(screen.queryByText("mock-queryops-v1")).not.toBeInTheDocument();
+  });
+
+  it("fails closed for an unknown or contradictory readiness gate payload", async () => {
+    const malformed = backendEvaluationReadiness();
+    malformed.gates[0].code = "future_gate";
+    installApiMock(authenticatedRoutes(demoAnalyst, {
+      "GET /api/v1/evaluation/overview": successResponse(backendEvaluationOverview()),
+      "GET /api/v1/evaluation/readiness": successResponse(malformed)
+    }));
+    renderAppAt("/evaluation");
+
+    expect(await screen.findByRole("heading", { name: "V1 readiness unavailable" })).toBeInTheDocument();
+    expect(screen.queryByText("gpt-5.6-terra")).not.toBeInTheDocument();
+  });
+
+  it("keeps Manager readiness business-safe", async () => {
+    installApiMock(authenticatedRoutes(demoManager, {
+      "GET /api/v1/evaluation/overview": successResponse(backendEvaluationOverview()),
+      "GET /api/v1/evaluation/readiness": successResponse(backendEvaluationReadiness({ technical: false }))
+    }));
+    renderAppAt("/evaluation");
+
+    expect(await screen.findByRole("heading", { name: "V1 readiness: Ready" })).toBeInTheDocument();
+    expect(screen.queryByText(/Measured 100/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Threshold/)).not.toBeInTheDocument();
+    expect(screen.getByText("Status: Ready")).not.toHaveTextContent("gpt-5.6-terra");
+  });
+
   it("uses the overview-selected run for tab requests and preserves deep links", async () => {
     const runId = "00000000-0000-4000-8000-000000009999";
     const fetchMock = installApiMock(authenticatedRoutes(demoManager, {

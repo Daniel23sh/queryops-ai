@@ -17,7 +17,6 @@ from app.auth.session import csrf_is_valid, session_from_request
 from app.db.session import get_db
 from app.dashboards.editor import (
     BREAKPOINT_COLUMNS,
-    LAYOUT_SCHEMA_VERSION,
     allowed_sizes_for,
     default_visualization,
     derive_positions,

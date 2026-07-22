@@ -33,6 +33,7 @@ class LLMProvider(Protocol):
         options: Mapping[str, Any],
     ) -> SQLGenerationResult:
         """Return structured SQL generation output without executing SQL."""
+        ...
 
 
 class LLMProviderFailure(RuntimeError):

@@ -18,11 +18,13 @@ from app.evaluation.read_service import (
     EvaluationReadError,
     EvaluationReadService,
 )
+from app.evaluation.readiness_service import readiness_for_viewer
 from app.models.product import AppUser
 from app.schemas.evaluation import (
     EvaluationCapabilityMetricsResponse,
     EvaluationOverviewResponse,
     EvaluationQueryMetricsResponse,
+    EvaluationReadinessResponse,
     EvaluationSecurityMetricsResponse,
 )
 
@@ -35,6 +37,18 @@ ERROR_RESPONSES = {
     422: {"description": "A query parameter failed strict validation."},
     503: {"description": "Safe evaluation metrics cannot currently be resolved."},
 }
+
+
+@router.get(
+    "/readiness",
+    response_model=EvaluationReadinessResponse,
+    responses=ERROR_RESPONSES,
+)
+def evaluation_readiness(
+    current_user: AppUser = Depends(require_authenticated_user),
+    db: Session = Depends(get_db),
+):
+    return _respond(lambda: readiness_for_viewer(db, current_user))
 
 
 @router.get(

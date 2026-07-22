@@ -8,7 +8,7 @@ from app.auth.access_context import build_user_access_context
 from app.auth.permissions import require_authenticated_user
 from app.db.session import get_db
 from app.models.product import AppUser
-from app.query_engine.domain_pack import DomainPack, QueryTemplateParameter
+from app.query_engine.domain_pack import DomainPack, QueryTemplate, QueryTemplateParameter
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.request_authorization import template_is_allowed
 
