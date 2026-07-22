@@ -178,13 +178,14 @@ class EvaluationRunner:
         self,
         filters: EvaluationFilters | None = None,
     ) -> EvaluationRunSummary:
+        selected_filters = filters or EvaluationFilters()
         evaluation_set = self._dataset_loader()
-        cases = select_evaluation_cases(evaluation_set, filters)
+        cases = select_evaluation_cases(evaluation_set, selected_filters)
         domain_pack = self._domain_pack_loader()
         digest = evaluation_dataset_digest(evaluation_set)
         self._verify_prerequisites(cases)
         query_service = self._query_service_factory(domain_pack)
-        run_id = self._create_run(evaluation_set, digest, cases, filters)
+        run_id = self._create_run(evaluation_set, digest, cases, selected_filters)
 
         completed: list[_CompletedCase] = []
         fatal_error: EvaluationRunnerError | None = None
@@ -267,7 +268,7 @@ class EvaluationRunner:
             self._provider_descriptor,
             status=status,
         )
-        self._finalize_run(run_id, summary, fatal_error)
+        self._finalize_run(run_id, summary, fatal_error, selected_filters)
         if fatal_error is not None:
             raise fatal_error
         return summary
@@ -310,7 +311,7 @@ class EvaluationRunner:
         evaluation_set: EvaluationSet,
         digest: str,
         cases: Sequence[EvaluationCase],
-        filters: EvaluationFilters | None,
+        filters: EvaluationFilters,
     ) -> UUID:
         run = EvaluationRun(
             requested_by_user_id=None,
@@ -325,7 +326,7 @@ class EvaluationRunner:
                 "dataset_version": evaluation_set.version,
                 "dataset_digest": digest,
                 "selected_count": len(cases),
-                "filters": (filters or EvaluationFilters()).as_safe_dict(),
+                "filters": filters.as_safe_dict(),
             },
         )
         try:
@@ -470,6 +471,7 @@ class EvaluationRunner:
         run_id: UUID,
         summary: EvaluationRunSummary,
         fatal_error: EvaluationRunnerError | None,
+        filters: EvaluationFilters,
     ) -> None:
         try:
             with self._session_factory() as db:
@@ -482,7 +484,11 @@ class EvaluationRunner:
                     )
                 run.status = summary.status
                 run.completed_at = datetime.now(UTC)
-                run.summary = _summary_for_persistence(summary, fatal_error)
+                run.summary = _summary_for_persistence(
+                    summary,
+                    fatal_error,
+                    filters,
+                )
                 db.commit()
         except EvaluationRunnerError:
             raise
@@ -798,6 +804,7 @@ def _aggregate_provider_usage(
 def _summary_for_persistence(
     summary: EvaluationRunSummary,
     fatal_error: EvaluationRunnerError | None,
+    filters: EvaluationFilters,
 ) -> dict[str, Any]:
     return {
         "provider": summary.provider,
@@ -805,6 +812,7 @@ def _summary_for_persistence(
         "dataset_id": summary.dataset_id,
         "dataset_version": summary.dataset_version,
         "dataset_digest": summary.dataset_digest,
+        "filters": filters.as_safe_dict(),
         "selected_count": summary.selected_count,
         "completed_count": summary.completed_count,
         "passed_count": summary.passed_count,

@@ -185,6 +185,13 @@ def test_runner_orders_cases_invokes_service_and_persists_safe_results(
             select(EvaluationResult).order_by(EvaluationResult.case_name)
         ).all()
     assert run is not None and run.status == "succeeded"
+    assert run.summary["filters"] == {
+        "case_id": None,
+        "difficulty": None,
+        "category": None,
+        "case_type": None,
+        "security_only": False,
+    }
     assert len(results) == 2
     persisted = repr([run.summary, *[item.metrics for item in results]])
     assert "secret-row" not in persisted
@@ -217,6 +224,41 @@ def test_ordinary_case_failure_does_not_prevent_later_case(
     assert summary.completed_count == 2
     assert summary.failed_count == 1
     assert service.calls == 2
+
+
+def test_runner_preserves_filtered_measurement_identity_after_finalization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory = _sqlite_session_factory()
+    evaluation_set = _small_evaluation_set()
+    runner = EvaluationRunner(
+        session_factory,
+        dataset_loader=lambda: evaluation_set,
+        query_service_factory=lambda _pack: _FakeQueryService(),
+    )
+    monkeypatch.setattr(runner, "_verify_prerequisites", lambda _cases: None)
+    monkeypatch.setattr(
+        "app.evaluation.runner.resolve_evaluation_identity",
+        lambda _db, case: _identity(case.requesting_role),
+    )
+    monkeypatch.setattr(
+        "app.evaluation.runner.execute_evaluation_baseline",
+        lambda *_args, **_kwargs: _Baseline(({ "id": "secret-row"},)),
+    )
+
+    summary = runner.run(EvaluationFilters(case_id="itops-easy-002"))
+
+    assert summary.selected_count == summary.completed_count == 1
+    with session_factory() as db:
+        run = db.scalar(select(EvaluationRun))
+    assert run is not None
+    assert run.summary["filters"] == {
+        "case_id": "itops-easy-002",
+        "difficulty": None,
+        "category": None,
+        "case_type": None,
+        "security_only": False,
+    }
 
 
 def test_fatal_baseline_failure_marks_run_terminal(
