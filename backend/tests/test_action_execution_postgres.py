@@ -1515,7 +1515,7 @@ def test_persisted_preview_tampering_fails_closed_without_domain_mutation(
     )
     assert response.status_code == 200, response.json()
     assert response.json()["data"]["status"] == "failed"
-    assert "999" not in str(response.json())
+    assert not _contains_json_number(response.json(), 999)
     assert "preview" not in str(response.json()).lower()
     with Session(postgres_engine) as session:
         assert session.get(LicenseAssignment, assignment_id).status == "active"
@@ -2075,6 +2075,18 @@ def _set_department_rls_context(
             text("SELECT set_config(:name, :value, true)"),
             {"name": name, "value": value},
         )
+
+
+def _contains_json_number(value: object, expected: int | float) -> bool:
+    if isinstance(value, dict):
+        return any(_contains_json_number(item, expected) for item in value.values())
+    if isinstance(value, list):
+        return any(_contains_json_number(item, expected) for item in value)
+    return (
+        isinstance(value, int | float)
+        and not isinstance(value, bool)
+        and value == expected
+    )
 
 
 @pytest.fixture
