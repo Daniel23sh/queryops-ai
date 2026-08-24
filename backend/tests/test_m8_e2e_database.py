@@ -131,6 +131,8 @@ def test_e2e_preparation_is_idempotent_and_keeps_it_default(
     ).all()
     assert first.created is True
     assert second.created is False
+    assert first.selected_human_assignments == 2
+    assert second.selected_human_assignments == 2
     assert first.stabilized_service_assignments == 1
     assert second.stabilized_service_assignments == 0
     assert len(assignments) == 2
@@ -156,6 +158,18 @@ def test_e2e_preparation_is_idempotent_and_keeps_it_default(
             LicenseAssignment.last_used_at < now - timedelta(days=60),
         )
     ) == 0
+    assert seeded_session.scalar(
+        select(func.count())
+        .select_from(LicenseAssignment)
+        .join(DirectoryUser, DirectoryUser.id == LicenseAssignment.user_id)
+        .where(
+            LicenseAssignment.department_id == finance.department_id,
+            LicenseAssignment.status == "active",
+            LicenseAssignment.is_mandatory.is_(False),
+            DirectoryUser.account_type == "human",
+            LicenseAssignment.last_used_at < now - timedelta(days=60),
+        )
+    ) == 2
 
 
 def test_e2e_action_state_inspection_tracks_only_action_lifecycle_rows(
