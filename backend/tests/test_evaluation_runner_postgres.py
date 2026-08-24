@@ -15,9 +15,10 @@ from app.domains.it_operations.seed import seed_database
 from app.db.session import get_db
 from app.evaluation.baseline import execute_evaluation_baseline
 from app.evaluation.context import resolve_evaluation_identity
-from app.evaluation.contracts import RequestingRole
+from app.evaluation.contracts import ActualOutcome, RequestingRole
 from app.evaluation.loader import load_it_operations_evaluation_set
 from app.evaluation.runner import EvaluationRunner
+from app.evaluation.scoring import score_evaluation_case
 from app.models.product import EvaluationResult, EvaluationRun
 from app.main import app
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
@@ -160,6 +161,72 @@ def test_baseline_rls_context_is_scoped_per_case_without_leak(
     assert manager.access_context.default_scope.department_id != (
         analyst.access_context.default_scope.department_id
     )
+
+
+def test_active_human_aggregate_alias_is_harmless_but_missing_predicate_fails(
+    postgres_engine: Engine,
+) -> None:
+    case = load_it_operations_evaluation_set().cases_by_id["itops-easy-005"]
+    pack = load_it_operations_domain_pack()
+    correct_alias_case = replace(
+        case,
+        baseline_sql=(
+            "SELECT COUNT(*) AS active_human_user_count FROM directory_users "
+            "WHERE account_type = 'human' AND employee_status = 'active' "
+            "AND account_status = 'active'"
+        ),
+    )
+    incomplete_case = replace(
+        case,
+        baseline_sql=(
+            "SELECT COUNT(*) AS active_human_user_count FROM directory_users "
+            "WHERE account_type = 'human' AND account_status = 'active'"
+        ),
+    )
+
+    with Session(postgres_engine) as db:
+        identity = resolve_evaluation_identity(db, case)
+        expected = execute_evaluation_baseline(
+            db,
+            identity.access_context,
+            case,
+            pack,
+        )
+        correct_alias = execute_evaluation_baseline(
+            db,
+            identity.access_context,
+            correct_alias_case,
+            pack,
+        )
+        incomplete = execute_evaluation_baseline(
+            db,
+            identity.access_context,
+            incomplete_case,
+            pack,
+        )
+
+    correct_score = score_evaluation_case(
+        case,
+        actual_outcome=ActualOutcome.SUCCESS,
+        execution_succeeded=True,
+        actual_referenced_tables=("directory_users",),
+        expected_rows=expected.rows,
+        actual_rows=correct_alias.rows,
+    )
+    incomplete_score = score_evaluation_case(
+        case,
+        actual_outcome=ActualOutcome.SUCCESS,
+        execution_succeeded=True,
+        actual_referenced_tables=("directory_users",),
+        expected_rows=expected.rows,
+        actual_rows=incomplete.rows,
+    )
+
+    assert correct_score.result_correct is True
+    assert correct_score.passed is True
+    assert incomplete.rows != expected.rows
+    assert incomplete_score.result_correct is False
+    assert incomplete_score.failure_reasons == ("result_semantics_mismatch",)
 
 
 @pytest.fixture(scope="module")

@@ -58,6 +58,8 @@ def _payload(assessment: ReadinessAssessment) -> dict[str, Any]:
             "version": assessment.dataset_version,
             "digest": assessment.dataset_digest,
         },
+        "semantic_catalog": dict(assessment.semantic_catalog),
+        "evaluation_environment": dict(assessment.evaluation_environment),
         "counts": {
             "selected": assessment.selected_count,
             "completed": assessment.completed_count,
@@ -92,6 +94,8 @@ def _payload(assessment: ReadinessAssessment) -> dict[str, Any]:
 
 def _print_text(payload: dict[str, Any]) -> None:
     dataset = payload["dataset"]
+    catalog = payload["semantic_catalog"]
+    environment = payload["evaluation_environment"]
     counts = payload["counts"]
     print(f"Policy: {payload['policy_id']}")
     print(f"Verdict: {payload['verdict']}")
@@ -104,6 +108,19 @@ def _print_text(payload: dict[str, Any]) -> None:
     print(
         "Dataset: "
         f"{dataset['id']} v{dataset['version']} ({dataset['digest']})"
+    )
+    print(
+        "Semantic catalog: "
+        f"{catalog.get('catalog_id', 'none')} "
+        f"v{catalog.get('catalog_version', 'none')} "
+        f"({catalog.get('catalog_hash', 'none')})"
+    )
+    print(
+        "Evaluation environment: "
+        f"{environment.get('manifest_version', 'none')} "
+        f"seed={environment.get('seed_profile', 'none')} "
+        f"reference={environment.get('reference_time', 'none')} "
+        f"fingerprint={environment.get('database_fingerprint', 'none')}"
     )
     print(
         "Cases: "

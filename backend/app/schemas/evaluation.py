@@ -226,6 +226,8 @@ class ReadinessGateView(StrictModel):
         "qualifying_run_missing",
         "provider_not_eligible",
         "dataset_identity_mismatch",
+        "semantic_catalog_identity_mismatch",
+        "evaluation_environment_mismatch",
         "filtered_run_not_eligible",
         "run_incomplete",
         "result_set_malformed",

@@ -26,6 +26,10 @@ from app.query_engine.schema_context import (
     SchemaContextOptions,
     build_schema_context,
 )
+from app.query_engine.semantic_catalog import (
+    build_semantic_catalog_projection,
+    safe_semantic_catalog_observation,
+)
 from app.query_engine.sql_executor import (
     SQLExecutionOptions,
     SQLExecutionResult,
@@ -51,6 +55,7 @@ class SQLExecutorCallable(Protocol):
         options: SQLExecutionOptions | None = None,
     ) -> SQLExecutionResult:
         """Execute an already validated SQL statement."""
+        ...
 
 
 ValidatorCallable = Callable[[str, dict[str, Any]], SQLValidationResult]
@@ -264,11 +269,18 @@ class QueryEngineService:
 
         provider = self._provider or MockLLMProvider(domain_pack)
         generator = SQLGenerator(provider)
+        user_context = _user_generation_context(access_context)
+        semantic_projection = build_semantic_catalog_projection(
+            domain_pack.semantic_catalog,
+            request.question,
+            schema_context,
+            user_context,
+        )
         return generator.generate_sql(
             request.question,
             schema_context,
-            _user_generation_context(access_context),
-            {},
+            user_context,
+            {"semantic_catalog": semantic_projection},
         )
 
     def _persist_query_run(
@@ -367,11 +379,16 @@ def _execution_options_for_request(request: QueryEngineRequest) -> SQLExecutionO
 
 
 def _user_generation_context(access_context: UserAccessContext) -> dict[str, Any]:
-    return {
-        "scope_type": access_context.default_scope.type
+    scope_type = (
+        access_context.default_scope.type
         if access_context.default_scope is not None
-        else ("global" if access_context.has_global_scope else "none"),
+        else ("global" if access_context.has_global_scope else "none")
+    )
+    return {
+        "scope_type": scope_type,
         "has_global_scope": access_context.has_global_scope,
+        "scope_reference_resolved": access_context.has_global_scope
+        or scope_type != "none",
     }
 
 
@@ -396,6 +413,11 @@ def _base_metadata(
     )
     if measurement is not None:
         metadata["provider_measurement"] = measurement
+    catalog_observation = safe_semantic_catalog_observation(
+        generation_metadata.get("semantic_catalog")
+    )
+    if catalog_observation is not None:
+        metadata["semantic_catalog"] = catalog_observation
     failure_code = generation_metadata.get("provider_failure_code")
     if isinstance(failure_code, str) and failure_code in {
         "provider_authentication_failed",

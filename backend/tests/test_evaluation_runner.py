@@ -15,6 +15,7 @@ from app.evaluation.baseline import (
     execute_evaluation_baseline,
 )
 from app.evaluation.context import resolve_evaluation_identity
+from app.evaluation.environment import EvaluationEnvironmentIdentity
 from app.evaluation.contracts import EvaluationSet, RequestingRole
 from app.evaluation.loader import load_it_operations_evaluation_set
 from app.evaluation.runner import EvaluationRunner, EvaluationRunnerError
@@ -58,6 +59,53 @@ def test_selection_rejects_unknown_and_empty_filters() -> None:
             evaluation_set,
             EvaluationFilters(category="not-a-category"),
         )
+
+
+def test_runner_rejects_mismatched_semantic_catalog_before_persistence() -> None:
+    session_factory = _sqlite_session_factory()
+    pack = load_it_operations_domain_pack()
+    mismatched_pack = replace(
+        pack,
+        semantic_catalog=replace(pack.semantic_catalog, dataset_id="other_dataset"),
+    )
+    runner = EvaluationRunner(
+        session_factory,
+        domain_pack_loader=lambda: mismatched_pack,
+    )
+
+    with pytest.raises(EvaluationRunnerError) as exc_info:
+        runner.run(EvaluationFilters(case_id="itops-easy-005"))
+
+    assert exc_info.value.code == "evaluation_catalog_mismatch"
+    with session_factory() as db:
+        assert db.scalar(select(EvaluationRun)) is None
+
+
+def test_openai_runner_requires_environment_before_service_or_persistence() -> None:
+    session_factory = _sqlite_session_factory()
+    service_factory_called = False
+
+    def service_factory(_pack):
+        nonlocal service_factory_called
+        service_factory_called = True
+        return _FakeQueryService()
+
+    runner = EvaluationRunner(
+        session_factory,
+        query_service_factory=service_factory,
+        provider_descriptor=ProviderDescriptor(
+            provider=ProviderId.OPENAI,
+            model_label="gpt-5.6-terra",
+        ),
+    )
+
+    with pytest.raises(EvaluationRunnerError) as exc_info:
+        runner.run(EvaluationFilters(case_id="itops-easy-005"))
+
+    assert exc_info.value.code == "evaluation_environment_missing"
+    assert service_factory_called is False
+    with session_factory() as db:
+        assert db.scalar(select(EvaluationRun)) is None
 
 
 def test_seeded_actor_resolution_preserves_exact_roles_and_scopes() -> None:
@@ -266,7 +314,7 @@ def test_fatal_baseline_failure_marks_run_terminal(
 ) -> None:
     session_factory = _sqlite_session_factory()
     evaluation_set = EvaluationSet(
-        dataset_id="test",
+        dataset_id="it_operations_v1",
         domain_id="it_operations",
         version="1",
         cases=(_small_evaluation_set().cases[0],),
@@ -313,7 +361,7 @@ def test_runner_maps_validator_rejection_to_unsafe_block(
         "itops-security-003"
     ]
     evaluation_set = EvaluationSet(
-        dataset_id="test",
+        dataset_id="it_operations_v1",
         domain_id="it_operations",
         version="1",
         cases=(unsafe_case,),
@@ -400,6 +448,7 @@ def test_runner_persists_real_provider_identity_and_aggregates_safe_usage(
             provider=ProviderId.OPENAI,
             model_label="gpt-5.6-terra",
         ),
+        evaluation_environment=_environment_identity(),
     )
     monkeypatch.setattr(runner, "_verify_prerequisites", lambda _cases: None)
     monkeypatch.setattr(
@@ -430,10 +479,18 @@ def test_runner_persists_real_provider_identity_and_aggregates_safe_usage(
         run = db.scalar(select(EvaluationRun))
         results = db.scalars(select(EvaluationResult)).all()
     assert run is not None
-    assert run.name == "test:openai"
+    assert run.name == "it_operations_v1:openai"
     assert run.summary["provider"] == "openai"
     assert run.summary["model_label"] == "gpt-5.6-terra"
     assert run.summary["provider_usage"] == summary.provider_usage
+    assert run.summary["semantic_catalog"] == summary.semantic_catalog
+    assert run.summary["evaluation_environment"] == summary.evaluation_environment
+    assert summary.semantic_catalog == {
+        "catalog_id": "it_operations_semantic_catalog",
+        "catalog_version": "1",
+        "catalog_hash": load_it_operations_domain_pack().semantic_catalog.digest,
+    }
+    assert summary.evaluation_environment == _environment_identity().as_dict()
     assert all("provider_measurement" in result.metrics for result in results)
     persisted = repr([run.summary, *[result.metrics for result in results]])
     assert "must-not-persist" not in persisted
@@ -473,6 +530,7 @@ def test_fatal_provider_authentication_failure_stops_and_finalizes_run(
             provider=ProviderId.OPENAI,
             model_label="gpt-5.6-terra",
         ),
+        evaluation_environment=_environment_identity(),
     )
     monkeypatch.setattr(runner, "_verify_prerequisites", lambda _cases: None)
     monkeypatch.setattr(
@@ -503,6 +561,21 @@ def test_fatal_provider_authentication_failure_stops_and_finalizes_run(
 class _Baseline:
     def __init__(self, rows):
         self.rows = rows
+
+
+def _environment_identity() -> EvaluationEnvironmentIdentity:
+    return EvaluationEnvironmentIdentity(
+        manifest_version="queryops-evaluation-environment-v1",
+        seed_version="it-operations-seed-v1",
+        seed_profile="medium",
+        seed=42,
+        reference_time="2026-08-24T12:00:00Z",
+        source_git_sha="a" * 40,
+        alembic_revision="0010_disable_inactive_user",
+        postgres_version="16.9",
+        database_fingerprint="b" * 64,
+        dependency_manifest_hash="c" * 64,
+    )
 
 
 class _FakeQueryService:
@@ -536,7 +609,7 @@ class _FakeQueryService:
 def _small_evaluation_set() -> EvaluationSet:
     cases = load_it_operations_evaluation_set().cases_by_id
     return EvaluationSet(
-        dataset_id="test",
+        dataset_id="it_operations_v1",
         domain_id="it_operations",
         version="1",
         cases=(cases["itops-easy-002"], cases["itops-security-005"]),

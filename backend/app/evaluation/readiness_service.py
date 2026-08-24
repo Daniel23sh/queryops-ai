@@ -14,6 +14,8 @@ from app.evaluation.readiness import (
     evaluate_v1_readiness,
 )
 from app.models.product import AppUser, EvaluationResult, EvaluationRun, RunStatus
+from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
+from app.query_engine.semantic_catalog import semantic_catalog_identity
 from app.schemas.evaluation import (
     EvaluationReadiness,
     ReadinessGateView,
@@ -30,22 +32,30 @@ _V1_DETERMINISTIC_RELEASE_EVIDENCE_PASSED = True
 
 def assessment_for_run(db: Session, run_id: UUID) -> ReadinessAssessment:
     evaluation_set = load_it_operations_evaluation_set()
+    catalog_identity = semantic_catalog_identity(
+        load_it_operations_domain_pack().semantic_catalog
+    )
     run = db.get(EvaluationRun, run_id)
     if run is None:
         return evaluate_v1_readiness(
             evaluation_set,
             None,
             deterministic_evidence_passed=_V1_DETERMINISTIC_RELEASE_EVIDENCE_PASSED,
+            semantic_catalog_identity=catalog_identity,
         )
     return evaluate_v1_readiness(
         evaluation_set,
         _evidence(db, run),
         deterministic_evidence_passed=_V1_DETERMINISTIC_RELEASE_EVIDENCE_PASSED,
+        semantic_catalog_identity=catalog_identity,
     )
 
 
 def latest_readiness_assessment(db: Session) -> ReadinessAssessment:
     evaluation_set = load_it_operations_evaluation_set()
+    catalog_identity = semantic_catalog_identity(
+        load_it_operations_domain_pack().semantic_catalog
+    )
     candidates = db.scalars(
         select(EvaluationRun)
         .where(
@@ -56,6 +66,12 @@ def latest_readiness_assessment(db: Session) -> ReadinessAssessment:
             == evaluation_set.dataset_id,
             EvaluationRun.summary["dataset_version"].as_string()
             == evaluation_set.version,
+            EvaluationRun.summary["semantic_catalog"]["catalog_id"].as_string()
+            == catalog_identity["catalog_id"],
+            EvaluationRun.summary["semantic_catalog"]["catalog_version"].as_string()
+            == catalog_identity["catalog_version"],
+            EvaluationRun.summary["semantic_catalog"]["catalog_hash"].as_string()
+            == catalog_identity["catalog_hash"],
         )
         .order_by(EvaluationRun.completed_at.desc(), EvaluationRun.id.desc())
     ).all()
@@ -64,6 +80,7 @@ def latest_readiness_assessment(db: Session) -> ReadinessAssessment:
             evaluation_set,
             _evidence(db, run),
             deterministic_evidence_passed=_V1_DETERMINISTIC_RELEASE_EVIDENCE_PASSED,
+            semantic_catalog_identity=catalog_identity,
         )
         if assessment.gates[0].status.value == "passed":
             return assessment
@@ -71,6 +88,7 @@ def latest_readiness_assessment(db: Session) -> ReadinessAssessment:
         evaluation_set,
         None,
         deterministic_evidence_passed=_V1_DETERMINISTIC_RELEASE_EVIDENCE_PASSED,
+        semantic_catalog_identity=catalog_identity,
     )
 
 
@@ -136,6 +154,7 @@ def _evidence(db: Session, run: EvaluationRun) -> ReadinessRunEvidence:
     return ReadinessRunEvidence(
         run_id=run.id,
         status=run.status,
+        started_at=run.started_at,
         completed_at=run.completed_at,
         summary=run.summary,
         results=tuple(

@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from collections.abc import Generator
 from datetime import UTC, datetime, timedelta
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
@@ -17,6 +17,8 @@ from app.domains.it_operations.seed import seed_database
 from app.evaluation.contracts import ExpectedOutcome
 from app.evaluation.loader import load_it_operations_evaluation_set
 from app.evaluation.selection import evaluation_dataset_digest
+from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
+from app.query_engine.semantic_catalog import semantic_catalog_identity
 from app.main import app
 from app.models.product import (
     AccessScope,
@@ -405,6 +407,66 @@ def test_readiness_selects_latest_qualifying_openai_and_ignores_newer_ineligible
     assert data["provider"] == "openai"
     assert data["model_label"] == "gpt-5.6-terra"
     assert data["completed_count"] == 40
+    assert data["technical"]["run_id"] == str(qualifying.id)
+
+
+def test_readiness_ignores_newer_stale_semantic_catalog_evidence(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    qualifying = _create_run(
+        db_session,
+        provider="openai",
+        completed_at=datetime.now(UTC) - timedelta(hours=1),
+    )
+    stale = _create_run(
+        db_session,
+        provider="openai",
+        completed_at=datetime.now(UTC),
+    )
+    stale.summary = {
+        **stale.summary,
+        "semantic_catalog": {
+            **stale.summary["semantic_catalog"],
+            "catalog_hash": "0" * 64,
+        },
+    }
+    db_session.commit()
+    _login(client, "demo.admin@queryops.local")
+
+    data = client.get("/api/v1/evaluation/readiness").json()["data"]
+
+    assert data["verdict"] == "ready"
+    assert data["technical"]["run_id"] == str(qualifying.id)
+
+
+def test_readiness_ignores_newer_invalid_environment_evidence(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    qualifying = _create_run(
+        db_session,
+        provider="openai",
+        completed_at=datetime.now(UTC) - timedelta(hours=1),
+    )
+    invalid = _create_run(
+        db_session,
+        provider="openai",
+        completed_at=datetime.now(UTC),
+    )
+    invalid.summary = {
+        **invalid.summary,
+        "evaluation_environment": {
+            **invalid.summary["evaluation_environment"],
+            "database_fingerprint": "invalid",
+        },
+    }
+    db_session.commit()
+    _login(client, "demo.admin@queryops.local")
+
+    data = client.get("/api/v1/evaluation/readiness").json()["data"]
+
+    assert data["verdict"] == "ready"
     assert data["technical"]["run_id"] == str(qualifying.id)
 
 
@@ -898,6 +960,24 @@ def _create_run(
             "dataset_id": evaluation_set.dataset_id,
             "dataset_version": evaluation_set.version,
             "dataset_digest": evaluation_dataset_digest(evaluation_set),
+            "semantic_catalog": semantic_catalog_identity(
+                load_it_operations_domain_pack().semantic_catalog
+            ),
+            "evaluation_environment": {
+                "manifest_version": "queryops-evaluation-environment-v1",
+                "seed_version": "it-operations-seed-v1",
+                "seed_profile": "medium",
+                "seed": 42,
+                "reference_time": (now - timedelta(seconds=1))
+                .replace(microsecond=0)
+                .isoformat()
+                .replace("+00:00", "Z"),
+                "source_git_sha": "a" * 40,
+                "alembic_revision": "0010_disable_inactive_user",
+                "postgres_version": "16.9",
+                "database_fingerprint": "b" * 64,
+                "dependency_manifest_hash": "c" * 64,
+            },
             "selected_count": len(selected),
             "completed_count": len(selected),
             "filters": {

@@ -20,7 +20,11 @@ A required zero denominator makes evidence incomplete. Overall semantic score is
 
 ## Eligible evidence
 
-A run must use provider `openai`, have status `succeeded`, have no fatal failure code, and match the current dataset ID, version, and digest. It must be unfiltered, select and complete exactly 40 cases, and contain every authoritative case ID exactly once with no missing, duplicate, extra, or malformed result. Provider/model identity must remain consistent across the run and every bounded provider measurement. Usage, token, attempt, and duration values must pass the existing sanitization bounds.
+A run must use provider `openai`, have status `succeeded`, have no fatal failure code, and match the current dataset ID, version, and digest. It must also match the current validated semantic-catalog ID, version, and canonical hash. Dataset and catalog identities remain separate because the dataset is frozen while catalog definitions are behavior-changing runtime configuration. A run produced under an older or malformed catalog is `incomplete`, never a fallback candidate.
+
+Release evidence must contain the bounded `queryops-evaluation-environment-v1` identity produced from a clean source revision and a freshly reset deterministic `medium` seed. Before provider construction, the runner verifies its source SHA, Alembic revision, PostgreSQL/runtime versions, dependency-manifest hash, dataset/catalog identities, table/anomaly counts, and canonical digest of evaluation-relevant seeded state. The explicit UTC reference time may be at most 24 hours old when the run starts. Missing, stale, malformed, or mismatched environment evidence is `incomplete`. The manifest and persisted identity contain no database URL or rows.
+
+The run must be unfiltered, select and complete exactly 40 cases, and contain every authoritative case ID exactly once with no missing, duplicate, extra, or malformed result. Provider/model identity must remain consistent across the run and every bounded provider measurement. Usage, token, attempt, and duration values must pass the existing sanitization bounds.
 
 Mock remains the development and CI default. Mock measurements are useful deterministic regressions, but they are not real-provider V1 evidence. Provider or model names identify a measurement; they do not prove quality.
 
@@ -40,9 +44,10 @@ The frozen dataset has no independently identified self-correction subset. PR6 d
 - Thresholds, questions, baselines, templates, and prompts must not be weakened or case-tuned after observing results.
 - Reports record only safe call, attempt, token, and latency totals. Volatile monetary prices are not embedded in product code.
 - There is no scheduled, nightly, recurring, fallback, browser-triggered, or CI live evaluation, and no GitHub OpenAI secret.
+- A catalog, seed, dataset, provider/Query Engine, scorer, runner, readiness, or behavior-affecting configuration change invalidates live evidence and requires a new deterministic freeze plus separately authorized live run. Documentation-only evidence recording does not invalidate an otherwise unchanged runtime measurement.
 
 ## Quality-tool baseline
 
-Ruff checks all backend application and script files. Pyright's initial blocking scope is explicitly configured for the new readiness evaluator/service/CLI and the provider configuration/measurement boundary. A whole-backend Pyright discovery run exposed 103 pre-existing errors concentrated in older SQLAlchemy action, dashboard, and protocol typing; those are recorded legacy debt rather than hidden with blanket ignores. Frontend ESLint covers the full frontend tree, and both application and Node/Vite TypeScript configurations are checked explicitly.
+Ruff checks all backend application and script files. Pyright's blocking scope explicitly includes readiness, semantic-catalog loading/projection, provider configuration and prompt construction, Query Engine service integration, evaluation runner/scoring/environment provenance, and the release seed/evaluation CLIs. A whole-backend Pyright discovery run previously exposed pre-existing errors concentrated in older SQLAlchemy action, dashboard, and protocol typing; those remain recorded legacy debt rather than being hidden with blanket ignores. Frontend ESLint covers the full frontend tree, and both application and Node/Vite TypeScript configurations are checked explicitly.
 
 The readiness CLI requires `--run-id`, never selects evidence implicitly, never calls a provider or mutates data, and exits 0 for `ready`, 1 for `not_ready`, and 2 for `incomplete` or safe failure.

@@ -6,7 +6,7 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any
+from typing import Any, Literal, cast
 
 from app.query_engine.domain_pack import DomainPack
 from app.query_engine.llm_provider import LLMProvider
@@ -16,7 +16,8 @@ from app.query_engine.mock_llm_provider import MockLLMProvider
 DEFAULT_OPENAI_MODEL = "gpt-5.6-terra"
 DEFAULT_OPENAI_TIMEOUT_SECONDS = 45.0
 DEFAULT_OPENAI_MAX_RETRIES = 2
-DEFAULT_OPENAI_REASONING_EFFORT = "low"
+ReasoningEffort = Literal["none", "low", "medium", "high"]
+DEFAULT_OPENAI_REASONING_EFFORT: ReasoningEffort = "low"
 DEFAULT_OPENAI_MAX_OUTPUT_TOKENS = 2048
 MODEL_LABEL_MAX_LENGTH = 128
 MODEL_LABEL_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -52,7 +53,7 @@ class OpenAIProviderSettings:
     model: str = DEFAULT_OPENAI_MODEL
     timeout_seconds: float = DEFAULT_OPENAI_TIMEOUT_SECONDS
     max_retries: int = DEFAULT_OPENAI_MAX_RETRIES
-    reasoning_effort: str = DEFAULT_OPENAI_REASONING_EFFORT
+    reasoning_effort: ReasoningEffort = DEFAULT_OPENAI_REASONING_EFFORT
     max_output_tokens: int = DEFAULT_OPENAI_MAX_OUTPUT_TOKENS
 
     def __post_init__(self) -> None:
@@ -174,6 +175,7 @@ def load_provider_settings(
     )
     if reasoning_effort not in SUPPORTED_REASONING_EFFORTS:
         raise ProviderConfigurationError("provider_reasoning_effort_invalid")
+    validated_reasoning_effort = cast(ReasoningEffort, reasoning_effort)
     max_output_tokens = _bounded_int(
         values.get(
             "OPENAI_MAX_OUTPUT_TOKENS", str(DEFAULT_OPENAI_MAX_OUTPUT_TOKENS)
@@ -188,7 +190,7 @@ def load_provider_settings(
             model=model,
             timeout_seconds=timeout_seconds,
             max_retries=max_retries,
-            reasoning_effort=reasoning_effort,
+            reasoning_effort=validated_reasoning_effort,
             max_output_tokens=max_output_tokens,
         ),
     )

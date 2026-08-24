@@ -22,6 +22,7 @@ from app.evaluation.context import (
     EvaluationSetupError,
     resolve_evaluation_identity,
 )
+from app.evaluation.environment import EvaluationEnvironmentIdentity
 from app.evaluation.contracts import (
     ActualOutcome,
     CaseType,
@@ -44,6 +45,7 @@ from app.query_engine.mock_llm_provider import MockLLMProvider
 from app.query_engine.provider_config import ProviderDescriptor, ProviderId
 from app.query_engine.request_authorization import authorize_query_request
 from app.query_engine.result_formatter import QueryEngineServiceResult
+from app.query_engine.semantic_catalog import semantic_catalog_identity
 from app.query_engine.service import QueryEngineRequest, QueryEngineService
 
 
@@ -115,6 +117,8 @@ class EvaluationRunSummary:
     by_case_type: dict[str, dict[str, int | float]]
     cases: tuple[EvaluationCaseSummary, ...]
     provider_usage: dict[str, int | float] = field(default_factory=dict)
+    semantic_catalog: dict[str, str] = field(default_factory=dict)
+    evaluation_environment: dict[str, str | int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -154,6 +158,7 @@ class EvaluationRunner:
         query_service_factory: QueryServiceFactory | None = None,
         provider_factory: ProviderFactory | None = None,
         provider_descriptor: ProviderDescriptor | None = None,
+        evaluation_environment: EvaluationEnvironmentIdentity | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._dataset_loader = dataset_loader
@@ -164,6 +169,7 @@ class EvaluationRunner:
             provider=ProviderId.MOCK,
             model_label=MockLLMProvider.model_name,
         )
+        self._evaluation_environment = evaluation_environment
         selected_provider_factory = provider_factory or (
             lambda pack: MockLLMProvider(pack)
         )
@@ -183,9 +189,28 @@ class EvaluationRunner:
         cases = select_evaluation_cases(evaluation_set, selected_filters)
         domain_pack = self._domain_pack_loader()
         digest = evaluation_dataset_digest(evaluation_set)
+        catalog_identity = self._verify_catalog_identity(
+            evaluation_set,
+            domain_pack,
+        )
+        if (
+            self._provider_descriptor.provider is ProviderId.OPENAI
+            and self._evaluation_environment is None
+        ):
+            raise EvaluationRunnerError(
+                "evaluation_environment_missing",
+                "OpenAI evaluation requires verified environment evidence.",
+            )
         self._verify_prerequisites(cases)
         query_service = self._query_service_factory(domain_pack)
-        run_id = self._create_run(evaluation_set, digest, cases, selected_filters)
+        run_id = self._create_run(
+            evaluation_set,
+            digest,
+            cases,
+            selected_filters,
+            catalog_identity,
+            self._environment_identity(),
+        )
 
         completed: list[_CompletedCase] = []
         fatal_error: EvaluationRunnerError | None = None
@@ -266,12 +291,37 @@ class EvaluationRunner:
             cases,
             completed,
             self._provider_descriptor,
+            catalog_identity,
+            self._environment_identity(),
             status=status,
         )
         self._finalize_run(run_id, summary, fatal_error, selected_filters)
         if fatal_error is not None:
             raise fatal_error
         return summary
+
+    def _verify_catalog_identity(
+        self,
+        evaluation_set: EvaluationSet,
+        domain_pack: DomainPack,
+    ) -> dict[str, str]:
+        catalog = domain_pack.semantic_catalog
+        if (
+            catalog.domain_id != evaluation_set.domain_id
+            or catalog.dataset_id != evaluation_set.dataset_id
+        ):
+            raise EvaluationRunnerError(
+                "evaluation_catalog_mismatch",
+                "Evaluation semantic catalog identity is invalid.",
+            )
+        return semantic_catalog_identity(catalog)
+
+    def _environment_identity(self) -> dict[str, str | int]:
+        return (
+            self._evaluation_environment.as_dict()
+            if self._evaluation_environment is not None
+            else {}
+        )
 
     def _verify_prerequisites(self, cases: Sequence[EvaluationCase]) -> None:
         try:
@@ -312,6 +362,8 @@ class EvaluationRunner:
         digest: str,
         cases: Sequence[EvaluationCase],
         filters: EvaluationFilters,
+        catalog_identity: dict[str, str],
+        environment_identity: dict[str, str | int],
     ) -> UUID:
         run = EvaluationRun(
             requested_by_user_id=None,
@@ -327,6 +379,8 @@ class EvaluationRunner:
                 "dataset_digest": digest,
                 "selected_count": len(cases),
                 "filters": filters.as_safe_dict(),
+                "semantic_catalog": catalog_identity,
+                "evaluation_environment": environment_identity,
             },
         )
         try:
@@ -683,6 +737,8 @@ def _build_summary(
     selected: Sequence[EvaluationCase],
     completed: Sequence[_CompletedCase],
     descriptor: ProviderDescriptor,
+    catalog_identity: dict[str, str],
+    environment_identity: dict[str, str | int],
     *,
     status: str,
 ) -> EvaluationRunSummary:
@@ -746,6 +802,8 @@ def _build_summary(
             for item in completed
         ),
         provider_usage=_aggregate_provider_usage(completed),
+        semantic_catalog=dict(catalog_identity),
+        evaluation_environment=dict(environment_identity),
     )
 
 
@@ -826,5 +884,7 @@ def _summary_for_persistence(
         "by_category": summary.by_category,
         "by_case_type": summary.by_case_type,
         "provider_usage": summary.provider_usage,
+        "semantic_catalog": summary.semantic_catalog,
+        "evaluation_environment": summary.evaluation_environment,
         "failure_code": fatal_error.code if fatal_error else None,
     }

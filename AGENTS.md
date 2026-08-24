@@ -138,6 +138,8 @@ M9 PR6 implementation is complete, but readiness is `incomplete`: no authorized 
 
 M9 PR6 is merged through PR #41. Its final feature commit is `ee681da738466031478d982d53d1b3d0ef40b75f`, and the verified merge/current-main commit is `c6691a204ccbb9eb007e2e0c6fe419c346745b13`. The required deterministic GitHub checks passed. M9 PR7 may add only live-validation preparation, authorized evidence, complete manual QA, release documentation, and narrowly proven general-product fixes with regression tests. It must stop before any OpenAI request unless the operator explicitly authorizes the exact model, smoke case, authorization scope, and maximum billable runs.
 
+PR7 release-blocking fixes under validation may add only the versioned IT Operations semantic catalog and safe authorized projection, exact catalog/environment readiness identity, explicit current-reference deterministic release seeding, filtered-run evidence preservation, and narrow one-cell aggregate alias normalization. Do not change the frozen cases, questions, baselines, templates, readiness thresholds/policy ID, authorization, SQL/RLS/action boundaries, or browser execution surface. No live result or manual QA is accepted until the runtime is frozen and all deterministic gates pass; readiness remains `incomplete` meanwhile.
+
 M8 PR1 may add only the action persistence foundation, SQLAlchemy relationships/enums, typed deterministic Action Engine contracts, explicit fail-closed registry, pure permission/scope policy decisions, the minimum stable access-action vocabulary, and focused foundation tests.
 
 M8 PR1 guardrails:

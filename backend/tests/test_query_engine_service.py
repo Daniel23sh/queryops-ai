@@ -492,7 +492,9 @@ def test_selected_provider_receives_authorized_context_and_persists_only_safe_us
     assert provider.user_context == {
         "scope_type": "department",
         "has_global_scope": False,
+        "scope_reference_resolved": True,
     }
+    assert provider.semantic_catalog.catalog_id == "it_operations_semantic_catalog"
     assert "it_audit_events" not in provider.schema_context["allowed_tables"]
     assert query_run.query_metadata["provider"] == "openai"
     assert query_run.query_metadata["model"] == "gpt-5.6-terra"
@@ -506,6 +508,9 @@ def test_selected_provider_receives_authorized_context_and_persists_only_safe_us
         "output_tokens": 15,
         "total_tokens": 115,
     }
+    assert query_run.query_metadata["semantic_catalog"] == (
+        provider.semantic_catalog.as_observation()
+    )
     persisted = str(query_run.query_metadata)
     assert "raw-provider-payload" not in persisted
     assert str(user.id) not in persisted
@@ -647,17 +652,19 @@ class RecordingMeasuredProvider:
         self.calls = 0
         self.schema_context: dict[str, Any] = {}
         self.user_context: dict[str, Any] = {}
+        self.semantic_catalog: Any = None
 
     def generate_sql(
         self,
         _question: str,
         schema_context: dict[str, Any],
         user_context: dict[str, Any],
-        _options: dict[str, Any],
+        options: dict[str, Any],
     ) -> SQLGenerationResult:
         self.calls += 1
         self.schema_context = schema_context
         self.user_context = user_context
+        self.semantic_catalog = options.get("semantic_catalog")
         return SQLGenerationResult(
             generated_sql=(
                 "SELECT id, operating_system FROM devices "
@@ -677,6 +684,7 @@ class RecordingMeasuredProvider:
                     "total_tokens": 115,
                     "response_id": "raw-provider-payload",
                 },
+                "semantic_catalog": self.semantic_catalog.as_observation(),
                 "raw_payload": "raw-provider-payload",
             },
         )

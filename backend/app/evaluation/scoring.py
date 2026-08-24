@@ -110,6 +110,17 @@ def _compare_rows(
 ) -> tuple[bool, str | None]:
     if len(expected_rows) != len(actual_rows):
         return False, "row_count_mismatch"
+    alias_insensitive_aggregate = _compare_single_grouped_aggregate(
+        case,
+        expected_rows,
+        actual_rows,
+    )
+    if alias_insensitive_aggregate is not None:
+        return (
+            (True, None)
+            if alias_insensitive_aggregate
+            else (False, "result_semantics_mismatch")
+        )
     try:
         expected = [_select_row_values(case, row) for row in expected_rows]
         actual = [_select_row_values(case, row) for row in actual_rows]
@@ -133,6 +144,28 @@ def _compare_rows(
     else:
         matches = True
     return (True, None) if matches else (False, "result_semantics_mismatch")
+
+
+def _compare_single_grouped_aggregate(
+    case: EvaluationCase,
+    expected_rows: Sequence[Mapping[str, Any]],
+    actual_rows: Sequence[Mapping[str, Any]],
+) -> bool | None:
+    """Ignore only a harmless alias on a one-row, one-value grouped aggregate."""
+    if (
+        case.comparison_mode is not ComparisonMode.GROUPED_ROWS
+        or len(expected_rows) != 1
+        or len(actual_rows) != 1
+        or len(expected_rows[0]) != 1
+        or len(actual_rows[0]) != 1
+    ):
+        return None
+    try:
+        expected_value = _normalize_value(next(iter(expected_rows[0].values())))
+        actual_value = _normalize_value(next(iter(actual_rows[0].values())))
+    except (InvalidOperation, ValueError, OverflowError):
+        return False
+    return _values_equal(expected_value, actual_value, case.numeric_tolerance)
 
 
 def _select_row_values(case: EvaluationCase, row: Mapping[str, Any]) -> dict[str, Any]:

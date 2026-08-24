@@ -50,6 +50,69 @@ def test_aggregation_group_comparison_is_semantic() -> None:
     assert score.passed is True
 
 
+def test_single_grouped_aggregate_ignores_only_a_harmless_alias() -> None:
+    case = _successful_case()
+
+    score = _score(
+        case,
+        [{"active_user_count": 7}],
+        [{"active_human_user_count": Decimal("7.0")}],
+    )
+
+    assert score.passed is True
+    assert score.result_correct is True
+
+
+def test_single_grouped_aggregate_still_rejects_a_different_value() -> None:
+    case = _successful_case()
+
+    different_alias = _score(
+        case,
+        [{"active_user_count": 7}],
+        [{"active_human_user_count": 8}],
+    )
+    same_alias = _score(
+        case,
+        [{"active_user_count": 7}],
+        [{"active_user_count": 8}],
+    )
+
+    assert different_alias.result_correct is False
+    assert different_alias.failure_reasons == ("result_semantics_mismatch",)
+    assert same_alias.result_correct is False
+
+
+def test_grouped_alias_relaxation_does_not_apply_to_multi_column_rows() -> None:
+    case = _successful_case()
+    score = _score(
+        case,
+        [{"status": "active", "user_count": 7}],
+        [{"state": "active", "human_count": 7}],
+    )
+
+    assert score.result_correct is False
+    assert score.failure_reasons == ("result_semantics_mismatch",)
+
+
+def test_grouped_alias_relaxation_preserves_row_shape_and_null_semantics() -> None:
+    case = _successful_case()
+
+    assert _score(case, [{"expected": None}], [{"actual": None}]).passed is True
+    assert _score(case, [{"expected": None}], [{"actual": 0}]).passed is False
+    missing = _score(case, [], [{"actual": 0}])
+    extra = _score(case, [{"expected": 0}], [])
+    assert missing.failure_reasons == ("row_count_mismatch",)
+    assert extra.failure_reasons == ("row_count_mismatch",)
+
+
+def test_alias_relaxation_is_not_global_for_ordinary_tabular_modes() -> None:
+    case = replace(_successful_case(), comparison_mode=ComparisonMode.UNORDERED_ROWS)
+
+    score = _score(case, [{"active_user_count": 7}], [{"renamed_count": 7}])
+
+    assert score.result_correct is False
+
+
 def test_duplicate_row_multiplicity_is_not_discarded() -> None:
     case = replace(_successful_case(), comparison_mode=ComparisonMode.UNORDERED_ROWS)
     score = _score(case, [{"id": 1}, {"id": 1}], [{"id": 1}, {"id": 2}])

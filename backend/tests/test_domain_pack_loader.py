@@ -35,6 +35,7 @@ def test_it_operations_domain_pack_files_exist() -> None:
     assert (DOMAIN_PACK_DIR / "schema.yaml").is_file()
     assert (DOMAIN_PACK_DIR / "business_terms.yaml").is_file()
     assert (DOMAIN_PACK_DIR / "query_templates.yaml").is_file()
+    assert (DOMAIN_PACK_DIR / "semantic_catalog.yaml").is_file()
 
 
 def test_load_it_operations_domain_pack_returns_typed_pack() -> None:
@@ -142,6 +143,27 @@ def test_loader_rejects_missing_required_files(tmp_path: Path) -> None:
 
     with pytest.raises(DomainPackValidationError, match="business_terms.yaml"):
         load_domain_pack(tmp_path)
+
+
+def test_loader_fails_closed_when_semantic_catalog_is_missing(tmp_path: Path) -> None:
+    _write_minimal_pack(tmp_path)
+    (tmp_path / "semantic_catalog.yaml").unlink()
+
+    with pytest.raises(DomainPackValidationError, match="semantic_catalog.yaml"):
+        load_domain_pack(tmp_path)
+
+
+def test_loader_accepts_valid_single_entity_catalog_without_relationships(
+    tmp_path: Path,
+) -> None:
+    _write_minimal_pack(tmp_path)
+
+    pack = load_domain_pack(tmp_path)
+
+    assert pack.semantic_catalog.relationships == ()
+    assert pack.semantic_catalog.authorization_guidance[0].scope_entity_id == (
+        "directory_users"
+    )
 
 
 def test_loader_rejects_malformed_schema_table(tmp_path: Path) -> None:
@@ -299,6 +321,7 @@ def _write_minimal_pack(
     schema: dict[str, Any] | None = None,
     business_terms: dict[str, Any] | None = None,
     templates: dict[str, Any] | None = None,
+    semantic_catalog: dict[str, Any] | None = None,
 ) -> None:
     _write_json(pack_dir / "schema.yaml", schema or _minimal_schema())
     _write_json(
@@ -313,6 +336,10 @@ def _write_minimal_pack(
                 }
             ]
         },
+    )
+    _write_json(
+        pack_dir / "semantic_catalog.yaml",
+        semantic_catalog or _minimal_semantic_catalog(),
     )
     _write_json(
         pack_dir / "query_templates.yaml",
@@ -331,6 +358,9 @@ def _minimal_schema() -> dict[str, Any]:
             "id": "it_operations",
             "name": "IT Operations",
             "version": "1",
+            "dataset_id": "it_operations_v1",
+            "semantic_catalog_id": "it_operations_semantic_catalog",
+            "semantic_catalog_version": "1",
         },
         "allowed_resource_table_names": ["directory_users"],
         "tables": [
@@ -351,6 +381,21 @@ def _minimal_schema() -> dict[str, Any]:
                         "name": "department_id",
                         "data_type": "uuid",
                         "description": "Department scope identifier.",
+                    },
+                    {
+                        "name": "account_status",
+                        "data_type": "string",
+                        "description": "Directory account status.",
+                    },
+                    {
+                        "name": "account_type",
+                        "data_type": "string",
+                        "description": "Directory account type.",
+                    },
+                    {
+                        "name": "employee_status",
+                        "data_type": "string",
+                        "description": "Employee status.",
                     },
                 ],
             },
@@ -375,6 +420,55 @@ def _minimal_schema() -> dict[str, Any]:
                 ],
             },
         ],
+    }
+
+
+def _minimal_semantic_catalog() -> dict[str, Any]:
+    return {
+        "catalog": {
+            "id": "it_operations_semantic_catalog",
+            "version": "1",
+            "domain_id": "it_operations",
+            "dataset_id": "it_operations_v1",
+        },
+        "restricted_tables": ["it_audit_events"],
+        "entities": [
+            {
+                "id": "directory_users",
+                "table": "directory_users",
+                "description": "Human and service directory identities.",
+                "natural_language_references": ["directory user", "directory users"],
+                "known_values": [
+                    {"column": "account_status", "values": ["active"]},
+                    {"column": "account_type", "values": ["human"]},
+                    {"column": "employee_status", "values": ["active"]},
+                ],
+            }
+        ],
+        "relationships": [],
+        "concepts": [
+            {
+                "id": "active_human_directory_user",
+                "entity_id": "directory_users",
+                "description": "An active human account for an active employee.",
+                "natural_language_references": ["active human directory user"],
+                "required_predicates": [
+                    {"column": "account_type", "operator": "equals", "value": "human"},
+                    {"column": "employee_status", "operator": "equals", "value": "active"},
+                    {"column": "account_status", "operator": "equals", "value": "active"},
+                ],
+            }
+        ],
+        "authorization_guidance": [
+            {
+                "scope_type": "department",
+                "scope_entity_id": "directory_users",
+                "possessive_references": ["my department"],
+                "enforcement": "postgresql_rls",
+                "description": "Use resolved department scope and PostgreSQL RLS.",
+            }
+        ],
+        "examples": [],
     }
 
 

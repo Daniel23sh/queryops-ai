@@ -36,11 +36,23 @@ target-version = "py311"
 pythonVersion = "3.11"
 typeCheckingMode = "basic"
 include = [
+    "app/domains/it_operations/seed.py",
+    "app/evaluation/environment.py",
+    "app/evaluation/runner.py",
+    "app/evaluation/scoring.py",
     "app/evaluation/readiness.py",
     "app/evaluation/readiness_service.py",
+    "app/query_engine/domain_pack.py",
+    "app/query_engine/domain_pack_loader.py",
     "app/query_engine/llm_provider.py",
+    "app/query_engine/openai_provider.py",
     "app/query_engine/provider_config.py",
+    "app/query_engine/semantic_catalog.py",
+    "app/query_engine/semantic_catalog_loader.py",
+    "app/query_engine/service.py",
     "scripts/check_v1_readiness.py",
+    "scripts/run_evaluation.py",
+    "scripts/seed_it_operations.py",
 ]
 exclude = ["alembic"]
 venvPath = "."

@@ -453,11 +453,18 @@ COUNT_MODELS = {
 @dataclass(frozen=True)
 class SeedSummary:
     profile_name: str
+    seed: int
+    reference_now: datetime
     table_counts: dict[str, int]
     anomaly_counts: dict[str, int]
 
     def format(self) -> str:
-        lines = [f"profile: {self.profile_name}", "row counts:"]
+        lines = [
+            f"profile: {self.profile_name}",
+            f"seed: {self.seed}",
+            f"reference time: {self.reference_now.isoformat()}",
+            "row counts:",
+        ]
         lines.extend(
             f"  {table_name}: {count}"
             for table_name, count in sorted(self.table_counts.items())
@@ -472,6 +479,7 @@ class SeedSummary:
 @dataclass
 class SeedState:
     profile: SeedProfile
+    reference_now: datetime
     rng: random.Random
     fake: Faker
     departments: list[Department]
@@ -496,8 +504,10 @@ def seed_database(
     profile_name: str = "medium",
     *,
     reset: bool = False,
+    reference_now: datetime = REFERENCE_NOW,
 ) -> SeedSummary:
     profile = get_seed_profile(profile_name)
+    reference_now = _validated_reference_now(reference_now)
     if reset:
         reset_seeded_data(session)
     elif _has_existing_seed_data(session):
@@ -512,6 +522,7 @@ def seed_database(
     fake.seed_instance(profile.seed)
     state = SeedState(
         profile=profile,
+        reference_now=reference_now,
         rng=random.Random(profile.seed),
         fake=fake,
         departments=[],
@@ -557,8 +568,10 @@ def seed_database(
 
     return SeedSummary(
         profile_name=profile.name,
+        seed=profile.seed,
+        reference_now=reference_now,
         table_counts=table_counts(session),
-        anomaly_counts=anomaly_counts(session),
+        anomaly_counts=anomaly_counts(session, reference_now=reference_now),
     )
 
 
@@ -575,10 +588,40 @@ def table_counts(session: Session) -> dict[str, int]:
     }
 
 
-def anomaly_counts(session: Session) -> dict[str, int]:
-    cutoff_60 = REFERENCE_NOW - timedelta(days=60)
-    cutoff_90 = REFERENCE_NOW - timedelta(days=90)
-    cutoff_30 = REFERENCE_NOW - timedelta(days=30)
+def expected_seed_table_counts(profile_name: str) -> dict[str, int]:
+    profile = get_seed_profile(profile_name)
+    return {
+        "app_users": profile.app_users,
+        "access_scopes": profile.departments + 1,
+        "data_resources": len(DATA_RESOURCE_SPECS),
+        "roles": len(ROLE_PERMISSION_KEYS),
+        "permissions": len(PERMISSIONS),
+        "role_permissions": sum(len(items) for items in ROLE_PERMISSION_KEYS.values()),
+        "user_access_scopes": profile.app_users,
+        "departments": profile.departments,
+        "directory_users": profile.total_directory_users,
+        "login_events": profile.login_events,
+        "licenses": profile.licenses,
+        "license_assignments": profile.license_assignments,
+        "devices": profile.devices,
+        "software_installs": profile.software_installs,
+        "support_tickets": profile.support_tickets,
+        "groups": profile.groups,
+        "user_group_memberships": profile.user_group_memberships,
+        "security_events": profile.security_events,
+        "it_audit_events": profile.it_audit_events,
+    }
+
+
+def anomaly_counts(
+    session: Session,
+    *,
+    reference_now: datetime = REFERENCE_NOW,
+) -> dict[str, int]:
+    reference_now = _validated_reference_now(reference_now)
+    cutoff_60 = reference_now - timedelta(days=60)
+    cutoff_90 = reference_now - timedelta(days=90)
+    cutoff_30 = reference_now - timedelta(days=30)
     privileged_user_ids = select(UserGroupMembership.user_id).join(Group).where(
         Group.is_privileged.is_(True)
     )
@@ -667,10 +710,14 @@ def anomaly_counts(session: Session) -> dict[str, int]:
     }
 
 
-def seed_fingerprint(session: Session) -> dict[str, object]:
+def seed_fingerprint(
+    session: Session,
+    *,
+    reference_now: datetime = REFERENCE_NOW,
+) -> dict[str, object]:
     return {
         "counts": table_counts(session),
-        "anomalies": anomaly_counts(session),
+        "anomalies": anomaly_counts(session, reference_now=reference_now),
         "users": [
             (str(row.id), row.employee_number, row.email, row.last_login_at)
             for row in session.scalars(
@@ -690,6 +737,15 @@ def seed_fingerprint(session: Session) -> dict[str, object]:
             )
         ],
     }
+
+
+def _validated_reference_now(value: datetime) -> datetime:
+    if not isinstance(value, datetime) or value.tzinfo is None:
+        raise ValueError("Seed reference time must be timezone-aware.")
+    normalized = value.astimezone(UTC)
+    if normalized.microsecond != 0:
+        raise ValueError("Seed reference time must not contain microseconds.")
+    return normalized
 
 
 def _seed_product_core(session: Session, state: SeedState) -> None:
@@ -746,9 +802,9 @@ def _seed_product_core(session: Session, state: SeedState) -> None:
             role_id=state.roles[role_name].id,
             department_id=department_id,
             status="active",
-            created_at=REFERENCE_NOW,
-            updated_at=REFERENCE_NOW,
-            last_login_at=REFERENCE_NOW - timedelta(hours=2),
+            created_at=state.reference_now,
+            updated_at=state.reference_now,
+            last_login_at=state.reference_now - timedelta(hours=2),
         )
         state.app_users[email] = app_user
         session.add(app_user)
@@ -766,8 +822,8 @@ def _seed_access_scopes(session: Session, state: SeedState) -> None:
         domain=None,
         department_id=None,
         is_system_scope=True,
-        created_at=REFERENCE_NOW,
-        updated_at=REFERENCE_NOW,
+        created_at=state.reference_now,
+        updated_at=state.reference_now,
     )
     state.access_scopes[("global", "global")] = global_scope
     session.add(global_scope)
@@ -782,8 +838,8 @@ def _seed_access_scopes(session: Session, state: SeedState) -> None:
             domain="it_operations",
             department_id=department.id,
             is_system_scope=True,
-            created_at=REFERENCE_NOW,
-            updated_at=REFERENCE_NOW,
+            created_at=state.reference_now,
+            updated_at=state.reference_now,
         )
         state.access_scopes[("department", scope_key)] = department_scope
         session.add(department_scope)
@@ -803,7 +859,7 @@ def _seed_access_scopes(session: Session, state: SeedState) -> None:
                 scope_id=scope.id,
                 access_level=access_level,
                 is_default=True,
-                created_at=REFERENCE_NOW,
+                created_at=state.reference_now,
             )
         )
 
@@ -835,8 +891,8 @@ def _seed_data_resources(session: Session, state: SeedState) -> None:
                 is_exportable=is_exportable,
                 llm_exposure_level=llm_exposure_level,
                 resource_metadata=None,
-                created_at=REFERENCE_NOW,
-                updated_at=REFERENCE_NOW,
+                created_at=state.reference_now,
+                updated_at=state.reference_now,
             )
         )
 
@@ -847,8 +903,8 @@ def _seed_departments(session: Session, state: SeedState) -> None:
             id=_id(state.profile, "department", name),
             name=name,
             description=f"{name} department",
-            created_at=REFERENCE_NOW,
-            updated_at=REFERENCE_NOW,
+            created_at=state.reference_now,
+            updated_at=state.reference_now,
         )
         state.departments.append(department)
         session.add(department)
@@ -874,6 +930,7 @@ def _seed_directory_users(session: Session, state: SeedState) -> None:
         is_inactive = index < inactive_count
         planned_last_login_at = _planned_last_login_at(
             index,
+            reference_now=state.reference_now,
             is_service=False,
             is_inactive=is_inactive,
             is_terminated=is_terminated,
@@ -890,8 +947,8 @@ def _seed_directory_users(session: Session, state: SeedState) -> None:
             employee_status="terminated" if is_terminated else "active",
             account_status="active" if index < terminated_count else "disabled" if index % 19 == 0 else "active",
             last_login_at=planned_last_login_at,
-            created_at=REFERENCE_NOW - timedelta(days=900 - index % 365),
-            updated_at=REFERENCE_NOW,
+            created_at=state.reference_now - timedelta(days=900 - index % 365),
+            updated_at=state.reference_now,
         )
         state.directory_user_positions[user.id] = index
         state.human_users.append(user)
@@ -905,6 +962,7 @@ def _seed_directory_users(session: Session, state: SeedState) -> None:
         ]
         planned_last_login_at = _planned_last_login_at(
             directory_index,
+            reference_now=state.reference_now,
             is_service=True,
             is_inactive=True,
             is_terminated=False,
@@ -921,8 +979,8 @@ def _seed_directory_users(session: Session, state: SeedState) -> None:
             employee_status="active",
             account_status="active",
             last_login_at=planned_last_login_at,
-            created_at=REFERENCE_NOW - timedelta(days=500 - index),
-            updated_at=REFERENCE_NOW,
+            created_at=state.reference_now - timedelta(days=500 - index),
+            updated_at=state.reference_now,
         )
         state.directory_user_positions[user.id] = directory_index
         state.service_accounts.append(user)
@@ -943,8 +1001,8 @@ def _seed_groups(session: Session, state: SeedState) -> None:
             department_id=department.id if department is not None else None,
             is_privileged=is_privileged,
             risk_level=risk_level,
-            created_at=REFERENCE_NOW,
-            updated_at=REFERENCE_NOW,
+            created_at=state.reference_now,
+            updated_at=state.reference_now,
         )
         state.groups.append(group)
         session.add(group)
@@ -966,7 +1024,7 @@ def _seed_user_group_memberships(session: Session, state: SeedState) -> None:
                 user_id=user.id,
                 group_id=group.id,
                 department_id=user.department_id,
-                added_at=REFERENCE_NOW - timedelta(days=index % 120),
+                added_at=state.reference_now - timedelta(days=index % 120),
                 added_by_user_id=actor_users[index % len(actor_users)].id,
             )
         )
@@ -1011,17 +1069,17 @@ def _seed_devices(session: Session, state: SeedState) -> None:
             os_version=os_version,
             device_type=device_type,
             last_seen_at=(
-                REFERENCE_NOW - timedelta(days=45 + index % 40)
+                state.reference_now - timedelta(days=45 + index % 40)
                 if stale
-                else REFERENCE_NOW - timedelta(days=index % 20)
+                else state.reference_now - timedelta(days=index % 20)
             ),
             compliance_status="non_compliant" if non_compliant else "compliant",
             encryption_enabled=index % 11 != 0,
             antivirus_status=(
                 "missing" if index % 13 == 0 else "outdated" if index % 7 == 0 else "healthy"
             ),
-            created_at=REFERENCE_NOW - timedelta(days=500 - index % 300),
-            updated_at=REFERENCE_NOW,
+            created_at=state.reference_now - timedelta(days=500 - index % 300),
+            updated_at=state.reference_now,
         )
         state.devices.append(device)
         state.devices_by_user.setdefault(assigned_user.id, []).append(device)
@@ -1038,8 +1096,8 @@ def _seed_licenses(session: Session, state: SeedState) -> None:
             vendor=vendor,
             monthly_cost_usd=monthly_cost,
             is_mandatory_default=is_mandatory,
-            created_at=REFERENCE_NOW,
-            updated_at=REFERENCE_NOW,
+            created_at=state.reference_now,
+            updated_at=state.reference_now,
         )
         state.licenses.append(license_record)
         session.add(license_record)
@@ -1050,7 +1108,7 @@ def _seed_license_assignments(session: Session, state: SeedState) -> None:
         user
         for user in state.human_users
         if user.last_login_at is not None
-        and user.last_login_at < REFERENCE_NOW - timedelta(days=90)
+        and user.last_login_at < state.reference_now - timedelta(days=90)
     ]
     users_for_assignments = inactive_users + state.directory_users
     admin_user = state.app_users["demo.admin@queryops.local"]
@@ -1063,24 +1121,27 @@ def _seed_license_assignments(session: Session, state: SeedState) -> None:
         old_unused = index < max(12, state.profile.license_assignments // 8)
         status = "reclaimed" if index % 29 == 0 else "suspended" if index % 37 == 0 else "active"
         if old_unused:
-            last_used_at = REFERENCE_NOW - timedelta(days=120 + index % 60)
+            last_used_at = state.reference_now - timedelta(days=120 + index % 60)
             assigned_at = last_used_at - timedelta(days=30 + index % 90)
         else:
-            assigned_at = REFERENCE_NOW - timedelta(days=20 + (index * 7) % 240)
-            last_used_at = REFERENCE_NOW - timedelta(days=(index * 11) % 55)
+            assigned_at = state.reference_now - timedelta(days=20 + (index * 7) % 240)
+            last_used_at = state.reference_now - timedelta(days=(index * 11) % 55)
             if last_used_at < assigned_at:
-                days_after_assignment = max(1, min(14, (REFERENCE_NOW - assigned_at).days))
+                days_after_assignment = max(
+                    1,
+                    min(14, (state.reference_now - assigned_at).days),
+                )
                 last_used_at = min(
                     assigned_at + timedelta(days=days_after_assignment),
-                    REFERENCE_NOW,
+                    state.reference_now,
                 )
         reclaimed_at = None
         if status == "reclaimed":
             reclaimed_at = max(
                 assigned_at + timedelta(days=1),
-                REFERENCE_NOW - timedelta(days=index % 30),
+                state.reference_now - timedelta(days=index % 30),
             )
-            reclaimed_at = min(reclaimed_at, REFERENCE_NOW)
+            reclaimed_at = min(reclaimed_at, state.reference_now)
             if last_used_at > reclaimed_at:
                 last_used_at = reclaimed_at
         assignment = LicenseAssignment(
@@ -1090,7 +1151,7 @@ def _seed_license_assignments(session: Session, state: SeedState) -> None:
             department_id=user.department_id,
             assigned_at=assigned_at,
             last_used_at=last_used_at,
-            last_checked_at=REFERENCE_NOW - timedelta(days=index % 7),
+            last_checked_at=state.reference_now - timedelta(days=index % 7),
             status=status,
             is_mandatory=license_record.is_mandatory_default or index % 17 == 0,
             is_exception=index % 23 == 0,
@@ -1112,7 +1173,7 @@ def _seed_login_events(session: Session, state: SeedState) -> None:
             event_index,
             user,
             event_type="success",
-            occurred_at=user.last_login_at or REFERENCE_NOW,
+            occurred_at=user.last_login_at or state.reference_now,
             failure_reason=None,
         )
         event_index += 1
@@ -1129,7 +1190,8 @@ def _seed_login_events(session: Session, state: SeedState) -> None:
             event_index,
             user,
             event_type="failed",
-            occurred_at=REFERENCE_NOW - timedelta(days=2, minutes=cluster_index),
+            occurred_at=state.reference_now
+            - timedelta(days=2, minutes=cluster_index),
             failure_reason="invalid_password",
         )
         event_index += 1
@@ -1145,7 +1207,7 @@ def _seed_login_events(session: Session, state: SeedState) -> None:
             )
             failure_reason = None
         else:
-            occurred_at = REFERENCE_NOW - timedelta(
+            occurred_at = state.reference_now - timedelta(
                 days=(event_index * 7) % 120,
                 minutes=event_index % 1440,
             )
@@ -1181,7 +1243,8 @@ def _seed_software_installs(session: Session, state: SeedState) -> None:
                 software_name=software_name,
                 vendor=vendor,
                 version=f"{1 + index % 12}.{index % 10}.{index % 20}",
-                installed_at=REFERENCE_NOW - timedelta(days=300 - index % 250),
+                installed_at=state.reference_now
+                - timedelta(days=300 - index % 250),
                 is_outdated=risky or index % 9 == 0,
                 is_unsupported=(index % 17 == 0) or (risky and index % 3 == 0),
                 risk_level="critical" if risky and index % 5 == 0 else "high" if risky else "low",
@@ -1195,12 +1258,16 @@ def _seed_support_tickets(session: Session, state: SeedState) -> None:
         assignee = state.human_users[(index + 3) % len(state.human_users)]
         high_open = index < max(5, state.profile.support_tickets // 10)
         status = "open" if high_open else ["open", "in_progress", "resolved", "closed"][index % 4]
-        opened_at = REFERENCE_NOW - timedelta(days=45 + index % 30) if high_open else REFERENCE_NOW - timedelta(days=index % 25)
+        opened_at = (
+            state.reference_now - timedelta(days=45 + index % 30)
+            if high_open
+            else state.reference_now - timedelta(days=index % 25)
+        )
         resolved_at = None
         if status not in ["open", "in_progress"]:
             resolved_at = min(
                 opened_at + timedelta(days=2 + index % 5),
-                REFERENCE_NOW,
+                state.reference_now,
             )
         session.add(
             SupportTicket(
@@ -1216,7 +1283,7 @@ def _seed_support_tickets(session: Session, state: SeedState) -> None:
                 opened_at=opened_at,
                 resolved_at=resolved_at,
                 created_at=opened_at,
-                updated_at=REFERENCE_NOW,
+                updated_at=state.reference_now,
             )
         )
 
@@ -1242,7 +1309,7 @@ def _seed_security_events(session: Session, state: SeedState) -> None:
                 event_type=SECURITY_EVENT_TYPES[index % len(SECURITY_EVENT_TYPES)],
                 severity="critical" if high_open and index % 2 == 0 else "high" if high_open else ["low", "medium", "high"][index % 3],
                 description="Synthetic security event",
-                occurred_at=REFERENCE_NOW - timedelta(days=index % 90),
+                occurred_at=state.reference_now - timedelta(days=index % 90),
                 status="open" if high_open else ["open", "investigating", "resolved", "false_positive"][index % 4],
                 event_metadata={"source": "seed", "sequence": index},
             )
@@ -1265,7 +1332,8 @@ def _seed_it_audit_events(session: Session, state: SeedState) -> None:
                 resource_type=resource_type,
                 resource_id=resource_id,
                 description="Synthetic IT audit event",
-                occurred_at=REFERENCE_NOW - timedelta(days=index % 180, minutes=index % 1440),
+                occurred_at=state.reference_now
+                - timedelta(days=index % 180, minutes=index % 1440),
                 event_metadata={"source": "seed", "sequence": index},
             )
         )
@@ -1334,23 +1402,27 @@ def _device_for_login_event(
 def _sync_last_login_at_from_success_events(state: SeedState) -> None:
     for user in state.directory_users:
         user.last_login_at = state.latest_success_login_by_user[user.id]
-        user.updated_at = REFERENCE_NOW
+        user.updated_at = state.reference_now
 
 
 def _planned_last_login_at(
     index: int,
     *,
+    reference_now: datetime,
     is_service: bool,
     is_inactive: bool,
     is_terminated: bool,
 ) -> datetime:
     if is_service:
-        return REFERENCE_NOW - timedelta(days=120 + index % 45)
+        return reference_now - timedelta(days=120 + index % 45)
     if is_terminated:
-        return REFERENCE_NOW - timedelta(days=125 + index % 35)
+        return reference_now - timedelta(days=125 + index % 35)
     if is_inactive:
-        return REFERENCE_NOW - timedelta(days=100 + index % 40)
-    return REFERENCE_NOW - timedelta(days=(index * 7) % 45, minutes=index % 240)
+        return reference_now - timedelta(days=100 + index % 40)
+    return reference_now - timedelta(
+        days=(index * 7) % 45,
+        minutes=index % 240,
+    )
 
 
 def _login_country(index: int) -> str:

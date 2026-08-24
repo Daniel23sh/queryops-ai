@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import uuid4
 
@@ -20,9 +20,27 @@ from app.evaluation.readiness import (
     ReadinessRunEvidence,
     ReadinessVerdict,
     V1_READINESS_POLICY_ID,
-    evaluate_v1_readiness,
+    evaluate_v1_readiness as _evaluate_v1_readiness,
 )
 from app.evaluation.selection import evaluation_dataset_digest
+from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
+from app.query_engine.semantic_catalog import semantic_catalog_identity
+
+
+def evaluate_v1_readiness(
+    evaluation_set: Any,
+    evidence: ReadinessRunEvidence | None,
+    *,
+    deterministic_evidence_passed: bool,
+) -> Any:
+    return _evaluate_v1_readiness(
+        evaluation_set,
+        evidence,
+        deterministic_evidence_passed=deterministic_evidence_passed,
+        semantic_catalog_identity=semantic_catalog_identity(
+            load_it_operations_domain_pack().semantic_catalog
+        ),
+    )
 
 
 def test_complete_openai_evidence_passes_exact_policy() -> None:
@@ -173,6 +191,59 @@ def test_stale_dataset_identity_is_incomplete(identity_key: str) -> None:
         deterministic_evidence_passed=True,
     )
     assert assessment.gates[0].reason_code == "dataset_identity_mismatch"
+
+
+@pytest.mark.parametrize("mutation", ["missing", "malformed", "stale"])
+def test_stale_semantic_catalog_identity_is_incomplete(mutation: str) -> None:
+    evidence = _evidence()
+    summary = dict(evidence.summary)
+    if mutation == "missing":
+        summary.pop("semantic_catalog")
+    elif mutation == "malformed":
+        summary["semantic_catalog"] = {"catalog_id": "unsafe id"}
+    else:
+        summary["semantic_catalog"] = {
+            **summary["semantic_catalog"],
+            "catalog_hash": "0" * 64,
+        }
+
+    assessment = evaluate_v1_readiness(
+        load_it_operations_evaluation_set(),
+        replace(evidence, summary=summary),
+        deterministic_evidence_passed=True,
+    )
+
+    assert assessment.verdict is ReadinessVerdict.INCOMPLETE
+    assert assessment.gates[0].reason_code == "semantic_catalog_identity_mismatch"
+
+
+@pytest.mark.parametrize("mutation", ["missing", "malformed", "stale"])
+def test_invalid_evaluation_environment_is_incomplete(mutation: str) -> None:
+    evidence = _evidence()
+    summary = dict(evidence.summary)
+    if mutation == "missing":
+        summary.pop("evaluation_environment")
+    elif mutation == "malformed":
+        summary["evaluation_environment"] = {
+            **summary["evaluation_environment"],
+            "raw_rows": [],
+        }
+    else:
+        summary["evaluation_environment"] = {
+            **summary["evaluation_environment"],
+            "reference_time": (
+                evidence.started_at - timedelta(hours=25)
+            ).isoformat().replace("+00:00", "Z"),
+        }
+
+    assessment = evaluate_v1_readiness(
+        load_it_operations_evaluation_set(),
+        replace(evidence, summary=summary),
+        deterministic_evidence_passed=True,
+    )
+
+    assert assessment.verdict is ReadinessVerdict.INCOMPLETE
+    assert assessment.gates[0].reason_code == "evaluation_environment_mismatch"
 
 
 @pytest.mark.parametrize("mutation", ["missing", "duplicate", "extra", "malformed"])
@@ -339,6 +410,7 @@ def test_deterministic_evidence_is_mandatory_and_no_sensitive_fields_are_project
 def _evidence(dataset=None) -> ReadinessRunEvidence:
     dataset = dataset or load_it_operations_evaluation_set()
     rows = tuple(_result(case) for case in dataset.cases)
+    started_at = datetime.now(UTC).replace(microsecond=0)
     usage = {
         "call_count": 40,
         "attempt_count": 40,
@@ -351,6 +423,7 @@ def _evidence(dataset=None) -> ReadinessRunEvidence:
     return ReadinessRunEvidence(
         run_id=uuid4(),
         status="succeeded",
+        started_at=started_at,
         completed_at=datetime.now(UTC),
         summary={
             "provider": "openai",
@@ -358,6 +431,21 @@ def _evidence(dataset=None) -> ReadinessRunEvidence:
             "dataset_id": dataset.dataset_id,
             "dataset_version": dataset.version,
             "dataset_digest": evaluation_dataset_digest(dataset),
+            "semantic_catalog": semantic_catalog_identity(
+                load_it_operations_domain_pack().semantic_catalog
+            ),
+            "evaluation_environment": {
+                "manifest_version": "queryops-evaluation-environment-v1",
+                "seed_version": "it-operations-seed-v1",
+                "seed_profile": "medium",
+                "seed": 42,
+                "reference_time": started_at.isoformat().replace("+00:00", "Z"),
+                "source_git_sha": "a" * 40,
+                "alembic_revision": "0010_disable_inactive_user",
+                "postgres_version": "16.9",
+                "database_fingerprint": "b" * 64,
+                "dependency_manifest_hash": "c" * 64,
+            },
             "selected_count": 40,
             "completed_count": 40,
             "filters": {
