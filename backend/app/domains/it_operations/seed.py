@@ -760,6 +760,8 @@ def _seed_product_core(session: Session, state: SeedState) -> None:
             name=role_name,
             description=description,
             is_system_role=True,
+            created_at=state.reference_now,
+            updated_at=state.reference_now,
         )
         state.roles[role_name] = role
         session.add(role)
@@ -770,6 +772,8 @@ def _seed_product_core(session: Session, state: SeedState) -> None:
             key=key,
             category=category,
             description=description,
+            created_at=state.reference_now,
+            updated_at=state.reference_now,
         )
         state.permissions[key] = permission
         session.add(permission)
@@ -780,6 +784,7 @@ def _seed_product_core(session: Session, state: SeedState) -> None:
                 RolePermission(
                     role_id=state.roles[role_name].id,
                     permission_id=state.permissions[permission_key].id,
+                    created_at=state.reference_now,
                 )
             )
 

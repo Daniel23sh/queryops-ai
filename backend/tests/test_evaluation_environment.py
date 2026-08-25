@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.db.base import Base
@@ -13,6 +13,7 @@ from app.evaluation.environment import (
     reference_time_is_eligible,
     validate_persisted_environment_identity,
 )
+from app.models.product import Permission, Role, RolePermission
 
 
 REFERENCE_TIME = datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
@@ -27,6 +28,17 @@ def test_evaluation_database_fingerprint_is_deterministic_for_seed_inputs() -> N
             profile_name="small",
             reset=True,
             reference_now=REFERENCE_TIME,
+        )
+        seeded_identity_timestamps = [
+            *db.scalars(select(Role.created_at)),
+            *db.scalars(select(Role.updated_at)),
+            *db.scalars(select(Permission.created_at)),
+            *db.scalars(select(Permission.updated_at)),
+            *db.scalars(select(RolePermission.created_at)),
+        ]
+        assert seeded_identity_timestamps
+        assert all(
+            _as_utc(value) == REFERENCE_TIME for value in seeded_identity_timestamps
         )
         first_digest, first_counts = evaluation_database_fingerprint(db)
         seed_database(
@@ -96,3 +108,9 @@ def _identity() -> EvaluationEnvironmentIdentity:
         database_fingerprint="b" * 64,
         dependency_manifest_hash="c" * 64,
     )
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=UTC)
+    return value.astimezone(UTC)
