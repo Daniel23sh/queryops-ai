@@ -458,7 +458,11 @@ def _validate_evidence(
         if parsed_result.provider_measurement is not None:
             measurements.append(parsed_result.provider_measurement)
     usage = _usage(measurements)
-    if usage is None or not _usage_matches(summary.get("provider_usage"), usage):
+    if (
+        usage is None
+        or usage.call_count == 0
+        or not _usage_matches(summary.get("provider_usage"), usage)
+    ):
         return "result_set_malformed"
     return summary, tuple(parsed), usage, environment
 

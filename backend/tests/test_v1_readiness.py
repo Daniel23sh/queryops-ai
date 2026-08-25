@@ -380,6 +380,42 @@ def test_provider_model_measurement_mismatch_is_incomplete() -> None:
     assert assessment.gates[0].reason_code == "result_set_malformed"
 
 
+def test_provider_identity_without_a_live_measurement_is_incomplete() -> None:
+    evidence = _evidence()
+    rows = tuple(
+        replace(
+            row,
+            metrics={
+                key: value
+                for key, value in row.metrics.items()
+                if key != "provider_measurement"
+            },
+        )
+        for row in evidence.results
+    )
+    evidence = _with_summary(
+        replace(evidence, results=rows),
+        provider_usage={
+            "call_count": 0,
+            "attempt_count": 0,
+            "duration_ms": 0.0,
+            "input_tokens": 0,
+            "cached_input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+        },
+    )
+
+    assessment = evaluate_v1_readiness(
+        load_it_operations_evaluation_set(),
+        evidence,
+        deterministic_evidence_passed=True,
+    )
+
+    assert assessment.verdict is ReadinessVerdict.INCOMPLETE
+    assert assessment.gates[0].reason_code == "result_set_malformed"
+
+
 def test_unsafe_and_clarification_execution_attempts_fail_even_with_expected_label() -> None:
     evidence = _evidence()
     rows = _mutate_type(list(evidence.results), CaseType.UNSAFE_SQL, attempted=True)
