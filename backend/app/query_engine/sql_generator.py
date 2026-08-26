@@ -4,7 +4,11 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.query_engine.llm_provider import LLMProvider, LLMProviderFailure
+from app.query_engine.llm_provider import (
+    LLMProvider,
+    LLMProviderFailure,
+    SQLGenerationOutcome,
+)
 
 
 @dataclass(frozen=True)
@@ -12,10 +16,18 @@ class SQLGeneratorResult:
     generated_sql: str | None
     provider_name: str
     model_name: str
+    outcome: SQLGenerationOutcome = SQLGenerationOutcome.SQL
     generation_metadata: dict[str, Any] = field(default_factory=dict)
-    clarification_required: bool = False
     unsupported_reason: str | None = None
     safe_error: str | None = None
+
+    @property
+    def clarification_required(self) -> bool:
+        return self.outcome is SQLGenerationOutcome.CLARIFICATION
+
+    @property
+    def unsafe_request(self) -> bool:
+        return self.outcome is SQLGenerationOutcome.UNSAFE_REQUEST
 
 
 class SQLGenerator:
@@ -41,14 +53,30 @@ class SQLGenerator:
             return self._provider_error_result(exc)
 
         generated_sql = _normalize_sql(provider_result.generated_sql)
-        if provider_result.clarification_required:
+        if not _provider_result_is_consistent(provider_result, generated_sql):
+            return self._provider_error_result(
+                LLMProviderFailure("provider_response_invalid")
+            )
+
+        if provider_result.outcome is SQLGenerationOutcome.CLARIFICATION:
             return SQLGeneratorResult(
                 generated_sql=generated_sql,
                 provider_name=provider_result.provider_name,
                 model_name=provider_result.model_name,
+                outcome=SQLGenerationOutcome.CLARIFICATION,
                 generation_metadata=dict(provider_result.generation_metadata),
-                clarification_required=True,
                 unsupported_reason=provider_result.unsupported_reason,
+                safe_error=provider_result.safe_error,
+            )
+
+        if provider_result.outcome is SQLGenerationOutcome.UNSAFE_REQUEST:
+            return SQLGeneratorResult(
+                generated_sql=None,
+                provider_name=provider_result.provider_name,
+                model_name=provider_result.model_name,
+                outcome=SQLGenerationOutcome.UNSAFE_REQUEST,
+                generation_metadata=dict(provider_result.generation_metadata),
+                unsupported_reason="unsafe_request",
                 safe_error=provider_result.safe_error,
             )
 
@@ -57,8 +85,8 @@ class SQLGenerator:
                 generated_sql=None,
                 provider_name=provider_result.provider_name,
                 model_name=provider_result.model_name,
+                outcome=SQLGenerationOutcome.CLARIFICATION,
                 generation_metadata=dict(provider_result.generation_metadata),
-                clarification_required=True,
                 unsupported_reason="empty_provider_output",
                 safe_error="The query provider did not return SQL.",
             )
@@ -67,8 +95,8 @@ class SQLGenerator:
             generated_sql=generated_sql,
             provider_name=provider_result.provider_name,
             model_name=provider_result.model_name,
+            outcome=SQLGenerationOutcome.SQL,
             generation_metadata=dict(provider_result.generation_metadata),
-            clarification_required=False,
             unsupported_reason=None,
             safe_error=None,
         )
@@ -87,8 +115,8 @@ class SQLGenerator:
             generated_sql=None,
             provider_name=self.provider.provider_name,
             model_name=self.provider.model_name,
+            outcome=SQLGenerationOutcome.CLARIFICATION,
             generation_metadata=metadata,
-            clarification_required=True,
             unsupported_reason=unsupported_reason,
             safe_error="SQL generation is unavailable.",
         )
@@ -102,3 +130,16 @@ def _normalize_sql(generated_sql: str | None) -> str | None:
     if normalized.endswith(";"):
         normalized = normalized[:-1].strip()
     return normalized or None
+
+
+def _provider_result_is_consistent(
+    result: Any,
+    normalized_sql: str | None,
+) -> bool:
+    if result.outcome is SQLGenerationOutcome.SQL:
+        return normalized_sql is not None and result.unsupported_reason is None
+    if result.outcome is SQLGenerationOutcome.CLARIFICATION:
+        return normalized_sql is None and result.unsupported_reason is not None
+    if result.outcome is SQLGenerationOutcome.UNSAFE_REQUEST:
+        return normalized_sql is None and result.unsupported_reason == "unsafe_request"
+    return False

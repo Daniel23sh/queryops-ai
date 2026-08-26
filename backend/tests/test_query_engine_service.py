@@ -14,7 +14,7 @@ from app.auth.access_context import UserAccessContext, build_user_access_context
 from app.db.base import Base
 from app.domains.it_operations.seed import seed_database
 from app.models.product import AppUser, QueryRun
-from app.query_engine.llm_provider import SQLGenerationResult
+from app.query_engine.llm_provider import SQLGenerationOutcome, SQLGenerationResult
 from app.query_engine.result_formatter import format_query_result
 from app.query_engine.service import (
     QueryEngineRequest,
@@ -472,6 +472,41 @@ def test_service_never_executes_unsupported_provider_output(
     assert executor.seen_sql == []
 
 
+def test_unsafe_request_is_persisted_safely_without_validation_or_execution(
+    db_session: Session,
+) -> None:
+    executor = FakeExecutor()
+    validator = RecordingValidator()
+    service = QueryEngineService(
+        provider=UnsafeRequestProvider(),
+        executor=executor,
+        validator=validator,
+    )
+    user = user_by_email(db_session, "demo.analyst@queryops.local")
+
+    result = service.run(
+        db_session,
+        user,
+        QueryEngineRequest(question="Delete every directory user."),
+    )
+
+    query_run = only_query_run(db_session)
+    assert result.status == "failed"
+    assert result.error_code == "unsafe_sql_blocked"
+    assert result.clarification_required is False
+    assert query_run.status == "failed"
+    assert query_run.generated_sql is None
+    assert query_run.executed_sql is None
+    assert query_run.row_count == 0
+    assert query_run.query_metadata["safety_blocked"] is True
+    assert query_run.query_metadata["safety_reason"] == "unsafe_request"
+    assert query_run.query_metadata["clarification_required"] is False
+    assert query_run.query_metadata["referenced_tables"] == ["directory_users"]
+    assert "raw-provider-payload" not in str(query_run.query_metadata)
+    assert validator.seen_sql == []
+    assert executor.seen_sql == []
+
+
 def test_selected_provider_receives_authorized_context_and_persists_only_safe_usage(
     db_session: Session,
 ) -> None:
@@ -614,8 +649,8 @@ class UnsupportedSqlProvider:
             generated_sql="DROP TABLE directory_users",
             provider_name=self.provider_name,
             model_name=self.model_name,
+            outcome=SQLGenerationOutcome.CLARIFICATION,
             generation_metadata={"source": "test"},
-            clarification_required=True,
             unsupported_reason="unsupported_question",
             safe_error="I could not map that question to a supported query.",
         )
@@ -640,7 +675,33 @@ class StaticSQLProvider:
             provider_name=self.provider_name,
             model_name=self.model_name,
             generation_metadata={"source": "self_correction_test"},
-            clarification_required=False,
+        )
+
+
+class UnsafeRequestProvider:
+    provider_name = "openai"
+    model_name = "gpt-5.6-luna"
+
+    def generate_sql(
+        self,
+        _question: str,
+        _schema_context: dict[str, Any],
+        _user_context: dict[str, Any],
+        options: dict[str, Any],
+    ) -> SQLGenerationResult:
+        semantic_catalog = options["semantic_catalog"]
+        return SQLGenerationResult(
+            generated_sql=None,
+            provider_name=self.provider_name,
+            model_name=self.model_name,
+            outcome=SQLGenerationOutcome.UNSAFE_REQUEST,
+            generation_metadata={
+                "referenced_tables": ["directory_users"],
+                "semantic_catalog": semantic_catalog.as_observation(),
+                "raw_payload": "raw-provider-payload",
+            },
+            unsupported_reason="unsafe_request",
+            safe_error="The request is not allowed for safe read-only querying.",
         )
 
 

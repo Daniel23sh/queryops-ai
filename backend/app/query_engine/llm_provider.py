@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Protocol
 
 
@@ -10,15 +11,29 @@ MAX_PROVIDER_DURATION_MS = 86_400_000.0
 MAX_PROVIDER_USAGE_COUNT = 1_000_000_000
 
 
+class SQLGenerationOutcome(str, Enum):
+    SQL = "sql"
+    CLARIFICATION = "clarification"
+    UNSAFE_REQUEST = "unsafe_request"
+
+
 @dataclass(frozen=True)
 class SQLGenerationResult:
     generated_sql: str | None
     provider_name: str
     model_name: str
+    outcome: SQLGenerationOutcome = SQLGenerationOutcome.SQL
     generation_metadata: dict[str, Any] = field(default_factory=dict)
-    clarification_required: bool = False
     unsupported_reason: str | None = None
     safe_error: str | None = None
+
+    @property
+    def clarification_required(self) -> bool:
+        return self.outcome is SQLGenerationOutcome.CLARIFICATION
+
+    @property
+    def unsafe_request(self) -> bool:
+        return self.outcome is SQLGenerationOutcome.UNSAFE_REQUEST
 
 
 class LLMProvider(Protocol):

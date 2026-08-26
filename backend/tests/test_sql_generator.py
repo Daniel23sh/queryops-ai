@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.query_engine.llm_provider import SQLGenerationResult
+import pytest
+
+from app.query_engine.llm_provider import SQLGenerationOutcome, SQLGenerationResult
 from app.query_engine.mock_llm_provider import MockLLMProvider
 from app.query_engine.sql_generator import SQLGenerator
 
@@ -75,8 +77,11 @@ def test_sql_generator_handles_empty_provider_output_safely() -> None:
     assert result.provider_name == "static"
     assert result.model_name == "static-model"
     assert result.clarification_required is True
-    assert result.unsupported_reason == "empty_provider_output"
-    assert result.safe_error == "The query provider did not return SQL."
+    assert result.unsupported_reason == "provider_response_invalid"
+    assert result.safe_error == "SQL generation is unavailable."
+    assert result.generation_metadata["provider_failure_code"] == (
+        "provider_response_invalid"
+    )
 
 
 def test_sql_generator_sanitizes_provider_errors() -> None:
@@ -92,6 +97,71 @@ def test_sql_generator_sanitizes_provider_errors() -> None:
     assert result.safe_error == "SQL generation is unavailable."
     assert "secret" not in str(result.generation_metadata).lower()
     assert "password" not in str(result.generation_metadata).lower()
+
+
+def test_sql_generator_preserves_valid_unsafe_disposition_without_sql() -> None:
+    generator = SQLGenerator(
+        _OutcomeProvider(
+            SQLGenerationResult(
+                generated_sql=None,
+                provider_name="static",
+                model_name="static-model",
+                outcome=SQLGenerationOutcome.UNSAFE_REQUEST,
+                unsupported_reason="unsafe_request",
+                safe_error="The request is not allowed for safe read-only querying.",
+            )
+        )
+    )
+
+    result = generator.generate_sql("delete users", SCHEMA_CONTEXT, USER_CONTEXT, {})
+
+    assert result.outcome is SQLGenerationOutcome.UNSAFE_REQUEST
+    assert result.generated_sql is None
+    assert result.clarification_required is False
+
+
+@pytest.mark.parametrize(
+    "provider_result",
+    [
+        SQLGenerationResult(
+            generated_sql="SELECT 1",
+            provider_name="static",
+            model_name="static-model",
+            outcome=SQLGenerationOutcome.CLARIFICATION,
+            unsupported_reason="missing_information",
+        ),
+        SQLGenerationResult(
+            generated_sql="DELETE FROM directory_users",
+            provider_name="static",
+            model_name="static-model",
+            outcome=SQLGenerationOutcome.UNSAFE_REQUEST,
+            unsupported_reason="unsafe_request",
+        ),
+        SQLGenerationResult(
+            generated_sql=None,
+            provider_name="static",
+            model_name="static-model",
+            outcome=SQLGenerationOutcome.SQL,
+        ),
+    ],
+)
+def test_sql_generator_rejects_inconsistent_provider_dispositions(
+    provider_result: SQLGenerationResult,
+) -> None:
+    result = SQLGenerator(_OutcomeProvider(provider_result)).generate_sql(
+        "question",
+        SCHEMA_CONTEXT,
+        USER_CONTEXT,
+        {},
+    )
+
+    assert result.generated_sql is None
+    assert result.clarification_required is True
+    assert result.unsupported_reason == "provider_response_invalid"
+    assert result.generation_metadata == {
+        "provider_failure_code": "provider_response_invalid",
+        "provider_failure_fatal": False,
+    }
 
 
 class _StaticProvider:
@@ -113,8 +183,24 @@ class _StaticProvider:
             provider_name=self.provider_name,
             model_name=self.model_name,
             generation_metadata={"question": question},
-            clarification_required=False,
         )
+
+
+class _OutcomeProvider:
+    provider_name = "static"
+    model_name = "static-model"
+
+    def __init__(self, result: SQLGenerationResult) -> None:
+        self.result = result
+
+    def generate_sql(
+        self,
+        question: str,
+        schema_context: dict[str, Any],
+        user_context: dict[str, Any],
+        options: dict[str, Any],
+    ) -> SQLGenerationResult:
+        return self.result
 
 
 class _FailingProvider:

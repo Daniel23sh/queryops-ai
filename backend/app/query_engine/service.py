@@ -14,7 +14,11 @@ from app.auth.access_policy import APPROVED_TEMPLATE_QUERY_ACTION
 from app.models.product import AppUser, QueryRun, RunStatus
 from app.query_engine.domain_pack import DomainPack
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
-from app.query_engine.llm_provider import LLMProvider, sanitize_provider_measurement
+from app.query_engine.llm_provider import (
+    LLMProvider,
+    SQLGenerationOutcome,
+    sanitize_provider_measurement,
+)
 from app.query_engine.mock_llm_provider import MockLLMProvider
 from app.query_engine.result_formatter import (
     QUERY_RESULT_CLARIFICATION_MESSAGE,
@@ -43,6 +47,7 @@ from app.query_engine.template_sql import render_template_sql
 VALIDATION_FAILURE_CODE = "validation_failed"
 TEMPLATE_NOT_FOUND_MESSAGE = "Query template was not found."
 TEMPLATE_PARAMETER_MESSAGE = "Query template parameters are not supported safely."
+UNSAFE_REQUEST_MESSAGE = "The request is not allowed for safe read-only querying."
 
 
 class SQLExecutorCallable(Protocol):
@@ -115,6 +120,36 @@ class QueryEngineService:
             access_context,
             generation_result,
         )
+
+        if generation_result.unsafe_request:
+            public_error = generation_result.safe_error or UNSAFE_REQUEST_MESSAGE
+            blocked_metadata = {
+                **metadata,
+                "clarification_required": False,
+                "safety_blocked": True,
+                "safety_reason": "unsafe_request",
+            }
+            query_run = self._persist_query_run(
+                db,
+                user,
+                request,
+                RunStatus.FAILED.value,
+                started_at=started_at,
+                generated_sql=None,
+                executed_sql=None,
+                row_count=0,
+                duration_ms=0,
+                error_message=public_error,
+                metadata=blocked_metadata,
+            )
+            return format_query_result(
+                status="failed",
+                query_run_id=str(query_run.id),
+                public_error=public_error,
+                error_code="unsafe_sql_blocked",
+                clarification_required=False,
+                metadata=query_run.query_metadata,
+            )
 
         if generation_result.clarification_required or not generation_result.generated_sql:
             public_error = generation_result.safe_error or QUERY_RESULT_CLARIFICATION_MESSAGE
@@ -329,8 +364,8 @@ def _template_generation_result(
             generated_sql=None,
             provider_name="domain_pack_template",
             model_name="template-sql",
+            outcome=SQLGenerationOutcome.CLARIFICATION,
             generation_metadata={"template_id": template_id},
-            clarification_required=True,
             unsupported_reason="template_not_found",
             safe_error=TEMPLATE_NOT_FOUND_MESSAGE,
         )
@@ -341,11 +376,11 @@ def _template_generation_result(
             generated_sql=None,
             provider_name="domain_pack_template",
             model_name="template-sql",
+            outcome=SQLGenerationOutcome.CLARIFICATION,
             generation_metadata={
                 "template_id": template_id,
                 "referenced_tables": list(template.referenced_tables),
             },
-            clarification_required=True,
             unsupported_reason="template_parameters_required",
             safe_error=TEMPLATE_PARAMETER_MESSAGE,
         )
@@ -354,6 +389,7 @@ def _template_generation_result(
         generated_sql=rendered_sql,
         provider_name="domain_pack_template",
         model_name="template-sql",
+        outcome=SQLGenerationOutcome.SQL,
         generation_metadata={
             "template_id": template.id,
             "source": "domain_pack_template",
@@ -363,7 +399,6 @@ def _template_generation_result(
                 parameter.name for parameter in template.parameters if parameter.default is not None
             ],
         },
-        clarification_required=False,
     )
 
 

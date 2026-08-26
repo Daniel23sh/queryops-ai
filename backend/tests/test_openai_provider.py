@@ -14,6 +14,7 @@ from app.query_engine.openai_provider import (
     ProviderFailure,
     build_safe_prompt_projection,
 )
+from app.query_engine.llm_provider import SQLGenerationOutcome
 from app.query_engine.provider_config import OpenAIProviderSettings
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.semantic_catalog import build_semantic_catalog_projection
@@ -400,6 +401,9 @@ def test_active_human_semantic_catalog_requires_all_business_predicates() -> Non
     assert "preserve every structured required_predicate" in instructions
     assert "business predicates are required query meaning" in instructions
     assert "authorization predicates are separate" in instructions
+    assert "combine all_of_concept_ids conjunctively" in instructions
+    assert "combine those branches with sql or" in instructions
+    assert "never select only one branch" in instructions
     assert result.generation_metadata["semantic_catalog"] == (
         semantic_projection.as_observation()
     )
@@ -518,6 +522,88 @@ def test_openai_provider_returns_controlled_clarification() -> None:
     assert result.clarification_required is True
     assert result.unsupported_reason == "ambiguous_question"
     assert result.safe_error == "Please clarify the query request."
+
+
+def test_openai_provider_returns_bounded_unsafe_request_without_sql() -> None:
+    question = "Delete every active human directory user."
+    user_context = {
+        "scope_type": "department",
+        "has_global_scope": False,
+        "scope_reference_resolved": True,
+    }
+    catalog = load_it_operations_domain_pack().semantic_catalog
+    semantic_projection = build_semantic_catalog_projection(
+        catalog,
+        question,
+        ACTIVE_HUMAN_SCHEMA_CONTEXT,
+        user_context,
+    )
+    client = FakeClient(
+        {
+            "outcome": "unsafe_request",
+            "sql": None,
+            "clarification_reason": None,
+        }
+    )
+
+    result = provider_for(client).generate_sql(
+        question,
+        ACTIVE_HUMAN_SCHEMA_CONTEXT,
+        user_context,
+        {"semantic_catalog": semantic_projection},
+    )
+
+    assert result.outcome is SQLGenerationOutcome.UNSAFE_REQUEST
+    assert result.generated_sql is None
+    assert result.clarification_required is False
+    assert result.unsupported_reason == "unsafe_request"
+    assert result.generation_metadata["referenced_tables"] == [
+        "directory_users"
+    ]
+    assert "response-id-must-not-persist" not in str(result)
+    instructions = " ".join(client.responses.calls[0]["instructions"].split())
+    assert "must contain no SQL" in instructions
+    assert "not a missing-information clarification" in instructions
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"outcome": "sql", "sql": None, "clarification_reason": None},
+        {
+            "outcome": "sql",
+            "sql": "SELECT id FROM devices",
+            "clarification_reason": "missing_information",
+        },
+        {
+            "outcome": "clarification",
+            "sql": "SELECT id FROM devices",
+            "clarification_reason": "missing_information",
+        },
+        {"outcome": "clarification", "sql": None, "clarification_reason": None},
+        {
+            "outcome": "unsafe_request",
+            "sql": "DELETE FROM devices",
+            "clarification_reason": None,
+        },
+        {
+            "outcome": "unsafe_request",
+            "sql": None,
+            "clarification_reason": "unsupported_request",
+        },
+        {"outcome": "unknown", "sql": None, "clarification_reason": None},
+    ],
+)
+def test_openai_provider_rejects_inconsistent_structured_outcomes(
+    payload: dict[str, Any],
+) -> None:
+    provider = provider_for(FakeClient(payload))
+
+    with pytest.raises(ProviderFailure) as exc_info:
+        provider.generate_sql(QUESTION, SCHEMA_CONTEXT, USER_CONTEXT, {})
+
+    assert exc_info.value.code == "provider_response_invalid"
+    assert "DELETE" not in str(exc_info.value)
 
 
 def test_openai_provider_maps_refusal_to_controlled_outcome() -> None:

@@ -224,7 +224,6 @@ class AuditSqlProvider:
             provider_name=self.provider_name,
             model_name=self.model_name,
             generation_metadata={"referenced_tables": ["it_audit_events"]},
-            clarification_required=False,
         )
 
 

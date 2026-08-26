@@ -191,7 +191,6 @@ class StaticSQLProvider:
             provider_name=self.provider_name,
             model_name=self.model_name,
             generation_metadata={"source": "security_postgres_test"},
-            clarification_required=False,
         )
 
 
