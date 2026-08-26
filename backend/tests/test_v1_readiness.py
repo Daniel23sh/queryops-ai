@@ -193,7 +193,10 @@ def test_stale_dataset_identity_is_incomplete(identity_key: str) -> None:
     assert assessment.gates[0].reason_code == "dataset_identity_mismatch"
 
 
-@pytest.mark.parametrize("mutation", ["missing", "malformed", "stale"])
+@pytest.mark.parametrize(
+    "mutation",
+    ["missing", "malformed", "stale", "legacy_version"],
+)
 def test_stale_semantic_catalog_identity_is_incomplete(mutation: str) -> None:
     evidence = _evidence()
     summary = dict(evidence.summary)
@@ -201,10 +204,15 @@ def test_stale_semantic_catalog_identity_is_incomplete(mutation: str) -> None:
         summary.pop("semantic_catalog")
     elif mutation == "malformed":
         summary["semantic_catalog"] = {"catalog_id": "unsafe id"}
-    else:
+    elif mutation == "stale":
         summary["semantic_catalog"] = {
             **summary["semantic_catalog"],
             "catalog_hash": "0" * 64,
+        }
+    else:
+        summary["semantic_catalog"] = {
+            **summary["semantic_catalog"],
+            "catalog_version": "1",
         }
 
     assessment = evaluate_v1_readiness(

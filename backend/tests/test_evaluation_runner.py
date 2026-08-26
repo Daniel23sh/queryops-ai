@@ -18,7 +18,11 @@ from app.evaluation.context import resolve_evaluation_identity
 from app.evaluation.environment import EvaluationEnvironmentIdentity
 from app.evaluation.contracts import EvaluationSet, RequestingRole
 from app.evaluation.loader import load_it_operations_evaluation_set
-from app.evaluation.runner import EvaluationRunner, EvaluationRunnerError
+from app.evaluation.runner import (
+    EvaluationRunner,
+    EvaluationRunnerError,
+    _classify_query_result,
+)
 from app.evaluation.selection import (
     EvaluationFilters,
     EvaluationSelectionError,
@@ -401,6 +405,80 @@ def test_runner_maps_validator_rejection_to_unsafe_block(
     assert summary.query_execution_failed_count == 0
 
 
+def test_runner_maps_typed_unsafe_request_to_unsafe_block_without_execution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory = _sqlite_session_factory()
+    unsafe_case = load_it_operations_evaluation_set().cases_by_id[
+        "itops-security-003"
+    ]
+    evaluation_set = EvaluationSet(
+        dataset_id="it_operations_v1",
+        domain_id="it_operations",
+        version="1",
+        cases=(unsafe_case,),
+    )
+
+    class UnsafeIntentService:
+        def run(self, _db, _user, _request):
+            return QueryEngineServiceResult(
+                status="failed",
+                query_run_id=None,
+                error_code="unsafe_sql_blocked",
+                clarification_required=False,
+                metadata={
+                    "provider": "mock",
+                    "model": "mock-queryops-v1",
+                    "referenced_tables": ["directory_users"],
+                    "safety_blocked": True,
+                    "safety_reason": "unsafe_request",
+                },
+            )
+
+    runner = EvaluationRunner(
+        session_factory,
+        dataset_loader=lambda: evaluation_set,
+        query_service_factory=lambda _pack: UnsafeIntentService(),
+    )
+    monkeypatch.setattr(runner, "_verify_prerequisites", lambda _cases: None)
+    monkeypatch.setattr(
+        "app.evaluation.runner.resolve_evaluation_identity",
+        lambda _db, case: _identity(case.requesting_role),
+    )
+
+    summary = runner.run()
+
+    assert summary.passed_count == 1
+    result = summary.cases[0]
+    assert result.actual_outcome == "unsafe_blocked"
+    assert result.error_code == "unsafe_sql_blocked"
+    assert summary.query_execution_failed_count == 0
+    with session_factory() as db:
+        persisted = db.scalar(select(EvaluationResult))
+    assert persisted is not None
+    assert persisted.metrics["query_invoked"] is True
+    assert persisted.metrics["query_execution_attempted"] is False
+
+
+def test_unsafe_error_code_cannot_hide_an_execution_attempt() -> None:
+    classified = _classify_query_result(
+        QueryEngineServiceResult(
+            status="failed",
+            query_run_id=None,
+            error_code="unsafe_sql_blocked",
+            rows=[{"id": "must-not-pass"}],
+            row_count=1,
+            metadata={
+                "execution": {"status": "failed"},
+                "referenced_tables": ["directory_users"],
+            },
+        )
+    )
+
+    assert classified.actual_outcome.value == "execution_failed"
+    assert classified.query_execution_attempted is True
+
+
 def test_runner_persists_real_provider_identity_and_aggregates_safe_usage(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -487,7 +565,7 @@ def test_runner_persists_real_provider_identity_and_aggregates_safe_usage(
     assert run.summary["evaluation_environment"] == summary.evaluation_environment
     assert summary.semantic_catalog == {
         "catalog_id": "it_operations_semantic_catalog",
-        "catalog_version": "1",
+        "catalog_version": "2",
         "catalog_hash": load_it_operations_domain_pack().semantic_catalog.digest,
     }
     assert summary.evaluation_environment == _environment_identity().as_dict()

@@ -35,15 +35,15 @@ def test_complete_mock_evaluation_persists_exact_safe_measurement(
     assert summary.status == "succeeded"
     assert summary.selected_count == 40
     assert summary.completed_count == 40
-    assert summary.passed_count == 10
-    assert summary.failed_count == 30
-    assert summary.security_pass_rate == 0.8
+    assert summary.passed_count == 11
+    assert summary.failed_count == 29
+    assert summary.security_pass_rate == 1.0
     assert summary.query_execution_succeeded_count == 6
     assert summary.query_execution_failed_count == 0
     assert any(
         case.case_id == "itops-security-003"
-        and case.actual_outcome == "clarification"
-        and not case.passed
+        and case.actual_outcome == "unsafe_blocked"
+        and case.passed
         for case in summary.cases
     )
 
@@ -111,14 +111,14 @@ def test_complete_mock_evaluation_persists_exact_safe_measurement(
     metrics = overview.json()["data"]["metrics"]
     assert metrics["selected_count"] == 40
     assert metrics["completed_count"] == 40
-    assert metrics["passed_count"] == 10
-    assert metrics["failed_count"] == 30
+    assert metrics["passed_count"] == 11
+    assert metrics["failed_count"] == 29
     assert metrics["overall_score"] == summary.overall_score
     assert security.status_code == 200
     security_metrics = security.json()["data"]["metrics"]
     assert security_metrics["completed_count"] == 5
-    assert security_metrics["passed_count"] == 4
-    assert security_metrics["security_pass_rate"] == 0.8
+    assert security_metrics["passed_count"] == 5
+    assert security_metrics["security_pass_rate"] == 1.0
 
 
 def test_baseline_rls_context_is_scoped_per_case_without_leak(
@@ -227,6 +227,58 @@ def test_active_human_aggregate_alias_is_harmless_but_missing_predicate_fails(
     assert incomplete.rows != expected.rows
     assert incomplete_score.result_correct is False
     assert incomplete_score.failure_reasons == ("result_semantics_mismatch",)
+
+
+def test_disablement_policy_review_requires_both_or_branches(
+    postgres_engine: Engine,
+) -> None:
+    case = load_it_operations_evaluation_set().cases_by_id["itops-hard-007"]
+    pack = load_it_operations_domain_pack()
+    critical_event_only_case = replace(
+        case,
+        expected_tables=(
+            "directory_users",
+            "security_events",
+        ),
+        baseline_sql=(
+            "SELECT DISTINCT du.id FROM directory_users du "
+            "JOIN security_events se ON se.user_id = du.id "
+            "WHERE du.account_type = 'human' "
+            "AND du.account_status = 'active' "
+            "AND (du.last_login_at IS NULL OR du.last_login_at < "
+            "CURRENT_TIMESTAMP - INTERVAL '90 days') "
+            "AND se.severity = 'critical' "
+            "AND se.status IN ('open', 'investigating') ORDER BY du.id"
+        ),
+    )
+
+    with Session(postgres_engine) as db:
+        identity = resolve_evaluation_identity(db, case)
+        expected = execute_evaluation_baseline(
+            db,
+            identity.access_context,
+            case,
+            pack,
+        )
+        critical_event_only = execute_evaluation_baseline(
+            db,
+            identity.access_context,
+            critical_event_only_case,
+            pack,
+        )
+
+    incomplete_score = score_evaluation_case(
+        case,
+        actual_outcome=ActualOutcome.SUCCESS,
+        execution_succeeded=True,
+        actual_referenced_tables=case.expected_tables,
+        expected_rows=expected.rows,
+        actual_rows=critical_event_only.rows,
+    )
+
+    assert critical_event_only.rows != expected.rows
+    assert incomplete_score.result_correct is False
+    assert incomplete_score.failure_reasons == ("row_count_mismatch",)
 
 
 @pytest.fixture(scope="module")

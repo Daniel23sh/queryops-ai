@@ -650,6 +650,23 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
             error_code=None,
             provider_measurement=provider_measurement,
         )
+    if (
+        result.error_code == "unsafe_sql_blocked"
+        and not isinstance(result.metadata.get("execution"), dict)
+        and result.row_count == 0
+        and not result.rows
+    ):
+        return _CaseExecution(
+            actual_outcome=ActualOutcome.UNSAFE_BLOCKED,
+            execution_succeeded=False,
+            query_invoked=True,
+            query_execution_attempted=False,
+            query_run_id=query_run_id,
+            actual_rows=(),
+            actual_referenced_tables=referenced_tables,
+            error_code="unsafe_sql_blocked",
+            provider_measurement=provider_measurement,
+        )
     if result.clarification_required:
         return _CaseExecution(
             actual_outcome=ActualOutcome.CLARIFICATION,

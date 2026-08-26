@@ -137,7 +137,7 @@ def _assessment(verdict: ReadinessVerdict) -> ReadinessAssessment:
         dataset_digest="a" * 64,
         semantic_catalog={
             "catalog_id": "it_operations_semantic_catalog",
-            "catalog_version": "1",
+            "catalog_version": "2",
             "catalog_hash": "b" * 64,
         },
         evaluation_environment={
