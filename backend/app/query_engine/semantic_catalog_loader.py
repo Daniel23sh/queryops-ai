@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import json
 import re
-from math import isfinite
 from collections.abc import Mapping, Sequence
+from math import isfinite
 from typing import Any
 
 from app.query_engine.domain_pack import DomainTable
@@ -12,6 +13,7 @@ from app.query_engine.semantic_catalog import (
     SemanticAuthorizationGuidance,
     SemanticCatalog,
     SemanticConcept,
+    SemanticCompositionRule,
     SemanticEntity,
     SemanticExample,
     SemanticKnownValues,
@@ -23,10 +25,13 @@ from app.query_engine.semantic_catalog import (
 )
 
 
-SUPPORTED_CATALOG_VERSION = "1"
+SUPPORTED_CATALOG_VERSION = "2"
 MAX_ENTITIES = 64
 MAX_CONCEPTS = 128
 MAX_RELATIONSHIPS = 128
+MAX_COMPOSITION_RULES = 32
+MAX_RULE_CONCEPTS = 16
+MAX_SUPERSEDED_CONCEPTS = 16
 MAX_REFERENCES = 24
 MAX_KNOWN_VALUES = 32
 MAX_TEXT_LENGTH = 800
@@ -138,6 +143,16 @@ def parse_semantic_catalog(
     concept_ids = {concept.id for concept in concepts}
     if len(concept_ids) != len(concepts):
         raise DomainPackValidationError("Duplicate semantic catalog concept id")
+    _validate_concept_supersedence(concepts)
+    composition_rules = _parse_composition_rules(
+        _bounded_list(
+            document,
+            "composition_rules",
+            MAX_COMPOSITION_RULES,
+            allow_empty=True,
+        ),
+        concept_ids,
+    )
 
     guidance = _parse_authorization_guidance(
         _list(
@@ -159,6 +174,9 @@ def parse_semantic_catalog(
         entities=tuple(sorted(entities, key=lambda item: item.id)),
         relationships=tuple(sorted(relationships, key=lambda item: item.id)),
         concepts=tuple(sorted(concepts, key=lambda item: item.id)),
+        composition_rules=tuple(
+            sorted(composition_rules, key=lambda item: item.id)
+        ),
         authorization_guidance=tuple(
             sorted(guidance, key=lambda item: item.scope_type)
         ),
@@ -222,8 +240,13 @@ def _parse_known_values(
         if not values or len(values) > MAX_KNOWN_VALUES:
             raise DomainPackValidationError(f"{path}.values has invalid size")
         parsed = tuple(
-            _typed_scalar(value, column.data_type, f"{path}.values")
-            for value in values
+            sorted(
+                (
+                    _typed_scalar(value, column.data_type, f"{path}.values")
+                    for value in values
+                ),
+                key=_semantic_scalar_sort_key,
+            )
         )
         if len(set(parsed)) != len(parsed):
             raise DomainPackValidationError(f"{path}.values contains duplicates")
@@ -318,9 +341,126 @@ def _parse_concepts(
                 ),
                 required_predicates=predicates,
                 aggregation=_parse_aggregation(item.get("aggregation"), path),
+                supersedes=_unique_identifiers(
+                    _list(
+                        item,
+                        "supersedes",
+                        f"{path}.supersedes",
+                        default=[],
+                    ),
+                    f"{path}.supersedes",
+                    limit=MAX_SUPERSEDED_CONCEPTS,
+                ),
             )
         )
     return tuple(concepts)
+
+
+def _validate_concept_supersedence(
+    concepts: Sequence[SemanticConcept],
+) -> None:
+    concepts_by_id = {concept.id: concept for concept in concepts}
+    for concept in concepts:
+        for superseded_id in concept.supersedes:
+            superseded = concepts_by_id.get(superseded_id)
+            if superseded is None:
+                raise DomainPackValidationError(
+                    "Semantic concept supersedes an unknown concept"
+                )
+            if superseded.id == concept.id:
+                raise DomainPackValidationError(
+                    "Semantic concept cannot supersede itself"
+                )
+            if superseded.entity_id != concept.entity_id:
+                raise DomainPackValidationError(
+                    "Semantic concept may supersede only a concept on the same entity"
+                )
+
+    visited: set[str] = set()
+    active: set[str] = set()
+
+    def visit(concept_id: str) -> None:
+        if concept_id in active:
+            raise DomainPackValidationError(
+                "Semantic concept supersedence contains a cycle"
+            )
+        if concept_id in visited:
+            return
+        active.add(concept_id)
+        for superseded_id in concepts_by_id[concept_id].supersedes:
+            visit(superseded_id)
+        active.remove(concept_id)
+        visited.add(concept_id)
+
+    for concept_id in sorted(concepts_by_id):
+        visit(concept_id)
+
+
+def _parse_composition_rules(
+    items: Sequence[Any],
+    concept_ids: set[str],
+) -> tuple[SemanticCompositionRule, ...]:
+    rules: list[SemanticCompositionRule] = []
+    for index, raw in enumerate(items):
+        path = f"semantic_catalog.composition_rules[{index}]"
+        item = _ensure_mapping(raw, path)
+        all_of = _unique_identifiers(
+            _list(
+                item,
+                "all_of_concept_ids",
+                f"{path}.all_of_concept_ids",
+                default=[],
+            ),
+            f"{path}.all_of_concept_ids",
+            limit=MAX_RULE_CONCEPTS,
+        )
+        or_concepts = _unique_identifiers(
+            _list(
+                item,
+                "or_concept_ids",
+                f"{path}.or_concept_ids",
+                default=[],
+            ),
+            f"{path}.or_concept_ids",
+            limit=MAX_RULE_CONCEPTS,
+        )
+        if len(all_of) + len(or_concepts) > MAX_RULE_CONCEPTS:
+            raise DomainPackValidationError(
+                f"{path} references too many concepts"
+            )
+        if not all_of and not or_concepts:
+            raise DomainPackValidationError(
+                f"{path} must reference at least one concept"
+            )
+        if or_concepts and len(or_concepts) < 2:
+            raise DomainPackValidationError(
+                f"{path}.or_concept_ids must contain at least two concepts"
+            )
+        if set(all_of).intersection(or_concepts):
+            raise DomainPackValidationError(
+                f"{path} repeats a concept across composition groups"
+            )
+        if not set((*all_of, *or_concepts)) <= concept_ids:
+            raise DomainPackValidationError(f"{path} references unknown concept")
+        rules.append(
+            SemanticCompositionRule(
+                id=_identifier(item, "id", f"{path}.id"),
+                description=_text(item, "description", f"{path}.description"),
+                natural_language_references=_references(
+                    item,
+                    "natural_language_references",
+                    path,
+                ),
+                all_of_concept_ids=all_of,
+                or_concept_ids=or_concepts,
+            )
+        )
+    ids = [rule.id for rule in rules]
+    if len(ids) != len(set(ids)):
+        raise DomainPackValidationError(
+            "Duplicate semantic catalog composition rule id"
+        )
+    return tuple(rules)
 
 
 def _parse_predicates(
@@ -374,8 +514,13 @@ def _parse_predicates(
                     f"{path}.value must be a non-empty list for operator in"
                 )
             value: SemanticScalar | tuple[SemanticScalar, ...] = tuple(
-                _typed_scalar(value, column.data_type, f"{path}.value")
-                for value in raw_value
+                sorted(
+                    (
+                        _typed_scalar(value, column.data_type, f"{path}.value")
+                        for value in raw_value
+                    ),
+                    key=_semantic_scalar_sort_key,
+                )
             )
         else:
             if isinstance(raw_value, list | dict):
@@ -511,6 +656,10 @@ def _typed_scalar(value: Any, data_type: str, path: str) -> SemanticScalar:
     return value
 
 
+def _semantic_scalar_sort_key(value: SemanticScalar) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"))
+
+
 def _references(
     mapping: Mapping[str, Any],
     key: str,
@@ -539,7 +688,14 @@ def _bounded_list(
     return values
 
 
-def _unique_identifiers(values: Sequence[Any], path: str) -> tuple[str, ...]:
+def _unique_identifiers(
+    values: Sequence[Any],
+    path: str,
+    *,
+    limit: int | None = None,
+) -> tuple[str, ...]:
+    if limit is not None and len(values) > limit:
+        raise DomainPackValidationError(f"{path} has invalid size")
     parsed = tuple(_safe_identifier_value(value, path) for value in values)
     if len(parsed) != len(set(parsed)):
         raise DomainPackValidationError(f"{path} contains duplicates")

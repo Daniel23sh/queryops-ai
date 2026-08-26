@@ -31,6 +31,60 @@ CATALOG_PATH = (
     / "semantic_catalog.yaml"
 )
 
+FREE_QUERY_SEMANTIC_COVERAGE: dict[str, tuple[set[str], set[str]]] = {
+    "itops-easy-005": ({"active_human_directory_user"}, set()),
+    "itops-easy-006": ({"active_license_assignment"}, set()),
+    "itops-easy-007": ({"missing_antivirus_device"}, set()),
+    "itops-easy-008": ({"disabled_directory_account"}, set()),
+    "itops-easy-009": ({"unsupported_software_install"}, set()),
+    "itops-easy-010": ({"service_account"}, set()),
+    "itops-hard-001": (
+        {"active_license_assignment", "inactive_directory_user", "privileged_group"},
+        set(),
+    ),
+    "itops-hard-002": ({"privileged_group", "terminated_employee"}, set()),
+    "itops-hard-003": ({"open_support_ticket", "unused_license_assignment"}, set()),
+    "itops-hard-004": ({"failed_login_within_30_days", "privileged_group"}, set()),
+    "itops-hard-005": (
+        {"high_risk_unsupported_software_install", "inactive_directory_user"},
+        set(),
+    ),
+    "itops-hard-006": (
+        {"non_exception_license_assignment", "unused_license_assignment"},
+        set(),
+    ),
+    "itops-hard-007": (
+        {
+            "inactive_human_directory_user",
+            "privileged_group",
+            "unresolved_critical_security_event",
+        },
+        {"disablement_policy_review"},
+    ),
+    "itops-hard-008": ({"stale_device", "unresolved_critical_security_event"}, set()),
+    "itops-hard-009": ({"recent_privileged_group_membership"}, set()),
+    "itops-hard-010": ({"inactive_directory_user", "risky_device"}, set()),
+    "itops-medium-003": ({"active_license_assignment", "inactive_directory_user"}, set()),
+    "itops-medium-004": ({"high_confidence_unused_license_assignment"}, set()),
+    "itops-medium-005": ({"inactive_directory_user"}, set()),
+    "itops-medium-006": ({"privileged_group"}, set()),
+    "itops-medium-007": ({"open_support_ticket_older_than_30_days"}, set()),
+    "itops-medium-008": ({"failed_login_within_30_days"}, set()),
+    "itops-medium-009": ({"non_compliant_device", "outdated_software_install"}, set()),
+    "itops-medium-010": ({"active_exception_license_assignment"}, set()),
+    "itops-medium-011": ({"terminated_employee_with_active_account"}, set()),
+    "itops-medium-012": (set(), set()),
+    "itops-medium-013": ({"open_security_event", "stale_device"}, set()),
+    "itops-medium-014": (
+        {"active_mandatory_license_assignment", "inactive_directory_user"},
+        set(),
+    ),
+    "itops-medium-015": (
+        {"privileged_group", "recent_privileged_group_membership"},
+        set(),
+    ),
+}
+
 
 def test_it_operations_catalog_loads_with_versioned_identity_and_cache() -> None:
     first = load_it_operations_domain_pack()
@@ -39,7 +93,7 @@ def test_it_operations_catalog_loads_with_versioned_identity_and_cache() -> None
 
     assert first is second
     assert catalog.id == "it_operations_semantic_catalog"
-    assert catalog.version == "1"
+    assert catalog.version == "2"
     assert catalog.domain_id == "it_operations"
     assert catalog.dataset_id == "it_operations_v1"
     assert len(catalog.digest) == 64
@@ -187,6 +241,125 @@ def test_every_frozen_case_produces_a_bounded_deterministic_safe_projection() ->
         assert "it_audit_events" not in serialized
 
 
+def test_successful_free_query_semantic_coverage_matrix() -> None:
+    pack = load_it_operations_domain_pack()
+    schema_context = _schema_context(pack)
+    cases = {
+        case.id: case
+        for case in load_it_operations_evaluation_set().cases
+        if case.expected_outcome.value == "success"
+        and case.case_type.value == "free_query"
+    }
+
+    assert set(cases) == set(FREE_QUERY_SEMANTIC_COVERAGE)
+    for case_id, (expected_concepts, expected_rules) in (
+        FREE_QUERY_SEMANTIC_COVERAGE.items()
+    ):
+        case = cases[case_id]
+        scope_type = case.required_scope_type or "none"
+        projection = build_semantic_catalog_projection(
+            pack.semantic_catalog,
+            case.question,
+            schema_context,
+            {
+                "scope_type": scope_type,
+                "scope_reference_resolved": scope_type != "none",
+            },
+        )
+        observation = projection.as_observation()
+
+        assert expected_concepts <= set(observation["selected_concept_ids"]), case_id
+        assert expected_rules <= set(observation["selected_rule_ids"]), case_id
+        serialized = json.dumps(projection.as_prompt_dict(), sort_keys=True)
+        assert len(serialized.encode("utf-8")) <= MAX_SEMANTIC_PROJECTION_BYTES
+        assert "it_audit_events" not in serialized
+
+
+@pytest.mark.parametrize(
+    ("question", "expected_concept"),
+    [
+        ("Show terminated employees.", "terminated_employee"),
+        ("List risky devices.", "risky_device"),
+        ("List open security events.", "open_security_event"),
+        (
+            "Summarize unused licenses excluding exception assignments.",
+            "non_exception_license_assignment",
+        ),
+        ("Show inactive privileged users.", "privileged_group"),
+    ],
+)
+def test_new_semantic_concepts_match_held_out_paraphrases(
+    question: str,
+    expected_concept: str,
+) -> None:
+    pack = load_it_operations_domain_pack()
+    projection = build_semantic_catalog_projection(
+        pack.semantic_catalog,
+        question,
+        _schema_context(pack),
+        {"scope_type": "department", "scope_reference_resolved": True},
+    )
+
+    assert expected_concept in projection.as_observation()["selected_concept_ids"]
+
+
+def test_specific_concepts_suppress_selected_weaker_concepts() -> None:
+    pack = load_it_operations_domain_pack()
+
+    projection = build_semantic_catalog_projection(
+        pack.semantic_catalog,
+        "Show failed logins in the last 30 days.",
+        _schema_context(pack),
+        {"scope_type": "department", "scope_reference_resolved": True},
+    )
+
+    assert projection.as_observation()["selected_concept_ids"] == [
+        "failed_login_within_30_days"
+    ]
+
+
+def test_composition_rule_projects_all_or_branches_or_is_omitted_whole() -> None:
+    pack = load_it_operations_domain_pack()
+    question = (
+        "Which inactive human users require policy review before disablement?"
+    )
+    full_schema = _schema_context(pack)
+    projection = build_semantic_catalog_projection(
+        pack.semantic_catalog,
+        question,
+        full_schema,
+        {"scope_type": "department", "scope_reference_resolved": True},
+    )
+    prompt_rule = projection.as_prompt_dict()["composition_rules"][0]
+
+    assert prompt_rule == {
+        "id": "disablement_policy_review",
+        "description": (
+            "A disablement policy review applies when the inactive human user is "
+            "privileged or has an unresolved critical security event."
+        ),
+        "all_of_concept_ids": [],
+        "or_concept_ids": [
+            "privileged_group",
+            "unresolved_critical_security_event",
+        ],
+    }
+
+    restricted_schema = copy.deepcopy(full_schema)
+    restricted_schema["allowed_columns"]["security_events"].remove("status")
+    restricted = build_semantic_catalog_projection(
+        pack.semantic_catalog,
+        question,
+        restricted_schema,
+        {"scope_type": "department", "scope_reference_resolved": True},
+    )
+
+    assert restricted.composition_rules == ()
+    assert "unresolved_critical_security_event" not in (
+        restricted.as_observation()["selected_concept_ids"]
+    )
+
+
 def test_successful_free_queries_receive_all_expected_join_entities() -> None:
     pack = load_it_operations_domain_pack()
     schema_context = _schema_context(pack)
@@ -282,6 +455,34 @@ def test_catalog_digest_is_canonical_and_changes_with_semantics() -> None:
     reordered["entities"] = list(reversed(reordered["entities"]))
     reordered["relationships"] = list(reversed(reordered["relationships"]))
     reordered["concepts"] = list(reversed(reordered["concepts"]))
+    reordered["composition_rules"] = list(
+        reversed(reordered["composition_rules"])
+    )
+    reordered["restricted_tables"] = list(reversed(reordered["restricted_tables"]))
+    for entity in reordered["entities"]:
+        entity["natural_language_references"] = list(
+            reversed(entity["natural_language_references"])
+        )
+        entity["known_values"] = list(reversed(entity["known_values"]))
+        for known_values in entity["known_values"]:
+            known_values["values"] = list(reversed(known_values["values"]))
+    for concept in reordered["concepts"]:
+        concept["natural_language_references"] = list(
+            reversed(concept["natural_language_references"])
+        )
+        concept["required_predicates"] = list(
+            reversed(concept["required_predicates"])
+        )
+        concept["supersedes"] = list(reversed(concept.get("supersedes", [])))
+        for predicate in concept["required_predicates"]:
+            if isinstance(predicate["value"], list):
+                predicate["value"] = list(reversed(predicate["value"]))
+    for rule in reordered["composition_rules"]:
+        rule["natural_language_references"] = list(
+            reversed(rule["natural_language_references"])
+        )
+        rule["all_of_concept_ids"] = list(reversed(rule["all_of_concept_ids"]))
+        rule["or_concept_ids"] = list(reversed(rule["or_concept_ids"]))
     changed = _catalog_document()
     changed["concepts"][0]["description"] += " Verified change."
 
@@ -370,6 +571,42 @@ def test_catalog_observation_accepts_only_fixed_safe_identity_shape() -> None:
             ),
             "temporal operator requires",
         ),
+        (
+            lambda value: value["concepts"][0].update(
+                supersedes=["missing_concept"]
+            ),
+            "supersedes an unknown concept",
+        ),
+        (
+            lambda value: value["concepts"][0].update(
+                supersedes=[value["concepts"][0]["id"]]
+            ),
+            "cannot supersede itself",
+        ),
+        (
+            lambda value: value["concepts"][0].update(
+                supersedes=["active_license_assignment"]
+            ),
+            "same entity",
+        ),
+        (
+            lambda value: value["composition_rules"][0].update(
+                or_concept_ids=["missing_concept", "privileged_group"]
+            ),
+            "references unknown concept",
+        ),
+        (
+            lambda value: value["composition_rules"][0].update(
+                or_concept_ids=["privileged_group"]
+            ),
+            "at least two concepts",
+        ),
+        (
+            lambda value: value["composition_rules"].append(
+                copy.deepcopy(value["composition_rules"][0])
+            ),
+            "Duplicate semantic catalog composition rule id",
+        ),
     ],
 )
 def test_catalog_validation_rejects_invalid_references_and_shapes(
@@ -379,6 +616,17 @@ def test_catalog_validation_rejects_invalid_references_and_shapes(
     document = _catalog_document()
     mutation(document)
     with pytest.raises(DomainPackValidationError, match=error_match):
+        _parse(document)
+
+
+def test_catalog_validation_rejects_supersedence_cycle() -> None:
+    document = _catalog_document()
+    concepts = {concept["id"]: concept for concept in document["concepts"]}
+    concepts["active_license_assignment"]["supersedes"] = [
+        "active_exception_license_assignment"
+    ]
+
+    with pytest.raises(DomainPackValidationError, match="contains a cycle"):
         _parse(document)
 
 

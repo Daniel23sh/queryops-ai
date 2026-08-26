@@ -5,7 +5,7 @@
     "version": "1",
     "dataset_id": "it_operations_v1",
     "semantic_catalog_id": "it_operations_semantic_catalog",
-    "semantic_catalog_version": "1"
+    "semantic_catalog_version": "2"
   },
   "allowed_resource_table_names": [
     "departments",

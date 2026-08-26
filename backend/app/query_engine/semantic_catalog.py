@@ -79,6 +79,16 @@ class SemanticConcept:
     natural_language_references: tuple[str, ...]
     required_predicates: tuple[SemanticPredicate, ...]
     aggregation: SemanticAggregation | None
+    supersedes: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class SemanticCompositionRule:
+    id: str
+    description: str
+    natural_language_references: tuple[str, ...]
+    all_of_concept_ids: tuple[str, ...]
+    or_concept_ids: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -106,6 +116,7 @@ class SemanticCatalog:
     entities: tuple[SemanticEntity, ...]
     relationships: tuple[SemanticRelationship, ...]
     concepts: tuple[SemanticConcept, ...]
+    composition_rules: tuple[SemanticCompositionRule, ...]
     authorization_guidance: tuple[SemanticAuthorizationGuidance, ...]
     restricted_tables: tuple[str, ...]
     examples: tuple[SemanticExample, ...]
@@ -137,6 +148,7 @@ class SemanticCatalogProjection:
     entities: tuple[dict[str, Any], ...]
     relationships: tuple[dict[str, Any], ...]
     concepts: tuple[dict[str, Any], ...]
+    composition_rules: tuple[dict[str, Any], ...]
     authorization_guidance: tuple[dict[str, Any], ...]
     examples: tuple[dict[str, Any], ...]
     authoritative_business_terms: tuple[str, ...]
@@ -148,6 +160,7 @@ class SemanticCatalogProjection:
             "entities": [dict(entity) for entity in self.entities],
             "relationships": [dict(relationship) for relationship in self.relationships],
             "concepts": [dict(concept) for concept in self.concepts],
+            "composition_rules": [dict(rule) for rule in self.composition_rules],
             "authorization_guidance": [
                 dict(guidance) for guidance in self.authorization_guidance
             ],
@@ -161,6 +174,7 @@ class SemanticCatalogProjection:
             "catalog_hash": self.catalog_hash,
             "selected_entity_ids": [entity["id"] for entity in self.entities],
             "selected_concept_ids": [concept["id"] for concept in self.concepts],
+            "selected_rule_ids": [rule["id"] for rule in self.composition_rules],
         }
 
 
@@ -174,13 +188,35 @@ def build_semantic_catalog_projection(
     allowed_tables = _safe_string_set(schema_context.get("allowed_tables"))
     allowed_columns = _safe_allowed_columns(schema_context.get("allowed_columns"))
 
-    matching_concepts = tuple(
+    directly_matching_concepts = tuple(
         concept
         for concept in catalog.concepts
         if _matches_any_reference(
             normalized_question,
             concept.natural_language_references,
         )
+    )
+    matching_rules = tuple(
+        rule
+        for rule in catalog.composition_rules
+        if _matches_any_reference(
+            normalized_question,
+            rule.natural_language_references,
+        )
+    )
+    concepts_by_id = catalog.concepts_by_id
+    rule_concept_ids = {
+        concept_id
+        for rule in matching_rules
+        for concept_id in (*rule.all_of_concept_ids, *rule.or_concept_ids)
+    }
+    matching_concepts = _remove_superseded_concepts(
+        tuple(
+            concept
+            for concept in catalog.concepts
+            if concept in directly_matching_concepts or concept.id in rule_concept_ids
+        ),
+        concepts_by_id,
     )
     selected_entity_ids = {
         concept.entity_id for concept in matching_concepts
@@ -243,6 +279,17 @@ def build_semantic_catalog_projection(
         )
     )
     selected_concept_ids = {concept["id"] for concept in concept_projection}
+    rule_projection = tuple(
+        {
+            "id": rule.id,
+            "description": rule.description,
+            "all_of_concept_ids": list(rule.all_of_concept_ids),
+            "or_concept_ids": list(rule.or_concept_ids),
+        }
+        for rule in matching_rules
+        if set((*rule.all_of_concept_ids, *rule.or_concept_ids))
+        <= selected_concept_ids
+    )
     relationship_projection = tuple(
         {
             "id": relationship.id,
@@ -286,6 +333,7 @@ def build_semantic_catalog_projection(
         entities=entity_projection,
         relationships=relationship_projection,
         concepts=concept_projection,
+        composition_rules=rule_projection,
         authorization_guidance=guidance_projection,
         examples=example_projection,
         authoritative_business_terms=tuple(
@@ -320,6 +368,7 @@ def safe_semantic_catalog_observation(value: Any) -> dict[str, Any] | None:
     catalog_hash = value.get("catalog_hash")
     entity_ids = _safe_identifier_list(value.get("selected_entity_ids"))
     concept_ids = _safe_identifier_list(value.get("selected_concept_ids"))
+    rule_ids = _safe_identifier_list(value.get("selected_rule_ids"))
     if (
         not isinstance(catalog_id, str)
         or _SAFE_IDENTIFIER.fullmatch(catalog_id) is None
@@ -329,6 +378,7 @@ def safe_semantic_catalog_observation(value: Any) -> dict[str, Any] | None:
         or _SAFE_DIGEST.fullmatch(catalog_hash) is None
         or entity_ids is None
         or concept_ids is None
+        or rule_ids is None
     ):
         return None
     return {
@@ -337,6 +387,7 @@ def safe_semantic_catalog_observation(value: Any) -> dict[str, Any] | None:
         "catalog_hash": catalog_hash,
         "selected_entity_ids": entity_ids,
         "selected_concept_ids": concept_ids,
+        "selected_rule_ids": rule_ids,
     }
 
 
@@ -537,8 +588,21 @@ def _catalog_identity_document(catalog: SemanticCatalog) -> dict[str, Any]:
                     if concept.aggregation is not None
                     else None
                 ),
+                "supersedes": list(concept.supersedes),
             }
             for concept in catalog.concepts
+        ],
+        "composition_rules": [
+            {
+                "id": rule.id,
+                "description": rule.description,
+                "natural_language_references": list(
+                    rule.natural_language_references
+                ),
+                "all_of_concept_ids": list(rule.all_of_concept_ids),
+                "or_concept_ids": list(rule.or_concept_ids),
+            }
+            for rule in catalog.composition_rules
         ],
         "authorization_guidance": [
             {
@@ -574,6 +638,32 @@ def _matches_any_reference(
     return any(
         _contains_token_sequence(question_tokens, _normalize_phrase(reference).split())
         for reference in references
+    )
+
+
+def _remove_superseded_concepts(
+    concepts: tuple[SemanticConcept, ...],
+    concepts_by_id: Mapping[str, SemanticConcept],
+) -> tuple[SemanticConcept, ...]:
+    selected_ids = {concept.id for concept in concepts}
+    superseded: set[str] = set()
+    frontier = [
+        concept_id
+        for concept in concepts
+        for concept_id in concept.supersedes
+    ]
+    while frontier:
+        concept_id = frontier.pop()
+        if concept_id in superseded:
+            continue
+        superseded.add(concept_id)
+        concept = concepts_by_id.get(concept_id)
+        if concept is not None:
+            frontier.extend(concept.supersedes)
+    return tuple(
+        concept
+        for concept in concepts
+        if concept.id in selected_ids and concept.id not in superseded
     )
 
 

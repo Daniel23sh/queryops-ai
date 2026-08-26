@@ -1,7 +1,7 @@
 {
   "catalog": {
     "id": "it_operations_semantic_catalog",
-    "version": "1",
+    "version": "2",
     "domain_id": "it_operations",
     "dataset_id": "it_operations_v1"
   },
@@ -186,7 +186,7 @@
       "id": "privileged_group",
       "entity_id": "groups",
       "description": "A group that grants privileged access.",
-      "natural_language_references": ["privileged access group", "privileged access groups", "privileged group", "privileged groups"],
+      "natural_language_references": ["privileged access group", "privileged access groups", "privileged group", "privileged groups", "privileged user", "privileged users"],
       "required_predicates": [{"column": "is_privileged", "operator": "equals", "value": true}]
     },
     {
@@ -197,6 +197,13 @@
       "required_predicates": [{"column": "account_type", "operator": "equals", "value": "service"}]
     },
     {
+      "id": "terminated_employee",
+      "entity_id": "directory_users",
+      "description": "A directory user whose employee lifecycle status is terminated.",
+      "natural_language_references": ["terminated employee", "terminated employees"],
+      "required_predicates": [{"column": "employee_status", "operator": "equals", "value": "terminated"}]
+    },
+    {
       "id": "terminated_employee_with_active_account",
       "entity_id": "directory_users",
       "description": "A terminated employee whose directory account remains active.",
@@ -204,7 +211,8 @@
       "required_predicates": [
         {"column": "employee_status", "operator": "equals", "value": "terminated"},
         {"column": "account_status", "operator": "equals", "value": "active"}
-      ]
+      ],
+      "supersedes": ["terminated_employee"]
     },
     {
       "id": "unsupported_software_install",
@@ -221,7 +229,8 @@
       "required_predicates": [
         {"column": "status", "operator": "equals", "value": "active"},
         {"column": "is_exception", "operator": "equals", "value": true}
-      ]
+      ],
+      "supersedes": ["active_license_assignment"]
     },
     {
       "id": "active_mandatory_license_assignment",
@@ -231,7 +240,8 @@
       "required_predicates": [
         {"column": "status", "operator": "equals", "value": "active"},
         {"column": "is_mandatory", "operator": "equals", "value": true}
-      ]
+      ],
+      "supersedes": ["active_license_assignment"]
     },
     {
       "id": "failed_login_within_30_days",
@@ -241,7 +251,8 @@
       "required_predicates": [
         {"column": "event_type", "operator": "equals", "value": "failed"},
         {"column": "occurred_at", "operator": "within_last_days", "value": 30}
-      ]
+      ],
+      "supersedes": ["failed_login"]
     },
     {
       "id": "high_confidence_unused_license_assignment",
@@ -253,7 +264,8 @@
         {"column": "is_mandatory", "operator": "equals", "value": false},
         {"column": "is_exception", "operator": "equals", "value": false},
         {"column": "last_used_at", "operator": "is_null_or_older_than_days", "value": 90}
-      ]
+      ],
+      "supersedes": ["unused_license_assignment"]
     },
     {
       "id": "high_risk_unsupported_software_install",
@@ -273,13 +285,14 @@
       "required_predicates": [
         {"column": "severity", "operator": "in", "value": ["high", "critical"]},
         {"column": "status", "operator": "in", "value": ["open", "investigating"]}
-      ]
+      ],
+      "supersedes": ["open_security_event"]
     },
     {
       "id": "inactive_directory_user",
       "entity_id": "directory_users",
       "description": "A directory user with no successful login or no successful login for more than 90 days.",
-      "natural_language_references": ["inactive directory user", "inactive directory users", "inactive user", "inactive users", "user who has not logged in for 90 days", "users who have not logged in for 90 days"],
+      "natural_language_references": ["inactive directory user", "inactive directory users", "inactive privileged user", "inactive privileged users", "inactive user", "inactive users", "user who has not logged in for 90 days", "users who have not logged in for 90 days"],
       "required_predicates": [
         {"column": "last_login_at", "operator": "is_null_or_older_than_days", "value": 90}
       ]
@@ -296,6 +309,13 @@
       ]
     },
     {
+      "id": "open_security_event",
+      "entity_id": "security_events",
+      "description": "A security event that is open or under investigation.",
+      "natural_language_references": ["open security event", "open security events"],
+      "required_predicates": [{"column": "status", "operator": "in", "value": ["open", "investigating"]}]
+    },
+    {
       "id": "open_support_ticket_older_than_30_days",
       "entity_id": "support_tickets",
       "description": "An open or in-progress support ticket opened more than 30 days ago.",
@@ -303,7 +323,8 @@
       "required_predicates": [
         {"column": "status", "operator": "in", "value": ["open", "in_progress"]},
         {"column": "opened_at", "operator": "older_than_days", "value": 30}
-      ]
+      ],
+      "supersedes": ["open_support_ticket"]
     },
     {
       "id": "outdated_software_install",
@@ -322,6 +343,13 @@
       ]
     },
     {
+      "id": "risky_device",
+      "entity_id": "devices",
+      "description": "A managed device whose compliance status is non-compliant.",
+      "natural_language_references": ["risky device", "risky devices"],
+      "required_predicates": [{"column": "compliance_status", "operator": "equals", "value": "non_compliant"}]
+    },
+    {
       "id": "stale_device",
       "entity_id": "devices",
       "description": "A device with no check-in or no check-in for more than 30 days.",
@@ -338,7 +366,15 @@
       "required_predicates": [
         {"column": "severity", "operator": "equals", "value": "critical"},
         {"column": "status", "operator": "in", "value": ["open", "investigating"]}
-      ]
+      ],
+      "supersedes": ["open_security_event"]
+    },
+    {
+      "id": "non_exception_license_assignment",
+      "entity_id": "license_assignments",
+      "description": "A license assignment that is not marked as an exception.",
+      "natural_language_references": ["excluding exception assignment", "excluding exception assignments", "excluding mandatory and exception assignments", "non exception assignment", "non exception assignments", "non-exception assignment", "non-exception assignments"],
+      "required_predicates": [{"column": "is_exception", "operator": "equals", "value": false}]
     },
     {
       "id": "unused_license_assignment",
@@ -350,6 +386,15 @@
         {"column": "is_mandatory", "operator": "equals", "value": false},
         {"column": "last_used_at", "operator": "is_null_or_older_than_days", "value": 60}
       ]
+    }
+  ],
+  "composition_rules": [
+    {
+      "id": "disablement_policy_review",
+      "description": "A disablement policy review applies when the inactive human user is privileged or has an unresolved critical security event.",
+      "natural_language_references": ["policy review before disablement", "requires policy review before disablement"],
+      "all_of_concept_ids": [],
+      "or_concept_ids": ["privileged_group", "unresolved_critical_security_event"]
     }
   ],
   "authorization_guidance": [
