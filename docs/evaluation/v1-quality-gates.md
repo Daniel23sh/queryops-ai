@@ -28,9 +28,21 @@ The run must be unfiltered, select and complete exactly 40 cases, and contain ev
 
 Mock remains the development and CI default. Mock measurements are useful deterministic regressions, but they are not real-provider V1 evidence. Provider or model names identify a measurement; they do not prove quality.
 
+## Current PR7 identities and Text-to-SQL contract
+
+- Dataset: `it_operations_v1`, version `1`, digest `1e7b12fbf35de4d2c52937a762f3960df444eb3303ee7061a0e4506819c22bc4`.
+- Semantic catalog: `it_operations_semantic_catalog`, version `3`, canonical hash `918df0c63288b7ed7ce700f8442c82bc1ffa3f51e1f4eaa63fd66012af82adb4`.
+- Canonical directory-user metric: `active_human_users`, requiring a human account, active employee lifecycle, and active directory account.
+
+Free queries use deterministic semantic grounding that distinguishes mandatory evidence from optional supporting evidence. The provider makes one structured call returning a validated `SemanticPlan` and candidate SQL. There is no repair or second provider call. The existing SQL safety validator remains the security boundary. SQLGlot semantic conformance is an additional correctness layer applied after SQL safety to the final validator-sanitized SQL and before governed execution; PostgreSQL RLS remains authoritative. Evaluation failures are classified by generation, SQL-safety, semantic-conformance, execution, or scoring stage.
+
+The corrected `itops-medium-009` baseline follows the already tracked business term and deterministic template definition of non-compliant device posture: non-compliant status, missing/outdated antivirus, or disabled encryption. The decision is definition-backed, not score-backed, and produces the current dataset digest above.
+
 ## Deterministic evidence
 
 The aggregate `V1 Deterministic Release Gates` CI job fails unless Backend, PostgreSQL Security, Frontend, E2E, and M8 Primary E2E all succeed. Those jobs cover correctness, authorization, RLS/runtime roles, the exact 20-case action suite, the tracked broader security matrix, export and formula-injection behavior, role rendering, production build, and browser workflows. Actions and Dashboards remain `not_measured` by the frozen 40-case evaluation; their release evidence comes from these deterministic PostgreSQL and browser gates, not fabricated evaluation scores.
+
+The current PR7 candidate evidence is: 375 focused Text-to-SQL tests; 1,100 default backend tests with 156 expected PostgreSQL-only skips; 1,236 disposable-PostgreSQL tests with zero failures/skips; the exact 20-case action-security suite; 274 frontend tests; Ruff; Pyright with zero errors/warnings; ESLint; both TypeScript checks; production build; 12 general and two isolated M8 Playwright flows; healthy backend/frontend/PostgreSQL Compose services; and Alembic head/no-diff at `0010_disable_inactive_user`. Codex Security scan `f7036ba0-9e86-40c4-9e2d-0177908bbc31` completed all 17 changed runtime/configuration surfaces with zero findings. This evidence supports commit/freeze preparation only; readiness remains `incomplete` until eligible live-provider and manual-QA evidence exists on an immutable candidate.
 
 The frozen dataset has no independently identified self-correction subset. PR6 does not reclassify cases or invent a percentage. Self-correction is mandatory deterministic evidence through the existing Query Engine self-correction and security regression tests; a separate real-provider self-correction percentage is not measured by this dataset.
 
