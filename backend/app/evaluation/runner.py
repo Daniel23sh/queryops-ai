@@ -63,6 +63,19 @@ SAFE_ACTUAL_ERROR_CODES = frozenset(
         "provider_timeout",
         "provider_unavailable",
         "provider_response_invalid",
+        "semantic_conformance_failed",
+        "validation_failed",
+    }
+)
+SAFE_PIPELINE_STAGES = frozenset(
+    {
+        "grounding",
+        "plan_validation",
+        "sql_generation",
+        "sql_safety",
+        "semantic_conformance",
+        "execution",
+        "result_comparison",
     }
 )
 
@@ -131,6 +144,8 @@ class _CaseExecution:
     actual_rows: tuple[Mapping[str, Any], ...]
     actual_referenced_tables: tuple[str, ...]
     error_code: str | None
+    failure_stage: str | None = None
+    stage_reason_code: str | None = None
     provider_measurement: dict[str, Any] | None = None
     provider_failure_fatal: bool = False
 
@@ -483,6 +498,17 @@ class EvaluationRunner:
                 completed.execution.query_execution_attempted
             ),
         }
+        failure_stage = completed.execution.failure_stage
+        if (
+            failure_stage is None
+            and completed.execution.execution_succeeded
+            and not completed.score.passed
+        ):
+            failure_stage = "result_comparison"
+        if failure_stage in SAFE_PIPELINE_STAGES:
+            metrics["failure_stage"] = failure_stage
+        if completed.execution.stage_reason_code is not None:
+            metrics["stage_reason_code"] = completed.execution.stage_reason_code
         if completed.execution.provider_measurement is not None:
             metrics["provider_measurement"] = dict(
                 completed.execution.provider_measurement
@@ -624,6 +650,19 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
         "provider_unavailable",
         "provider_response_invalid",
     }:
+        plan_validation = result.metadata.get("semantic_plan_validation")
+        grounding = result.metadata.get("semantic_grounding")
+        if isinstance(plan_validation, dict) and plan_validation.get("status") == "failed":
+            failure_stage = "plan_validation"
+            stage_reason_code = _safe_stage_reason(
+                plan_validation.get("reason_code")
+            )
+        elif isinstance(grounding, dict) and grounding.get("status") == "failed":
+            failure_stage = "grounding"
+            stage_reason_code = _safe_stage_reason(grounding.get("reason_code"))
+        else:
+            failure_stage = "sql_generation"
+            stage_reason_code = provider_failure_code
         return _CaseExecution(
             actual_outcome=ActualOutcome.INTERNAL_ERROR,
             execution_succeeded=False,
@@ -633,6 +672,8 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
             actual_rows=(),
             actual_referenced_tables=referenced_tables,
             error_code=provider_failure_code,
+            failure_stage=failure_stage,
+            stage_reason_code=stage_reason_code,
             provider_measurement=provider_measurement,
             provider_failure_fatal=(
                 result.metadata.get("provider_failure_fatal") is True
@@ -665,6 +706,8 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
             actual_rows=(),
             actual_referenced_tables=referenced_tables,
             error_code="unsafe_sql_blocked",
+            failure_stage="sql_safety",
+            stage_reason_code="unsafe_request",
             provider_measurement=provider_measurement,
         )
     if result.clarification_required:
@@ -677,6 +720,10 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
             actual_rows=(),
             actual_referenced_tables=referenced_tables,
             error_code="clarification_required",
+            failure_stage="grounding",
+            stage_reason_code=_safe_stage_reason(
+                result.metadata.get("unsupported_reason")
+            ),
             provider_measurement=provider_measurement,
         )
     validation = result.metadata.get("validation")
@@ -691,8 +738,37 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
             actual_rows=(),
             actual_referenced_tables=referenced_tables,
             error_code="unsafe_sql_blocked",
+            failure_stage="sql_safety",
+            stage_reason_code=validation_code,
             provider_measurement=provider_measurement,
         )
+    conformance = result.metadata.get("semantic_conformance")
+    if (
+        result.error_code == "semantic_conformance_failed"
+        and isinstance(conformance, dict)
+        and conformance.get("status") == "failed"
+        and not isinstance(result.metadata.get("execution"), dict)
+    ):
+        return _CaseExecution(
+            actual_outcome=ActualOutcome.EXECUTION_FAILED,
+            execution_succeeded=False,
+            query_invoked=True,
+            query_execution_attempted=False,
+            query_run_id=query_run_id,
+            actual_rows=(),
+            actual_referenced_tables=referenced_tables,
+            error_code="semantic_conformance_failed",
+            failure_stage="semantic_conformance",
+            stage_reason_code=_safe_stage_reason(conformance.get("reason_code")),
+            provider_measurement=provider_measurement,
+        )
+    failure_stage = (
+        "execution"
+        if isinstance(result.metadata.get("execution"), dict)
+        else "sql_safety"
+        if isinstance(validation, dict)
+        else "sql_generation"
+    )
     return _CaseExecution(
         actual_outcome=ActualOutcome.EXECUTION_FAILED,
         execution_succeeded=False,
@@ -701,7 +777,19 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
         query_run_id=query_run_id,
         actual_rows=(),
         actual_referenced_tables=referenced_tables,
-        error_code="execution_failed",
+        error_code=(
+            result.error_code
+            if result.error_code in SAFE_ACTUAL_ERROR_CODES
+            else "execution_failed"
+        ),
+        failure_stage=failure_stage,
+        stage_reason_code=(
+            _safe_stage_reason(validation_code)
+            if failure_stage == "sql_safety"
+            else "execution_failed"
+            if failure_stage == "execution"
+            else None
+        ),
         provider_measurement=provider_measurement,
     )
 
@@ -743,8 +831,20 @@ def _provider_identity_failure() -> _CaseExecution:
         actual_rows=(),
         actual_referenced_tables=(),
         error_code="provider_response_invalid",
+        failure_stage="sql_generation",
+        stage_reason_code="provider_response_invalid",
         provider_failure_fatal=True,
     )
+
+
+def _safe_stage_reason(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    if not value or len(value) > 128:
+        return None
+    if not all(character.islower() or character.isdigit() or character == "_" for character in value):
+        return None
+    return value
 
 
 def _build_summary(

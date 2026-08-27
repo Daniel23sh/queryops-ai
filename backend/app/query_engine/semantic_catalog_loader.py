@@ -16,7 +16,11 @@ from app.query_engine.semantic_catalog import (
     SemanticCompositionRule,
     SemanticEntity,
     SemanticExample,
+    SemanticExampleFieldRef,
+    SemanticExampleLiteralFilter,
+    SemanticExampleRelationshipIntent,
     SemanticKnownValues,
+    SemanticMetric,
     SemanticPredicate,
     SemanticPredicateOperator,
     SemanticRelationship,
@@ -25,9 +29,10 @@ from app.query_engine.semantic_catalog import (
 )
 
 
-SUPPORTED_CATALOG_VERSION = "2"
+SUPPORTED_CATALOG_VERSION = "3"
 MAX_ENTITIES = 64
 MAX_CONCEPTS = 128
+MAX_METRICS = 32
 MAX_RELATIONSHIPS = 128
 MAX_COMPOSITION_RULES = 32
 MAX_RULE_CONCEPTS = 16
@@ -144,6 +149,12 @@ def parse_semantic_catalog(
     if len(concept_ids) != len(concepts):
         raise DomainPackValidationError("Duplicate semantic catalog concept id")
     _validate_concept_supersedence(concepts)
+    _validate_concept_composition(concepts)
+    metrics = _parse_metrics(
+        _bounded_list(document, "metrics", MAX_METRICS, allow_empty=True),
+        entity_map,
+        {concept.id: concept for concept in concepts},
+    )
     composition_rules = _parse_composition_rules(
         _bounded_list(
             document,
@@ -164,7 +175,12 @@ def parse_semantic_catalog(
     )
     examples = _parse_examples(
         _list(document, "examples", "semantic_catalog.examples"),
+        entity_map,
+        tables_by_name,
         concept_ids,
+        {metric.id for metric in metrics},
+        {rule.id for rule in composition_rules},
+        {relationship.id for relationship in relationships},
     )
     return SemanticCatalog(
         id=catalog_id,
@@ -174,6 +190,7 @@ def parse_semantic_catalog(
         entities=tuple(sorted(entities, key=lambda item: item.id)),
         relationships=tuple(sorted(relationships, key=lambda item: item.id)),
         concepts=tuple(sorted(concepts, key=lambda item: item.id)),
+        metrics=tuple(sorted(metrics, key=lambda item: item.id)),
         composition_rules=tuple(
             sorted(composition_rules, key=lambda item: item.id)
         ),
@@ -323,11 +340,31 @@ def _parse_concepts(
         if entity is None:
             raise DomainPackValidationError(f"{path} references unknown entity")
         table = tables_by_name[entity.table]
-        predicates = _parse_predicates(
-            _list(item, "required_predicates", f"{path}.required_predicates"),
-            table,
-            entity,
-            path,
+        predicate_items = _list(
+            item,
+            "required_predicates",
+            f"{path}.required_predicates",
+            default=[],
+        )
+        all_of_concept_ids = _unique_identifiers(
+            _list(
+                item,
+                "all_of_concept_ids",
+                f"{path}.all_of_concept_ids",
+                default=[],
+            ),
+            f"{path}.all_of_concept_ids",
+            limit=MAX_RULE_CONCEPTS,
+        )
+        if bool(predicate_items) == bool(all_of_concept_ids):
+            raise DomainPackValidationError(
+                f"{path} must define exactly one of required_predicates or "
+                "all_of_concept_ids"
+            )
+        predicates = (
+            _parse_predicates(predicate_items, table, entity, path)
+            if predicate_items
+            else ()
         )
         concepts.append(
             SemanticConcept(
@@ -340,6 +377,7 @@ def _parse_concepts(
                     path,
                 ),
                 required_predicates=predicates,
+                all_of_concept_ids=all_of_concept_ids,
                 aggregation=_parse_aggregation(item.get("aggregation"), path),
                 supersedes=_unique_identifiers(
                     _list(
@@ -354,6 +392,102 @@ def _parse_concepts(
             )
         )
     return tuple(concepts)
+
+
+def _validate_concept_composition(
+    concepts: Sequence[SemanticConcept],
+) -> None:
+    concepts_by_id = {concept.id: concept for concept in concepts}
+    for concept in concepts:
+        for component_id in concept.all_of_concept_ids:
+            component = concepts_by_id.get(component_id)
+            if component is None:
+                raise DomainPackValidationError(
+                    "Semantic concept composes an unknown concept"
+                )
+            if component.id == concept.id:
+                raise DomainPackValidationError(
+                    "Semantic concept cannot compose itself"
+                )
+            if component.entity_id != concept.entity_id:
+                raise DomainPackValidationError(
+                    "Semantic concept may compose only concepts on the same entity"
+                )
+
+    visited: set[str] = set()
+    active: set[str] = set()
+
+    def visit(concept_id: str) -> None:
+        if concept_id in active:
+            raise DomainPackValidationError(
+                "Semantic concept composition contains a cycle"
+            )
+        if concept_id in visited:
+            return
+        active.add(concept_id)
+        for component_id in concepts_by_id[concept_id].all_of_concept_ids:
+            visit(component_id)
+        active.remove(concept_id)
+        visited.add(concept_id)
+
+    for concept_id in sorted(concepts_by_id):
+        visit(concept_id)
+
+
+def _parse_metrics(
+    items: Sequence[Any],
+    entities: Mapping[str, SemanticEntity],
+    concepts: Mapping[str, SemanticConcept],
+) -> tuple[SemanticMetric, ...]:
+    metrics: list[SemanticMetric] = []
+    for index, raw in enumerate(items):
+        path = f"semantic_catalog.metrics[{index}]"
+        item = _ensure_mapping(raw, path)
+        entity_id = _identifier(item, "entity_id", f"{path}.entity_id")
+        if entity_id not in entities:
+            raise DomainPackValidationError(f"{path} references unknown entity")
+        required_concepts = _unique_identifiers(
+            _list(
+                item,
+                "required_concept_ids",
+                f"{path}.required_concept_ids",
+            ),
+            f"{path}.required_concept_ids",
+            limit=MAX_RULE_CONCEPTS,
+        )
+        if not required_concepts:
+            raise DomainPackValidationError(
+                f"{path}.required_concept_ids must not be empty"
+            )
+        for concept_id in required_concepts:
+            concept = concepts.get(concept_id)
+            if concept is None:
+                raise DomainPackValidationError(f"{path} references unknown concept")
+            if concept.entity_id != entity_id:
+                raise DomainPackValidationError(
+                    f"{path} references a concept on a different entity"
+                )
+        aggregation = _parse_aggregation(item.get("aggregation"), path)
+        if aggregation is None:
+            raise DomainPackValidationError(f"{path}.aggregation is required")
+        metrics.append(
+            SemanticMetric(
+                id=_identifier(item, "id", f"{path}.id"),
+                entity_id=entity_id,
+                description=_text(item, "description", f"{path}.description"),
+                natural_language_references=_references(
+                    item,
+                    "natural_language_references",
+                    path,
+                ),
+                required_concept_ids=required_concepts,
+                aggregation=aggregation,
+            )
+        )
+    ids = [metric.id for metric in metrics]
+    if len(ids) != len(set(ids)):
+        raise DomainPackValidationError("Duplicate semantic catalog metric id")
+    return tuple(metrics)
 
 
 def _validate_concept_supersedence(
@@ -609,7 +743,12 @@ def _parse_authorization_guidance(
 
 def _parse_examples(
     items: Sequence[Any],
+    entities: Mapping[str, SemanticEntity],
+    tables_by_name: Mapping[str, DomainTable],
     concept_ids: set[str],
+    metric_ids: set[str],
+    rule_ids: set[str],
+    relationship_ids: set[str],
 ) -> tuple[SemanticExample, ...]:
     if len(items) > 16:
         raise DomainPackValidationError("Too many semantic catalog examples")
@@ -617,23 +756,254 @@ def _parse_examples(
     for index, raw in enumerate(items):
         path = f"semantic_catalog.examples[{index}]"
         item = _ensure_mapping(raw, path)
-        references = _unique_identifiers(
-            _list(item, "concept_ids", f"{path}.concept_ids"),
+        entity_references = _unique_identifiers(
+            _list(item, "entity_ids", f"{path}.entity_ids", default=[]),
+            f"{path}.entity_ids",
+        )
+        concept_references = _unique_identifiers(
+            _list(item, "concept_ids", f"{path}.concept_ids", default=[]),
             f"{path}.concept_ids",
         )
-        if not references or not set(references) <= concept_ids:
+        rule_references = _unique_identifiers(
+            _list(
+                item,
+                "composition_rule_ids",
+                f"{path}.composition_rule_ids",
+                default=[],
+            ),
+            f"{path}.composition_rule_ids",
+        )
+        relationship_references = _parse_example_relationships(
+            _list(item, "relationships", f"{path}.relationships", default=[]),
+            relationship_ids,
+            path,
+        )
+        if not set(entity_references) <= entities.keys():
+            raise DomainPackValidationError(f"{path} references unknown entity")
+        if not set(concept_references) <= concept_ids:
             raise DomainPackValidationError(f"{path} references unknown concept")
+        if not set(rule_references) <= rule_ids:
+            raise DomainPackValidationError(f"{path} references unknown rule")
+        raw_metric_id = item.get("metric_id")
+        metric_id = None
+        if raw_metric_id is not None:
+            metric_id = _safe_identifier_value(raw_metric_id, f"{path}.metric_id")
+            if metric_id not in metric_ids:
+                raise DomainPackValidationError(f"{path} references unknown metric")
+        aggregation_functions = tuple(
+            sorted(
+                _safe_text_value(value, f"{path}.aggregation_functions", 16)
+                for value in _list(
+                    item,
+                    "aggregation_functions",
+                    f"{path}.aggregation_functions",
+                    default=[],
+                )
+            )
+        )
+        if any(value not in {"count", "sum"} for value in aggregation_functions):
+            raise DomainPackValidationError(
+                f"{path}.aggregation_functions contains an unsupported function"
+            )
+        if len(aggregation_functions) != len(set(aggregation_functions)):
+            raise DomainPackValidationError(
+                f"{path}.aggregation_functions contains duplicates"
+            )
+        literal_filters = _parse_example_literal_filters(
+            _list(
+                item,
+                "literal_filters",
+                f"{path}.literal_filters",
+                default=[],
+            ),
+            entities,
+            tables_by_name,
+            path,
+        )
+        group_by = tuple(
+            sorted(
+                (
+                    _parse_example_field_ref(
+                        raw_field,
+                        entities,
+                        tables_by_name,
+                        f"{path}.group_by[{field_index}]",
+                    )
+                    for field_index, raw_field in enumerate(
+                        _list(item, "group_by", f"{path}.group_by", default=[])
+                    )
+                ),
+                key=lambda value: (value.entity_id, value.column),
+            )
+        )
+        clarification_reason = item.get("clarification_reason")
+        if clarification_reason is not None:
+            clarification_reason = _safe_text_value(
+                clarification_reason,
+                f"{path}.clarification_reason",
+                64,
+            )
+            if clarification_reason not in {
+                "ambiguous_question",
+                "missing_information",
+                "unsupported_request",
+                "unresolved_scope",
+            }:
+                raise DomainPackValidationError(
+                    f"{path}.clarification_reason is not supported"
+                )
+        if not any(
+            (
+                entity_references,
+                concept_references,
+                rule_references,
+                metric_id,
+                literal_filters,
+                relationship_references,
+                aggregation_functions,
+                group_by,
+                clarification_reason,
+            )
+        ):
+            raise DomainPackValidationError(f"{path} has no semantic plan content")
         result.append(
             SemanticExample(
                 id=_identifier(item, "id", f"{path}.id"),
                 request=_text(item, "request", f"{path}.request"),
-                concept_ids=references,
+                entity_ids=entity_references,
+                concept_ids=concept_references,
+                composition_rule_ids=rule_references,
+                metric_id=metric_id,
+                distinct=_required_bool(item, "distinct", f"{path}.distinct"),
+                literal_filters=literal_filters,
+                relationships=relationship_references,
+                aggregation_functions=aggregation_functions,
+                group_by=group_by,
+                clarification_reason=clarification_reason,
             )
         )
     ids = [item.id for item in result]
     if len(ids) != len(set(ids)):
         raise DomainPackValidationError("Duplicate semantic catalog example id")
     return tuple(result)
+
+
+def _parse_example_field_ref(
+    raw: Any,
+    entities: Mapping[str, SemanticEntity],
+    tables_by_name: Mapping[str, DomainTable],
+    path: str,
+) -> SemanticExampleFieldRef:
+    item = _ensure_mapping(raw, path)
+    entity_id = _identifier(item, "entity_id", f"{path}.entity_id")
+    entity = entities.get(entity_id)
+    if entity is None:
+        raise DomainPackValidationError(f"{path} references unknown entity")
+    column = _identifier(item, "column", f"{path}.column")
+    if column not in tables_by_name[entity.table].columns_by_name:
+        raise DomainPackValidationError(f"{path} references unknown column")
+    return SemanticExampleFieldRef(entity_id=entity_id, column=column)
+
+
+def _parse_example_literal_filters(
+    items: Sequence[Any],
+    entities: Mapping[str, SemanticEntity],
+    tables_by_name: Mapping[str, DomainTable],
+    example_path: str,
+) -> tuple[SemanticExampleLiteralFilter, ...]:
+    if len(items) > 16:
+        raise DomainPackValidationError(
+            f"{example_path}.literal_filters has invalid size"
+        )
+    result: list[SemanticExampleLiteralFilter] = []
+    for index, raw in enumerate(items):
+        path = f"{example_path}.literal_filters[{index}]"
+        item = _ensure_mapping(raw, path)
+        field = _parse_example_field_ref(
+            _required(item, "field", f"{path}.field"),
+            entities,
+            tables_by_name,
+            f"{path}.field",
+        )
+        operator = _text(item, "operator", f"{path}.operator", 32)
+        if operator not in {"equals", "not_equals", "in", "not_in"}:
+            raise DomainPackValidationError(
+                f"{path}.operator is not supported"
+            )
+        column = tables_by_name[entities[field.entity_id].table].columns_by_name[
+            field.column
+        ]
+        raw_value = _required(item, "value", f"{path}.value")
+        if operator in {"in", "not_in"}:
+            if not isinstance(raw_value, list) or not raw_value:
+                raise DomainPackValidationError(
+                    f"{path}.value must be a non-empty list"
+                )
+            value: SemanticScalar | tuple[SemanticScalar, ...] = tuple(
+                _typed_scalar(entry, column.data_type, f"{path}.value")
+                for entry in raw_value
+            )
+        else:
+            if isinstance(raw_value, list | dict):
+                raise DomainPackValidationError(f"{path}.value must be scalar")
+            value = _typed_scalar(raw_value, column.data_type, f"{path}.value")
+        result.append(
+            SemanticExampleLiteralFilter(
+                field=field,
+                operator=operator,
+                value=value,
+            )
+        )
+    return tuple(
+        sorted(
+            result,
+            key=lambda value: (
+                value.field.entity_id,
+                value.field.column,
+                value.operator,
+                json.dumps(value.value, sort_keys=True),
+            ),
+        )
+    )
+
+
+def _parse_example_relationships(
+    items: Sequence[Any],
+    relationship_ids: set[str],
+    example_path: str,
+) -> tuple[SemanticExampleRelationshipIntent, ...]:
+    if len(items) > 16:
+        raise DomainPackValidationError(
+            f"{example_path}.relationships has invalid size"
+        )
+    result: list[SemanticExampleRelationshipIntent] = []
+    for index, raw in enumerate(items):
+        path = f"{example_path}.relationships[{index}]"
+        item = _ensure_mapping(raw, path)
+        relationship_id = _identifier(
+            item,
+            "relationship_id",
+            f"{path}.relationship_id",
+        )
+        if relationship_id not in relationship_ids:
+            raise DomainPackValidationError(
+                f"{path} references unknown relationship"
+            )
+        join_type = _text(item, "join_type", f"{path}.join_type", 16)
+        if join_type not in {"inner", "left"}:
+            raise DomainPackValidationError(f"{path}.join_type is not supported")
+        result.append(
+            SemanticExampleRelationshipIntent(
+                relationship_id=relationship_id,
+                join_type=join_type,
+            )
+        )
+    ids = [item.relationship_id for item in result]
+    if len(ids) != len(set(ids)):
+        raise DomainPackValidationError(
+            f"{example_path}.relationships contains duplicates"
+        )
+    return tuple(sorted(result, key=lambda item: item.relationship_id))
 
 
 def _typed_scalar(value: Any, data_type: str, path: str) -> SemanticScalar:

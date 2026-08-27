@@ -1,7 +1,7 @@
 {
   "catalog": {
     "id": "it_operations_semantic_catalog",
-    "version": "2",
+    "version": "3",
     "domain_id": "it_operations",
     "dataset_id": "it_operations_v1"
   },
@@ -133,12 +133,28 @@
       "entity_id": "directory_users",
       "description": "A human directory account belonging to an active employee whose directory account is active.",
       "natural_language_references": ["active employee account", "active employee accounts", "active human directory user", "active human directory users", "active human user", "active human users"],
-      "required_predicates": [
-        {"column": "account_type", "operator": "equals", "value": "human"},
-        {"column": "employee_status", "operator": "equals", "value": "active"},
-        {"column": "account_status", "operator": "equals", "value": "active"}
-      ],
-      "aggregation": {"function": "count", "description": "When the request asks how many, count matching directory user rows."}
+      "all_of_concept_ids": ["human_directory_user", "active_employee", "active_directory_account"]
+    },
+    {
+      "id": "active_directory_account",
+      "entity_id": "directory_users",
+      "description": "A directory account whose account status is active.",
+      "natural_language_references": ["account is active", "accounts are active", "active account", "active accounts", "working account", "working accounts"],
+      "required_predicates": [{"column": "account_status", "operator": "equals", "value": "active"}]
+    },
+    {
+      "id": "active_employee",
+      "entity_id": "directory_users",
+      "description": "A directory user whose employee lifecycle status is active.",
+      "natural_language_references": ["active employee", "active employees", "current employee", "current employees"],
+      "required_predicates": [{"column": "employee_status", "operator": "equals", "value": "active"}]
+    },
+    {
+      "id": "human_directory_user",
+      "entity_id": "directory_users",
+      "description": "A directory account classified for human use.",
+      "natural_language_references": ["employee account", "employee accounts", "human account", "human accounts", "human directory user", "human directory users", "human user", "human users"],
+      "required_predicates": [{"column": "account_type", "operator": "equals", "value": "human"}]
     },
     {
       "id": "active_license_assignment",
@@ -172,8 +188,22 @@
       "id": "non_compliant_device",
       "entity_id": "devices",
       "description": "A managed device whose compliance status is non-compliant.",
-      "natural_language_references": ["non compliant device", "non compliant devices", "non-compliant device", "non-compliant devices"],
+      "natural_language_references": ["device with non compliant status", "devices with non compliant status", "non compliant status device", "non compliant status devices"],
       "required_predicates": [{"column": "compliance_status", "operator": "equals", "value": "non_compliant"}]
+    },
+    {
+      "id": "antivirus_attention_device",
+      "entity_id": "devices",
+      "description": "A managed device whose antivirus is missing or outdated.",
+      "natural_language_references": ["device with antivirus issue", "devices with antivirus issues", "missing or outdated antivirus", "outdated or missing antivirus"],
+      "required_predicates": [{"column": "antivirus_status", "operator": "in", "value": ["missing", "outdated"]}]
+    },
+    {
+      "id": "unencrypted_device",
+      "entity_id": "devices",
+      "description": "A managed device whose required encryption is disabled.",
+      "natural_language_references": ["device without encryption", "devices without encryption", "unencrypted device", "unencrypted devices"],
+      "required_predicates": [{"column": "encryption_enabled", "operator": "equals", "value": false}]
     },
     {
       "id": "open_support_ticket",
@@ -208,10 +238,7 @@
       "entity_id": "directory_users",
       "description": "A terminated employee whose directory account remains active.",
       "natural_language_references": ["terminated employee with active account", "terminated employees with active accounts", "terminated employee with active directory account", "terminated employees with active directory accounts"],
-      "required_predicates": [
-        {"column": "employee_status", "operator": "equals", "value": "terminated"},
-        {"column": "account_status", "operator": "equals", "value": "active"}
-      ],
+      "all_of_concept_ids": ["terminated_employee", "active_directory_account"],
       "supersedes": ["terminated_employee"]
     },
     {
@@ -302,11 +329,7 @@
       "entity_id": "directory_users",
       "description": "An active human directory account with no successful login or no successful login for more than 90 days.",
       "natural_language_references": ["inactive human directory user", "inactive human directory users", "inactive human user", "inactive human users"],
-      "required_predicates": [
-        {"column": "account_type", "operator": "equals", "value": "human"},
-        {"column": "account_status", "operator": "equals", "value": "active"},
-        {"column": "last_login_at", "operator": "is_null_or_older_than_days", "value": 90}
-      ]
+      "all_of_concept_ids": ["human_directory_user", "active_directory_account", "inactive_directory_user"]
     },
     {
       "id": "open_security_event",
@@ -388,7 +411,24 @@
       ]
     }
   ],
+  "metrics": [
+    {
+      "id": "active_human_users",
+      "entity_id": "directory_users",
+      "description": "Count human directory users who are active employees and have active directory accounts.",
+      "natural_language_references": ["active human directory users", "active human users", "active users"],
+      "required_concept_ids": ["active_human_directory_user"],
+      "aggregation": {"function": "count", "description": "Count matching directory-user rows."}
+    }
+  ],
   "composition_rules": [
+    {
+      "id": "non_compliant_device_posture",
+      "description": "A device has non-compliant posture when its compliance status is non-compliant, its antivirus is missing or outdated, or encryption is disabled.",
+      "natural_language_references": ["non compliant device", "non compliant devices", "non-compliant device", "non-compliant devices", "non compliant posture", "non-compliant posture"],
+      "all_of_concept_ids": [],
+      "or_concept_ids": ["non_compliant_device", "antivirus_attention_device", "unencrypted_device"]
+    },
     {
       "id": "disablement_policy_review",
       "description": "A disablement policy review applies when the inactive human user is privileged or has an unresolved critical security event.",
@@ -408,9 +448,120 @@
   ],
   "examples": [
     {
-      "id": "count_active_human_accounts",
-      "request": "Count active human accounts within the authorized department scope.",
-      "concept_ids": ["active_human_directory_user"]
+      "id": "active_user_metric",
+      "request": "Count the active users in the authorized area.",
+      "entity_ids": ["directory_users"],
+      "concept_ids": [],
+      "composition_rule_ids": [],
+      "metric_id": "active_human_users",
+      "distinct": false,
+      "literal_filters": [],
+      "relationships": [],
+      "aggregation_functions": [],
+      "group_by": [],
+      "clarification_reason": null
+    },
+    {
+      "id": "not_disabled_accounts_literal",
+      "request": "Count directory accounts that are not disabled.",
+      "entity_ids": ["directory_users"],
+      "concept_ids": [],
+      "composition_rule_ids": [],
+      "metric_id": null,
+      "distinct": false,
+      "literal_filters": [{"field": {"entity_id": "directory_users", "column": "account_status"}, "operator": "not_equals", "value": "disabled"}],
+      "relationships": [],
+      "aggregation_functions": ["count"],
+      "group_by": [],
+      "clarification_reason": null
+    },
+    {
+      "id": "active_service_accounts",
+      "request": "Count service accounts whose directory access is active.",
+      "entity_ids": ["directory_users"],
+      "concept_ids": ["active_directory_account", "service_account"],
+      "composition_rule_ids": [],
+      "metric_id": null,
+      "distinct": false,
+      "literal_filters": [],
+      "relationships": [],
+      "aggregation_functions": ["count"],
+      "group_by": [],
+      "clarification_reason": null
+    },
+    {
+      "id": "terminated_active_accounts",
+      "request": "Count terminated employees whose directory account remains active.",
+      "entity_ids": ["directory_users"],
+      "concept_ids": ["terminated_employee_with_active_account"],
+      "composition_rule_ids": [],
+      "metric_id": null,
+      "distinct": false,
+      "literal_filters": [],
+      "relationships": [],
+      "aggregation_functions": ["count"],
+      "group_by": [],
+      "clarification_reason": null
+    },
+    {
+      "id": "active_employees_with_non_compliant_devices",
+      "request": "List current employees who have non-compliant devices.",
+      "entity_ids": ["devices", "directory_users"],
+      "concept_ids": ["active_employee", "human_directory_user"],
+      "composition_rule_ids": ["non_compliant_device_posture"],
+      "metric_id": null,
+      "distinct": true,
+      "literal_filters": [],
+      "relationships": [{"relationship_id":"device_assignee","join_type":"inner"}],
+      "aggregation_functions": [],
+      "group_by": [],
+      "clarification_reason": null
+    },
+    {
+      "id": "unused_assignments_by_department",
+      "request": "Group unused license assignments by department.",
+      "entity_ids": ["departments", "license_assignments"],
+      "concept_ids": ["unused_license_assignment"],
+      "composition_rule_ids": [],
+      "metric_id": null,
+      "distinct": false,
+      "literal_filters": [],
+      "relationships": [{"relationship_id":"license_assignment_department","join_type":"inner"}],
+      "aggregation_functions": ["count"],
+      "group_by": [{"entity_id": "departments", "column": "name"}],
+      "clarification_reason": null
+    },
+    {
+      "id": "disablement_policy_review_candidates",
+      "request": "Find inactive human users who require policy review before disablement.",
+      "entity_ids": ["directory_users", "groups", "security_events", "user_group_memberships"],
+      "concept_ids": ["inactive_human_directory_user"],
+      "composition_rule_ids": ["disablement_policy_review"],
+      "metric_id": null,
+      "distinct": true,
+      "literal_filters": [],
+      "relationships": [
+        {"relationship_id":"security_event_user","join_type":"left"},
+        {"relationship_id":"user_group_membership_group","join_type":"left"},
+        {"relationship_id":"user_group_membership_user","join_type":"left"}
+      ],
+      "aggregation_functions": [],
+      "group_by": [],
+      "clarification_reason": null
+    },
+    {
+      "id": "ambiguous_available_accounts",
+      "request": "Show available accounts.",
+      "entity_ids": ["directory_users"],
+      "concept_ids": [],
+      "composition_rule_ids": [],
+      "metric_id": null,
+      "distinct": false,
+      "literal_filters": [],
+      "relationships": [],
+      "aggregation_functions": [],
+      "group_by": [],
+      "clarification_reason": "ambiguous_question"
     }
   ]
 }

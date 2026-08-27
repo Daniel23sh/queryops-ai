@@ -5,6 +5,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Protocol
 
+from app.query_engine.semantic_plan import SemanticPlan
+
 
 MAX_PROVIDER_MODEL_LABEL_LENGTH = 128
 MAX_PROVIDER_DURATION_MS = 86_400_000.0
@@ -24,6 +26,7 @@ class SQLGenerationResult:
     model_name: str
     outcome: SQLGenerationOutcome = SQLGenerationOutcome.SQL
     generation_metadata: dict[str, Any] = field(default_factory=dict)
+    semantic_plan: SemanticPlan | None = None
     unsupported_reason: str | None = None
     safe_error: str | None = None
 

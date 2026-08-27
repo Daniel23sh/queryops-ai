@@ -360,7 +360,7 @@ def _minimal_schema() -> dict[str, Any]:
             "version": "1",
             "dataset_id": "it_operations_v1",
             "semantic_catalog_id": "it_operations_semantic_catalog",
-            "semantic_catalog_version": "2",
+            "semantic_catalog_version": "3",
         },
         "allowed_resource_table_names": ["directory_users"],
         "tables": [
@@ -427,7 +427,7 @@ def _minimal_semantic_catalog() -> dict[str, Any]:
     return {
         "catalog": {
             "id": "it_operations_semantic_catalog",
-            "version": "2",
+            "version": "3",
             "domain_id": "it_operations",
             "dataset_id": "it_operations_v1",
         },
@@ -459,6 +459,7 @@ def _minimal_semantic_catalog() -> dict[str, Any]:
                 ],
             }
         ],
+        "metrics": [],
         "composition_rules": [],
         "authorization_guidance": [
             {

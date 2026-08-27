@@ -78,8 +78,19 @@ class SemanticConcept:
     description: str
     natural_language_references: tuple[str, ...]
     required_predicates: tuple[SemanticPredicate, ...]
+    all_of_concept_ids: tuple[str, ...]
     aggregation: SemanticAggregation | None
     supersedes: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class SemanticMetric:
+    id: str
+    entity_id: str
+    description: str
+    natural_language_references: tuple[str, ...]
+    required_concept_ids: tuple[str, ...]
+    aggregation: SemanticAggregation
 
 
 @dataclass(frozen=True)
@@ -101,10 +112,38 @@ class SemanticAuthorizationGuidance:
 
 
 @dataclass(frozen=True)
+class SemanticExampleFieldRef:
+    entity_id: str
+    column: str
+
+
+@dataclass(frozen=True)
+class SemanticExampleLiteralFilter:
+    field: SemanticExampleFieldRef
+    operator: str
+    value: SemanticScalar | tuple[SemanticScalar, ...]
+
+
+@dataclass(frozen=True)
+class SemanticExampleRelationshipIntent:
+    relationship_id: str
+    join_type: str
+
+
+@dataclass(frozen=True)
 class SemanticExample:
     id: str
     request: str
+    entity_ids: tuple[str, ...]
     concept_ids: tuple[str, ...]
+    composition_rule_ids: tuple[str, ...]
+    metric_id: str | None
+    distinct: bool
+    literal_filters: tuple[SemanticExampleLiteralFilter, ...]
+    relationships: tuple[SemanticExampleRelationshipIntent, ...]
+    aggregation_functions: tuple[str, ...]
+    group_by: tuple[SemanticExampleFieldRef, ...]
+    clarification_reason: str | None
 
 
 @dataclass(frozen=True)
@@ -116,6 +155,7 @@ class SemanticCatalog:
     entities: tuple[SemanticEntity, ...]
     relationships: tuple[SemanticRelationship, ...]
     concepts: tuple[SemanticConcept, ...]
+    metrics: tuple[SemanticMetric, ...]
     composition_rules: tuple[SemanticCompositionRule, ...]
     authorization_guidance: tuple[SemanticAuthorizationGuidance, ...]
     restricted_tables: tuple[str, ...]
@@ -128,6 +168,10 @@ class SemanticCatalog:
     @property
     def concepts_by_id(self) -> dict[str, SemanticConcept]:
         return {concept.id: concept for concept in self.concepts}
+
+    @property
+    def metrics_by_id(self) -> dict[str, SemanticMetric]:
+        return {metric.id: metric for metric in self.metrics}
 
     @property
     def digest(self) -> str:
@@ -148,9 +192,11 @@ class SemanticCatalogProjection:
     entities: tuple[dict[str, Any], ...]
     relationships: tuple[dict[str, Any], ...]
     concepts: tuple[dict[str, Any], ...]
+    metrics: tuple[dict[str, Any], ...]
     composition_rules: tuple[dict[str, Any], ...]
     authorization_guidance: tuple[dict[str, Any], ...]
     examples: tuple[dict[str, Any], ...]
+    candidate_signals: tuple[dict[str, str], ...]
     authoritative_business_terms: tuple[str, ...]
 
     def as_prompt_dict(self) -> dict[str, Any]:
@@ -160,12 +206,35 @@ class SemanticCatalogProjection:
             "entities": [dict(entity) for entity in self.entities],
             "relationships": [dict(relationship) for relationship in self.relationships],
             "concepts": [dict(concept) for concept in self.concepts],
+            "metrics": [dict(metric) for metric in self.metrics],
             "composition_rules": [dict(rule) for rule in self.composition_rules],
             "authorization_guidance": [
                 dict(guidance) for guidance in self.authorization_guidance
             ],
             "examples": [dict(example) for example in self.examples],
+            "candidate_signals": [dict(signal) for signal in self.candidate_signals],
+            "mandatory_semantic_evidence": self.mandatory_evidence(),
         }
+
+    def mandatory_evidence(self) -> dict[str, list[str]]:
+        required = {
+            "entity_ids": [],
+            "concept_ids": [],
+            "metric_ids": [],
+            "rule_ids": [],
+        }
+        signal_keys = {
+            "entity": "entity_ids",
+            "concept": "concept_ids",
+            "metric": "metric_ids",
+            "composition_rule": "rule_ids",
+        }
+        for signal in self.candidate_signals:
+            kind = signal.get("kind")
+            key = signal_keys.get(kind) if isinstance(kind, str) else None
+            if key is not None and signal.get("tier") == "exact_reference":
+                required[key].append(signal["id"])
+        return {key: sorted(set(values)) for key, values in required.items()}
 
     def as_observation(self) -> dict[str, Any]:
         return {
@@ -174,7 +243,13 @@ class SemanticCatalogProjection:
             "catalog_hash": self.catalog_hash,
             "selected_entity_ids": [entity["id"] for entity in self.entities],
             "selected_concept_ids": [concept["id"] for concept in self.concepts],
+            "selected_metric_ids": [metric["id"] for metric in self.metrics],
             "selected_rule_ids": [rule["id"] for rule in self.composition_rules],
+            "selected_relationship_ids": [
+                relationship["id"] for relationship in self.relationships
+            ],
+            "selected_example_ids": [example["id"] for example in self.examples],
+            "mandatory_semantic_evidence": self.mandatory_evidence(),
         }
 
 
@@ -184,180 +259,16 @@ def build_semantic_catalog_projection(
     schema_context: Mapping[str, Any],
     user_context: Mapping[str, Any],
 ) -> SemanticCatalogProjection:
-    normalized_question = _normalize_phrase(question)
-    allowed_tables = _safe_string_set(schema_context.get("allowed_tables"))
-    allowed_columns = _safe_allowed_columns(schema_context.get("allowed_columns"))
-
-    directly_matching_concepts = tuple(
-        concept
-        for concept in catalog.concepts
-        if _matches_any_reference(
-            normalized_question,
-            concept.natural_language_references,
-        )
-    )
-    matching_rules = tuple(
-        rule
-        for rule in catalog.composition_rules
-        if _matches_any_reference(
-            normalized_question,
-            rule.natural_language_references,
-        )
-    )
-    concepts_by_id = catalog.concepts_by_id
-    rule_concept_ids = {
-        concept_id
-        for rule in matching_rules
-        for concept_id in (*rule.all_of_concept_ids, *rule.or_concept_ids)
-    }
-    matching_concepts = _remove_superseded_concepts(
-        tuple(
-            concept
-            for concept in catalog.concepts
-            if concept in directly_matching_concepts or concept.id in rule_concept_ids
-        ),
-        concepts_by_id,
-    )
-    selected_entity_ids = {
-        concept.entity_id for concept in matching_concepts
-    } | {
-        entity.id
-        for entity in catalog.entities
-        if _matches_any_reference(
-            normalized_question,
-            entity.natural_language_references,
-        )
-    }
-    scope_type = _safe_scope_type(user_context.get("scope_type"))
-    scope_resolved = user_context.get("scope_reference_resolved") is True
-    matching_guidance = tuple(
-        guidance
-        for guidance in catalog.authorization_guidance
-        if guidance.scope_type == scope_type
-    )
-    if scope_resolved:
-        for guidance in matching_guidance:
-            if _matches_any_reference(
-                normalized_question,
-                guidance.possessive_references,
-            ):
-                selected_entity_ids.discard(guidance.scope_entity_id)
-    entities_by_id = catalog.entities_by_id
-    authorized_relationships = tuple(
-        relationship
-        for relationship in catalog.relationships
-        if _relationship_is_authorized(
-            relationship,
-            entities_by_id,
-            allowed_tables,
-            allowed_columns,
-        )
-    )
-    selected_entity_ids = _connect_selected_entities(
-        selected_entity_ids,
-        authorized_relationships,
-    )
-    selected_entities = tuple(
-        entity
-        for entity in catalog.entities
-        if entity.id in selected_entity_ids and entity.table in allowed_tables
-    )
-    selected_entity_ids = {entity.id for entity in selected_entities}
-
-    entity_projection = tuple(
-        _project_entity(entity, allowed_columns.get(entity.table, frozenset()))
-        for entity in selected_entities
-    )
-    concept_projection = tuple(
-        _project_concept(concept, entities_by_id[concept.entity_id])
-        for concept in matching_concepts
-        if concept.entity_id in selected_entity_ids
-        and _concept_columns_are_allowed(
-            concept,
-            entities_by_id[concept.entity_id],
-            allowed_columns,
-        )
-    )
-    selected_concept_ids = {concept["id"] for concept in concept_projection}
-    rule_projection = tuple(
-        {
-            "id": rule.id,
-            "description": rule.description,
-            "all_of_concept_ids": list(rule.all_of_concept_ids),
-            "or_concept_ids": list(rule.or_concept_ids),
-        }
-        for rule in matching_rules
-        if set((*rule.all_of_concept_ids, *rule.or_concept_ids))
-        <= selected_concept_ids
-    )
-    relationship_projection = tuple(
-        {
-            "id": relationship.id,
-            "from_entity": relationship.from_entity,
-            "from_column": relationship.from_column,
-            "to_entity": relationship.to_entity,
-            "to_column": relationship.to_column,
-            "cardinality": relationship.cardinality.value,
-            "optional": relationship.optional,
-            "description": relationship.description,
-        }
-        for relationship in authorized_relationships
-        if relationship.from_entity in selected_entity_ids
-        and relationship.to_entity in selected_entity_ids
+    from app.query_engine.semantic_grounding import (
+        build_semantic_grounding_projection,
     )
 
-    guidance_projection = tuple(
-        {
-            "scope_type": guidance.scope_type,
-            "possessive_references": list(guidance.possessive_references),
-            "enforcement": guidance.enforcement,
-            "description": guidance.description,
-            "scope_reference_resolved": scope_resolved,
-        }
-        for guidance in matching_guidance
+    return build_semantic_grounding_projection(
+        catalog,
+        question,
+        schema_context,
+        user_context,
     )
-    example_projection = tuple(
-        {
-            "id": example.id,
-            "request": example.request,
-            "concept_ids": list(example.concept_ids),
-        }
-        for example in catalog.examples
-        if set(example.concept_ids) <= selected_concept_ids
-    )
-
-    projection = SemanticCatalogProjection(
-        catalog_id=catalog.id,
-        catalog_version=catalog.version,
-        catalog_hash=catalog.digest,
-        entities=entity_projection,
-        relationships=relationship_projection,
-        concepts=concept_projection,
-        composition_rules=rule_projection,
-        authorization_guidance=guidance_projection,
-        examples=example_projection,
-        authoritative_business_terms=tuple(
-            sorted(
-                {
-                    _normalize_phrase(reference)
-                    for concept in matching_concepts
-                    for reference in concept.natural_language_references
-                }
-            )
-        ),
-    )
-    serialized_size = len(
-        json.dumps(
-            projection.as_prompt_dict(),
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("utf-8")
-    )
-    if serialized_size > MAX_SEMANTIC_PROJECTION_BYTES:
-        raise DomainPackValidationError(
-            "Semantic catalog projection exceeds the safe prompt size limit"
-        )
-    return projection
 
 
 def safe_semantic_catalog_observation(value: Any) -> dict[str, Any] | None:
@@ -368,7 +279,15 @@ def safe_semantic_catalog_observation(value: Any) -> dict[str, Any] | None:
     catalog_hash = value.get("catalog_hash")
     entity_ids = _safe_identifier_list(value.get("selected_entity_ids"))
     concept_ids = _safe_identifier_list(value.get("selected_concept_ids"))
+    metric_ids = _safe_identifier_list(value.get("selected_metric_ids", []))
     rule_ids = _safe_identifier_list(value.get("selected_rule_ids"))
+    relationship_ids = _safe_identifier_list(
+        value.get("selected_relationship_ids", [])
+    )
+    example_ids = _safe_identifier_list(value.get("selected_example_ids", []))
+    mandatory = _safe_mandatory_evidence(
+        value.get("mandatory_semantic_evidence", {})
+    )
     if (
         not isinstance(catalog_id, str)
         or _SAFE_IDENTIFIER.fullmatch(catalog_id) is None
@@ -378,7 +297,11 @@ def safe_semantic_catalog_observation(value: Any) -> dict[str, Any] | None:
         or _SAFE_DIGEST.fullmatch(catalog_hash) is None
         or entity_ids is None
         or concept_ids is None
+        or metric_ids is None
         or rule_ids is None
+        or relationship_ids is None
+        or example_ids is None
+        or mandatory is None
     ):
         return None
     return {
@@ -387,8 +310,24 @@ def safe_semantic_catalog_observation(value: Any) -> dict[str, Any] | None:
         "catalog_hash": catalog_hash,
         "selected_entity_ids": entity_ids,
         "selected_concept_ids": concept_ids,
+        "selected_metric_ids": metric_ids,
         "selected_rule_ids": rule_ids,
+        "selected_relationship_ids": relationship_ids,
+        "selected_example_ids": example_ids,
+        "mandatory_semantic_evidence": mandatory,
     }
+
+
+def _safe_mandatory_evidence(value: Any) -> dict[str, list[str]] | None:
+    if not isinstance(value, Mapping):
+        return None
+    safe: dict[str, list[str]] = {}
+    for key in ("entity_ids", "concept_ids", "metric_ids", "rule_ids"):
+        identifiers = _safe_identifier_list(value.get(key, []))
+        if identifiers is None:
+            return None
+        safe[key] = identifiers
+    return safe
 
 
 def semantic_catalog_identity(catalog: SemanticCatalog) -> dict[str, str]:
@@ -437,6 +376,7 @@ def _project_concept(
             }
             for predicate in concept.required_predicates
         ],
+        "all_of_concept_ids": list(concept.all_of_concept_ids),
     }
     if concept.aggregation is not None:
         projected["aggregation"] = {
@@ -444,6 +384,19 @@ def _project_concept(
             "description": concept.aggregation.description,
         }
     return projected
+
+
+def _project_metric(metric: SemanticMetric) -> dict[str, Any]:
+    return {
+        "id": metric.id,
+        "entity_id": metric.entity_id,
+        "description": metric.description,
+        "required_concept_ids": list(metric.required_concept_ids),
+        "aggregation": {
+            "function": metric.aggregation.function,
+            "description": metric.aggregation.description,
+        },
+    }
 
 
 def _concept_columns_are_allowed(
@@ -455,6 +408,54 @@ def _concept_columns_are_allowed(
     return all(
         predicate.column in entity_columns for predicate in concept.required_predicates
     )
+
+
+def expand_semantic_concept_ids(
+    catalog: SemanticCatalog,
+    concept_ids: tuple[str, ...] | list[str] | set[str] | frozenset[str],
+) -> tuple[str, ...]:
+    """Return the deterministic transitive concept set for validated catalog IDs."""
+
+    concepts_by_id = catalog.concepts_by_id
+    expanded: set[str] = set()
+
+    def expand(concept_id: str) -> None:
+        concept = concepts_by_id.get(concept_id)
+        if concept is None:
+            raise DomainPackValidationError(
+                f"Unknown semantic concept: {concept_id}"
+            )
+        if concept_id in expanded:
+            return
+        expanded.add(concept_id)
+        for component_id in concept.all_of_concept_ids:
+            expand(component_id)
+
+    for concept_id in sorted(concept_ids):
+        expand(concept_id)
+    return tuple(sorted(expanded))
+
+
+def effective_semantic_predicates(
+    catalog: SemanticCatalog,
+    concept_ids: tuple[str, ...] | list[str] | set[str] | frozenset[str],
+) -> tuple[SemanticPredicate, ...]:
+    """Expand catalog compositions into a canonical predicate set."""
+
+    predicates = {
+        (predicate.column, predicate.operator.value, _predicate_value_key(predicate.value)):
+        predicate
+        for concept_id in expand_semantic_concept_ids(catalog, concept_ids)
+        for predicate in catalog.concepts_by_id[concept_id].required_predicates
+    }
+    return tuple(
+        predicates[key]
+        for key in sorted(predicates)
+    )
+
+
+def _predicate_value_key(value: SemanticScalar | tuple[SemanticScalar, ...]) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"))
 
 
 def _relationship_is_authorized(
@@ -580,6 +581,7 @@ def _catalog_identity_document(catalog: SemanticCatalog) -> dict[str, Any]:
                     }
                     for predicate in concept.required_predicates
                 ],
+                "all_of_concept_ids": list(concept.all_of_concept_ids),
                 "aggregation": (
                     {
                         "function": concept.aggregation.function,
@@ -591,6 +593,22 @@ def _catalog_identity_document(catalog: SemanticCatalog) -> dict[str, Any]:
                 "supersedes": list(concept.supersedes),
             }
             for concept in catalog.concepts
+        ],
+        "metrics": [
+            {
+                "id": metric.id,
+                "entity_id": metric.entity_id,
+                "description": metric.description,
+                "natural_language_references": list(
+                    metric.natural_language_references
+                ),
+                "required_concept_ids": list(metric.required_concept_ids),
+                "aggregation": {
+                    "function": metric.aggregation.function,
+                    "description": metric.aggregation.description,
+                },
+            }
+            for metric in catalog.metrics
         ],
         "composition_rules": [
             {
@@ -619,7 +637,39 @@ def _catalog_identity_document(catalog: SemanticCatalog) -> dict[str, Any]:
             {
                 "id": example.id,
                 "request": example.request,
+                "entity_ids": list(example.entity_ids),
                 "concept_ids": list(example.concept_ids),
+                "composition_rule_ids": list(example.composition_rule_ids),
+                "metric_id": example.metric_id,
+                "distinct": example.distinct,
+                "literal_filters": [
+                    {
+                        "field": {
+                            "entity_id": item.field.entity_id,
+                            "column": item.field.column,
+                        },
+                        "operator": item.operator,
+                        "value": (
+                            list(item.value)
+                            if isinstance(item.value, tuple)
+                            else item.value
+                        ),
+                    }
+                    for item in example.literal_filters
+                ],
+                "relationships": [
+                    {
+                        "relationship_id": item.relationship_id,
+                        "join_type": item.join_type,
+                    }
+                    for item in example.relationships
+                ],
+                "aggregation_functions": list(example.aggregation_functions),
+                "group_by": [
+                    {"entity_id": item.entity_id, "column": item.column}
+                    for item in example.group_by
+                ],
+                "clarification_reason": example.clarification_reason,
             }
             for example in catalog.examples
         ],

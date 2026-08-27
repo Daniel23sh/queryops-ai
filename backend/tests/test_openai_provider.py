@@ -109,6 +109,38 @@ ACTIVE_HUMAN_SCHEMA_CONTEXT = {
     ],
     "business_terms": [],
 }
+DEVICE_PLAN = {
+    "entity_ids": ["devices"],
+    "concept_ids": [],
+    "composition_rule_ids": [],
+    "metric_id": None,
+    "distinct": False,
+    "literal_filters": [],
+    "relationships": [],
+    "output_fields": [
+        {"entity_id": "devices", "column": "operating_system"}
+    ],
+    "aggregations": [],
+    "group_by": [],
+    "having": [],
+    "order_by": [],
+    "limit": None,
+}
+ACTIVE_HUMAN_PLAN = {
+    "entity_ids": ["directory_users"],
+    "concept_ids": [],
+    "composition_rule_ids": [],
+    "metric_id": "active_human_users",
+    "distinct": False,
+    "literal_filters": [],
+    "relationships": [],
+    "output_fields": [],
+    "aggregations": [],
+    "group_by": [],
+    "having": [],
+    "order_by": [],
+    "limit": None,
+}
 
 
 class FakeResponses:
@@ -130,7 +162,7 @@ class FakeResponses:
             raise self.error
         if self.response is not None:
             return self.response
-        parsed = kwargs["text_format"].model_validate(self.payload)
+        parsed = kwargs["text_format"].model_validate_json(json.dumps(self.payload))
         return response_for(parsed)
 
 
@@ -264,6 +296,7 @@ def test_openai_provider_parses_sql_and_extracts_only_safe_usage() -> None:
     client = FakeClient(
         {
             "outcome": "sql",
+            "semantic_plan": DEVICE_PLAN,
             "sql": "SELECT operating_system FROM devices ORDER BY operating_system",
             "clarification_reason": None,
         }
@@ -306,6 +339,7 @@ def test_department_possessive_scope_is_resolved_by_authorization_context() -> N
     client = FakeClient(
         {
             "outcome": "sql",
+            "semantic_plan": DEVICE_PLAN,
             "sql": (
                 "SELECT id, operating_system FROM devices "
                 "WHERE operating_system IS NOT NULL"
@@ -357,6 +391,7 @@ def test_active_human_semantic_catalog_requires_all_business_predicates() -> Non
     client = FakeClient(
         {
             "outcome": "sql",
+            "semantic_plan": ACTIVE_HUMAN_PLAN,
             "sql": (
                 "SELECT COUNT(*) AS active_human_user_count "
                 "FROM directory_users "
@@ -385,11 +420,15 @@ def test_active_human_semantic_catalog_requires_all_business_predicates() -> Non
     }
     call = client.responses.calls[0]
     prompt = json.loads(call["input"])
-    concept = prompt["semantic_catalog"]["concepts"][0]
-    assert concept["id"] == "active_human_directory_user"
+    concepts = {
+        concept["id"]: concept
+        for concept in prompt["semantic_catalog"]["concepts"]
+    }
+    concept = concepts["active_human_directory_user"]
     assert {
         (item["column"], item["operator"], item["value"])
-        for item in concept["required_predicates"]
+        for concept_id in concept["all_of_concept_ids"]
+        for item in concepts[concept_id]["required_predicates"]
     } == {
         ("account_type", "equals", "human"),
         ("employee_status", "equals", "active"),
@@ -430,14 +469,22 @@ def test_structured_concept_overrides_only_matching_legacy_business_term() -> No
     schema_context = {
         **SCHEMA_CONTEXT,
         "allowed_columns": {
-            "devices": ["id", "operating_system", "compliance_status"]
+            "devices": [
+                "id",
+                "operating_system",
+                "compliance_status",
+                "antivirus_status",
+                "encryption_enabled",
+            ]
         },
         "tables": [
             {
                 **SCHEMA_CONTEXT["tables"][0],
                 "columns": [
-                    *SCHEMA_CONTEXT["tables"][0]["columns"],
-                    {"name": "compliance_status", "data_type": "string"},
+                        *SCHEMA_CONTEXT["tables"][0]["columns"],
+                        {"name": "compliance_status", "data_type": "string"},
+                        {"name": "antivirus_status", "data_type": "string"},
+                        {"name": "encryption_enabled", "data_type": "boolean"},
                 ],
             }
         ],
@@ -469,15 +516,23 @@ def test_structured_concept_overrides_only_matching_legacy_business_term() -> No
     )
 
     assert [term["name"] for term in prompt["business_terms"]] == ["Active device"]
-    assert prompt["semantic_catalog"]["concepts"][0]["id"] == (
-        "non_compliant_device"
-    )
+    assert {
+        concept["id"] for concept in prompt["semantic_catalog"]["concepts"]
+    } >= {
+        "antivirus_attention_device",
+        "non_compliant_device",
+        "unencrypted_device",
+    }
+    assert [
+        rule["id"] for rule in prompt["semantic_catalog"]["composition_rules"]
+    ] == ["non_compliant_device_posture"]
 
 
 def test_unresolved_scope_preserves_missing_information_clarification() -> None:
     client = FakeClient(
         {
             "outcome": "clarification",
+            "semantic_plan": None,
             "sql": None,
             "clarification_reason": "missing_information",
         }
@@ -510,6 +565,7 @@ def test_openai_provider_returns_controlled_clarification() -> None:
         FakeClient(
             {
                 "outcome": "clarification",
+                "semantic_plan": None,
                 "sql": None,
                 "clarification_reason": "ambiguous_question",
             }
@@ -541,6 +597,7 @@ def test_openai_provider_returns_bounded_unsafe_request_without_sql() -> None:
     client = FakeClient(
         {
             "outcome": "unsafe_request",
+            "semantic_plan": None,
             "sql": None,
             "clarification_reason": None,
         }
@@ -569,29 +626,48 @@ def test_openai_provider_returns_bounded_unsafe_request_without_sql() -> None:
 @pytest.mark.parametrize(
     "payload",
     [
-        {"outcome": "sql", "sql": None, "clarification_reason": None},
         {
             "outcome": "sql",
+            "semantic_plan": None,
+            "sql": None,
+            "clarification_reason": None,
+        },
+        {
+            "outcome": "sql",
+            "semantic_plan": DEVICE_PLAN,
             "sql": "SELECT id FROM devices",
             "clarification_reason": "missing_information",
         },
         {
             "outcome": "clarification",
+            "semantic_plan": None,
             "sql": "SELECT id FROM devices",
             "clarification_reason": "missing_information",
         },
-        {"outcome": "clarification", "sql": None, "clarification_reason": None},
+        {
+            "outcome": "clarification",
+            "semantic_plan": None,
+            "sql": None,
+            "clarification_reason": None,
+        },
         {
             "outcome": "unsafe_request",
+            "semantic_plan": None,
             "sql": "DELETE FROM devices",
             "clarification_reason": None,
         },
         {
             "outcome": "unsafe_request",
+            "semantic_plan": None,
             "sql": None,
             "clarification_reason": "unsupported_request",
         },
-        {"outcome": "unknown", "sql": None, "clarification_reason": None},
+        {
+            "outcome": "unknown",
+            "semantic_plan": None,
+            "sql": None,
+            "clarification_reason": None,
+        },
     ],
 )
 def test_openai_provider_rejects_inconsistent_structured_outcomes(
@@ -606,19 +682,18 @@ def test_openai_provider_rejects_inconsistent_structured_outcomes(
     assert "DELETE" not in str(exc_info.value)
 
 
-def test_openai_provider_maps_refusal_to_controlled_outcome() -> None:
+def test_openai_provider_maps_refusal_to_controlled_failure() -> None:
     response = response_for(None)
     response.output = [
         {"content": [{"type": "refusal", "refusal": "raw refusal detail"}]}
     ]
     provider = provider_for(FakeClient(response=response))
 
-    result = provider.generate_sql(QUESTION, SCHEMA_CONTEXT, USER_CONTEXT, {})
+    with pytest.raises(ProviderFailure) as exc_info:
+        provider.generate_sql(QUESTION, SCHEMA_CONTEXT, USER_CONTEXT, {})
 
-    assert result.generated_sql is None
-    assert result.clarification_required is True
-    assert result.unsupported_reason == "provider_refusal"
-    assert "raw refusal detail" not in str(result)
+    assert exc_info.value.code == "provider_refusal"
+    assert "raw refusal detail" not in str(exc_info.value)
 
 
 @pytest.mark.parametrize(
@@ -645,7 +720,12 @@ def test_openai_provider_rejects_excessively_long_or_markdown_sql() -> None:
     for sql in ("S" * (MAX_SQL_LENGTH + 1), "```sql\nSELECT id FROM devices\n```"):
         provider = provider_for(
             FakeClient(
-                {"outcome": "sql", "sql": sql, "clarification_reason": None}
+                {
+                    "outcome": "sql",
+                    "semantic_plan": DEVICE_PLAN,
+                    "sql": sql,
+                    "clarification_reason": None,
+                }
             )
         )
 
@@ -657,7 +737,12 @@ def test_openai_provider_rejects_excessively_long_or_markdown_sql() -> None:
 
 def test_openai_provider_does_not_call_client_without_authorized_schema() -> None:
     client = FakeClient(
-        {"outcome": "sql", "sql": "SELECT 1", "clarification_reason": None}
+        {
+            "outcome": "sql",
+            "semantic_plan": DEVICE_PLAN,
+            "sql": "SELECT 1",
+            "clarification_reason": None,
+        }
     )
     provider = provider_for(client)
 
@@ -678,6 +763,7 @@ def test_prompt_injection_cannot_bypass_governed_sql_validation() -> None:
         FakeClient(
             {
                 "outcome": "sql",
+                "semantic_plan": DEVICE_PLAN,
                 "sql": "UPDATE devices SET operating_system = 'owned'",
                 "clarification_reason": None,
             }

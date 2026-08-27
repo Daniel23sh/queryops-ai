@@ -1,0 +1,677 @@
+from __future__ import annotations
+
+import json
+from collections.abc import Mapping
+from dataclasses import dataclass
+from math import isfinite
+from typing import Annotated, Any, Literal
+
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    StringConstraints,
+    model_validator,
+)
+
+from app.query_engine.domain_pack import DomainPack
+from app.query_engine.semantic_catalog import (
+    SemanticCatalogProjection,
+    SemanticPredicate,
+    SemanticPredicateOperator,
+    expand_semantic_concept_ids,
+)
+
+
+Identifier = Annotated[
+    str,
+    StringConstraints(pattern=r"^[A-Za-z_][A-Za-z0-9_]*$", max_length=128),
+]
+SemanticScalar = str | int | float | bool
+MAX_PLAN_ITEMS = 64
+
+
+class SemanticFieldRef(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    entity_id: Identifier
+    column: Identifier
+
+
+class SemanticLiteralFilter(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    field: SemanticFieldRef
+    operator: Literal["equals", "not_equals", "in", "not_in"]
+    value: SemanticScalar | tuple[SemanticScalar, ...]
+
+    @model_validator(mode="after")
+    def validate_value_shape(self) -> SemanticLiteralFilter:
+        is_collection = isinstance(self.value, tuple)
+        if self.operator in {"in", "not_in"}:
+            if not is_collection or not self.value:
+                raise ValueError("Set comparison requires a non-empty value tuple")
+        elif is_collection:
+            raise ValueError("Scalar comparison cannot use a value tuple")
+        return self
+
+
+class SemanticRelationshipIntent(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    relationship_id: Identifier
+    join_type: Literal["inner", "left"]
+
+
+class SemanticAggregationIntent(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    id: Identifier
+    function: Literal["count", "sum"]
+    field: SemanticFieldRef | None
+    distinct: bool
+
+    @model_validator(mode="after")
+    def validate_function(self) -> SemanticAggregationIntent:
+        if self.function == "sum" and self.field is None:
+            raise ValueError("Sum aggregation requires a field")
+        return self
+
+
+class SemanticHavingIntent(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    aggregation_id: Identifier
+    operator: Literal[
+        "equals",
+        "greater_than",
+        "greater_than_or_equal",
+        "less_than",
+        "less_than_or_equal",
+    ]
+    value: int | float
+
+    @model_validator(mode="after")
+    def validate_finite_value(self) -> SemanticHavingIntent:
+        if isinstance(self.value, float) and not isfinite(self.value):
+            raise ValueError("Having value must be finite")
+        return self
+
+
+class SemanticOrderIntent(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    target_kind: Literal["field", "aggregation"]
+    field: SemanticFieldRef | None
+    aggregation_id: Identifier | None
+    direction: Literal["asc", "desc"]
+
+    @model_validator(mode="after")
+    def validate_target(self) -> SemanticOrderIntent:
+        if self.target_kind == "field":
+            if self.field is None or self.aggregation_id is not None:
+                raise ValueError("Field ordering has an inconsistent target")
+        elif self.field is not None or self.aggregation_id is None:
+            raise ValueError("Aggregation ordering has an inconsistent target")
+        return self
+
+
+class SemanticPlan(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
+
+    entity_ids: tuple[Identifier, ...] = Field(max_length=MAX_PLAN_ITEMS)
+    concept_ids: tuple[Identifier, ...] = Field(max_length=MAX_PLAN_ITEMS)
+    composition_rule_ids: tuple[Identifier, ...] = Field(max_length=MAX_PLAN_ITEMS)
+    metric_id: Identifier | None
+    distinct: bool
+    literal_filters: tuple[SemanticLiteralFilter, ...] = Field(
+        max_length=MAX_PLAN_ITEMS
+    )
+    relationships: tuple[SemanticRelationshipIntent, ...] = Field(
+        max_length=MAX_PLAN_ITEMS
+    )
+    output_fields: tuple[SemanticFieldRef, ...] = Field(max_length=MAX_PLAN_ITEMS)
+    aggregations: tuple[SemanticAggregationIntent, ...] = Field(
+        max_length=MAX_PLAN_ITEMS
+    )
+    group_by: tuple[SemanticFieldRef, ...] = Field(max_length=MAX_PLAN_ITEMS)
+    having: tuple[SemanticHavingIntent, ...] = Field(max_length=MAX_PLAN_ITEMS)
+    order_by: tuple[SemanticOrderIntent, ...] = Field(max_length=MAX_PLAN_ITEMS)
+    limit: Annotated[int, Field(ge=1, le=500)] | None
+
+
+@dataclass(frozen=True)
+class EntitySemanticPredicate:
+    entity_id: str
+    column: str
+    operator: SemanticPredicateOperator
+    value: SemanticScalar | tuple[SemanticScalar, ...]
+
+
+@dataclass(frozen=True)
+class ValidatedSemanticPlan:
+    plan: SemanticPlan
+    effective_concept_ids: tuple[str, ...]
+    effective_predicates: tuple[EntitySemanticPredicate, ...]
+    rule_or_predicate_groups: tuple[
+        tuple[tuple[EntitySemanticPredicate, ...], ...], ...
+    ]
+    rule_all_of_concept_ids: tuple[str, ...]
+    rule_or_concept_groups: tuple[tuple[str, ...], ...]
+    metric_aggregation_function: str | None
+
+    def as_observation(self) -> dict[str, Any]:
+        return {
+            "entity_ids": list(self.plan.entity_ids),
+            "concept_ids": list(self.plan.concept_ids),
+            "effective_concept_ids": list(self.effective_concept_ids),
+            "composition_rule_ids": list(self.plan.composition_rule_ids),
+            "metric_id": self.plan.metric_id,
+            "relationship_ids": [
+                item.relationship_id for item in self.plan.relationships
+            ],
+            "relationship_join_types": [
+                {
+                    "relationship_id": item.relationship_id,
+                    "join_type": item.join_type,
+                }
+                for item in self.plan.relationships
+            ],
+            "aggregation_ids": [item.id for item in self.plan.aggregations],
+        }
+
+
+class SemanticPlanValidationError(ValueError):
+    code = "provider_response_invalid"
+
+    def __init__(self, reason: str) -> None:
+        super().__init__("The semantic plan is invalid.")
+        self.reason = reason
+
+
+def validate_semantic_plan(
+    plan: SemanticPlan,
+    *,
+    domain_pack: DomainPack,
+    projection: SemanticCatalogProjection,
+    schema_context: Mapping[str, Any],
+    scope_reference_resolved: bool,
+) -> ValidatedSemanticPlan:
+    catalog = domain_pack.semantic_catalog
+    _require_unique(plan.entity_ids, "duplicate_entity")
+    _require_unique(plan.concept_ids, "duplicate_concept")
+    _require_unique(plan.composition_rule_ids, "duplicate_rule")
+    _require_unique(
+        (item.relationship_id for item in plan.relationships),
+        "duplicate_relationship",
+    )
+    _require_unique((item.id for item in plan.aggregations), "duplicate_aggregation")
+    if not plan.entity_ids:
+        raise SemanticPlanValidationError("entity_missing")
+
+    projected_entity_ids = {item["id"] for item in projection.entities}
+    projected_concept_ids = {item["id"] for item in projection.concepts}
+    projected_metric_ids = {item["id"] for item in projection.metrics}
+    projected_rule_ids = {item["id"] for item in projection.composition_rules}
+    projected_relationship_ids = {item["id"] for item in projection.relationships}
+    mandatory = projection.mandatory_evidence()
+
+    _require_subset(plan.entity_ids, projected_entity_ids, "entity_not_candidate")
+    _require_subset(plan.concept_ids, projected_concept_ids, "concept_not_candidate")
+    _require_subset(
+        plan.composition_rule_ids,
+        projected_rule_ids,
+        "rule_not_candidate",
+    )
+    _require_subset(
+        (item.relationship_id for item in plan.relationships),
+        projected_relationship_ids,
+        "relationship_not_candidate",
+    )
+    if plan.metric_id is not None and plan.metric_id not in projected_metric_ids:
+        raise SemanticPlanValidationError("metric_not_candidate")
+    if not set(mandatory["entity_ids"]) <= set(plan.entity_ids):
+        raise SemanticPlanValidationError("mandatory_entity_missing")
+    if not set(mandatory["rule_ids"]) <= set(plan.composition_rule_ids):
+        raise SemanticPlanValidationError("mandatory_rule_missing")
+    mandatory_metric_ids = set(mandatory["metric_ids"])
+    if len(mandatory_metric_ids) > 1:
+        raise SemanticPlanValidationError("mandatory_metric_ambiguous")
+    if mandatory_metric_ids and plan.metric_id not in mandatory_metric_ids:
+        raise SemanticPlanValidationError("mandatory_metric_missing")
+
+    conjunctive_concept_ids = set(plan.concept_ids)
+    metric_aggregation_function: str | None = None
+    if plan.metric_id is not None:
+        metric = catalog.metrics_by_id[plan.metric_id]
+        conjunctive_concept_ids.update(metric.required_concept_ids)
+        metric_aggregation_function = metric.aggregation.function
+        if plan.aggregations:
+            raise SemanticPlanValidationError("metric_aggregation_duplicated")
+        if (
+            plan.output_fields
+            or plan.group_by
+            or plan.having
+            or plan.order_by
+            or plan.limit is not None
+        ):
+            # V1 canonical metrics are scalar definitions. Grouped or ranked
+            # variants must use an explicit ad-hoc aggregation plan instead of
+            # silently changing the named metric's contract.
+            raise SemanticPlanValidationError("metric_shape_unsupported")
+
+    rules_by_id = {rule.id: rule for rule in catalog.composition_rules}
+    rule_all_of: set[str] = set()
+    rule_or_groups: list[tuple[str, ...]] = []
+    for rule_id in plan.composition_rule_ids:
+        rule = rules_by_id[rule_id]
+        rule_all_of.update(rule.all_of_concept_ids)
+        if rule.or_concept_ids:
+            rule_or_groups.append(tuple(sorted(rule.or_concept_ids)))
+        conjunctive_concept_ids.update(rule.all_of_concept_ids)
+
+    conjunctive_effective_concept_ids = expand_semantic_concept_ids(
+        catalog,
+        conjunctive_concept_ids,
+    )
+    rule_or_effective_groups = tuple(
+        tuple(
+            expand_semantic_concept_ids(catalog, (concept_id,))
+            for concept_id in group
+        )
+        for group in rule_or_groups
+    )
+    effective_concept_ids = tuple(
+        sorted(
+            set(conjunctive_effective_concept_ids)
+            | {
+                concept_id
+                for group in rule_or_effective_groups
+                for branch in group
+                for concept_id in branch
+            }
+        )
+    )
+    _require_subset(
+        effective_concept_ids,
+        projected_concept_ids,
+        "concept_dependency_not_candidate",
+    )
+    if not set(mandatory["concept_ids"]) <= set(effective_concept_ids):
+        raise SemanticPlanValidationError("mandatory_concept_missing")
+
+    entities_by_id = catalog.entities_by_id
+    required_entity_ids = {
+        catalog.concepts_by_id[concept_id].entity_id
+        for concept_id in effective_concept_ids
+    }
+    if plan.metric_id is not None:
+        required_entity_ids.add(catalog.metrics_by_id[plan.metric_id].entity_id)
+
+    allowed_columns = _safe_allowed_columns(schema_context.get("allowed_columns"))
+    scope_columns = _scope_columns(schema_context)
+    field_refs = _all_field_refs(plan)
+    for field in field_refs:
+        if field.entity_id not in plan.entity_ids:
+            raise SemanticPlanValidationError("field_entity_not_selected")
+        entity = entities_by_id.get(field.entity_id)
+        if entity is None or field.column not in allowed_columns.get(
+            entity.table,
+            frozenset(),
+        ):
+            raise SemanticPlanValidationError("field_not_authorized")
+        required_entity_ids.add(field.entity_id)
+
+    for literal_filter in plan.literal_filters:
+        entity = entities_by_id[literal_filter.field.entity_id]
+        if (
+            scope_reference_resolved
+            and literal_filter.field.column in scope_columns.get(entity.table, frozenset())
+        ):
+            raise SemanticPlanValidationError("scope_filter_not_allowed")
+        _validate_literal_filter(literal_filter, domain_pack)
+
+    if not required_entity_ids <= set(plan.entity_ids):
+        raise SemanticPlanValidationError("required_entity_missing")
+
+    if not plan.metric_id and not plan.output_fields and not plan.aggregations:
+        raise SemanticPlanValidationError("output_intent_missing")
+
+    selected_relationships = {
+        relationship.id: relationship
+        for relationship in catalog.relationships
+        if relationship.id
+        in {item.relationship_id for item in plan.relationships}
+    }
+    for relationship in selected_relationships.values():
+        if not {relationship.from_entity, relationship.to_entity} <= set(
+            plan.entity_ids
+        ):
+            raise SemanticPlanValidationError("relationship_endpoint_missing")
+        required_entity_ids.update(
+            {relationship.from_entity, relationship.to_entity}
+        )
+    _validate_relationship_graph(plan.entity_ids, plan.relationships, selected_relationships)
+
+    if set(plan.entity_ids) != required_entity_ids:
+        raise SemanticPlanValidationError("unused_entity")
+
+    aggregation_ids = {aggregation.id for aggregation in plan.aggregations}
+    if any(item.aggregation_id not in aggregation_ids for item in plan.having):
+        raise SemanticPlanValidationError("having_aggregation_missing")
+    if any(
+        item.target_kind == "aggregation"
+        and item.aggregation_id not in aggregation_ids
+        for item in plan.order_by
+    ):
+        raise SemanticPlanValidationError("order_aggregation_missing")
+    if plan.aggregations and plan.output_fields:
+        group_fields = {_field_key(field) for field in plan.group_by}
+        if {_field_key(field) for field in plan.output_fields} != group_fields:
+            raise SemanticPlanValidationError("group_by_incomplete")
+    if plan.group_by and not plan.aggregations:
+        raise SemanticPlanValidationError("group_by_without_aggregation")
+    effective_predicates = tuple(
+        sorted(
+            (
+                _entity_predicate(catalog.concepts_by_id[concept_id].entity_id, predicate)
+                for concept_id in conjunctive_effective_concept_ids
+                for predicate in catalog.concepts_by_id[
+                    concept_id
+                ].required_predicates
+            ),
+            key=lambda item: (
+                item.entity_id,
+                item.column,
+                item.operator.value,
+                json.dumps(item.value, sort_keys=True, separators=(",", ":")),
+            ),
+        )
+    )
+    rule_or_predicate_groups = tuple(
+        tuple(
+            tuple(
+                sorted(
+                    (
+                        _entity_predicate(
+                            catalog.concepts_by_id[concept_id].entity_id,
+                            predicate,
+                        )
+                        for concept_id in branch
+                        for predicate in catalog.concepts_by_id[
+                            concept_id
+                        ].required_predicates
+                    ),
+                    key=_entity_predicate_key,
+                )
+            )
+            for branch in group
+        )
+        for group in rule_or_effective_groups
+    )
+    _validate_predicate_consistency(effective_predicates, plan.literal_filters)
+    for group in rule_or_predicate_groups:
+        for branch in group:
+            _validate_predicate_consistency(
+                (*effective_predicates, *branch),
+                plan.literal_filters,
+            )
+
+    canonical_plan = plan.model_copy(
+        update={
+            "entity_ids": tuple(sorted(plan.entity_ids)),
+            "concept_ids": tuple(sorted(plan.concept_ids)),
+            "composition_rule_ids": tuple(sorted(plan.composition_rule_ids)),
+            "relationships": tuple(
+                sorted(
+                    plan.relationships,
+                    key=lambda item: item.relationship_id,
+                )
+            ),
+            "literal_filters": tuple(
+                sorted(plan.literal_filters, key=_literal_filter_key)
+            ),
+            "output_fields": tuple(sorted(plan.output_fields, key=_field_key)),
+            "group_by": tuple(sorted(plan.group_by, key=_field_key)),
+            "aggregations": tuple(sorted(plan.aggregations, key=lambda item: item.id)),
+            "having": tuple(
+                sorted(
+                    plan.having,
+                    key=lambda item: (item.aggregation_id, item.operator, item.value),
+                )
+            ),
+            "order_by": plan.order_by,
+        }
+    )
+    return ValidatedSemanticPlan(
+        plan=canonical_plan,
+        effective_concept_ids=effective_concept_ids,
+        effective_predicates=effective_predicates,
+        rule_or_predicate_groups=rule_or_predicate_groups,
+        rule_all_of_concept_ids=tuple(sorted(rule_all_of)),
+        rule_or_concept_groups=tuple(sorted(rule_or_groups)),
+        metric_aggregation_function=metric_aggregation_function,
+    )
+
+
+def _validate_literal_filter(
+    literal_filter: SemanticLiteralFilter,
+    domain_pack: DomainPack,
+) -> None:
+    entity = domain_pack.semantic_catalog.entities_by_id[literal_filter.field.entity_id]
+    column = domain_pack.tables_by_name[entity.table].columns_by_name[
+        literal_filter.field.column
+    ]
+    values = (
+        literal_filter.value
+        if isinstance(literal_filter.value, tuple)
+        else (literal_filter.value,)
+    )
+    for value in values:
+        if not _value_matches_type(value, column.data_type):
+            raise SemanticPlanValidationError("literal_type_invalid")
+    known_values = {
+        item.column: set(item.values) for item in entity.known_values
+    }.get(literal_filter.field.column)
+    if known_values is not None and not set(values) <= known_values:
+        raise SemanticPlanValidationError("literal_value_not_known")
+
+
+def _value_matches_type(value: SemanticScalar, data_type: str) -> bool:
+    if isinstance(value, float) and not isfinite(value):
+        return False
+    if data_type == "boolean":
+        return isinstance(value, bool)
+    if data_type in {"integer", "numeric", "decimal"}:
+        return isinstance(value, int | float) and not isinstance(value, bool)
+    return isinstance(value, str) and 1 <= len(value) <= 120
+
+
+def _validate_relationship_graph(
+    entity_ids: tuple[str, ...],
+    relationship_intents: tuple[SemanticRelationshipIntent, ...],
+    relationships: Mapping[str, Any],
+) -> None:
+    if len(entity_ids) == 1:
+        if relationships:
+            raise SemanticPlanValidationError("relationship_unused")
+        return
+    adjacency: dict[str, set[str]] = {entity_id: set() for entity_id in entity_ids}
+    parent = {entity_id: entity_id for entity_id in entity_ids}
+
+    def find(entity_id: str) -> str:
+        while parent[entity_id] != entity_id:
+            parent[entity_id] = parent[parent[entity_id]]
+            entity_id = parent[entity_id]
+        return entity_id
+
+    for intent in relationship_intents:
+        relationship = relationships[intent.relationship_id]
+        left = find(relationship.from_entity)
+        right = find(relationship.to_entity)
+        if left == right:
+            raise SemanticPlanValidationError("relationship_graph_cycle")
+        parent[left] = right
+        adjacency[relationship.from_entity].add(relationship.to_entity)
+        adjacency[relationship.to_entity].add(relationship.from_entity)
+    visited: set[str] = set()
+    frontier = [min(entity_ids)]
+    while frontier:
+        current = frontier.pop()
+        if current in visited:
+            continue
+        visited.add(current)
+        frontier.extend(sorted(adjacency[current] - visited, reverse=True))
+    if visited != set(entity_ids):
+        raise SemanticPlanValidationError("relationship_graph_disconnected")
+    if len(relationships) != len(entity_ids) - 1:
+        raise SemanticPlanValidationError("relationship_graph_not_tree")
+
+
+def _validate_predicate_consistency(
+    concept_predicates: tuple[EntitySemanticPredicate, ...],
+    literal_filters: tuple[SemanticLiteralFilter, ...],
+) -> None:
+    equals: dict[tuple[str, str], Any] = {}
+    allowed_sets: dict[tuple[str, str], set[Any]] = {}
+    excluded_sets: dict[tuple[str, str], set[Any]] = {}
+    for predicate in concept_predicates:
+        key = (predicate.entity_id, predicate.column)
+        if predicate.operator is SemanticPredicateOperator.EQUALS:
+            _add_equal_constraint(equals, key, predicate.value)
+        elif predicate.operator is SemanticPredicateOperator.IN:
+            if not isinstance(predicate.value, tuple):
+                raise SemanticPlanValidationError("predicate_value_invalid")
+            _add_allowed_constraint(allowed_sets, key, set(predicate.value))
+    for literal_filter in literal_filters:
+        key = (literal_filter.field.entity_id, literal_filter.field.column)
+        if literal_filter.operator == "equals":
+            _add_equal_constraint(equals, key, literal_filter.value)
+        elif literal_filter.operator == "not_equals":
+            excluded_sets.setdefault(key, set()).add(literal_filter.value)
+        elif literal_filter.operator == "in":
+            if not isinstance(literal_filter.value, tuple):
+                raise SemanticPlanValidationError("predicate_value_invalid")
+            _add_allowed_constraint(
+                allowed_sets,
+                key,
+                set(literal_filter.value),
+            )
+        elif literal_filter.operator == "not_in":
+            if not isinstance(literal_filter.value, tuple):
+                raise SemanticPlanValidationError("predicate_value_invalid")
+            excluded_sets.setdefault(key, set()).update(literal_filter.value)
+    for key, value in equals.items():
+        if value in excluded_sets.get(key, set()):
+            raise SemanticPlanValidationError("predicate_contradiction")
+        allowed = allowed_sets.get(key)
+        if allowed is not None and value not in allowed:
+            raise SemanticPlanValidationError("predicate_contradiction")
+    for key, allowed in allowed_sets.items():
+        if not allowed - excluded_sets.get(key, set()):
+            raise SemanticPlanValidationError("predicate_contradiction")
+
+
+def _add_equal_constraint(
+    equals: dict[tuple[str, str], Any],
+    key: tuple[str, str],
+    value: Any,
+) -> None:
+    if key in equals and equals[key] != value:
+        raise SemanticPlanValidationError("predicate_contradiction")
+    equals[key] = value
+
+
+def _add_allowed_constraint(
+    allowed_sets: dict[tuple[str, str], set[Any]],
+    key: tuple[str, str],
+    values: set[Any],
+) -> None:
+    existing = allowed_sets.get(key)
+    narrowed = values if existing is None else existing & values
+    if not narrowed:
+        raise SemanticPlanValidationError("predicate_contradiction")
+    allowed_sets[key] = narrowed
+
+
+def _entity_predicate(
+    entity_id: str,
+    predicate: SemanticPredicate,
+) -> EntitySemanticPredicate:
+    return EntitySemanticPredicate(
+        entity_id=entity_id,
+        column=predicate.column,
+        operator=predicate.operator,
+        value=predicate.value,
+    )
+
+
+def _entity_predicate_key(
+    predicate: EntitySemanticPredicate,
+) -> tuple[str, str, str, str]:
+    return (
+        predicate.entity_id,
+        predicate.column,
+        predicate.operator.value,
+        json.dumps(predicate.value, sort_keys=True, separators=(",", ":")),
+    )
+
+
+def _literal_filter_key(
+    literal_filter: SemanticLiteralFilter,
+) -> tuple[str, str, str, str]:
+    return (
+        literal_filter.field.entity_id,
+        literal_filter.field.column,
+        literal_filter.operator,
+        json.dumps(literal_filter.value, sort_keys=True, separators=(",", ":")),
+    )
+
+
+def _all_field_refs(plan: SemanticPlan) -> tuple[SemanticFieldRef, ...]:
+    fields = [item.field for item in plan.literal_filters]
+    fields.extend(item.field for item in plan.aggregations if item.field is not None)
+    fields.extend(plan.output_fields)
+    fields.extend(plan.group_by)
+    fields.extend(item.field for item in plan.order_by if item.field is not None)
+    return tuple(fields)
+
+
+def _scope_columns(schema_context: Mapping[str, Any]) -> dict[str, frozenset[str]]:
+    result: dict[str, frozenset[str]] = {}
+    tables = schema_context.get("tables")
+    if not isinstance(tables, list):
+        return result
+    for table in tables:
+        if not isinstance(table, Mapping):
+            continue
+        name = table.get("name")
+        scope_column = table.get("scope_column")
+        if isinstance(name, str) and isinstance(scope_column, str):
+            result[name] = frozenset({scope_column})
+    return result
+
+
+def _safe_allowed_columns(value: Any) -> dict[str, frozenset[str]]:
+    if not isinstance(value, Mapping):
+        return {}
+    return {
+        table: frozenset(column for column in columns if isinstance(column, str))
+        for table, columns in value.items()
+        if isinstance(table, str) and isinstance(columns, list | tuple)
+    }
+
+
+def _require_unique(values: Any, reason: str) -> None:
+    materialized = tuple(values)
+    if len(materialized) != len(set(materialized)):
+        raise SemanticPlanValidationError(reason)
+
+
+def _require_subset(values: Any, allowed: set[str], reason: str) -> None:
+    if not set(values) <= allowed:
+        raise SemanticPlanValidationError(reason)
+
+
+def _field_key(field: SemanticFieldRef) -> tuple[str, str]:
+    return field.entity_id, field.column

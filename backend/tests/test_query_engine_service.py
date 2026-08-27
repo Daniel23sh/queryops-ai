@@ -16,6 +16,16 @@ from app.domains.it_operations.seed import seed_database
 from app.models.product import AppUser, QueryRun
 from app.query_engine.llm_provider import SQLGenerationOutcome, SQLGenerationResult
 from app.query_engine.result_formatter import format_query_result
+from app.query_engine.semantic_conformance import (
+    SemanticConformanceReason,
+    SemanticConformanceResult,
+)
+from app.query_engine.semantic_plan import (
+    SemanticAggregationIntent,
+    SemanticFieldRef,
+    SemanticOrderIntent,
+    SemanticPlan,
+)
 from app.query_engine.service import (
     QueryEngineRequest,
     QueryEngineService,
@@ -247,7 +257,7 @@ def test_generated_and_executed_sql_follow_security_storage_expectations(
         executor=executor,
         validator=lambda sql, _schema_context: SQLValidationResult(
             valid=True,
-            sanitized_sql="SELECT id, hostname FROM devices LIMIT 25",
+            sanitized_sql=f"{sql} LIMIT 25",
             referenced_tables=["devices"],
         ),
     )
@@ -262,8 +272,8 @@ def test_generated_and_executed_sql_follow_security_storage_expectations(
     query_run = only_query_run(db_session)
     assert query_run.generated_sql is not None
     assert "ORDER BY hostname" in query_run.generated_sql
-    assert query_run.executed_sql == "SELECT id, hostname FROM devices LIMIT 25"
-    assert executor.seen_sql == ["SELECT id, hostname FROM devices LIMIT 25"]
+    assert query_run.executed_sql == f"{query_run.generated_sql} LIMIT 25"
+    assert executor.seen_sql == [query_run.executed_sql]
 
 
 def test_valid_sql_path_does_not_attempt_self_correction(
@@ -273,7 +283,11 @@ def test_valid_sql_path_does_not_attempt_self_correction(
     validator = RecordingValidator()
     service = QueryEngineService(
         provider=StaticSQLProvider(
-            "SELECT id, hostname FROM devices ORDER BY hostname LIMIT 25"
+            "SELECT id, hostname FROM devices "
+            "WHERE compliance_status = 'non_compliant' "
+            "OR antivirus_status IN ('outdated', 'missing') "
+            "OR encryption_enabled = false "
+            "ORDER BY hostname LIMIT 25"
         ),
         executor=executor,
         validator=validator,
@@ -289,11 +303,19 @@ def test_valid_sql_path_does_not_attempt_self_correction(
     query_run = only_query_run(db_session)
     assert result.status == "succeeded"
     assert validator.seen_sql == [
-        "SELECT id, hostname FROM devices ORDER BY hostname LIMIT 25"
+        "SELECT id, hostname FROM devices "
+        "WHERE compliance_status = 'non_compliant' "
+        "OR antivirus_status IN ('outdated', 'missing') "
+        "OR encryption_enabled = false "
+        "ORDER BY hostname LIMIT 25"
     ]
     assert "self_correction" not in query_run.query_metadata
     assert executor.seen_sql == [
-        "SELECT id, hostname FROM devices ORDER BY hostname LIMIT 25"
+        "SELECT id, hostname FROM devices "
+        "WHERE compliance_status = 'non_compliant' "
+        "OR antivirus_status IN ('outdated', 'missing') "
+        "OR encryption_enabled = false "
+        "ORDER BY hostname LIMIT 25"
     ]
 
 
@@ -303,7 +325,11 @@ def test_select_star_validation_failure_triggers_one_correction_attempt_and_exec
     executor = FakeExecutor()
     validator = RecordingValidator()
     service = QueryEngineService(
-        provider=StaticSQLProvider("SELECT * FROM devices ORDER BY hostname"),
+        provider=StaticSQLProvider(
+            "SELECT * FROM devices WHERE compliance_status = 'non_compliant' "
+            "OR antivirus_status IN ('outdated', 'missing') "
+            "OR encryption_enabled = false ORDER BY hostname"
+        ),
         executor=executor,
         validator=validator,
     )
@@ -318,11 +344,11 @@ def test_select_star_validation_failure_triggers_one_correction_attempt_and_exec
     query_run = only_query_run(db_session)
     assert result.status == "succeeded"
     assert len(validator.seen_sql) == 2
-    assert validator.seen_sql[0] == "SELECT * FROM devices ORDER BY hostname"
+    assert validator.seen_sql[0].startswith("SELECT * FROM devices WHERE ")
     assert validator.seen_sql[1].startswith("SELECT ")
-    assert " FROM devices ORDER BY hostname" in validator.seen_sql[1]
+    assert " FROM devices WHERE " in validator.seen_sql[1]
     assert "*" not in validator.seen_sql[1]
-    assert query_run.generated_sql == "SELECT * FROM devices ORDER BY hostname"
+    assert query_run.generated_sql.startswith("SELECT * FROM devices WHERE ")
     assert query_run.executed_sql == executor.seen_sql[0]
     assert "*" not in query_run.executed_sql
     assert query_run.query_metadata["self_correction"] == {
@@ -356,7 +382,11 @@ def test_correction_failure_returns_safe_failure_metadata(
         ]
     )
     service = QueryEngineService(
-        provider=StaticSQLProvider("SELECT * FROM devices ORDER BY hostname"),
+        provider=StaticSQLProvider(
+            "SELECT * FROM devices WHERE compliance_status = 'non_compliant' "
+            "OR antivirus_status IN ('outdated', 'missing') "
+            "OR encryption_enabled = false ORDER BY hostname"
+        ),
         executor=executor,
         validator=validator,
     )
@@ -413,7 +443,7 @@ def test_unsafe_validation_failures_are_not_corrected_or_executed(
     result = service.run(
         db_session,
         user,
-        QueryEngineRequest(question="Try unsafe SQL."),
+        QueryEngineRequest(question="Show devices, then try unsafe SQL."),
     )
 
     query_run = only_query_run(db_session)
@@ -466,7 +496,9 @@ def test_service_never_executes_unsupported_provider_output(
     )
 
     query_run = only_query_run(db_session)
-    assert result.clarification_required is True
+    assert result.status == "failed"
+    assert result.clarification_required is False
+    assert result.error_code == "provider_response_invalid"
     assert query_run.generated_sql is None
     assert query_run.executed_sql is None
     assert executor.seen_sql == []
@@ -505,6 +537,135 @@ def test_unsafe_request_is_persisted_safely_without_validation_or_execution(
     assert "raw-provider-payload" not in str(query_run.query_metadata)
     assert validator.seen_sql == []
     assert executor.seen_sql == []
+
+
+def test_mandatory_metric_cannot_be_downgraded_before_sql_validation(
+    db_session: Session,
+) -> None:
+    executor = FakeExecutor()
+    validator = RecordingValidator()
+    conformance = RecordingConformanceChecker()
+    provider = WeakActiveUsersProvider()
+    service = QueryEngineService(
+        provider=provider,
+        executor=executor,
+        validator=validator,
+        conformance_checker=conformance,
+    )
+    user = user_by_email(db_session, "demo.analyst@queryops.local")
+
+    result = service.run(
+        db_session,
+        user,
+        QueryEngineRequest(question="How many active users are there?"),
+    )
+
+    query_run = only_query_run(db_session)
+    assert result.status == "failed"
+    assert result.error_code == "provider_response_invalid"
+    assert result.clarification_required is False
+    assert query_run.query_metadata["semantic_plan_validation"] == {
+        "status": "failed",
+        "reason_code": "mandatory_metric_missing",
+    }
+    assert validator.seen_sql == []
+    assert conformance.calls == []
+    assert executor.seen_sql == []
+    assert provider.calls == 1
+
+
+def test_sql_safety_failure_never_invokes_conformance(
+    db_session: Session,
+) -> None:
+    conformance = RecordingConformanceChecker()
+    executor = FakeExecutor()
+    service = QueryEngineService(
+        provider=StaticSQLProvider("UPDATE devices SET hostname = 'bad'"),
+        executor=executor,
+        conformance_checker=conformance,
+    )
+    user = user_by_email(db_session, "demo.admin@queryops.local")
+
+    result = service.run(
+        db_session,
+        user,
+        QueryEngineRequest(question="Show devices, then try unsafe SQL."),
+    )
+
+    assert result.error_code == "validation_failed"
+    assert conformance.calls == []
+    assert executor.seen_sql == []
+
+
+def test_conformance_failure_never_executes_and_persists_controlled_reason(
+    db_session: Session,
+) -> None:
+    conformance = RecordingConformanceChecker(
+        result=SemanticConformanceResult(
+            valid=False,
+            reason_code=SemanticConformanceReason.PREDICATE_MISSING,
+            checked_entity_count=1,
+            checked_predicate_count=1,
+            checked_relationship_count=0,
+            checked_aggregation_count=0,
+        )
+    )
+    executor = FakeExecutor()
+    service = QueryEngineService(
+        provider=StaticSQLProvider("SELECT id FROM devices"),
+        executor=executor,
+        conformance_checker=conformance,
+    )
+    user = user_by_email(db_session, "demo.analyst@queryops.local")
+
+    result = service.run(
+        db_session,
+        user,
+        QueryEngineRequest(question="Show devices."),
+    )
+
+    query_run = only_query_run(db_session)
+    assert result.error_code == "semantic_conformance_failed"
+    assert query_run.executed_sql is None
+    assert query_run.query_metadata["semantic_conformance"] == {
+        "status": "failed",
+        "reason_code": "semantic_predicate_missing",
+        "checked_entity_count": 1,
+        "checked_predicate_count": 1,
+        "checked_relationship_count": 0,
+        "checked_aggregation_count": 0,
+    }
+    assert query_run.query_metadata["repair_attempted"] is False
+    assert executor.seen_sql == []
+
+
+def test_conformance_receives_candidate_and_exact_executed_sanitized_sql(
+    db_session: Session,
+) -> None:
+    conformance = RecordingConformanceChecker()
+    executor = FakeExecutor()
+    candidate = "SELECT id, hostname FROM devices ORDER BY hostname"
+    service = QueryEngineService(
+        provider=StaticSQLProvider(candidate),
+        executor=executor,
+        conformance_checker=conformance,
+    )
+    user = user_by_email(db_session, "demo.analyst@queryops.local")
+
+    result = service.run(
+        db_session,
+        user,
+        QueryEngineRequest(question="Show devices."),
+    )
+
+    assert result.status == "succeeded"
+    assert len(conformance.calls) == 1
+    call = conformance.calls[0]
+    assert call["candidate_sql"] == candidate
+    safety_result = call["safety_result"]
+    assert isinstance(safety_result, SQLValidationResult)
+    assert safety_result.sanitized_sql == f"{candidate} LIMIT 100"
+    assert executor.seen_sql == [safety_result.sanitized_sql]
 
 
 def test_selected_provider_receives_authorized_context_and_persists_only_safe_usage(
@@ -640,7 +801,7 @@ class UnsupportedSqlProvider:
 
     def generate_sql(
         self,
-        _question: str,
+        question: str,
         _schema_context: dict[str, Any],
         _user_context: dict[str, Any],
         _options: dict[str, Any],
@@ -665,8 +826,8 @@ class StaticSQLProvider:
 
     def generate_sql(
         self,
-        _question: str,
-        _schema_context: dict[str, Any],
+        question: str,
+        schema_context: dict[str, Any],
         _user_context: dict[str, Any],
         _options: dict[str, Any],
     ) -> SQLGenerationResult:
@@ -675,6 +836,7 @@ class StaticSQLProvider:
             provider_name=self.provider_name,
             model_name=self.model_name,
             generation_metadata={"source": "self_correction_test"},
+            semantic_plan=_device_plan(schema_context, self.generated_sql, question),
         )
 
 
@@ -728,8 +890,8 @@ class RecordingMeasuredProvider:
         self.semantic_catalog = options.get("semantic_catalog")
         return SQLGenerationResult(
             generated_sql=(
-                "SELECT id, operating_system FROM devices "
-                "ORDER BY operating_system, id LIMIT 25"
+                "SELECT id, os FROM devices "
+                "ORDER BY os, id LIMIT 25"
             ),
             provider_name=self.provider_name,
             model_name=self.model_name,
@@ -748,7 +910,78 @@ class RecordingMeasuredProvider:
                 "semantic_catalog": self.semantic_catalog.as_observation(),
                 "raw_payload": "raw-provider-payload",
             },
+            semantic_plan=_device_plan(
+                schema_context,
+                "SELECT id, os FROM devices ORDER BY os, id LIMIT 25",
+            ),
         )
+
+
+class WeakActiveUsersProvider:
+    provider_name = "weak-test-provider"
+    model_name = "weak-test-model"
+
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def generate_sql(
+        self,
+        _question: str,
+        _schema_context: dict[str, Any],
+        _user_context: dict[str, Any],
+        _options: dict[str, Any],
+    ) -> SQLGenerationResult:
+        self.calls += 1
+        return SQLGenerationResult(
+            generated_sql=(
+                "SELECT COUNT(*) FROM directory_users "
+                "WHERE account_status = 'active'"
+            ),
+            provider_name=self.provider_name,
+            model_name=self.model_name,
+            semantic_plan=SemanticPlan(
+                entity_ids=("directory_users",),
+                concept_ids=("active_directory_account",),
+                composition_rule_ids=(),
+                metric_id=None,
+                distinct=False,
+                literal_filters=(),
+                relationships=(),
+                output_fields=(),
+                aggregations=(
+                    SemanticAggregationIntent(
+                        id="row_count",
+                        function="count",
+                        field=None,
+                        distinct=False,
+                    ),
+                ),
+                group_by=(),
+                having=(),
+                order_by=(),
+                limit=None,
+            ),
+        )
+
+
+class RecordingConformanceChecker:
+    def __init__(
+        self,
+        result: SemanticConformanceResult | None = None,
+    ) -> None:
+        self.result = result or SemanticConformanceResult(
+            valid=True,
+            reason_code=None,
+            checked_entity_count=1,
+            checked_predicate_count=0,
+            checked_relationship_count=0,
+            checked_aggregation_count=0,
+        )
+        self.calls: list[dict[str, Any]] = []
+
+    def __call__(self, **kwargs: Any) -> SemanticConformanceResult:
+        self.calls.append(dict(kwargs))
+        return self.result
 
 
 class RecordingValidator:
@@ -777,6 +1010,62 @@ class SequenceValidator:
         self.seen_sql.append(sql)
         assert self.results
         return self.results.pop(0)
+
+
+def _device_plan(
+    schema_context: dict[str, Any],
+    sql: str,
+    question: str = "",
+) -> SemanticPlan:
+    raw_columns = schema_context.get("allowed_columns", {}).get("devices", [])
+    allowed_columns = tuple(
+        sorted(column for column in raw_columns if isinstance(column, str))
+    )
+    if "SELECT *" in sql.upper():
+        output_columns = allowed_columns
+    elif "operating_system" in sql:
+        output_columns = ("id", "operating_system")
+    elif "SELECT id, os" in sql:
+        output_columns = ("id", "os")
+    elif "SELECT id, hostname" in sql:
+        output_columns = ("id", "hostname")
+    else:
+        output_columns = ("id",) if "id" in allowed_columns else allowed_columns[:1]
+    order_columns: list[str] = []
+    if "ORDER BY hostname" in sql:
+        order_columns.append("hostname")
+    if "ORDER BY os, id" in sql:
+        order_columns.extend(("os", "id"))
+    return SemanticPlan(
+        entity_ids=("devices",),
+        concept_ids=(),
+        composition_rule_ids=(
+            ("non_compliant_device_posture",)
+            if "non-compliant devices" in question.lower()
+            else ()
+        ),
+        metric_id=None,
+        distinct=False,
+        literal_filters=(),
+        relationships=(),
+        output_fields=tuple(
+            SemanticFieldRef(entity_id="devices", column=column)
+            for column in output_columns
+        ),
+        aggregations=(),
+        group_by=(),
+        having=(),
+        order_by=tuple(
+            SemanticOrderIntent(
+                target_kind="field",
+                field=SemanticFieldRef(entity_id="devices", column=column),
+                aggregation_id=None,
+                direction="asc",
+            )
+            for column in order_columns
+        ),
+        limit=25 if "LIMIT 25" in sql else None,
+    )
 
 
 def only_query_run(session: Session) -> QueryRun:

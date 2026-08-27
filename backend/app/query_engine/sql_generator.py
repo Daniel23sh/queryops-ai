@@ -9,6 +9,7 @@ from app.query_engine.llm_provider import (
     LLMProviderFailure,
     SQLGenerationOutcome,
 )
+from app.query_engine.semantic_plan import SemanticPlan, ValidatedSemanticPlan
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,8 @@ class SQLGeneratorResult:
     model_name: str
     outcome: SQLGenerationOutcome = SQLGenerationOutcome.SQL
     generation_metadata: dict[str, Any] = field(default_factory=dict)
+    semantic_plan: SemanticPlan | None = None
+    validated_semantic_plan: ValidatedSemanticPlan | None = None
     unsupported_reason: str | None = None
     safe_error: str | None = None
 
@@ -28,6 +31,13 @@ class SQLGeneratorResult:
     @property
     def unsafe_request(self) -> bool:
         return self.outcome is SQLGenerationOutcome.UNSAFE_REQUEST
+
+    @property
+    def generation_failed(self) -> bool:
+        return isinstance(
+            self.generation_metadata.get("provider_failure_code"),
+            str,
+        )
 
 
 class SQLGenerator:
@@ -65,6 +75,7 @@ class SQLGenerator:
                 model_name=provider_result.model_name,
                 outcome=SQLGenerationOutcome.CLARIFICATION,
                 generation_metadata=dict(provider_result.generation_metadata),
+                semantic_plan=None,
                 unsupported_reason=provider_result.unsupported_reason,
                 safe_error=provider_result.safe_error,
             )
@@ -76,19 +87,9 @@ class SQLGenerator:
                 model_name=provider_result.model_name,
                 outcome=SQLGenerationOutcome.UNSAFE_REQUEST,
                 generation_metadata=dict(provider_result.generation_metadata),
+                semantic_plan=None,
                 unsupported_reason="unsafe_request",
                 safe_error=provider_result.safe_error,
-            )
-
-        if generated_sql is None:
-            return SQLGeneratorResult(
-                generated_sql=None,
-                provider_name=provider_result.provider_name,
-                model_name=provider_result.model_name,
-                outcome=SQLGenerationOutcome.CLARIFICATION,
-                generation_metadata=dict(provider_result.generation_metadata),
-                unsupported_reason="empty_provider_output",
-                safe_error="The query provider did not return SQL.",
             )
 
         return SQLGeneratorResult(
@@ -97,6 +98,7 @@ class SQLGenerator:
             model_name=provider_result.model_name,
             outcome=SQLGenerationOutcome.SQL,
             generation_metadata=dict(provider_result.generation_metadata),
+            semantic_plan=provider_result.semantic_plan,
             unsupported_reason=None,
             safe_error=None,
         )
@@ -137,9 +139,21 @@ def _provider_result_is_consistent(
     normalized_sql: str | None,
 ) -> bool:
     if result.outcome is SQLGenerationOutcome.SQL:
-        return normalized_sql is not None and result.unsupported_reason is None
+        return (
+            normalized_sql is not None
+            and result.unsupported_reason is None
+            and isinstance(result.semantic_plan, SemanticPlan)
+        )
     if result.outcome is SQLGenerationOutcome.CLARIFICATION:
-        return normalized_sql is None and result.unsupported_reason is not None
+        return (
+            normalized_sql is None
+            and result.unsupported_reason is not None
+            and result.semantic_plan is None
+        )
     if result.outcome is SQLGenerationOutcome.UNSAFE_REQUEST:
-        return normalized_sql is None and result.unsupported_reason == "unsafe_request"
+        return (
+            normalized_sql is None
+            and result.unsupported_reason == "unsafe_request"
+            and result.semantic_plan is None
+        )
     return False

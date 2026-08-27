@@ -22,6 +22,7 @@ from app.query_engine.provider_config import (
     OpenAIProviderSettings,
 )
 from app.query_engine.semantic_catalog import SemanticCatalogProjection
+from app.query_engine.semantic_plan import SemanticPlan
 
 
 MAX_QUESTION_LENGTH = 4000
@@ -38,6 +39,7 @@ CLARIFICATION_REASONS = frozenset(
         "ambiguous_question",
         "missing_information",
         "unsupported_request",
+        "unresolved_scope",
     }
 )
 SYSTEM_INSTRUCTIONS = """You generate PostgreSQL SELECT queries for QueryOps AI.
@@ -49,12 +51,30 @@ or otherwise perform unsupported write behavior. An unsafe_request must contain
 no SQL and is not a missing-information clarification. Never emit mutations, DDL,
 multiple statements, SQL comments, tool calls, external retrieval, or unavailable
 tables or columns.
+For SQL outcomes use a direct SELECT over catalog tables. Do not use CTEs,
+subqueries, set operations, window functions, lateral joins, self joins, or
+RIGHT, FULL, or CROSS joins. Record whether row-level DISTINCT is required and
+select the required INNER or LEFT join type for every relationship in the plan.
 The authorized schema contains queryable database facts. The delimited semantic
-catalog contains application-owned business definitions. When a matched concept
-is supplied, preserve every structured required_predicate in the SQL. Do not
+catalog contains application-owned candidate business definitions. Candidate
+signals rank relevant choices but do not decide the request's meaning. Return a
+catalog-referenced semantic_plan with every SQL outcome. Select only supplied
+entity, concept, metric, composition-rule, relationship, column, and known-value
+identifiers. When a selected concept is supplied, preserve every structured
+required_predicate and all_of_concept_ids dependency in the SQL. Do not
 invent tables, columns, enum values, relationships, concepts, or filters. Business
 predicates are required query meaning; authorization predicates are separate and
 may be enforced outside the generated SQL by PostgreSQL RLS.
+Items in mandatory_semantic_evidence are exact deterministic matches and must be
+preserved in the semantic_plan. If preserving them would create a genuinely
+ambiguous interpretation, return clarification instead of silently weakening or
+replacing them. Other projected candidates are optional context, not hidden
+filters.
+Select a canonical metric only when the wording invokes that named business
+measure. Represent an explicit comparison that is not a named concept, such as
+an account status that is not disabled, as a literal_filter; do not broaden it
+into active-human-user semantics. The semantic_plan and SQL must describe the
+same interpretation.
 Composition rules are also mandatory. Combine all_of_concept_ids conjunctively.
 For or_concept_ids, represent every listed branch and combine those branches with
 SQL OR; never select only one branch or combine the branches with AND.
@@ -76,6 +96,7 @@ class ProviderFailureCode(str, Enum):
     TIMEOUT = "provider_timeout"
     UNAVAILABLE = "provider_unavailable"
     RESPONSE_INVALID = "provider_response_invalid"
+    REFUSAL = "provider_refusal"
 
 
 class ProviderFailure(LLMProviderFailure):
@@ -95,27 +116,36 @@ class _StructuredProviderOutput(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     outcome: Literal["sql", "clarification", "unsafe_request"]
+    semantic_plan: SemanticPlan | None
     sql: str | None
     clarification_reason: Literal[
         "ambiguous_question",
         "missing_information",
         "unsupported_request",
+        "unresolved_scope",
     ] | None
 
     @model_validator(mode="after")
     def validate_outcome(self) -> _StructuredProviderOutput:
         if self.outcome == "sql":
-            if not isinstance(self.sql, str) or not self.sql.strip():
+            if (
+                not isinstance(self.sql, str)
+                or not self.sql.strip()
+                or self.semantic_plan is None
+            ):
                 raise ValueError("SQL output is missing")
             if self.clarification_reason is not None:
                 raise ValueError("SQL output cannot include a clarification reason")
         elif self.outcome == "clarification" and (
             self.sql is not None
+            or self.semantic_plan is not None
             or self.clarification_reason not in CLARIFICATION_REASONS
         ):
             raise ValueError("Clarification output is inconsistent")
         elif self.outcome == "unsafe_request" and (
-            self.sql is not None or self.clarification_reason is not None
+            self.sql is not None
+            or self.semantic_plan is not None
+            or self.clarification_reason is not None
         ):
             raise ValueError("Unsafe request output is inconsistent")
         return self
@@ -201,15 +231,7 @@ class OpenAIProvider:
         model_name = str(metadata["provider_measurement"]["model_label"])
 
         if _response_contains_refusal(response):
-            return SQLGenerationResult(
-                generated_sql=None,
-                provider_name=self.provider_name,
-                model_name=model_name,
-                outcome=SQLGenerationOutcome.CLARIFICATION,
-                generation_metadata=metadata,
-                unsupported_reason="provider_refusal",
-                safe_error="The query provider could not complete that request.",
-            )
+            raise ProviderFailure(ProviderFailureCode.REFUSAL)
 
         if getattr(response, "status", None) not in (None, "completed"):
             raise ProviderFailure(ProviderFailureCode.RESPONSE_INVALID)
@@ -254,6 +276,7 @@ class OpenAIProvider:
             model_name=model_name,
             outcome=SQLGenerationOutcome.SQL,
             generation_metadata=metadata,
+            semantic_plan=parsed.semantic_plan,
         )
 
 

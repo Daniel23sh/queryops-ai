@@ -23,7 +23,7 @@ def test_cli_defaults_to_full_selection_and_reports_low_score_safely(capsys) -> 
     assert fake.filters.case_id is None
     assert fake.filters.difficulty is None
     assert "Provider: mock (mock-queryops-v1)" in output.out
-    assert "Semantic catalog: it_operations_semantic_catalog v2" in output.out
+    assert "Semantic catalog: it_operations_semantic_catalog v3" in output.out
     assert "selected=40 completed=40 passed=6 failed=34" in output.out
     assert "itops-security-003" in output.out
     assert "UPDATE directory_users" not in output.out
@@ -299,7 +299,7 @@ def _summary(
         },
         semantic_catalog={
             "catalog_id": "it_operations_semantic_catalog",
-            "catalog_version": "2",
+            "catalog_version": "3",
             "catalog_hash": "b" * 64,
         },
         evaluation_environment=(

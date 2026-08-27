@@ -30,8 +30,10 @@ from app.domains.it_operations.models import (
     SupportTicket,
     TicketStatus,
 )
+from app.domains.it_operations.metrics import active_human_users_predicates
 from app.domains.it_operations.seed import seed_database
 from app.models.product import AccessScope, AppUser, UserAccessScope
+from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.services.home_overview import (
     OPERATIONAL_METRIC_DEPENDENCIES,
     read_operational_metrics,
@@ -135,6 +137,44 @@ def test_global_home_aggregates_and_transaction_local_context_do_not_leak(
         assert connection.scalar(
             text("SELECT current_setting('app.has_global_scope', true)")
         ) in {None, ""}
+
+
+def test_home_active_users_matches_catalog_metric_and_not_disabled_is_distinct(
+    postgres_engine: Engine,
+) -> None:
+    now = datetime.now(UTC)
+    with Session(postgres_engine) as session:
+        manager = _user_by_email(session, "demo.manager@queryops.local")
+        access_context = build_user_access_context(manager, session)
+        department_ids = {
+            scope.department_id
+            for scope in access_context.scopes
+            if scope.department_id is not None
+        }
+        canonical_count = session.scalar(
+            select(func.count(DirectoryUser.id)).where(
+                DirectoryUser.department_id.in_(department_ids),
+                *active_human_users_predicates(
+                    load_it_operations_domain_pack()
+                ),
+            )
+        )
+        literal_not_disabled_count = session.scalar(
+            select(func.count(DirectoryUser.id)).where(
+                DirectoryUser.department_id.in_(department_ids),
+                DirectoryUser.account_status != AccountStatus.DISABLED.value,
+            )
+        )
+
+        home = read_operational_metrics(
+            session,
+            access_context,
+            frozenset({"active_human_users"}),
+            now,
+        )
+
+    assert home.metrics.active_human_users == int(canonical_count or 0)
+    assert int(literal_not_disabled_count or 0) != int(canonical_count or 0)
 
 
 def _expected_metrics(

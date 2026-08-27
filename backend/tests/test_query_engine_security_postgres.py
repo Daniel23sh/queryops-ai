@@ -15,7 +15,6 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.api.routes.queries import get_query_engine_service
-from app.auth.access_context import build_user_access_context
 from app.db.base import Base
 from app.db.session import get_db
 from app.domains.it_operations.models import Department
@@ -25,6 +24,12 @@ from app.models.product import AppUser, QueryRun
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.llm_provider import SQLGenerationResult
 from app.query_engine.runtime_role import QUERY_RUNTIME_ROLE
+from app.query_engine.semantic_conformance import SemanticConformanceResult
+from app.query_engine.semantic_plan import (
+    SemanticFieldRef,
+    SemanticOrderIntent,
+    SemanticPlan,
+)
 from app.query_engine.service import QueryEngineRequest, QueryEngineService
 
 
@@ -51,11 +56,12 @@ def test_service_path_executes_as_runtime_role_not_table_owner(
             provider=StaticSQLProvider(
                 "SELECT current_user AS runtime_user, id, name "
                 "FROM departments ORDER BY name LIMIT 1"
-            )
+            ),
+            conformance_checker=_allow_semantic_conformance,
         ).run(
             session,
             admin,
-            QueryEngineRequest(question="Which runtime role executes queries?"),
+            QueryEngineRequest(question="Which department runtime role executes queries?"),
         )
         query_run = latest_query_run(session, admin)
 
@@ -79,7 +85,8 @@ def test_analyst_cross_department_filter_still_returns_no_rows_under_rls(
                 "SELECT id, department_id, email "
                 f"FROM directory_users WHERE department_id = '{finance_id}' "
                 "ORDER BY email"
-            )
+            ),
+            conformance_checker=_allow_semantic_conformance,
         ).run(
             session,
             analyst,
@@ -107,7 +114,7 @@ def test_manager_api_audit_table_failure_does_not_leak_sql_or_table_name(
         response = client.post(
             "/api/v1/queries/run",
             headers={"X-CSRF-Token": csrf_token},
-            json={"question": "Show audit events."},
+            json={"question": "Show directory users while attempting audit events."},
         )
     finally:
         app.dependency_overrides.pop(get_query_engine_service, None)
@@ -191,7 +198,67 @@ class StaticSQLProvider:
             provider_name=self.provider_name,
             model_name=self.model_name,
             generation_metadata={"source": "security_postgres_test"},
+            semantic_plan=_security_postgres_plan(self.generated_sql),
         )
+
+
+def _security_postgres_plan(sql: str) -> SemanticPlan:
+    if "FROM departments" in sql:
+        entity_id = "departments"
+        output_columns = ("id", "name")
+        order_columns = ("name",)
+        limit = 1
+    elif "FROM directory_users" in sql:
+        entity_id = "directory_users"
+        output_columns = ("id", "department_id", "email")
+        order_columns = ("email",)
+        limit = None
+    else:
+        # Restricted-table SQL is intentionally paired with an authorized plan so
+        # this regression reaches the independent SQL safety boundary.
+        entity_id = "directory_users"
+        output_columns = ("id",)
+        order_columns = ()
+        limit = None
+    return SemanticPlan(
+        entity_ids=(entity_id,),
+        concept_ids=(),
+        composition_rule_ids=(),
+        metric_id=None,
+        distinct=False,
+        literal_filters=(),
+        relationships=(),
+        output_fields=tuple(
+            SemanticFieldRef(entity_id=entity_id, column=column)
+            for column in output_columns
+        ),
+        aggregations=(),
+        group_by=(),
+        having=(),
+        order_by=tuple(
+            SemanticOrderIntent(
+                target_kind="field",
+                field=SemanticFieldRef(entity_id=entity_id, column=column),
+                aggregation_id=None,
+                direction="asc",
+            )
+            for column in order_columns
+        ),
+        limit=limit,
+    )
+
+
+def _allow_semantic_conformance(**_kwargs: Any) -> SemanticConformanceResult:
+    """Keep legacy runtime-role/RLS probes independent of semantic SQL checks."""
+
+    return SemanticConformanceResult(
+        valid=True,
+        reason_code=None,
+        checked_entity_count=1,
+        checked_predicate_count=0,
+        checked_relationship_count=0,
+        checked_aggregation_count=0,
+    )
 
 
 def login(client: TestClient, email: str) -> str:

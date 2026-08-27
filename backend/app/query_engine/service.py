@@ -34,6 +34,15 @@ from app.query_engine.semantic_catalog import (
     build_semantic_catalog_projection,
     safe_semantic_catalog_observation,
 )
+from app.query_engine.semantic_conformance import (
+    SemanticConformanceResult,
+    check_semantic_conformance,
+)
+from app.query_engine.semantic_plan import (
+    SemanticPlanValidationError,
+    ValidatedSemanticPlan,
+    validate_semantic_plan,
+)
 from app.query_engine.sql_executor import (
     SQLExecutionOptions,
     SQLExecutionResult,
@@ -45,6 +54,7 @@ from app.query_engine.template_sql import render_template_sql
 
 
 VALIDATION_FAILURE_CODE = "validation_failed"
+SEMANTIC_CONFORMANCE_FAILURE_CODE = "semantic_conformance_failed"
 TEMPLATE_NOT_FOUND_MESSAGE = "Query template was not found."
 TEMPLATE_PARAMETER_MESSAGE = "Query template parameters are not supported safely."
 UNSAFE_REQUEST_MESSAGE = "The request is not allowed for safe read-only querying."
@@ -67,6 +77,18 @@ ValidatorCallable = Callable[[str, dict[str, Any]], SQLValidationResult]
 DomainPackLoaderCallable = Callable[[], DomainPack]
 
 
+class SemanticConformanceCallable(Protocol):
+    def __call__(
+        self,
+        *,
+        plan: ValidatedSemanticPlan,
+        candidate_sql: str,
+        safety_result: SQLValidationResult,
+        domain_pack: DomainPack,
+        schema_context: dict[str, Any],
+    ) -> SemanticConformanceResult: ...
+
+
 @dataclass(frozen=True)
 class QueryEngineRequest:
     question: str
@@ -84,11 +106,13 @@ class QueryEngineService:
         executor: SQLExecutorCallable = execute_validated_sql,
         validator: ValidatorCallable = validate_sql,
         domain_pack_loader: DomainPackLoaderCallable = load_it_operations_domain_pack,
+        conformance_checker: SemanticConformanceCallable = check_semantic_conformance,
     ) -> None:
         self._provider = provider
         self._executor = executor
         self._validator = validator
         self._domain_pack_loader = domain_pack_loader
+        self._conformance_checker = conformance_checker
 
     def run(
         self,
@@ -151,6 +175,36 @@ class QueryEngineService:
                 metadata=query_run.query_metadata,
             )
 
+        if generation_result.generation_failed:
+            public_error = generation_result.safe_error or QUERY_RESULT_FAILURE_MESSAGE
+            error_code = (
+                generation_result.unsupported_reason or "provider_response_invalid"
+            )
+            query_run = self._persist_query_run(
+                db,
+                user,
+                request,
+                RunStatus.FAILED.value,
+                started_at=started_at,
+                generated_sql=None,
+                executed_sql=None,
+                row_count=0,
+                duration_ms=0,
+                error_message=public_error,
+                metadata={
+                    **metadata,
+                    "clarification_required": False,
+                },
+            )
+            return format_query_result(
+                status="failed",
+                query_run_id=str(query_run.id),
+                public_error=public_error,
+                error_code=error_code,
+                clarification_required=False,
+                metadata=query_run.query_metadata,
+            )
+
         if generation_result.clarification_required or not generation_result.generated_sql:
             public_error = generation_result.safe_error or QUERY_RESULT_CLARIFICATION_MESSAGE
             query_run = self._persist_query_run(
@@ -181,10 +235,8 @@ class QueryEngineService:
                 metadata=query_run.query_metadata,
             )
 
-        validation_result = self._validator(
-            generation_result.generated_sql,
-            schema_context,
-        )
+        candidate_sql = generation_result.generated_sql
+        validation_result = self._validator(candidate_sql, schema_context)
         metadata = {
             **metadata,
             "referenced_tables": sorted(validation_result.referenced_tables),
@@ -213,6 +265,7 @@ class QueryEngineService:
                     ),
                 }
                 validation_result = corrected_validation_result
+                candidate_sql = corrected_sql
 
             if not validation_result.valid or validation_result.sanitized_sql is None:
                 public_error = validation_result.public_error or QUERY_RESULT_FAILURE_MESSAGE
@@ -234,6 +287,45 @@ class QueryEngineService:
                     query_run_id=str(query_run.id),
                     public_error=public_error,
                     error_code=VALIDATION_FAILURE_CODE,
+                    metadata=query_run.query_metadata,
+                )
+
+        if (
+            request.template_id is None
+            and generation_result.validated_semantic_plan is not None
+        ):
+            conformance_result = self._conformance_checker(
+                plan=generation_result.validated_semantic_plan,
+                candidate_sql=candidate_sql,
+                safety_result=validation_result,
+                domain_pack=domain_pack,
+                schema_context=schema_context,
+            )
+            metadata = {
+                **metadata,
+                "semantic_conformance": conformance_result.as_observation(),
+                "repair_attempted": False,
+            }
+            if not conformance_result.valid:
+                public_error = "Generated query did not match the requested semantics."
+                query_run = self._persist_query_run(
+                    db,
+                    user,
+                    request,
+                    RunStatus.FAILED.value,
+                    started_at=started_at,
+                    generated_sql=generation_result.generated_sql,
+                    executed_sql=None,
+                    row_count=0,
+                    duration_ms=0,
+                    error_message=public_error,
+                    metadata=metadata,
+                )
+                return format_query_result(
+                    status="failed",
+                    query_run_id=str(query_run.id),
+                    public_error=public_error,
+                    error_code=SEMANTIC_CONFORMANCE_FAILURE_CODE,
                     metadata=query_run.query_metadata,
                 )
 
@@ -311,11 +403,67 @@ class QueryEngineService:
             schema_context,
             user_context,
         )
-        return generator.generate_sql(
+        generation_result = generator.generate_sql(
             request.question,
             schema_context,
             user_context,
             {"semantic_catalog": semantic_projection},
+        )
+        generation_result = replace(
+            generation_result,
+            generation_metadata={
+                **generation_result.generation_metadata,
+                "semantic_catalog": semantic_projection.as_observation(),
+                "semantic_grounding": {
+                    "status": "selected" if semantic_projection.entities else "no_anchor",
+                    **semantic_projection.as_observation(),
+                },
+                "repair_attempted": False,
+            },
+        )
+        if (
+            generation_result.outcome is not SQLGenerationOutcome.SQL
+            or generation_result.semantic_plan is None
+        ):
+            return generation_result
+        try:
+            validated_plan = validate_semantic_plan(
+                generation_result.semantic_plan,
+                domain_pack=domain_pack,
+                projection=semantic_projection,
+                schema_context=schema_context,
+                scope_reference_resolved=user_context["scope_reference_resolved"]
+                is True,
+            )
+        except SemanticPlanValidationError as exc:
+            return replace(
+                generation_result,
+                generated_sql=None,
+                outcome=SQLGenerationOutcome.CLARIFICATION,
+                generation_metadata={
+                    **generation_result.generation_metadata,
+                    "provider_failure_code": "provider_response_invalid",
+                    "provider_failure_fatal": False,
+                    "semantic_plan_validation": {
+                        "status": "failed",
+                        "reason_code": exc.reason,
+                    },
+                },
+                semantic_plan=None,
+                validated_semantic_plan=None,
+                unsupported_reason="provider_response_invalid",
+                safe_error="SQL generation is unavailable.",
+            )
+        return replace(
+            generation_result,
+            validated_semantic_plan=validated_plan,
+            generation_metadata={
+                **generation_result.generation_metadata,
+                "semantic_plan_validation": {
+                    "status": "passed",
+                    "reason_code": None,
+                },
+            },
         )
 
     def _persist_query_run(
@@ -453,12 +601,44 @@ def _base_metadata(
     )
     if catalog_observation is not None:
         metadata["semantic_catalog"] = catalog_observation
+    if generation_result.validated_semantic_plan is not None:
+        metadata["semantic_plan"] = (
+            generation_result.validated_semantic_plan.as_observation()
+        )
+    grounding_observation = safe_semantic_catalog_observation(
+        generation_metadata.get("semantic_grounding")
+    )
+    grounding_value = generation_metadata.get("semantic_grounding")
+    if grounding_observation is not None and isinstance(grounding_value, dict):
+        status = grounding_value.get("status")
+        if status in {"selected", "no_anchor", "failed"}:
+            metadata["semantic_grounding"] = {
+                "status": status,
+                **grounding_observation,
+            }
+    plan_validation = generation_metadata.get("semantic_plan_validation")
+    if isinstance(plan_validation, dict):
+        status = plan_validation.get("status")
+        reason_code = plan_validation.get("reason_code")
+        if status in {"passed", "failed"} and (
+            reason_code is None
+            or (
+                isinstance(reason_code, str)
+                and re.fullmatch(r"[a-z][a-z0-9_]{0,127}", reason_code)
+            )
+        ):
+            metadata["semantic_plan_validation"] = {
+                "status": status,
+                "reason_code": reason_code,
+            }
+    metadata["repair_attempted"] = False
     failure_code = generation_metadata.get("provider_failure_code")
     if isinstance(failure_code, str) and failure_code in {
         "provider_authentication_failed",
         "provider_timeout",
         "provider_unavailable",
         "provider_response_invalid",
+        "provider_refusal",
     }:
         metadata["provider_failure_code"] = failure_code
         metadata["provider_failure_fatal"] = (
@@ -500,7 +680,13 @@ def _deterministic_sql_correction(
 
     table_name = match.group("table")
     rest = match.group("rest")
-    if re.search(r"\bjoin\b|,", rest, flags=re.IGNORECASE):
+    from_tail = re.split(
+        r"\b(?:where|group\s+by|having|order\s+by|limit)\b",
+        rest,
+        maxsplit=1,
+        flags=re.IGNORECASE,
+    )[0]
+    if re.search(r"\bjoin\b|,", from_tail, flags=re.IGNORECASE):
         return None
 
     columns = _allowed_columns_for_correction(table_name, schema_context)

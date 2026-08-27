@@ -6,6 +6,7 @@ import pytest
 
 from app.query_engine.llm_provider import SQLGenerationOutcome, SQLGenerationResult
 from app.query_engine.mock_llm_provider import MockLLMProvider
+from app.query_engine.semantic_plan import SemanticFieldRef, SemanticPlan
 from app.query_engine.sql_generator import SQLGenerator
 
 
@@ -18,6 +19,23 @@ USER_CONTEXT = {
     "scope_type": "department",
     "scope_key": "it",
 }
+STATIC_PLAN = SemanticPlan(
+    entity_ids=("directory_users",),
+    concept_ids=(),
+    composition_rule_ids=(),
+    metric_id=None,
+    distinct=False,
+    literal_filters=(),
+    relationships=(),
+    output_fields=(
+        SemanticFieldRef(entity_id="directory_users", column="id"),
+    ),
+    aggregations=(),
+    group_by=(),
+    having=(),
+    order_by=(),
+    limit=None,
+)
 
 
 def test_sql_generator_returns_structured_result_for_known_template() -> None:
@@ -183,6 +201,7 @@ class _StaticProvider:
             provider_name=self.provider_name,
             model_name=self.model_name,
             generation_metadata={"question": question},
+            semantic_plan=STATIC_PLAN,
         )
 
 

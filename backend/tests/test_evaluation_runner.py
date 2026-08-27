@@ -479,6 +479,148 @@ def test_unsafe_error_code_cannot_hide_an_execution_attempt() -> None:
     assert classified.query_execution_attempted is True
 
 
+def test_semantic_conformance_failure_is_attributed_without_execution() -> None:
+    classified = _classify_query_result(
+        QueryEngineServiceResult(
+            status="failed",
+            query_run_id=None,
+            error_code="semantic_conformance_failed",
+            metadata={
+                "provider": "mock",
+                "model": "mock-queryops-v1",
+                "referenced_tables": ["directory_users"],
+                "semantic_conformance": {
+                    "status": "failed",
+                    "reason_code": "semantic_predicate_missing",
+                    "checked_entity_count": 1,
+                    "checked_predicate_count": 3,
+                    "checked_relationship_count": 0,
+                    "checked_aggregation_count": 1,
+                },
+                "raw_prompt": "must-not-persist",
+            },
+        )
+    )
+
+    assert classified.actual_outcome.value == "execution_failed"
+    assert classified.execution_succeeded is False
+    assert classified.query_execution_attempted is False
+    assert classified.failure_stage == "semantic_conformance"
+    assert classified.stage_reason_code == "semantic_predicate_missing"
+    assert classified.actual_rows == ()
+
+
+def test_runner_persists_only_controlled_conformance_stage_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory = _sqlite_session_factory()
+    evaluation_set = EvaluationSet(
+        dataset_id="it_operations_v1",
+        domain_id="it_operations",
+        version="1",
+        cases=(_small_evaluation_set().cases[0],),
+    )
+
+    class ConformanceFailureService:
+        def run(self, _db, _user, _request):
+            return QueryEngineServiceResult(
+                status="failed",
+                query_run_id=None,
+                error_code="semantic_conformance_failed",
+                metadata={
+                    "provider": "mock",
+                    "model": "mock-queryops-v1",
+                    "referenced_tables": ["devices"],
+                    "semantic_conformance": {
+                        "status": "failed",
+                        "reason_code": "semantic_predicate_missing",
+                        "raw_sql": "must-not-persist",
+                    },
+                    "literal_filter_value": "must-not-persist",
+                },
+            )
+
+    runner = EvaluationRunner(
+        session_factory,
+        dataset_loader=lambda: evaluation_set,
+        query_service_factory=lambda _pack: ConformanceFailureService(),
+    )
+    monkeypatch.setattr(runner, "_verify_prerequisites", lambda _cases: None)
+    monkeypatch.setattr(
+        "app.evaluation.runner.resolve_evaluation_identity",
+        lambda _db, case: _identity(case.requesting_role),
+    )
+    monkeypatch.setattr(
+        "app.evaluation.runner.execute_evaluation_baseline",
+        lambda *_args, **_kwargs: _Baseline(({"id": "secret-row"},)),
+    )
+
+    summary = runner.run()
+
+    assert summary.failed_count == 1
+    with session_factory() as db:
+        persisted = db.scalar(select(EvaluationResult))
+    assert persisted is not None
+    assert persisted.metrics["failure_stage"] == "semantic_conformance"
+    assert persisted.metrics["stage_reason_code"] == "semantic_predicate_missing"
+    assert persisted.metrics["query_execution_attempted"] is False
+    serialized = repr((persisted.actual_output, persisted.metrics))
+    assert "must-not-persist" not in serialized
+    assert "secret-row" not in serialized
+
+
+def test_successful_execution_result_mismatch_is_attributed_to_comparison(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory = _sqlite_session_factory()
+    evaluation_set = EvaluationSet(
+        dataset_id="it_operations_v1",
+        domain_id="it_operations",
+        version="1",
+        cases=(_small_evaluation_set().cases[0],),
+    )
+
+    class WrongResultService:
+        def run(self, _db, _user, _request):
+            return QueryEngineServiceResult(
+                status="succeeded",
+                query_run_id=None,
+                rows=[{"id": "different-row"}],
+                row_count=1,
+                metadata={
+                    "provider": "mock",
+                    "model": "mock-queryops-v1",
+                    "referenced_tables": ["devices"],
+                    "execution": {"status": "succeeded"},
+                },
+            )
+
+    runner = EvaluationRunner(
+        session_factory,
+        dataset_loader=lambda: evaluation_set,
+        query_service_factory=lambda _pack: WrongResultService(),
+    )
+    monkeypatch.setattr(runner, "_verify_prerequisites", lambda _cases: None)
+    monkeypatch.setattr(
+        "app.evaluation.runner.resolve_evaluation_identity",
+        lambda _db, case: _identity(case.requesting_role),
+    )
+    monkeypatch.setattr(
+        "app.evaluation.runner.execute_evaluation_baseline",
+        lambda *_args, **_kwargs: _Baseline(({"id": "expected-row"},)),
+    )
+
+    summary = runner.run()
+
+    assert summary.failed_count == 1
+    with session_factory() as db:
+        persisted = db.scalar(select(EvaluationResult))
+    assert persisted is not None
+    assert persisted.metrics["failure_stage"] == "result_comparison"
+    assert persisted.metrics["query_execution_attempted"] is True
+    assert "different-row" not in repr((persisted.actual_output, persisted.metrics))
+
+
 def test_runner_persists_real_provider_identity_and_aggregates_safe_usage(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -565,7 +707,7 @@ def test_runner_persists_real_provider_identity_and_aggregates_safe_usage(
     assert run.summary["evaluation_environment"] == summary.evaluation_environment
     assert summary.semantic_catalog == {
         "catalog_id": "it_operations_semantic_catalog",
-        "catalog_version": "2",
+        "catalog_version": "3",
         "catalog_hash": load_it_operations_domain_pack().semantic_catalog.digest,
     }
     assert summary.evaluation_environment == _environment_identity().as_dict()

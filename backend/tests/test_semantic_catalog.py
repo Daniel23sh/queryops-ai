@@ -17,6 +17,7 @@ from app.query_engine.errors import DomainPackValidationError
 from app.query_engine.semantic_catalog import (
     MAX_SEMANTIC_PROJECTION_BYTES,
     build_semantic_catalog_projection,
+    effective_semantic_predicates,
     safe_semantic_catalog_observation,
 )
 from app.query_engine.semantic_catalog_loader import parse_semantic_catalog
@@ -70,7 +71,15 @@ FREE_QUERY_SEMANTIC_COVERAGE: dict[str, tuple[set[str], set[str]]] = {
     "itops-medium-006": ({"privileged_group"}, set()),
     "itops-medium-007": ({"open_support_ticket_older_than_30_days"}, set()),
     "itops-medium-008": ({"failed_login_within_30_days"}, set()),
-    "itops-medium-009": ({"non_compliant_device", "outdated_software_install"}, set()),
+    "itops-medium-009": (
+        {
+            "antivirus_attention_device",
+            "non_compliant_device",
+            "outdated_software_install",
+            "unencrypted_device",
+        },
+        {"non_compliant_device_posture"},
+    ),
     "itops-medium-010": ({"active_exception_license_assignment"}, set()),
     "itops-medium-011": ({"terminated_employee_with_active_account"}, set()),
     "itops-medium-012": (set(), set()),
@@ -93,7 +102,7 @@ def test_it_operations_catalog_loads_with_versioned_identity_and_cache() -> None
 
     assert first is second
     assert catalog.id == "it_operations_semantic_catalog"
-    assert catalog.version == "2"
+    assert catalog.version == "3"
     assert catalog.domain_id == "it_operations"
     assert catalog.dataset_id == "it_operations_v1"
     assert len(catalog.digest) == 64
@@ -102,20 +111,25 @@ def test_it_operations_catalog_loads_with_versioned_identity_and_cache() -> None
 
 
 def test_active_human_directory_user_has_verified_business_predicates() -> None:
-    concept = load_it_operations_domain_pack().semantic_catalog.concepts_by_id[
+    catalog = load_it_operations_domain_pack().semantic_catalog
+    concept = catalog.concepts_by_id[
         "active_human_directory_user"
     ]
 
     assert {
         (predicate.column, predicate.operator.value, predicate.value)
-        for predicate in concept.required_predicates
+        for predicate in effective_semantic_predicates(catalog, (concept.id,))
     } == {
         ("account_type", "equals", "human"),
         ("employee_status", "equals", "active"),
         ("account_status", "equals", "active"),
     }
-    assert concept.aggregation is not None
-    assert concept.aggregation.function == "count"
+    assert concept.all_of_concept_ids == (
+        "active_directory_account",
+        "active_employee",
+        "human_directory_user",
+    )
+    assert catalog.metrics_by_id["active_human_users"].aggregation.function == "count"
 
 
 def test_projection_selects_relevant_semantics_and_resolved_rls_guidance() -> None:
@@ -146,10 +160,20 @@ def test_projection_selects_relevant_semantics_and_resolved_rls_guidance() -> No
 
     assert projected == second.as_prompt_dict()
     assert [item["id"] for item in projected["entities"]] == ["directory_users"]
-    assert [item["id"] for item in projected["concepts"]] == [
-        "active_human_directory_user"
+    concepts = {item["id"]: item for item in projected["concepts"]}
+    assert {
+        "active_human_directory_user",
+        "active_directory_account",
+        "active_employee",
+        "human_directory_user",
+    } <= set(concepts)
+    predicates = [
+        predicate
+        for concept_id in concepts["active_human_directory_user"][
+            "all_of_concept_ids"
+        ]
+        for predicate in concepts[concept_id]["required_predicates"]
     ]
-    predicates = projected["concepts"][0]["required_predicates"]
     assert {
         (item["column"], item["operator"], item["value"])
         for item in predicates
@@ -458,6 +482,8 @@ def test_catalog_digest_is_canonical_and_changes_with_semantics() -> None:
     reordered["composition_rules"] = list(
         reversed(reordered["composition_rules"])
     )
+    reordered["metrics"] = list(reversed(reordered["metrics"]))
+    reordered["examples"] = list(reversed(reordered["examples"]))
     reordered["restricted_tables"] = list(reversed(reordered["restricted_tables"]))
     for entity in reordered["entities"]:
         entity["natural_language_references"] = list(
@@ -471,7 +497,10 @@ def test_catalog_digest_is_canonical_and_changes_with_semantics() -> None:
             reversed(concept["natural_language_references"])
         )
         concept["required_predicates"] = list(
-            reversed(concept["required_predicates"])
+            reversed(concept.get("required_predicates", []))
+        )
+        concept["all_of_concept_ids"] = list(
+            reversed(concept.get("all_of_concept_ids", []))
         )
         concept["supersedes"] = list(reversed(concept.get("supersedes", [])))
         for predicate in concept["required_predicates"]:
@@ -517,19 +546,19 @@ def test_catalog_observation_accepts_only_fixed_safe_identity_shape() -> None:
     [
         (lambda value: value["entities"][0].update(table="missing_table"), "unknown table"),
         (
-            lambda value: value["concepts"][0]["required_predicates"][0].update(
+            lambda value: _first_predicate_concept(value)["required_predicates"][0].update(
                 column="missing_column"
             ),
             "unknown column",
         ),
         (
-            lambda value: value["concepts"][0]["required_predicates"][0].update(
+            lambda value: _first_predicate_concept(value)["required_predicates"][0].update(
                 operator="contains"
             ),
             "Unsupported semantic predicate operator",
         ),
         (
-            lambda value: value["concepts"][0]["required_predicates"][0].update(
+            lambda value: _first_predicate_concept(value)["required_predicates"][0].update(
                 value=["human"]
             ),
             "must be scalar",
@@ -565,7 +594,7 @@ def test_catalog_observation_accepts_only_fixed_safe_identity_shape() -> None:
             "unknown scope entity",
         ),
         (
-            lambda value: value["concepts"][0]["required_predicates"][0].update(
+            lambda value: _first_predicate_concept(value)["required_predicates"][0].update(
                 operator="within_last_days",
                 value=30,
             ),
@@ -634,6 +663,14 @@ def _catalog_document() -> dict[str, Any]:
     loaded = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
     assert isinstance(loaded, dict)
     return loaded
+
+
+def _first_predicate_concept(document: dict[str, Any]) -> dict[str, Any]:
+    return next(
+        concept
+        for concept in document["concepts"]
+        if concept.get("required_predicates")
+    )
 
 
 def _parse(document: dict[str, Any]) -> Any:
