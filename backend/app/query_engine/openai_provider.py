@@ -71,10 +71,13 @@ ambiguous interpretation, return clarification instead of silently weakening or
 replacing them. Other projected candidates are optional context, not hidden
 filters.
 Select a canonical metric only when the wording invokes that named business
-measure. Represent an explicit comparison that is not a named concept, such as
-an account status that is not disabled, as a literal_filter; do not broaden it
-into active-human-user semantics. The semantic_plan and SQL must describe the
-same interpretation.
+measure. Set metric_id to that metric and do not add or restate its count or sum
+in aggregations. V1 canonical metrics are scalar: leave output_fields,
+aggregations, group_by, having, and order_by empty and limit null, while the SQL
+still implements the metric definition. Represent an explicit comparison that
+is not a named concept, such as an account status that is not disabled, as a
+literal_filter; do not broaden it into active-human-user semantics. The
+semantic_plan and SQL must describe the same interpretation.
 Composition rules are also mandatory. Combine all_of_concept_ids conjunctively.
 For or_concept_ids, represent every listed branch and combine those branches with
 SQL OR; never select only one branch or combine the branches with AND.

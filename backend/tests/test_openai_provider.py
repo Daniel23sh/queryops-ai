@@ -443,6 +443,14 @@ def test_active_human_semantic_catalog_requires_all_business_predicates() -> Non
     assert "combine all_of_concept_ids conjunctively" in instructions
     assert "combine those branches with sql or" in instructions
     assert "never select only one branch" in instructions
+    assert "set metric_id to that metric" in instructions
+    assert "do not add or restate its count or sum in aggregations" in instructions
+    assert (
+        "leave output_fields, aggregations, group_by, having, and order_by empty"
+        in instructions
+    )
+    assert "limit null" in instructions
+    assert "sql still implements the metric definition" in instructions
     assert result.generation_metadata["semantic_catalog"] == (
         semantic_projection.as_observation()
     )
