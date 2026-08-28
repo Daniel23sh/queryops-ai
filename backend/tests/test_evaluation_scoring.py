@@ -123,7 +123,7 @@ def test_grouped_alias_relaxation_preserves_row_shape_and_null_semantics() -> No
     assert extra.failure_reasons == ("row_count_mismatch",)
 
 
-def test_alias_relaxation_is_not_global_for_ordinary_tabular_modes() -> None:
+def test_ordinary_field_alias_without_provenance_remains_strict() -> None:
     case = replace(_successful_case(), comparison_mode=ComparisonMode.UNORDERED_ROWS)
 
     score = _score(case, [{"active_user_count": 7}], [{"renamed_count": 7}])
@@ -258,6 +258,177 @@ def test_stable_alias_without_provenance_remains_fail_closed() -> None:
     assert score.failure_reasons == ("missing_stable_key",)
 
 
+def test_provenance_matches_ordinary_field_aliases_by_canonical_identity() -> None:
+    case = load_it_operations_evaluation_set().cases_by_id["itops-medium-006"]
+    expected_sql = (
+        "SELECT departments.name AS department_name, "
+        "COUNT(DISTINCT directory_users.id) AS user_count "
+        "FROM departments JOIN directory_users "
+        "ON directory_users.department_id = departments.id "
+        "GROUP BY departments.name ORDER BY departments.name"
+    )
+    actual_sql = (
+        "SELECT departments.name AS name, "
+        "COUNT(DISTINCT directory_users.id) AS user_count "
+        "FROM departments JOIN directory_users "
+        "ON directory_users.department_id = departments.id "
+        "GROUP BY departments.name"
+    )
+
+    score = _score(
+        case,
+        [
+            {"department_name": "Finance", "user_count": 4},
+            {"department_name": "Security", "user_count": 3},
+        ],
+        [
+            {"name": "Security", "user_count": 3},
+            {"name": "Finance", "user_count": 4},
+        ],
+        provenance=_provenance(expected_sql, actual_sql),
+    )
+
+    assert score.passed is True
+
+
+def test_same_alias_with_different_canonical_field_fails() -> None:
+    case = replace(_successful_case(), comparison_mode=ComparisonMode.UNORDERED_ROWS)
+    provenance = _provenance(
+        "SELECT departments.name AS label FROM departments CROSS JOIN groups",
+        "SELECT groups.name AS label FROM departments CROSS JOIN groups",
+    )
+
+    score = _score(
+        case,
+        [{"label": "Operations"}],
+        [{"label": "Operations"}],
+        provenance=provenance,
+    )
+
+    assert score.result_correct is False
+
+
+def test_different_aliases_with_different_canonical_fields_fail() -> None:
+    case = replace(_successful_case(), comparison_mode=ComparisonMode.UNORDERED_ROWS)
+    provenance = _provenance(
+        "SELECT departments.name AS department_name "
+        "FROM departments CROSS JOIN groups",
+        "SELECT groups.name AS group_name FROM departments CROSS JOIN groups",
+    )
+
+    score = _score(
+        case,
+        [{"department_name": "Operations"}],
+        [{"group_name": "Operations"}],
+        provenance=provenance,
+    )
+
+    assert score.result_correct is False
+
+
+def test_ambiguous_duplicate_canonical_field_aliases_fail_closed() -> None:
+    case = replace(_successful_case(), comparison_mode=ComparisonMode.UNORDERED_ROWS)
+    provenance = _provenance(
+        "SELECT departments.name AS department_name FROM departments",
+        "SELECT departments.name AS name, departments.name AS label FROM departments",
+    )
+
+    score = _score(
+        case,
+        [{"department_name": "Operations"}],
+        [{"name": "Operations", "label": "Operations"}],
+        provenance=provenance,
+    )
+
+    assert score.result_correct is False
+
+
+def test_unauthorized_ordinary_field_cannot_use_canonical_alias_mapping() -> None:
+    case = replace(_successful_case(), comparison_mode=ComparisonMode.UNORDERED_ROWS)
+    provenance = _provenance(
+        "SELECT departments.name AS department_name FROM departments",
+        "SELECT departments.name AS name FROM departments",
+    )
+    assert provenance.expected is not None
+    assert provenance.actual is not None
+    expected_unauthorized = replace(
+        provenance,
+        expected=replace(
+            provenance.expected,
+            outputs=(replace(provenance.expected.outputs[0], authorized=False),),
+        ),
+    )
+    actual_unauthorized = replace(
+        provenance,
+        actual=replace(
+            provenance.actual,
+            outputs=(replace(provenance.actual.outputs[0], authorized=False),),
+        ),
+    )
+
+    for unauthorized_provenance in (expected_unauthorized, actual_unauthorized):
+        score = _score(
+            case,
+            [{"department_name": "Operations"}],
+            [{"name": "Operations"}],
+            provenance=unauthorized_provenance,
+        )
+
+        assert score.result_correct is False
+
+
+def test_unverified_ordinary_field_alias_mapping_fails_closed() -> None:
+    case = replace(_successful_case(), comparison_mode=ComparisonMode.UNORDERED_ROWS)
+    provenance = _provenance(
+        "SELECT departments.name AS department_name FROM departments",
+        "SELECT departments.name AS name FROM departments",
+        validated=False,
+    )
+
+    score = _score(
+        case,
+        [{"department_name": "Operations"}],
+        [{"name": "Operations"}],
+        provenance=provenance,
+    )
+
+    assert score.result_correct is False
+
+
+def test_ordinary_field_alias_mapping_requires_equal_row_grain() -> None:
+    case = replace(_successful_case(), comparison_mode=ComparisonMode.UNORDERED_ROWS)
+    provenance = _provenance(
+        "SELECT departments.name AS department_name FROM departments",
+        "SELECT departments.name AS name FROM departments GROUP BY departments.name",
+    )
+
+    score = _score(
+        case,
+        [{"department_name": "Operations"}],
+        [{"name": "Operations"}],
+        provenance=provenance,
+    )
+
+    assert score.result_correct is False
+
+
+def test_ordinary_field_alias_mapping_still_compares_values() -> None:
+    case = replace(_successful_case(), comparison_mode=ComparisonMode.UNORDERED_ROWS)
+    provenance = _provenance(
+        "SELECT departments.name AS department_name FROM departments",
+        "SELECT departments.name AS name FROM departments",
+    )
+
+    score = _score(
+        case,
+        [{"department_name": "Operations"}],
+        [{"name": "Security"}],
+        provenance=provenance,
+    )
+
+    assert score.result_correct is False
+
+
 def test_provenance_matches_equivalent_grouped_aggregate_aliases() -> None:
     case = load_it_operations_evaluation_set().cases_by_id["itops-hard-009"]
     provenance = _provenance(
@@ -320,6 +491,32 @@ def test_provenance_does_not_equate_different_aggregation_targets() -> None:
         [{"id": "group-1", "item_count": 2}],
         [{"id": "group-1", "item_count": 2}],
         provenance=provenance,
+    )
+
+    assert score.result_correct is False
+
+
+def test_count_rows_and_count_field_remain_semantically_distinct() -> None:
+    case = load_it_operations_evaluation_set().cases_by_id["itops-medium-012"]
+    expected_sql = (
+        "SELECT departments.name, security_events.severity, COUNT(*) AS event_count "
+        "FROM departments JOIN security_events "
+        "ON security_events.department_id = departments.id "
+        "GROUP BY departments.name, security_events.severity"
+    )
+    actual_sql = (
+        "SELECT departments.name, security_events.severity, "
+        "COUNT(security_events.id) AS event_count "
+        "FROM departments LEFT JOIN security_events "
+        "ON security_events.department_id = departments.id "
+        "GROUP BY departments.name, security_events.severity"
+    )
+
+    score = _score(
+        case,
+        [{"name": "Operations", "severity": "high", "event_count": 2}],
+        [{"name": "Operations", "severity": "high", "event_count": 2}],
+        provenance=_provenance(expected_sql, actual_sql),
     )
 
     assert score.result_correct is False

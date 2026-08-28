@@ -17,6 +17,7 @@ from app.evaluation.contracts import (
     EvaluationOutputProvenance,
     EvaluationQueryProvenance,
     ExpectedOutcome,
+    ProvenanceAuthorizationEvidence,
 )
 
 
@@ -263,6 +264,7 @@ def _canonicalize_tabular_rows(
     expected_provenance: EvaluationQueryProvenance,
     actual_provenance: EvaluationQueryProvenance,
 ) -> tuple[list[dict[Any, Any]], list[dict[Any, Any]]]:
+    expected_by_identity = _outputs_by_identity(expected_provenance.outputs)
     actual_by_identity = _outputs_by_identity(actual_provenance.outputs)
     actual_by_name = {
         output.presentation_name: output for output in actual_provenance.outputs
@@ -274,12 +276,18 @@ def _canonicalize_tabular_rows(
             candidates = actual_by_identity.get(expected_output.identity, ())
         else:
             candidate = actual_by_name.get(expected_output.presentation_name)
-            candidates = (
-                (candidate,)
-                if candidate is not None
-                and candidate.identity == expected_output.identity
-                else ()
-            )
+            if candidate is not None:
+                candidates = (
+                    (candidate,) if candidate.identity == expected_output.identity else ()
+                )
+            else:
+                candidates = _canonical_field_alias_candidates(
+                    expected_output,
+                    expected_by_identity,
+                    actual_by_identity,
+                    expected_provenance,
+                    actual_provenance,
+                )
         if len(candidates) != 1:
             raise _ProvenanceComparisonFailure()
         actual_output = candidates[0]
@@ -304,6 +312,45 @@ def _canonicalize_tabular_rows(
     if extras and _projection_collapses_distinct_rows(actual_rows, actual):
         raise _ProvenanceComparisonFailure()
     return expected, actual
+
+
+def _canonical_field_alias_candidates(
+    expected_output: EvaluationOutputProvenance,
+    expected_by_identity: Mapping[
+        CanonicalExpressionIdentity,
+        tuple[EvaluationOutputProvenance, ...],
+    ],
+    actual_by_identity: Mapping[
+        CanonicalExpressionIdentity,
+        tuple[EvaluationOutputProvenance, ...],
+    ],
+    expected_provenance: EvaluationQueryProvenance,
+    actual_provenance: EvaluationQueryProvenance,
+) -> tuple[EvaluationOutputProvenance, ...]:
+    if (
+        expected_output.identity.kind != "field"
+        or expected_output.authorized is not True
+        or not _has_validated_provenance(expected_provenance)
+        or not _has_validated_provenance(actual_provenance)
+    ):
+        return ()
+    expected_candidates = expected_by_identity.get(expected_output.identity, ())
+    actual_candidates = actual_by_identity.get(expected_output.identity, ())
+    if (
+        len(expected_candidates) != 1
+        or len(actual_candidates) != 1
+        or actual_candidates[0].identity.kind != "field"
+        or actual_candidates[0].authorized is not True
+    ):
+        return ()
+    return actual_candidates
+
+
+def _has_validated_provenance(provenance: EvaluationQueryProvenance) -> bool:
+    return provenance.authorization_evidence in {
+        ProvenanceAuthorizationEvidence.FROZEN_BASELINE_VALIDATED,
+        ProvenanceAuthorizationEvidence.FINAL_SQL_VALIDATED,
+    }
 
 
 def _require_unique_provenance(provenance: EvaluationQueryProvenance) -> None:
