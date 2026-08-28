@@ -15,6 +15,11 @@ from pydantic import (
 )
 
 from app.query_engine.domain_pack import DomainPack
+from app.query_engine.result_intent import (
+    GroundedAggregationIntent,
+    GroundedFieldIdentity,
+    GroundedResultIntent,
+)
 from app.query_engine.semantic_catalog import (
     SemanticCatalogProjection,
     SemanticPredicate,
@@ -371,6 +376,12 @@ def validate_semantic_plan(
             raise SemanticPlanValidationError("group_by_incomplete")
     if plan.group_by and not plan.aggregations:
         raise SemanticPlanValidationError("group_by_without_aggregation")
+    if projection.grounded_result_intent is not None:
+        _validate_grounded_result_intent(
+            plan,
+            projection.grounded_result_intent,
+            domain_pack,
+        )
     effective_predicates = tuple(
         sorted(
             (
@@ -451,6 +462,141 @@ def validate_semantic_plan(
         rule_all_of_concept_ids=tuple(sorted(rule_all_of)),
         rule_or_concept_groups=tuple(sorted(rule_or_groups)),
         metric_aggregation_function=metric_aggregation_function,
+    )
+
+
+def _validate_grounded_result_intent(
+    plan: SemanticPlan,
+    intent: GroundedResultIntent,
+    domain_pack: DomainPack,
+) -> None:
+    table_to_entity_id = {
+        entity.table: entity.id
+        for entity in domain_pack.semantic_catalog.entities
+    }
+    required_output_fields = _grounded_field_keys(
+        intent.required_output_fields,
+        table_to_entity_id,
+    )
+    plan_output_fields = {_field_key(field) for field in plan.output_fields}
+    if required_output_fields is None or not required_output_fields <= plan_output_fields:
+        raise SemanticPlanValidationError("required_output_missing")
+
+    if intent.aggregations:
+        expected_aggregations = _grounded_aggregation_keys(
+            intent.aggregations,
+            table_to_entity_id,
+        )
+        actual_aggregations = tuple(
+            sorted(
+                (_plan_aggregation_key(item) for item in plan.aggregations),
+                key=repr,
+            )
+        )
+        if expected_aggregations is None or expected_aggregations != actual_aggregations:
+            raise SemanticPlanValidationError("grounded_aggregation_mismatch")
+
+    if intent.group_by:
+        expected_group_by = _grounded_field_keys(
+            intent.group_by,
+            table_to_entity_id,
+        )
+        actual_group_by = {_field_key(field) for field in plan.group_by}
+        if expected_group_by is None or expected_group_by != actual_group_by:
+            raise SemanticPlanValidationError("grounded_group_by_mismatch")
+
+    if intent.having:
+        expected_aggregations_by_id = {
+            item.id: _grounded_aggregation_key(item, table_to_entity_id)
+            for item in intent.aggregations
+        }
+        actual_aggregations_by_id = {
+            item.id: _plan_aggregation_key(item) for item in plan.aggregations
+        }
+        expected_having = {
+            (
+                expected_aggregations_by_id[item.aggregation_id],
+                item.operator,
+                item.value,
+            )
+            for item in intent.having
+        }
+        actual_having = {
+            (
+                actual_aggregations_by_id.get(item.aggregation_id),
+                item.operator,
+                item.value,
+            )
+            for item in plan.having
+        }
+        if None in expected_aggregations_by_id.values() or expected_having != actual_having:
+            raise SemanticPlanValidationError("grounded_having_mismatch")
+
+    if intent.distinct is not None and plan.distinct is not intent.distinct:
+        raise SemanticPlanValidationError("grounded_distinct_mismatch")
+
+    if intent.row_grain is None:
+        return
+    grain_fields = _grounded_field_keys(
+        intent.row_grain.identity_fields,
+        table_to_entity_id,
+    )
+    if grain_fields is None:
+        raise SemanticPlanValidationError("result_grain_mismatch")
+    if intent.row_grain.mode == "grouped":
+        if grain_fields != {_field_key(field) for field in plan.group_by}:
+            raise SemanticPlanValidationError("result_grain_mismatch")
+        return
+    if plan.aggregations or plan.group_by or not grain_fields <= plan_output_fields:
+        raise SemanticPlanValidationError("result_grain_mismatch")
+
+
+def _grounded_field_keys(
+    fields: tuple[GroundedFieldIdentity, ...],
+    table_to_entity_id: Mapping[str, str],
+) -> set[tuple[str, str]] | None:
+    keys: set[tuple[str, str]] = set()
+    for field in fields:
+        entity_id = table_to_entity_id.get(field.table)
+        if entity_id is None:
+            return None
+        keys.add((entity_id, field.column))
+    return keys
+
+
+def _grounded_aggregation_keys(
+    aggregations: tuple[GroundedAggregationIntent, ...],
+    table_to_entity_id: Mapping[str, str],
+) -> tuple[tuple[str, tuple[str, str] | None, bool], ...] | None:
+    keys = [
+        _grounded_aggregation_key(item, table_to_entity_id)
+        for item in aggregations
+    ]
+    if any(item is None for item in keys):
+        return None
+    return tuple(sorted((item for item in keys if item is not None), key=repr))
+
+
+def _grounded_aggregation_key(
+    aggregation: GroundedAggregationIntent,
+    table_to_entity_id: Mapping[str, str],
+) -> tuple[str, tuple[str, str] | None, bool] | None:
+    field_key: tuple[str, str] | None = None
+    if aggregation.target_field is not None:
+        entity_id = table_to_entity_id.get(aggregation.target_field.table)
+        if entity_id is None:
+            return None
+        field_key = (entity_id, aggregation.target_field.column)
+    return aggregation.function, field_key, aggregation.distinct
+
+
+def _plan_aggregation_key(
+    aggregation: SemanticAggregationIntent,
+) -> tuple[str, tuple[str, str] | None, bool]:
+    return (
+        aggregation.function,
+        _field_key(aggregation.field) if aggregation.field is not None else None,
+        aggregation.distinct,
     )
 
 

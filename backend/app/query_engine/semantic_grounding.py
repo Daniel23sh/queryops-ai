@@ -4,9 +4,16 @@ import json
 import re
 from collections import deque
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Literal
 
 from app.query_engine.errors import DomainPackValidationError
+from app.query_engine.result_intent import (
+    GroundedAggregationIntent,
+    GroundedFieldIdentity,
+    GroundedHavingIntent,
+    GroundedResultIntent,
+    GroundedRowGrain,
+)
 from app.query_engine.semantic_catalog import (
     MAX_SEMANTIC_PROJECTION_BYTES,
     SemanticCatalog,
@@ -74,6 +81,52 @@ _CONTRACTIONS = (
     (re.compile(r"\baren't\b", re.IGNORECASE), "are not"),
     (re.compile(r"\bisn't\b", re.IGNORECASE), "is not"),
 )
+_DISPLAY_ATTRIBUTE_TOKENS = frozenset(
+    {
+        "cost",
+        "department",
+        "description",
+        "email",
+        "hostname",
+        "model",
+        "name",
+        "owner",
+        "product",
+        "title",
+        "vendor",
+    }
+)
+_COLUMN_SUFFIX_TOKENS = frozenset({"at", "id", "usd"})
+_NUMBER_TOKENS = {
+    "zero": 0,
+    "one": 1,
+    "two": 2,
+    "three": 3,
+    "four": 4,
+    "five": 5,
+    "six": 6,
+    "seven": 7,
+    "eight": 8,
+    "nine": 9,
+    "ten": 10,
+    "eleven": 11,
+    "twelve": 12,
+    "thirteen": 13,
+    "fourteen": 14,
+    "fifteen": 15,
+    "sixteen": 16,
+    "seventeen": 17,
+    "eighteen": 18,
+    "nineteen": 19,
+    "twenty": 20,
+}
+_HavingOperator = Literal[
+    "equals",
+    "greater_than",
+    "greater_than_or_equal",
+    "less_than",
+    "less_than_or_equal",
+]
 
 
 def build_semantic_grounding_projection(
@@ -118,18 +171,30 @@ def build_semantic_grounding_projection(
         )
     )
 
-    exact_entity_ids = {
-        entity.id
+    entity_match_spans = {
+        entity.id: spans
         for entity in eligible_entities.values()
-        if _matches_any_reference(question_tokens, entity.natural_language_references)
+        if (
+            spans := _matching_reference_spans(
+                question_tokens,
+                entity.natural_language_references,
+            )
+        )
+    }
+    exact_entity_ids = set(entity_match_spans)
+    concept_match_spans = {
+        concept.id: spans
+        for concept in eligible_concepts.values()
+        if (
+            spans := _matching_reference_spans(
+                question_tokens,
+                concept.natural_language_references,
+                reject_negated=True,
+            )
+        )
     }
     exact_concept_ids = {
-        concept.id
-        for concept in eligible_concepts.values()
-        if _matches_semantic_reference(
-            question_tokens,
-            concept.natural_language_references,
-        )
+        concept_id for concept_id in concept_match_spans
     }
     exact_metric_ids = {
         metric.id
@@ -149,6 +214,50 @@ def build_semantic_grounding_projection(
         and set((*rule.all_of_concept_ids, *rule.or_concept_ids))
         <= eligible_concepts.keys()
     }
+
+    rule_concept_ids = {
+        concept_id
+        for rule in catalog.composition_rules
+        if rule.id in exact_rule_ids
+        for concept_id in (*rule.all_of_concept_ids, *rule.or_concept_ids)
+    }
+    semantic_base_entity_ids = {
+        eligible_concepts[concept_id].entity_id
+        for concept_id in set(exact_concept_ids) | rule_concept_ids
+    }
+    semantic_base_entity_ids.update(
+        eligible_metrics[metric_id].entity_id for metric_id in exact_metric_ids
+    )
+    semantic_match_spans_by_entity: dict[str, set[tuple[int, int]]] = {}
+    for concept_id, spans in concept_match_spans.items():
+        semantic_match_spans_by_entity.setdefault(
+            eligible_concepts[concept_id].entity_id,
+            set(),
+        ).update(spans)
+    mandatory_entity_ids = _specific_entity_match_ids(
+        entity_match_spans,
+        semantic_match_spans_by_entity,
+    ) | semantic_base_entity_ids
+    mandatory_entity_ids.update(
+        entity_id
+        for entity_id in exact_entity_ids
+        if _entity_has_independently_requested_attribute(
+            entity_id,
+            source_entity_ids=semantic_base_entity_ids,
+            entities=eligible_entities,
+            allowed_columns=allowed_columns,
+            question_tokens=question_tokens,
+        )
+    )
+    mandatory_entity_ids -= _optional_lookup_entity_ids(
+        mandatory_entity_ids=mandatory_entity_ids,
+        semantic_base_entity_ids=semantic_base_entity_ids,
+        entity_match_spans=entity_match_spans,
+        relationships=eligible_relationships,
+        entities=eligible_entities,
+        allowed_columns=allowed_columns,
+        question_tokens=question_tokens,
+    )
 
     direct_anchor_entity_ids = set(exact_entity_ids)
     direct_anchor_entity_ids.update(
@@ -176,14 +285,6 @@ def build_semantic_grounding_projection(
     )
 
     rules_by_id = {rule.id: rule for rule in catalog.composition_rules}
-    rule_concept_ids = {
-        concept_id
-        for rule_id in exact_rule_ids
-        for concept_id in (
-            *rules_by_id[rule_id].all_of_concept_ids,
-            *rules_by_id[rule_id].or_concept_ids,
-        )
-    }
     anchor_entity_ids.update(
         eligible_concepts[concept_id].entity_id for concept_id in rule_concept_ids
     )
@@ -205,6 +306,7 @@ def build_semantic_grounding_projection(
                 # evidence so the plan cannot be forced to materialize an RLS
                 # scope table or literal scope predicate.
                 exact_entity_ids.discard(guidance.scope_entity_id)
+                mandatory_entity_ids.discard(guidance.scope_entity_id)
 
     value_context_entity_ids = {
         entity_id
@@ -256,10 +358,40 @@ def build_semantic_grounding_projection(
         trigger_concept_ids=set(exact_concept_ids) | rule_concept_ids,
         catalog=catalog,
     )
-    mandatory_concept_ids &= selected_concept_ids
+    retained_intent_concept_ids = set(selected_concept_ids)
+    selected_concept_ids.update(
+        expand_semantic_concept_ids(catalog, tuple(retained_intent_concept_ids))
+    )
+    dependency_definition_concept_ids = (
+        selected_concept_ids - retained_intent_concept_ids
+    )
+    mandatory_concept_ids &= retained_intent_concept_ids
+    required_concept_definition_ids = set(
+        expand_semantic_concept_ids(catalog, tuple(mandatory_concept_ids))
+    )
     anchor_entity_ids.update(
         eligible_concepts[concept_id].entity_id for concept_id in selected_concept_ids
     )
+    grounded_result_intent = _build_grounded_result_intent(
+        catalog=catalog,
+        question_tokens=question_tokens,
+        entity_match_spans=entity_match_spans,
+        concept_match_spans=concept_match_spans,
+        exact_concept_ids=exact_concept_ids,
+        exact_metric_ids=exact_metric_ids,
+        relationships=eligible_relationships,
+        entities=eligible_entities,
+        allowed_columns=allowed_columns,
+    )
+    if grounded_result_intent is not None:
+        entity_id_by_table = {
+            entity.table: entity.id for entity in eligible_entities.values()
+        }
+        anchor_entity_ids.update(
+            entity_id_by_table[field.table]
+            for field in grounded_result_intent.referenced_fields()
+            if field.table in entity_id_by_table
+        )
 
     selected_relationship_ids, path_entity_ids = _select_shortest_relationship_paths(
         anchor_entity_ids,
@@ -312,9 +444,11 @@ def build_semantic_grounding_projection(
 
     candidate_signals = _candidate_signals(
         exact_entity_ids=exact_entity_ids,
+        mandatory_entity_ids=mandatory_entity_ids,
         description_entity_ids=description_entity_ids,
         value_context_entity_ids=value_context_entity_ids,
         exact_concept_ids=exact_concept_ids,
+        dependency_definition_concept_ids=dependency_definition_concept_ids,
         selected_concept_ids=selected_concept_ids,
         exact_metric_ids=exact_metric_ids,
         selected_metric_ids=selected_metric_ids,
@@ -372,12 +506,14 @@ def build_semantic_grounding_projection(
                 }
             )
         ),
+        grounded_result_intent=grounded_result_intent,
     )
     projection = _fit_projection(
         projection,
-        mandatory_concept_ids=mandatory_concept_ids,
+        required_concept_definition_ids=required_concept_definition_ids,
         mandatory_metric_ids=set(exact_metric_ids),
     )
+    _validate_projection_concept_dependency_closure(projection)
     if _projection_size(projection) > MAX_SEMANTIC_PROJECTION_BYTES:
         raise DomainPackValidationError(
             "Semantic catalog projection exceeds the safe prompt size limit"
@@ -547,9 +683,11 @@ def _project_relationship(relationship: SemanticRelationship) -> dict[str, Any]:
 def _candidate_signals(
     *,
     exact_entity_ids: set[str],
+    mandatory_entity_ids: set[str],
     description_entity_ids: set[str],
     value_context_entity_ids: set[str],
     exact_concept_ids: set[str],
+    dependency_definition_concept_ids: set[str],
     selected_concept_ids: set[str],
     exact_metric_ids: set[str],
     selected_metric_ids: set[str],
@@ -558,7 +696,10 @@ def _candidate_signals(
     signals: dict[tuple[str, str], str] = {}
     for item_id in selected_concept_ids:
         signals[("concept", item_id)] = (
-            "exact_reference" if item_id in exact_concept_ids else "entity_context"
+            "exact_reference"
+            if item_id in exact_concept_ids
+            and item_id not in dependency_definition_concept_ids
+            else "entity_context"
         )
     for item_id in selected_metric_ids:
         signals[("metric", item_id)] = (
@@ -566,11 +707,15 @@ def _candidate_signals(
         )
     for item_id in exact_rule_ids:
         signals[("composition_rule", item_id)] = "exact_reference"
-    for item_id in exact_entity_ids:
-        signals[("entity", item_id)] = "exact_reference"
-    for item_id in description_entity_ids - exact_entity_ids:
+    for item_id in exact_entity_ids | mandatory_entity_ids:
+        signals[("entity", item_id)] = (
+            "exact_reference"
+            if item_id in mandatory_entity_ids
+            else "lexical_context"
+        )
+    for item_id in description_entity_ids - exact_entity_ids - mandatory_entity_ids:
         signals[("entity", item_id)] = "description_context"
-    for item_id in value_context_entity_ids - exact_entity_ids:
+    for item_id in value_context_entity_ids - exact_entity_ids - mandatory_entity_ids:
         signals[("entity", item_id)] = "value_context"
     return tuple(
         {"kind": kind, "id": item_id, "tier": tier}
@@ -697,7 +842,7 @@ def _project_example(example: Any) -> dict[str, Any]:
 def _fit_projection(
     projection: SemanticCatalogProjection,
     *,
-    mandatory_concept_ids: set[str],
+    required_concept_definition_ids: set[str],
     mandatory_metric_ids: set[str],
 ) -> SemanticCatalogProjection:
     examples = list(projection.examples)
@@ -709,7 +854,7 @@ def _fit_projection(
         {
             concept["entity_id"]
             for concept in projection.concepts
-            if concept["id"] not in mandatory_concept_ids
+            if concept["id"] not in required_concept_definition_ids
         }
         | {
             metric["entity_id"]
@@ -725,7 +870,7 @@ def _fit_projection(
             concept
             for concept in projection.concepts
             if concept["entity_id"] != entity_id
-            or concept["id"] in mandatory_concept_ids
+            or concept["id"] in required_concept_definition_ids
         )
         retained_concept_ids = {concept["id"] for concept in retained_concepts}
         retained_metrics = tuple(
@@ -761,6 +906,21 @@ def _fit_projection(
     return projection
 
 
+def _validate_projection_concept_dependency_closure(
+    projection: SemanticCatalogProjection,
+) -> None:
+    retained_concept_ids = {
+        concept["id"] for concept in projection.concepts
+    }
+    if any(
+        not set(concept["all_of_concept_ids"]) <= retained_concept_ids
+        for concept in projection.concepts
+    ):
+        raise DomainPackValidationError(
+            "Semantic catalog projection has incomplete concept dependency closure"
+        )
+
+
 def _copy_projection(
     projection: SemanticCatalogProjection,
     **changes: Any,
@@ -778,6 +938,7 @@ def _copy_projection(
         "examples": projection.examples,
         "candidate_signals": projection.candidate_signals,
         "authoritative_business_terms": projection.authoritative_business_terms,
+        "grounded_result_intent": projection.grounded_result_intent,
     }
     values.update(changes)
     return SemanticCatalogProjection(**values)
@@ -855,6 +1016,681 @@ def _remove_superseded_candidates(
         if concept is not None:
             frontier.extend(concept.supersedes)
     return selected_concept_ids - superseded
+
+
+def _build_grounded_result_intent(
+    *,
+    catalog: SemanticCatalog,
+    question_tokens: tuple[str, ...],
+    entity_match_spans: Mapping[str, set[tuple[int, int]]],
+    concept_match_spans: Mapping[str, set[tuple[int, int]]],
+    exact_concept_ids: set[str],
+    exact_metric_ids: set[str],
+    relationships: tuple[SemanticRelationship, ...],
+    entities: Mapping[str, SemanticEntity],
+    allowed_columns: Mapping[str, frozenset[str]],
+) -> GroundedResultIntent | None:
+    # Canonical V1 metrics already own their complete scalar result contract.
+    if exact_metric_ids:
+        return None
+
+    exact_concept_entity_ids = {
+        catalog.concepts_by_id[concept_id].entity_id
+        for concept_id in exact_concept_ids
+    }
+    required_output_fields = set(
+        _explicit_output_fields(
+            question_tokens,
+            entities=entities,
+            allowed_columns=allowed_columns,
+        )
+    )
+    grouping = _explicit_grouping_field(
+        question_tokens,
+        entity_match_spans=entity_match_spans,
+        entities=entities,
+        allowed_columns=allowed_columns,
+    )
+    threshold = _explicit_numeric_threshold(question_tokens)
+    quantity_span = _explicit_quantity_span(question_tokens)
+    aggregations: list[GroundedAggregationIntent] = []
+    having: list[GroundedHavingIntent] = []
+    row_grain: GroundedRowGrain | None = None
+    group_by: tuple[GroundedFieldIdentity, ...] = ()
+    distinct: bool | None = None
+
+    if grouping is not None:
+        grouping_field, marker_start = grouping
+        group_by = (grouping_field,)
+        required_output_fields.add(grouping_field)
+        row_grain = GroundedRowGrain(
+            mode="grouped",
+            identity_fields=group_by,
+        )
+        subject_entity_id = _subject_entity_id(
+            question_tokens,
+            entity_match_spans,
+            before_index=marker_start,
+            excluded_entity_ids={
+                entity.id
+                for entity in entities.values()
+                if entity.table == grouping_field.table
+            },
+        )
+        explicit_quantity = quantity_span is not None
+        implicit_quantity = (
+            subject_entity_id is not None
+            and _has_exact_qualifying_bridge(
+                subject_entity_id=subject_entity_id,
+                grouping_table=grouping_field.table,
+                exact_entity_ids=set(entity_match_spans),
+                relationships=relationships,
+                entities=entities,
+            )
+        )
+        if subject_entity_id is not None and threshold is not None:
+            requested_grouping_table = grouping_field.table
+            relationship_group_field = _relationship_group_field(
+                source_entity_id=subject_entity_id,
+                grouping_table=requested_grouping_table,
+                relationships=relationships,
+                entities=entities,
+                allowed_columns=allowed_columns,
+            )
+            if relationship_group_field is not None:
+                required_output_fields.discard(grouping_field)
+                grouping_field = relationship_group_field
+                group_by = (grouping_field,)
+                required_output_fields.add(grouping_field)
+                row_grain = GroundedRowGrain(
+                    mode="grouped",
+                    identity_fields=group_by,
+                )
+            target = (
+                None
+                if requested_grouping_table == entities[subject_entity_id].table
+                else _authorized_field(
+                    subject_entity_id,
+                    "id",
+                    entities=entities,
+                    allowed_columns=allowed_columns,
+                )
+            )
+            if (
+                target is not None
+                or requested_grouping_table == entities[subject_entity_id].table
+            ):
+                aggregation = GroundedAggregationIntent(
+                    id="threshold_count",
+                    function="count",
+                    target_field=target,
+                    distinct=False,
+                )
+                aggregations.append(aggregation)
+                having.append(
+                    GroundedHavingIntent(
+                        aggregation_id=aggregation.id,
+                        operator=threshold[0],
+                        value=threshold[1],
+                    )
+                )
+        elif subject_entity_id is not None and (
+            explicit_quantity or implicit_quantity
+        ):
+            target = _authorized_field(
+                subject_entity_id,
+                "id",
+                entities=entities,
+                allowed_columns=allowed_columns,
+            )
+            if target is not None:
+                aggregations.append(
+                    GroundedAggregationIntent(
+                        id="subject_count",
+                        function="count",
+                        target_field=target,
+                        distinct=True,
+                    )
+                )
+
+    if not aggregations and threshold is not None:
+        counted_entity_id = _threshold_counted_entity_id(
+            threshold_end=threshold[3],
+            concept_match_spans=concept_match_spans,
+            catalog=catalog,
+        )
+        if counted_entity_id is not None:
+            subject_group_field = _relationship_subject_field(
+                counted_entity_id=counted_entity_id,
+                question_tokens=question_tokens,
+                entity_match_spans=entity_match_spans,
+                relationships=relationships,
+                entities=entities,
+                allowed_columns=allowed_columns,
+            )
+            target = _authorized_field(
+                counted_entity_id,
+                "id",
+                entities=entities,
+                allowed_columns=allowed_columns,
+            )
+            if subject_group_field is not None and target is not None:
+                aggregation = GroundedAggregationIntent(
+                    id="threshold_count",
+                    function="count",
+                    target_field=target,
+                    distinct=False,
+                )
+                aggregations.append(aggregation)
+                group_by = (subject_group_field,)
+                required_output_fields.add(subject_group_field)
+                row_grain = GroundedRowGrain(
+                    mode="grouped",
+                    identity_fields=group_by,
+                )
+                having.append(
+                    GroundedHavingIntent(
+                        aggregation_id=aggregation.id,
+                        operator=threshold[0],
+                        value=threshold[1],
+                    )
+                )
+
+    if not aggregations and grouping is None and quantity_span is not None:
+        subject_entity_id = _subject_entity_id(
+            question_tokens,
+            entity_match_spans,
+            before_index=len(question_tokens),
+            excluded_entity_ids=set(),
+        )
+        if subject_entity_id is not None:
+            aggregations.append(
+                GroundedAggregationIntent(
+                    id="row_count",
+                    function="count",
+                    target_field=None,
+                    distinct=False,
+                )
+            )
+
+    if row_grain is None and not aggregations:
+        detail_entity_id = _detail_fact_entity_id(
+            exact_concept_entity_ids,
+            relationships,
+        )
+        if (
+            detail_entity_id is not None
+            and question_tokens
+            and question_tokens[0] in {"list", "show"}
+        ):
+            detail_identity = _authorized_field(
+                detail_entity_id,
+                "id",
+                entities=entities,
+                allowed_columns=allowed_columns,
+            )
+            if detail_identity is not None:
+                row_grain = GroundedRowGrain(
+                    mode="detail",
+                    identity_fields=(detail_identity,),
+                )
+                required_output_fields.add(detail_identity)
+                for entity_id in sorted(exact_concept_entity_ids):
+                    identity = _authorized_field(
+                        entity_id,
+                        "id",
+                        entities=entities,
+                        allowed_columns=allowed_columns,
+                    )
+                    if identity is not None:
+                        required_output_fields.add(identity)
+                distinct = False
+
+    if (
+        row_grain is None
+        and not required_output_fields
+        and not aggregations
+        and not group_by
+        and not having
+        and distinct is None
+    ):
+        return None
+    return GroundedResultIntent(
+        row_grain=row_grain,
+        required_output_fields=tuple(
+            sorted(
+                required_output_fields,
+                key=lambda item: (item.table, item.column),
+            )
+        ),
+        aggregations=tuple(aggregations),
+        group_by=group_by,
+        having=tuple(having),
+        distinct=distinct,
+    )
+
+
+def _explicit_grouping_field(
+    question_tokens: tuple[str, ...],
+    *,
+    entity_match_spans: Mapping[str, set[tuple[int, int]]],
+    entities: Mapping[str, SemanticEntity],
+    allowed_columns: Mapping[str, frozenset[str]],
+) -> tuple[GroundedFieldIdentity, int] | None:
+    marker: tuple[int, int] | None = None
+    for index, token in enumerate(question_tokens):
+        if token in {"by", "per"}:
+            marker = (index, index + 1)
+            break
+        if token == "for" and question_tokens[index : index + 2] == ("for", "each"):
+            marker = (index, index + 2)
+            break
+    if marker is None:
+        return None
+    marker_start, value_start = marker
+    entity_candidates = [
+        (start - value_start, end - start, entity_id)
+        for entity_id, spans in entity_match_spans.items()
+        for start, end in spans
+        if start >= value_start and start <= value_start + 2
+    ]
+    if entity_candidates:
+        _, _, entity_id = min(entity_candidates)
+        for column in ("name", "id"):
+            field = _authorized_field(
+                entity_id,
+                column,
+                entities=entities,
+                allowed_columns=allowed_columns,
+            )
+            if field is not None:
+                return field, marker_start
+
+    phrase = question_tokens[value_start : value_start + 2]
+    column_candidates: set[GroundedFieldIdentity] = set()
+    for entity_id, entity in entities.items():
+        for column in allowed_columns.get(entity.table, frozenset()):
+            column_tokens = _normalize_tokens(column.replace("_", " "))
+            if not column_tokens:
+                continue
+            references = {column_tokens}
+            if column_tokens[-1] in _DISPLAY_ATTRIBUTE_TOKENS:
+                references.add((column_tokens[0],))
+            if any(
+                len(reference) <= len(phrase)
+                and phrase[: len(reference)] == reference
+                for reference in references
+            ):
+                column_candidates.add(
+                    GroundedFieldIdentity(table=entity.table, column=column)
+                )
+    if len(column_candidates) == 1:
+        return column_candidates.pop(), marker_start
+    return None
+
+
+def _explicit_quantity_span(
+    question_tokens: tuple[str, ...],
+) -> tuple[int, int] | None:
+    references = (("how", "many"), ("number", "of"), ("count",))
+    for reference in references:
+        for index in range(len(question_tokens) - len(reference) + 1):
+            if question_tokens[index : index + len(reference)] == reference:
+                return index, index + len(reference)
+    return None
+
+
+def _explicit_numeric_threshold(
+    question_tokens: tuple[str, ...],
+) -> tuple[_HavingOperator, int | float, int, int] | None:
+    operators: tuple[tuple[tuple[str, ...], _HavingOperator], ...] = (
+        (("more", "than"), "greater_than"),
+        (("at", "least"), "greater_than_or_equal"),
+        (("fewer", "than"), "less_than"),
+        (("less", "than"), "less_than"),
+        (("at", "most"), "less_than_or_equal"),
+        (("exactly",), "equals"),
+    )
+    for reference, operator in operators:
+        for index in range(len(question_tokens) - len(reference)):
+            if question_tokens[index : index + len(reference)] != reference:
+                continue
+            value = _number_token_value(question_tokens[index + len(reference)])
+            if value is not None:
+                return operator, value, index, index + len(reference) + 1
+    return None
+
+
+def _number_token_value(token: str) -> int | float | None:
+    if token in _NUMBER_TOKENS:
+        return _NUMBER_TOKENS[token]
+    try:
+        return float(token) if "." in token else int(token)
+    except ValueError:
+        return None
+
+
+def _subject_entity_id(
+    question_tokens: tuple[str, ...],
+    entity_match_spans: Mapping[str, set[tuple[int, int]]],
+    *,
+    before_index: int,
+    excluded_entity_ids: set[str],
+) -> str | None:
+    candidates = [
+        (start, end - start, entity_id)
+        for entity_id, spans in entity_match_spans.items()
+        if entity_id not in excluded_entity_ids
+        for start, end in spans
+        if end <= before_index and end - start == 1
+    ]
+    if not candidates:
+        return None
+    if question_tokens[:2] in {("how", "many"), ("number", "of")}:
+        _, _, entity_id = max(candidates, key=lambda item: (item[0], -item[1], item[2]))
+        return entity_id
+    _, _, entity_id = min(candidates, key=lambda item: (item[0], item[1], item[2]))
+    return entity_id
+
+
+def _has_exact_qualifying_bridge(
+    *,
+    subject_entity_id: str,
+    grouping_table: str,
+    exact_entity_ids: set[str],
+    relationships: tuple[SemanticRelationship, ...],
+    entities: Mapping[str, SemanticEntity],
+) -> bool:
+    grouping_entity_ids = {
+        entity.id for entity in entities.values() if entity.table == grouping_table
+    }
+    bridge_ids = exact_entity_ids - {subject_entity_id} - grouping_entity_ids
+    for bridge_id in bridge_ids:
+        targets = {
+            relationship.to_entity
+            for relationship in relationships
+            if relationship.from_entity == bridge_id
+            and relationship.cardinality.value == "many_to_one"
+        }
+        if subject_entity_id in targets and targets & grouping_entity_ids:
+            return True
+    return False
+
+
+def _relationship_group_field(
+    *,
+    source_entity_id: str,
+    grouping_table: str,
+    relationships: tuple[SemanticRelationship, ...],
+    entities: Mapping[str, SemanticEntity],
+    allowed_columns: Mapping[str, frozenset[str]],
+) -> GroundedFieldIdentity | None:
+    grouping_entity_ids = {
+        entity.id for entity in entities.values() if entity.table == grouping_table
+    }
+    candidates = [
+        relationship
+        for relationship in relationships
+        if relationship.from_entity == source_entity_id
+        and relationship.to_entity in grouping_entity_ids
+        and relationship.cardinality.value == "many_to_one"
+    ]
+    if len(candidates) != 1:
+        return None
+    return _authorized_field(
+        source_entity_id,
+        candidates[0].from_column,
+        entities=entities,
+        allowed_columns=allowed_columns,
+    )
+
+
+def _threshold_counted_entity_id(
+    *,
+    threshold_end: int,
+    concept_match_spans: Mapping[str, set[tuple[int, int]]],
+    catalog: SemanticCatalog,
+) -> str | None:
+    candidates = {
+        catalog.concepts_by_id[concept_id].entity_id
+        for concept_id, spans in concept_match_spans.items()
+        if any(start >= threshold_end for start, _ in spans)
+    }
+    return next(iter(candidates)) if len(candidates) == 1 else None
+
+
+def _relationship_subject_field(
+    *,
+    counted_entity_id: str,
+    question_tokens: tuple[str, ...],
+    entity_match_spans: Mapping[str, set[tuple[int, int]]],
+    relationships: tuple[SemanticRelationship, ...],
+    entities: Mapping[str, SemanticEntity],
+    allowed_columns: Mapping[str, frozenset[str]],
+) -> GroundedFieldIdentity | None:
+    subject_entity_id = _subject_entity_id(
+        question_tokens,
+        entity_match_spans,
+        before_index=len(question_tokens),
+        excluded_entity_ids={counted_entity_id},
+    )
+    if subject_entity_id is None:
+        return None
+    candidates = [
+        relationship
+        for relationship in relationships
+        if relationship.from_entity == counted_entity_id
+        and relationship.to_entity == subject_entity_id
+        and relationship.cardinality.value == "many_to_one"
+    ]
+    if len(candidates) != 1:
+        return None
+    return _authorized_field(
+        counted_entity_id,
+        candidates[0].from_column,
+        entities=entities,
+        allowed_columns=allowed_columns,
+    )
+
+
+def _detail_fact_entity_id(
+    exact_concept_entity_ids: set[str],
+    relationships: tuple[SemanticRelationship, ...],
+) -> str | None:
+    candidates = {
+        relationship.from_entity
+        for relationship in relationships
+        if relationship.from_entity in exact_concept_entity_ids
+        and relationship.to_entity in exact_concept_entity_ids
+        and relationship.cardinality.value == "many_to_one"
+    }
+    return next(iter(candidates)) if len(candidates) == 1 else None
+
+
+def _explicit_output_fields(
+    question_tokens: tuple[str, ...],
+    *,
+    entities: Mapping[str, SemanticEntity],
+    allowed_columns: Mapping[str, frozenset[str]],
+) -> tuple[GroundedFieldIdentity, ...]:
+    fields: set[GroundedFieldIdentity] = set()
+    for entity in entities.values():
+        labels: set[tuple[str, ...]] = {
+            reference
+            for raw_reference in entity.natural_language_references
+            if len(reference := _normalize_tokens(raw_reference)) == 1
+        }
+        canonical_label = _normalize_tokens(entity.id.replace("_", " "))[-1:]
+        labels.add(canonical_label)
+        for column in allowed_columns.get(entity.table, frozenset()):
+            column_tokens = _normalize_tokens(column.replace("_", " "))
+            if not column_tokens:
+                continue
+            if column == "id":
+                references = {(*label, "id") for label in labels}
+            else:
+                references = {
+                    (*label, *column_tokens)
+                    for label in labels
+                    if column_tokens[-1] in _DISPLAY_ATTRIBUTE_TOKENS
+                }
+            if any(
+                _contains_token_sequence(question_tokens, reference)
+                for reference in references
+            ):
+                fields.add(
+                    GroundedFieldIdentity(table=entity.table, column=column)
+                )
+    return tuple(sorted(fields, key=lambda item: (item.table, item.column)))
+
+
+def _authorized_field(
+    entity_id: str,
+    column: str,
+    *,
+    entities: Mapping[str, SemanticEntity],
+    allowed_columns: Mapping[str, frozenset[str]],
+) -> GroundedFieldIdentity | None:
+    entity = entities.get(entity_id)
+    if entity is None or column not in allowed_columns.get(entity.table, frozenset()):
+        return None
+    return GroundedFieldIdentity(table=entity.table, column=column)
+
+
+def _specific_entity_match_ids(
+    entity_match_spans: Mapping[str, set[tuple[int, int]]],
+    semantic_match_spans_by_entity: Mapping[str, set[tuple[int, int]]],
+) -> set[str]:
+    """Keep an entity mandatory when at least one exact mention is not subsumed."""
+    mandatory: set[str] = set()
+    for entity_id, spans in entity_match_spans.items():
+        competing_spans = {
+            span
+            for other_entity_id, other_spans in entity_match_spans.items()
+            if other_entity_id != entity_id
+            for span in other_spans
+        }
+        competing_spans.update(
+            span
+            for other_entity_id, other_spans in semantic_match_spans_by_entity.items()
+            if other_entity_id != entity_id
+            for span in other_spans
+        )
+        if any(
+            not any(_strictly_contains(candidate, span) for candidate in competing_spans)
+            for span in spans
+        ):
+            mandatory.add(entity_id)
+    return mandatory
+
+
+def _strictly_contains(outer: tuple[int, int], inner: tuple[int, int]) -> bool:
+    return (
+        outer[0] <= inner[0]
+        and outer[1] >= inner[1]
+        and outer[1] - outer[0] > inner[1] - inner[0]
+    )
+
+
+def _optional_lookup_entity_ids(
+    *,
+    mandatory_entity_ids: set[str],
+    semantic_base_entity_ids: set[str],
+    entity_match_spans: Mapping[str, set[tuple[int, int]]],
+    relationships: tuple[SemanticRelationship, ...],
+    entities: Mapping[str, SemanticEntity],
+    allowed_columns: Mapping[str, frozenset[str]],
+    question_tokens: tuple[str, ...],
+) -> set[str]:
+    """Demote only generic lookup mentions backed by a mandatory fact identity."""
+    optional: set[str] = set()
+    for entity_id in mandatory_entity_ids - semantic_base_entity_ids:
+        spans = entity_match_spans.get(entity_id, set())
+        if not spans or any(end - start > 1 for start, end in spans):
+            continue
+        supporting_relationships = tuple(
+            relationship
+            for relationship in relationships
+            if relationship.to_entity == entity_id
+            and relationship.from_entity in semantic_base_entity_ids
+            and relationship.cardinality.value == "many_to_one"
+            and relationship.from_column
+            in allowed_columns.get(
+                entities[relationship.from_entity].table,
+                frozenset(),
+            )
+        )
+        if not supporting_relationships:
+            continue
+        source_entity_ids = {
+            relationship.from_entity for relationship in supporting_relationships
+        }
+        if _entity_has_independently_requested_attribute(
+            entity_id,
+            source_entity_ids=source_entity_ids,
+            entities=entities,
+            allowed_columns=allowed_columns,
+            question_tokens=question_tokens,
+        ):
+            continue
+        optional.add(entity_id)
+    return optional
+
+
+def _entity_has_independently_requested_attribute(
+    entity_id: str,
+    *,
+    source_entity_ids: set[str],
+    entities: Mapping[str, SemanticEntity],
+    allowed_columns: Mapping[str, frozenset[str]],
+    question_tokens: tuple[str, ...],
+) -> bool:
+    source_columns = {
+        column
+        for source_entity_id in source_entity_ids
+        for column in allowed_columns.get(
+            entities[source_entity_id].table,
+            frozenset(),
+        )
+    }
+    for column in allowed_columns.get(entities[entity_id].table, frozenset()):
+        if column == "id" or column in source_columns:
+            continue
+        tokens = list(_normalize_tokens(column.replace("_", " ")))
+        while tokens and tokens[-1] in _COLUMN_SUFFIX_TOKENS:
+            tokens.pop()
+        if not tokens:
+            continue
+        references = {tuple(tokens)}
+        references.update(
+            (token,) for token in tokens if token in _DISPLAY_ATTRIBUTE_TOKENS
+        )
+        if any(_contains_token_sequence(question_tokens, reference) for reference in references):
+            return True
+    return False
+
+
+def _matching_reference_spans(
+    question: tuple[str, ...],
+    references: tuple[str, ...],
+    *,
+    reject_negated: bool = False,
+) -> set[tuple[int, int]]:
+    spans: set[tuple[int, int]] = set()
+    for raw_reference in references:
+        reference = _normalize_tokens(raw_reference)
+        if not reference or len(reference) > len(question):
+            continue
+        reference_contains_negation = "not" in reference
+        for index in range(len(question) - len(reference) + 1):
+            if question[index : index + len(reference)] != reference:
+                continue
+            if reject_negated and not reference_contains_negation:
+                prefix = question[max(0, index - 3) : index]
+                if "not" in prefix:
+                    continue
+            spans.add((index, index + len(reference)))
+    return spans
 
 
 def _matches_any_reference(

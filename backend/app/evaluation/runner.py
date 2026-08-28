@@ -26,18 +26,31 @@ from app.evaluation.environment import EvaluationEnvironmentIdentity
 from app.evaluation.contracts import (
     ActualOutcome,
     CaseType,
+    EvaluationComparisonProvenance,
     EvaluationCase,
+    EvaluationQueryProvenance,
     EvaluationSet,
     ExpectedOutcome,
+    ProvenanceAuthorizationEvidence,
 )
 from app.evaluation.loader import load_it_operations_evaluation_set
+from app.evaluation.provenance import (
+    EvaluationProvenanceError,
+    extract_evaluation_query_provenance,
+)
 from app.evaluation.scoring import EvaluationScore, score_evaluation_case
 from app.evaluation.selection import (
     EvaluationFilters,
     evaluation_dataset_digest,
     select_evaluation_cases,
 )
-from app.models.product import DataResource, EvaluationResult, EvaluationRun, RunStatus
+from app.models.product import (
+    DataResource,
+    EvaluationResult,
+    EvaluationRun,
+    QueryRun,
+    RunStatus,
+)
 from app.query_engine.domain_pack import DomainPack
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.llm_provider import LLMProvider, sanitize_provider_measurement
@@ -156,6 +169,7 @@ class _CompletedCase:
     execution: _CaseExecution
     score: EvaluationScore
     duration_ms: float
+    provenance: EvaluationComparisonProvenance | None = None
 
 
 SessionFactory = Callable[[], Session]
@@ -231,8 +245,9 @@ class EvaluationRunner:
         fatal_error: EvaluationRunnerError | None = None
         for case in cases:
             started_at = perf_counter()
+            provenance: EvaluationComparisonProvenance | None = None
             try:
-                execution, expected_rows = self._execute_case(
+                execution, expected_rows, provenance = self._execute_case(
                     case, domain_pack, query_service
                 )
                 score = score_evaluation_case(
@@ -242,6 +257,7 @@ class EvaluationRunner:
                     actual_referenced_tables=execution.actual_referenced_tables,
                     expected_rows=expected_rows,
                     actual_rows=execution.actual_rows,
+                    provenance=provenance,
                 )
                 if execution.provider_failure_fatal:
                     fatal_error = EvaluationRunnerError(
@@ -288,6 +304,7 @@ class EvaluationRunner:
                 execution=execution,
                 score=score,
                 duration_ms=(perf_counter() - started_at) * 1000,
+                provenance=provenance,
             )
             completed.append(completed_case)
             self._persist_result(run_id, completed_case)
@@ -415,12 +432,17 @@ class EvaluationRunner:
         case: EvaluationCase,
         domain_pack: DomainPack,
         query_service: QueryEngineService,
-    ) -> tuple[_CaseExecution, tuple[Mapping[str, Any], ...]]:
+    ) -> tuple[
+        _CaseExecution,
+        tuple[Mapping[str, Any], ...],
+        EvaluationComparisonProvenance | None,
+    ]:
         with self._session_factory() as db:
             identity = resolve_evaluation_identity(db, case)
             execution = self._execute_actual(
                 db, identity, case, domain_pack, query_service
             )
+            provenance = _build_case_provenance(db, case, execution)
             expected_rows: tuple[Mapping[str, Any], ...] = ()
             if (
                 case.expected_outcome is ExpectedOutcome.SUCCESS
@@ -433,7 +455,7 @@ class EvaluationRunner:
                     domain_pack,
                 )
                 expected_rows = baseline.rows
-            return execution, expected_rows
+            return execution, expected_rows, provenance
 
     def _execute_actual(
         self,
@@ -513,6 +535,8 @@ class EvaluationRunner:
             metrics["provider_measurement"] = dict(
                 completed.execution.provider_measurement
             )
+        if completed.provenance is not None:
+            metrics["result_provenance"] = completed.provenance.as_safe_dict()
         result = EvaluationResult(
             evaluation_run_id=run_id,
             query_run_id=completed.execution.query_run_id,
@@ -633,6 +657,56 @@ def _denied_case_resources(
     if any(not decision.allowed for decision in decisions):
         return tuple(sorted(resource.table_name for resource in resources))
     return None
+
+
+def _build_case_provenance(
+    db: Session,
+    case: EvaluationCase,
+    execution: _CaseExecution,
+) -> EvaluationComparisonProvenance | None:
+    expected = _safe_query_provenance(
+        case.baseline_sql,
+        ProvenanceAuthorizationEvidence.FROZEN_BASELINE_VALIDATED,
+    )
+    actual = None
+    if execution.query_run_id is not None:
+        query_run = db.get(QueryRun, execution.query_run_id)
+        if query_run is not None and isinstance(query_run.executed_sql, str):
+            validation = (
+                query_run.query_metadata.get("validation")
+                if isinstance(query_run.query_metadata, dict)
+                else None
+            )
+            evidence = (
+                ProvenanceAuthorizationEvidence.FINAL_SQL_VALIDATED
+                if (
+                    execution.execution_succeeded
+                    and isinstance(validation, dict)
+                    and validation.get("valid") is True
+                )
+                else ProvenanceAuthorizationEvidence.UNVERIFIED
+            )
+            actual = _safe_query_provenance(query_run.executed_sql, evidence)
+    if expected is None and actual is None:
+        return None
+    return EvaluationComparisonProvenance(expected=expected, actual=actual)
+
+
+def _safe_query_provenance(
+    sql: str | None,
+    authorization_evidence: ProvenanceAuthorizationEvidence,
+) -> EvaluationQueryProvenance | None:
+    if sql is None:
+        return None
+    try:
+        return extract_evaluation_query_provenance(
+            sql,
+            authorization_evidence=authorization_evidence,
+        )
+    except EvaluationProvenanceError:
+        # Provenance is supplemental scoring evidence. Unsupported structure must
+        # fail closed by omitting it, without changing established case outcomes.
+        return None
 
 
 def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:

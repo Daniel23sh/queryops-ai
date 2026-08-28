@@ -344,6 +344,237 @@ def test_output_and_limit_contracts_fail_closed() -> None:
         )
 
 
+def test_grounded_grouped_count_plan_passes_and_detail_plan_fails() -> None:
+    correct = _plan(
+        entity_ids=(
+            "departments",
+            "directory_users",
+            "groups",
+            "user_group_memberships",
+        ),
+        concept_ids=("privileged_group",),
+        relationships=(
+            _relationship("directory_user_department", "inner"),
+            _relationship("user_group_membership_group", "inner"),
+            _relationship("user_group_membership_user", "inner"),
+        ),
+        output_fields=(_field("departments", "name"),),
+        aggregations=(
+            SemanticAggregationIntent(
+                id="user_count",
+                function="count",
+                field=_field("directory_users", "id"),
+                distinct=True,
+            ),
+        ),
+        group_by=(_field("departments", "name"),),
+    )
+    question = "Show users in privileged groups by department."
+
+    assert _validate(correct, question)
+
+    detailed = correct.model_copy(
+        update={
+            "output_fields": (_field("directory_users", "id"),),
+            "aggregations": (),
+            "group_by": (),
+        }
+    )
+    with pytest.raises(SemanticPlanValidationError) as exc_info:
+        _validate(detailed, question)
+    assert exc_info.value.reason in {
+        "required_output_missing",
+        "grounded_aggregation_mismatch",
+        "result_grain_mismatch",
+    }
+
+
+def test_grounded_required_output_and_group_grain_fail_closed() -> None:
+    aggregation = SemanticAggregationIntent(
+        id="user_count",
+        function="count",
+        field=_field("directory_users", "id"),
+        distinct=True,
+    )
+    base = _plan(
+        entity_ids=(
+            "departments",
+            "directory_users",
+            "groups",
+            "user_group_memberships",
+        ),
+        concept_ids=("privileged_group",),
+        relationships=(
+            _relationship("directory_user_department", "inner"),
+            _relationship("user_group_membership_group", "inner"),
+            _relationship("user_group_membership_user", "inner"),
+        ),
+        aggregations=(aggregation,),
+        group_by=(_field("departments", "name"),),
+    )
+    question = "How many privileged users by department?"
+
+    with pytest.raises(SemanticPlanValidationError) as exc_info:
+        _validate(base, question)
+    assert exc_info.value.reason == "required_output_missing"
+
+    extra_group = base.model_copy(
+        update={
+            "output_fields": (
+                _field("departments", "name"),
+                _field("groups", "name"),
+            ),
+            "group_by": (
+                _field("departments", "name"),
+                _field("groups", "name"),
+            ),
+        }
+    )
+    with pytest.raises(SemanticPlanValidationError) as exc_info:
+        _validate(extra_group, question)
+    assert exc_info.value.reason == "grounded_group_by_mismatch"
+
+
+@pytest.mark.parametrize(
+    ("entity_id", "column", "distinct"),
+    [
+        ("directory_users", "id", False),
+        ("user_group_memberships", "user_id", True),
+    ],
+)
+def test_grounded_aggregation_target_and_distinctness_fail_closed(
+    entity_id: str,
+    column: str,
+    distinct: bool,
+) -> None:
+    aggregation = SemanticAggregationIntent(
+        id="user_count",
+        function="count",
+        field=_field(entity_id, column),
+        distinct=distinct,
+    )
+    plan = _plan(
+        entity_ids=(
+            "departments",
+            "directory_users",
+            "groups",
+            "user_group_memberships",
+        ),
+        concept_ids=("privileged_group",),
+        relationships=(
+            _relationship("directory_user_department", "inner"),
+            _relationship("user_group_membership_group", "inner"),
+            _relationship("user_group_membership_user", "inner"),
+        ),
+        output_fields=(_field("departments", "name"),),
+        aggregations=(aggregation,),
+        group_by=(_field("departments", "name"),),
+    )
+
+    with pytest.raises(SemanticPlanValidationError) as exc_info:
+        _validate(plan, "How many privileged users by department?")
+    assert exc_info.value.reason == "grounded_aggregation_mismatch"
+
+
+def test_grounded_explicit_having_mismatch_fails_closed() -> None:
+    aggregation = SemanticAggregationIntent(
+        id="failed_count",
+        function="count",
+        field=_field("login_events", "id"),
+        distinct=False,
+    )
+    plan = _plan(
+        entity_ids=("login_events",),
+        concept_ids=("failed_login_within_30_days",),
+        output_fields=(_field("login_events", "user_id"),),
+        aggregations=(aggregation,),
+        group_by=(_field("login_events", "user_id"),),
+        having=(
+            SemanticHavingIntent(
+                aggregation_id="failed_count",
+                operator="greater_than",
+                value=6,
+            ),
+        ),
+    )
+
+    with pytest.raises(SemanticPlanValidationError) as exc_info:
+        _validate(
+            plan,
+            "Show users with more than five failed logins in the last 30 days.",
+        )
+    assert exc_info.value.reason == "grounded_having_mismatch"
+
+    correct = plan.model_copy(
+        update={
+            "having": (
+                SemanticHavingIntent(
+                    aggregation_id="failed_count",
+                    operator="greater_than",
+                    value=5,
+                ),
+            )
+        }
+    )
+    assert _validate(
+        correct,
+        "Show users with more than five failed logins in the last 30 days.",
+    )
+
+
+def test_grounded_assignment_detail_rejects_distinct_user_collapse() -> None:
+    question = "Show inactive users with active mandatory licenses."
+    collapsed = _plan(
+        entity_ids=("directory_users", "license_assignments"),
+        concept_ids=(
+            "active_mandatory_license_assignment",
+            "inactive_directory_user",
+        ),
+        relationships=(_relationship("license_assignment_user", "inner"),),
+        distinct=True,
+        output_fields=(_field("directory_users", "id"),),
+    )
+
+    with pytest.raises(SemanticPlanValidationError) as exc_info:
+        _validate(collapsed, question)
+    assert exc_info.value.reason == "required_output_missing"
+
+    wrong_distinct = collapsed.model_copy(
+        update={
+            "output_fields": (
+                _field("directory_users", "id"),
+                _field("license_assignments", "id"),
+            ),
+        }
+    )
+    with pytest.raises(SemanticPlanValidationError) as exc_info:
+        _validate(wrong_distinct, question)
+    assert exc_info.value.reason == "grounded_distinct_mismatch"
+
+    correct = wrong_distinct.model_copy(update={"distinct": False})
+    assert _validate(correct, question)
+
+
+def test_partial_grounded_intent_does_not_require_unspecified_aggregate() -> None:
+    plan = _plan(
+        entity_ids=("license_assignments", "licenses"),
+        concept_ids=("high_confidence_unused_license_assignment",),
+        relationships=(_relationship("license_assignment_license", "inner"),),
+        output_fields=(_field("licenses", "product_name"),),
+        aggregations=(
+            SemanticAggregationIntent(
+                id="assignment_count",
+                function="count",
+                field=_field("license_assignments", "id"),
+                distinct=False,
+            ),
+        ),
+        group_by=(_field("licenses", "product_name"),),
+    )
+
+    assert _validate(plan, "Show high-confidence unused licenses by product.")
+
+
 def test_resolved_scope_column_cannot_be_literal_business_filter() -> None:
     plan = _plan(
         entity_ids=("directory_users",),

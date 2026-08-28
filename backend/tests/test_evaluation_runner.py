@@ -29,7 +29,7 @@ from app.evaluation.selection import (
     evaluation_dataset_digest,
     select_evaluation_cases,
 )
-from app.models.product import AppUser, EvaluationResult, EvaluationRun
+from app.models.product import AppUser, EvaluationResult, EvaluationRun, QueryRun
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.result_formatter import QueryEngineServiceResult
 from app.query_engine.provider_config import ProviderDescriptor, ProviderId
@@ -618,7 +618,80 @@ def test_successful_execution_result_mismatch_is_attributed_to_comparison(
     assert persisted is not None
     assert persisted.metrics["failure_stage"] == "result_comparison"
     assert persisted.metrics["query_execution_attempted"] is True
+    assert persisted.metrics["result_provenance"]["expected"] is not None
+    assert persisted.metrics["result_provenance"]["actual"] is None
     assert "different-row" not in repr((persisted.actual_output, persisted.metrics))
+
+
+def test_runner_supplies_validated_provenance_to_stable_key_scoring(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory = _sqlite_session_factory()
+    case = load_it_operations_evaluation_set().cases_by_id["itops-hard-005"]
+    evaluation_set = EvaluationSet(
+        dataset_id="it_operations_v1",
+        domain_id="it_operations",
+        version="1",
+        cases=(case,),
+    )
+
+    class AliasedStableKeyService:
+        def run(self, db, _user, _request):
+            query_run_id = uuid4()
+            db.add(
+                QueryRun(
+                    id=query_run_id,
+                    status="succeeded",
+                    executed_sql=(
+                        "SELECT devices.id AS id, directory_users.id AS user_id "
+                        "FROM devices JOIN directory_users "
+                        "ON devices.assigned_user_id = directory_users.id "
+                        "JOIN software_installs "
+                        "ON software_installs.device_id = devices.id"
+                    ),
+                    query_metadata={"validation": {"valid": True}},
+                )
+            )
+            db.commit()
+            return QueryEngineServiceResult(
+                status="succeeded",
+                query_run_id=str(query_run_id),
+                rows=[{"id": "device-1", "user_id": "user-1"}],
+                row_count=1,
+                metadata={
+                    "provider": "mock",
+                    "model": "mock-queryops-v1",
+                    "referenced_tables": list(case.expected_tables),
+                    "validation": {"valid": True},
+                    "execution": {"status": "succeeded"},
+                },
+            )
+
+    runner = EvaluationRunner(
+        session_factory,
+        dataset_loader=lambda: evaluation_set,
+        query_service_factory=lambda _pack: AliasedStableKeyService(),
+    )
+    monkeypatch.setattr(runner, "_verify_prerequisites", lambda _cases: None)
+    monkeypatch.setattr(
+        "app.evaluation.runner.resolve_evaluation_identity",
+        lambda _db, selected_case: _identity(selected_case.requesting_role),
+    )
+    monkeypatch.setattr(
+        "app.evaluation.runner.execute_evaluation_baseline",
+        lambda *_args, **_kwargs: _Baseline(
+            ({"device_id": "device-1", "user_id": "user-1"},)
+        ),
+    )
+
+    summary = runner.run()
+
+    assert summary.passed_count == 1
+    with session_factory() as db:
+        persisted = db.scalar(select(EvaluationResult))
+    assert persisted is not None
+    assert persisted.metrics["result_correct"] is True
+    assert persisted.metrics["result_provenance"]["actual"] is not None
 
 
 def test_runner_persists_real_provider_identity_and_aggregates_safe_usage(

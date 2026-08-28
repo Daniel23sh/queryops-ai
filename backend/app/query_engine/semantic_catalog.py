@@ -9,6 +9,10 @@ from enum import Enum
 from typing import Any
 
 from app.query_engine.errors import DomainPackValidationError
+from app.query_engine.result_intent import (
+    GroundedResultIntent,
+    safe_grounded_result_intent,
+)
 
 
 MAX_SEMANTIC_PROJECTION_BYTES = 16_000
@@ -198,6 +202,7 @@ class SemanticCatalogProjection:
     examples: tuple[dict[str, Any], ...]
     candidate_signals: tuple[dict[str, str], ...]
     authoritative_business_terms: tuple[str, ...]
+    grounded_result_intent: GroundedResultIntent | None = None
 
     def as_prompt_dict(self) -> dict[str, Any]:
         return {
@@ -214,6 +219,11 @@ class SemanticCatalogProjection:
             "examples": [dict(example) for example in self.examples],
             "candidate_signals": [dict(signal) for signal in self.candidate_signals],
             "mandatory_semantic_evidence": self.mandatory_evidence(),
+            "grounded_result_intent": (
+                self.grounded_result_intent.as_safe_dict()
+                if self.grounded_result_intent is not None
+                else None
+            ),
         }
 
     def mandatory_evidence(self) -> dict[str, list[str]]:
@@ -250,6 +260,11 @@ class SemanticCatalogProjection:
             ],
             "selected_example_ids": [example["id"] for example in self.examples],
             "mandatory_semantic_evidence": self.mandatory_evidence(),
+            "grounded_result_intent": (
+                self.grounded_result_intent.as_safe_dict()
+                if self.grounded_result_intent is not None
+                else None
+            ),
         }
 
 
@@ -288,6 +303,9 @@ def safe_semantic_catalog_observation(value: Any) -> dict[str, Any] | None:
     mandatory = _safe_mandatory_evidence(
         value.get("mandatory_semantic_evidence", {})
     )
+    grounded_result_intent = safe_grounded_result_intent(
+        value.get("grounded_result_intent")
+    )
     if (
         not isinstance(catalog_id, str)
         or _SAFE_IDENTIFIER.fullmatch(catalog_id) is None
@@ -302,6 +320,10 @@ def safe_semantic_catalog_observation(value: Any) -> dict[str, Any] | None:
         or relationship_ids is None
         or example_ids is None
         or mandatory is None
+        or (
+            value.get("grounded_result_intent") is not None
+            and grounded_result_intent is None
+        )
     ):
         return None
     return {
@@ -315,6 +337,7 @@ def safe_semantic_catalog_observation(value: Any) -> dict[str, Any] | None:
         "selected_relationship_ids": relationship_ids,
         "selected_example_ids": example_ids,
         "mandatory_semantic_evidence": mandatory,
+        "grounded_result_intent": grounded_result_intent,
     }
 
 
