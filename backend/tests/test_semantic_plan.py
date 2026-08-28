@@ -1,12 +1,22 @@
 from __future__ import annotations
 
-from typing import Literal
+from dataclasses import replace
+from types import SimpleNamespace
+from typing import Literal, cast
 
 import pytest
 from pydantic import ValidationError
 
+from app.query_engine.domain_pack import DomainPack
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
-from app.query_engine.semantic_catalog import build_semantic_catalog_projection
+from app.query_engine.result_intent import (
+    GroundedAggregationIntent,
+    GroundedFieldIdentity,
+)
+from app.query_engine.semantic_catalog import (
+    SemanticRelationshipCardinality,
+    build_semantic_catalog_projection,
+)
 from app.query_engine.semantic_plan import (
     SemanticAggregationIntent,
     SemanticFieldRef,
@@ -439,7 +449,10 @@ def test_grounded_required_output_and_group_grain_fail_closed() -> None:
     ("entity_id", "column", "distinct"),
     [
         ("directory_users", "id", False),
-        ("user_group_memberships", "user_id", True),
+        ("user_group_memberships", "user_id", False),
+        ("groups", "id", True),
+        ("user_group_memberships", "group_id", True),
+        ("departments", "id", True),
     ],
 )
 def test_grounded_aggregation_target_and_distinctness_fail_closed(
@@ -474,6 +487,241 @@ def test_grounded_aggregation_target_and_distinctness_fail_closed(
     with pytest.raises(SemanticPlanValidationError) as exc_info:
         _validate(plan, "How many privileged users by department?")
     assert exc_info.value.reason == "grounded_aggregation_mismatch"
+
+
+def test_grounded_distinct_count_accepts_direct_fk_identity_equivalence() -> None:
+    plan = _medium_006_plan(
+        SemanticAggregationIntent(
+            id="user_count",
+            function="count",
+            field=_field("user_group_memberships", "user_id"),
+            distinct=True,
+        )
+    )
+
+    assert _validate(plan, "How many privileged users by department?")
+
+
+def test_grounded_distinct_count_refuses_count_star() -> None:
+    plan = _medium_006_plan(
+        SemanticAggregationIntent(
+            id="user_count",
+            function="count",
+            field=None,
+            distinct=True,
+        )
+    )
+
+    with pytest.raises(SemanticPlanValidationError) as exc_info:
+        _validate(plan, "How many privileged users by department?")
+    assert exc_info.value.reason == "grounded_aggregation_mismatch"
+
+
+def test_grounded_distinct_count_equivalence_is_symmetric() -> None:
+    domain_pack, schema_context, projection = _validation_inputs(
+        "How many privileged users by department?"
+    )
+    assert projection.grounded_result_intent is not None
+    reversed_intent = projection.grounded_result_intent.model_copy(
+        update={
+            "aggregations": (
+                GroundedAggregationIntent(
+                    id="subject_count",
+                    function="count",
+                    target_field=GroundedFieldIdentity(
+                        table="user_group_memberships",
+                        column="user_id",
+                    ),
+                    distinct=True,
+                ),
+            )
+        }
+    )
+    projection = replace(projection, grounded_result_intent=reversed_intent)
+    plan = _medium_006_plan(
+        SemanticAggregationIntent(
+            id="user_count",
+            function="count",
+            field=_field("directory_users", "id"),
+            distinct=True,
+        )
+    )
+
+    assert validate_semantic_plan(
+        plan,
+        domain_pack=domain_pack,
+        projection=projection,
+        schema_context=schema_context,
+        scope_reference_resolved=True,
+    )
+
+
+def test_grounded_distinct_count_refuses_nullable_fk(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from app.db.base import Base
+
+    source_column = Base.metadata.tables[
+        "user_group_memberships"
+    ].columns["user_id"]
+    monkeypatch.setattr(source_column, "nullable", True)
+
+    with pytest.raises(SemanticPlanValidationError) as exc_info:
+        _validate(
+            _medium_006_fk_count_plan(),
+            "How many privileged users by department?",
+        )
+    assert exc_info.value.reason == "grounded_aggregation_mismatch"
+
+
+@pytest.mark.parametrize(
+    "relationship_change",
+    [
+        {"optional": True},
+        {"cardinality": SemanticRelationshipCardinality.ONE_TO_ONE},
+        {
+            "cardinality": cast(
+                SemanticRelationshipCardinality,
+                SimpleNamespace(value="many_to_many"),
+            )
+        },
+    ],
+)
+def test_grounded_distinct_count_refuses_unproven_relationship_shape(
+    relationship_change: dict[str, object],
+) -> None:
+    domain_pack = load_it_operations_domain_pack()
+    relationship = next(
+        item
+        for item in domain_pack.semantic_catalog.relationships
+        if item.id == "user_group_membership_user"
+    )
+    changed_relationship = replace(relationship, **relationship_change)
+    catalog = replace(
+        domain_pack.semantic_catalog,
+        relationships=tuple(
+            changed_relationship if item.id == relationship.id else item
+            for item in domain_pack.semantic_catalog.relationships
+        ),
+    )
+    changed_pack = replace(domain_pack, semantic_catalog=catalog)
+
+    with pytest.raises(SemanticPlanValidationError) as exc_info:
+        _validate(
+            _medium_006_fk_count_plan(),
+            "How many privileged users by department?",
+            domain_pack=changed_pack,
+        )
+    assert exc_info.value.reason == "grounded_aggregation_mismatch"
+
+
+def test_grounded_distinct_count_refuses_left_or_missing_direct_relationship() -> None:
+    left_join = _medium_006_fk_count_plan().model_copy(
+        update={
+            "relationships": (
+                _relationship("directory_user_department", "inner"),
+                _relationship("user_group_membership_group", "inner"),
+                _relationship("user_group_membership_user", "left"),
+            )
+        }
+    )
+    with pytest.raises(SemanticPlanValidationError) as exc_info:
+        _validate(left_join, "How many privileged users by department?")
+    assert exc_info.value.reason == "grounded_aggregation_mismatch"
+
+    indirect_only = _medium_006_fk_count_plan().model_copy(
+        update={
+            "relationships": (
+                _relationship("directory_user_department", "inner"),
+                _relationship("user_group_membership_department", "inner"),
+                _relationship("user_group_membership_group", "inner"),
+            )
+        }
+    )
+    with pytest.raises(SemanticPlanValidationError) as exc_info:
+        _validate(indirect_only, "How many privileged users by department?")
+    assert exc_info.value.reason == "grounded_aggregation_mismatch"
+
+
+def test_grounded_distinct_count_refuses_different_function_and_grouping() -> None:
+    wrong_function = _medium_006_plan(
+        SemanticAggregationIntent(
+            id="user_count",
+            function="sum",
+            field=_field("user_group_memberships", "user_id"),
+            distinct=True,
+        )
+    )
+    with pytest.raises(SemanticPlanValidationError) as exc_info:
+        _validate(wrong_function, "How many privileged users by department?")
+    assert exc_info.value.reason == "grounded_aggregation_mismatch"
+
+    wrong_group = _medium_006_fk_count_plan().model_copy(
+        update={
+            "output_fields": (
+                _field("departments", "name"),
+                _field("groups", "name"),
+            ),
+            "group_by": (
+                _field("departments", "name"),
+                _field("groups", "name"),
+            ),
+        }
+    )
+    with pytest.raises(SemanticPlanValidationError) as exc_info:
+        _validate(wrong_group, "How many privileged users by department?")
+    assert exc_info.value.reason == "grounded_aggregation_mismatch"
+
+
+def test_grounded_distinct_count_refuses_different_having_semantics() -> None:
+    plan = _medium_006_fk_count_plan().model_copy(
+        update={
+            "having": (
+                SemanticHavingIntent(
+                    aggregation_id="user_count",
+                    operator="greater_than",
+                    value=5,
+                ),
+            )
+        }
+    )
+
+    with pytest.raises(SemanticPlanValidationError) as exc_info:
+        _validate(plan, "How many privileged users by department?")
+    assert exc_info.value.reason == "grounded_aggregation_mismatch"
+
+
+def test_grounded_aggregation_mismatch_exposes_only_safe_identity() -> None:
+    wrong = _medium_006_plan(
+        SemanticAggregationIntent(
+            id="provider_alias_is_not_observed",
+            function="count",
+            field=_field("groups", "id"),
+            distinct=True,
+        )
+    )
+
+    with pytest.raises(SemanticPlanValidationError) as exc_info:
+        _validate(wrong, "How many privileged users by department?")
+
+    assert exc_info.value.safe_observation == {
+        "expected": [
+            {
+                "function": "count",
+                "target": "directory_users.id",
+                "distinct": True,
+            }
+        ],
+        "actual": [
+            {"function": "count", "target": "groups.id", "distinct": True}
+        ],
+    }
+    serialized = str(exc_info.value.safe_observation).lower()
+    assert "provider_alias_is_not_observed" not in serialized
+    assert "select " not in serialized
+    assert "prompt" not in serialized
+    assert "literal" not in serialized
+    assert "rows" not in serialized
 
 
 def test_grounded_explicit_having_mismatch_fails_closed() -> None:
@@ -598,8 +846,32 @@ def _validate(
     *,
     allowed_tables: tuple[str, ...] | None = None,
     scope_reference_resolved: bool = True,
+    domain_pack: DomainPack | None = None,
 ):
-    domain_pack = load_it_operations_domain_pack()
+    domain_pack = domain_pack or load_it_operations_domain_pack()
+    domain_pack, schema_context, projection = _validation_inputs(
+        question,
+        allowed_tables=allowed_tables,
+        scope_reference_resolved=scope_reference_resolved,
+        domain_pack=domain_pack,
+    )
+    return validate_semantic_plan(
+        plan,
+        domain_pack=domain_pack,
+        projection=projection,
+        schema_context=schema_context,
+        scope_reference_resolved=scope_reference_resolved,
+    )
+
+
+def _validation_inputs(
+    question: str,
+    *,
+    allowed_tables: tuple[str, ...] | None = None,
+    scope_reference_resolved: bool = True,
+    domain_pack: DomainPack | None = None,
+):
+    domain_pack = domain_pack or load_it_operations_domain_pack()
     selected_tables = allowed_tables or domain_pack.allowed_resource_table_names
     schema_context = {
         "allowed_tables": list(selected_tables),
@@ -624,12 +896,39 @@ def _validate(
             "scope_reference_resolved": scope_reference_resolved,
         },
     )
-    return validate_semantic_plan(
-        plan,
-        domain_pack=domain_pack,
-        projection=projection,
-        schema_context=schema_context,
-        scope_reference_resolved=scope_reference_resolved,
+    return domain_pack, schema_context, projection
+
+
+def _medium_006_plan(
+    aggregation: SemanticAggregationIntent,
+) -> SemanticPlan:
+    return _plan(
+        entity_ids=(
+            "departments",
+            "directory_users",
+            "groups",
+            "user_group_memberships",
+        ),
+        concept_ids=("privileged_group",),
+        relationships=(
+            _relationship("directory_user_department", "inner"),
+            _relationship("user_group_membership_group", "inner"),
+            _relationship("user_group_membership_user", "inner"),
+        ),
+        output_fields=(_field("departments", "name"),),
+        aggregations=(aggregation,),
+        group_by=(_field("departments", "name"),),
+    )
+
+
+def _medium_006_fk_count_plan() -> SemanticPlan:
+    return _medium_006_plan(
+        SemanticAggregationIntent(
+            id="user_count",
+            function="count",
+            field=_field("user_group_memberships", "user_id"),
+            distinct=True,
+        )
     )
 
 

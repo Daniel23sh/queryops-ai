@@ -436,6 +436,12 @@ class QueryEngineService:
                 is True,
             )
         except SemanticPlanValidationError as exc:
+            plan_validation: dict[str, Any] = {
+                "status": "failed",
+                "reason_code": exc.reason,
+            }
+            if exc.safe_observation is not None:
+                plan_validation["aggregation_mismatch"] = exc.safe_observation
             return replace(
                 generation_result,
                 generated_sql=None,
@@ -444,10 +450,7 @@ class QueryEngineService:
                     **generation_result.generation_metadata,
                     "provider_failure_code": "provider_response_invalid",
                     "provider_failure_fatal": False,
-                    "semantic_plan_validation": {
-                        "status": "failed",
-                        "reason_code": exc.reason,
-                    },
+                    "semantic_plan_validation": plan_validation,
                 },
                 semantic_plan=None,
                 validated_semantic_plan=None,
@@ -631,6 +634,14 @@ def _base_metadata(
                 "status": status,
                 "reason_code": reason_code,
             }
+            if reason_code == "grounded_aggregation_mismatch":
+                aggregation_mismatch = _safe_aggregation_mismatch_observation(
+                    plan_validation.get("aggregation_mismatch")
+                )
+                if aggregation_mismatch is not None:
+                    metadata["semantic_plan_validation"][
+                        "aggregation_mismatch"
+                    ] = aggregation_mismatch
     metadata["repair_attempted"] = False
     failure_code = generation_metadata.get("provider_failure_code")
     if isinstance(failure_code, str) and failure_code in {
@@ -645,6 +656,47 @@ def _base_metadata(
             generation_metadata.get("provider_failure_fatal") is True
         )
     return metadata
+
+
+def _safe_aggregation_mismatch_observation(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict) or set(value) != {"expected", "actual"}:
+        return None
+    sanitized: dict[str, list[dict[str, Any]]] = {}
+    for side in ("expected", "actual"):
+        items = value.get(side)
+        if not isinstance(items, list) or len(items) > 64:
+            return None
+        safe_items: list[dict[str, Any]] = []
+        for item in items:
+            if not isinstance(item, dict) or set(item) != {
+                "function",
+                "target",
+                "distinct",
+            }:
+                return None
+            function = item.get("function")
+            target = item.get("target")
+            distinct = item.get("distinct")
+            if function not in {"count", "sum"} or not isinstance(distinct, bool):
+                return None
+            if target is not None and (
+                not isinstance(target, str)
+                or re.fullmatch(
+                    r"[A-Za-z_][A-Za-z0-9_]{0,127}\.[A-Za-z_][A-Za-z0-9_]{0,127}",
+                    target,
+                )
+                is None
+            ):
+                return None
+            safe_items.append(
+                {
+                    "function": function,
+                    "target": target,
+                    "distinct": distinct,
+                }
+            )
+        sanitized[side] = safe_items
+    return sanitized
 
 
 def _safe_request_metadata(metadata: dict[str, Any]) -> dict[str, Any]:

@@ -13,7 +13,9 @@ from pydantic import (
     StringConstraints,
     model_validator,
 )
+from sqlalchemy import UniqueConstraint
 
+from app.db.base import Base
 from app.query_engine.domain_pack import DomainPack
 from app.query_engine.result_intent import (
     GroundedAggregationIntent,
@@ -189,9 +191,15 @@ class ValidatedSemanticPlan:
 class SemanticPlanValidationError(ValueError):
     code = "provider_response_invalid"
 
-    def __init__(self, reason: str) -> None:
+    def __init__(
+        self,
+        reason: str,
+        *,
+        safe_observation: dict[str, Any] | None = None,
+    ) -> None:
         super().__init__("The semantic plan is invalid.")
         self.reason = reason
+        self.safe_observation = safe_observation
 
 
 def validate_semantic_plan(
@@ -482,6 +490,26 @@ def _validate_grounded_result_intent(
     if required_output_fields is None or not required_output_fields <= plan_output_fields:
         raise SemanticPlanValidationError("required_output_missing")
 
+    expected_group_by = _grounded_field_keys(
+        intent.group_by,
+        table_to_entity_id,
+    )
+    actual_group_by = {_field_key(field) for field in plan.group_by}
+    aggregation_key_normalization: dict[
+        tuple[str, str], tuple[str, str]
+    ] = {}
+    if expected_group_by is not None and expected_group_by == actual_group_by:
+        aggregation_key_normalization = _distinct_count_identity_normalization(
+            plan,
+            domain_pack,
+        )
+
+    expected_aggregations: tuple[
+        tuple[str, tuple[str, str] | None, bool], ...
+    ] | None = None
+    actual_aggregations: tuple[
+        tuple[str, tuple[str, str] | None, bool], ...
+    ] = ()
     if intent.aggregations:
         expected_aggregations = _grounded_aggregation_keys(
             intent.aggregations,
@@ -493,15 +521,35 @@ def _validate_grounded_result_intent(
                 key=repr,
             )
         )
-        if expected_aggregations is None or expected_aggregations != actual_aggregations:
-            raise SemanticPlanValidationError("grounded_aggregation_mismatch")
+        aggregations_match = expected_aggregations == actual_aggregations
+        if (
+            not aggregations_match
+            and expected_aggregations is not None
+            and aggregation_key_normalization
+        ):
+            aggregations_match = _normalize_aggregation_keys(
+                expected_aggregations,
+                aggregation_key_normalization,
+            ) == _normalize_aggregation_keys(
+                actual_aggregations,
+                aggregation_key_normalization,
+            ) and _having_semantics_match(
+                intent,
+                plan,
+                table_to_entity_id,
+                aggregation_key_normalization,
+            )
+        if not aggregations_match:
+            raise SemanticPlanValidationError(
+                "grounded_aggregation_mismatch",
+                safe_observation=_aggregation_mismatch_observation(
+                    intent.aggregations,
+                    plan.aggregations,
+                    domain_pack,
+                ),
+            )
 
     if intent.group_by:
-        expected_group_by = _grounded_field_keys(
-            intent.group_by,
-            table_to_entity_id,
-        )
-        actual_group_by = {_field_key(field) for field in plan.group_by}
         if expected_group_by is None or expected_group_by != actual_group_by:
             raise SemanticPlanValidationError("grounded_group_by_mismatch")
 
@@ -515,7 +563,10 @@ def _validate_grounded_result_intent(
         }
         expected_having = {
             (
-                expected_aggregations_by_id[item.aggregation_id],
+                _normalize_aggregation_key(
+                    expected_aggregations_by_id[item.aggregation_id],
+                    aggregation_key_normalization,
+                ),
                 item.operator,
                 item.value,
             )
@@ -523,7 +574,10 @@ def _validate_grounded_result_intent(
         }
         actual_having = {
             (
-                actual_aggregations_by_id.get(item.aggregation_id),
+                _normalize_aggregation_key(
+                    actual_aggregations_by_id.get(item.aggregation_id),
+                    aggregation_key_normalization,
+                ),
                 item.operator,
                 item.value,
             )
@@ -598,6 +652,186 @@ def _plan_aggregation_key(
         _field_key(aggregation.field) if aggregation.field is not None else None,
         aggregation.distinct,
     )
+
+
+def _distinct_count_identity_normalization(
+    plan: SemanticPlan,
+    domain_pack: DomainPack,
+) -> dict[tuple[str, str], tuple[str, str]]:
+    catalog = domain_pack.semantic_catalog
+    entities_by_id = catalog.entities_by_id
+    relationships_by_id = {
+        relationship.id: relationship for relationship in catalog.relationships
+    }
+    candidates: dict[tuple[str, str], set[tuple[str, str]]] = {}
+    for selected in plan.relationships:
+        relationship = relationships_by_id.get(selected.relationship_id)
+        if (
+            relationship is None
+            or selected.join_type != "inner"
+            or relationship.cardinality.value != "many_to_one"
+            or relationship.optional
+        ):
+            continue
+        source_entity = entities_by_id.get(relationship.from_entity)
+        target_entity = entities_by_id.get(relationship.to_entity)
+        if source_entity is None or target_entity is None:
+            continue
+        if not _is_proven_fk_to_unique_identity(
+            source_entity.table,
+            relationship.from_column,
+            target_entity.table,
+            relationship.to_column,
+        ):
+            continue
+        source_key = (relationship.from_entity, relationship.from_column)
+        target_key = (relationship.to_entity, relationship.to_column)
+        candidates.setdefault(source_key, set()).add(target_key)
+    return {
+        source_key: next(iter(target_keys))
+        for source_key, target_keys in candidates.items()
+        if len(target_keys) == 1
+    }
+
+
+def _is_proven_fk_to_unique_identity(
+    source_table_name: str,
+    source_column_name: str,
+    target_table_name: str,
+    target_column_name: str,
+) -> bool:
+    source_table = Base.metadata.tables.get(source_table_name)
+    target_table = Base.metadata.tables.get(target_table_name)
+    if source_table is None or target_table is None:
+        return False
+    source_column = source_table.columns.get(source_column_name)
+    target_column = target_table.columns.get(target_column_name)
+    if source_column is None or target_column is None or source_column.nullable:
+        return False
+    if not any(
+        foreign_key.column.table is target_table
+        and foreign_key.column is target_column
+        for foreign_key in source_column.foreign_keys
+    ):
+        return False
+    primary_key_columns = tuple(target_table.primary_key.columns)
+    if len(primary_key_columns) == 1 and primary_key_columns[0] is target_column:
+        return True
+    if target_column.unique is True:
+        return True
+    return any(
+        isinstance(constraint, UniqueConstraint)
+        and len(constraint.columns) == 1
+        and next(iter(constraint.columns)) is target_column
+        for constraint in target_table.constraints
+    )
+
+
+def _normalize_aggregation_keys(
+    keys: tuple[tuple[str, tuple[str, str] | None, bool], ...],
+    field_normalization: Mapping[tuple[str, str], tuple[str, str]],
+) -> tuple[tuple[str, tuple[str, str] | None, bool], ...]:
+    normalized: list[tuple[str, tuple[str, str] | None, bool]] = []
+    for key in keys:
+        normalized_key = _normalize_aggregation_key(key, field_normalization)
+        if normalized_key is not None:
+            normalized.append(normalized_key)
+    return tuple(sorted(normalized, key=repr))
+
+
+def _normalize_aggregation_key(
+    key: tuple[str, tuple[str, str] | None, bool] | None,
+    field_normalization: Mapping[tuple[str, str], tuple[str, str]],
+) -> tuple[str, tuple[str, str] | None, bool] | None:
+    if key is None:
+        return None
+    function, field, distinct = key
+    if function != "count" or not distinct or field is None:
+        return key
+    return function, field_normalization.get(field, field), distinct
+
+
+def _having_semantics_match(
+    intent: GroundedResultIntent,
+    plan: SemanticPlan,
+    table_to_entity_id: Mapping[str, str],
+    field_normalization: Mapping[tuple[str, str], tuple[str, str]],
+) -> bool:
+    expected_aggregations_by_id = {
+        item.id: _grounded_aggregation_key(item, table_to_entity_id)
+        for item in intent.aggregations
+    }
+    actual_aggregations_by_id = {
+        item.id: _plan_aggregation_key(item) for item in plan.aggregations
+    }
+    expected_having = {
+        (
+            _normalize_aggregation_key(
+                expected_aggregations_by_id.get(item.aggregation_id),
+                field_normalization,
+            ),
+            item.operator,
+            item.value,
+        )
+        for item in intent.having
+    }
+    actual_having = {
+        (
+            _normalize_aggregation_key(
+                actual_aggregations_by_id.get(item.aggregation_id),
+                field_normalization,
+            ),
+            item.operator,
+            item.value,
+        )
+        for item in plan.having
+    }
+    return None not in expected_aggregations_by_id.values() and (
+        expected_having == actual_having
+    )
+
+
+def _aggregation_mismatch_observation(
+    expected: tuple[GroundedAggregationIntent, ...],
+    actual: tuple[SemanticAggregationIntent, ...],
+    domain_pack: DomainPack,
+) -> dict[str, Any]:
+    entities_by_id = domain_pack.semantic_catalog.entities_by_id
+    expected_items = [
+        {
+            "function": item.function,
+            "target": (
+                f"{item.target_field.table}.{item.target_field.column}"
+                if item.target_field is not None
+                else None
+            ),
+            "distinct": item.distinct,
+        }
+        for item in expected
+    ]
+    actual_items = [
+        {
+            "function": item.function,
+            "target": (
+                f"{entities_by_id[item.field.entity_id].table}.{item.field.column}"
+                if item.field is not None
+                and item.field.entity_id in entities_by_id
+                else None
+            ),
+            "distinct": item.distinct,
+        }
+        for item in actual
+    ]
+    def sort_key(item: dict[str, Any]) -> tuple[Any, ...]:
+        return (
+            item["function"],
+            item["target"] or "",
+            item["distinct"],
+        )
+    return {
+        "expected": sorted(expected_items, key=sort_key),
+        "actual": sorted(actual_items, key=sort_key),
+    }
 
 
 def _validate_literal_filter(

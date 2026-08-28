@@ -25,6 +25,7 @@ from app.query_engine.semantic_plan import (
     SemanticFieldRef,
     SemanticOrderIntent,
     SemanticPlan,
+    SemanticRelationshipIntent,
 )
 from app.query_engine.service import (
     QueryEngineRequest,
@@ -601,10 +602,69 @@ def test_mandatory_metric_cannot_be_downgraded_before_sql_validation(
         "status": "failed",
         "reason_code": "mandatory_metric_missing",
     }
+    assert "aggregation_mismatch" not in query_run.query_metadata[
+        "semantic_plan_validation"
+    ]
     assert validator.seen_sql == []
     assert conformance.calls == []
     assert executor.seen_sql == []
     assert provider.calls == 1
+
+
+def test_grounded_aggregation_mismatch_persists_only_safe_identities(
+    db_session: Session,
+) -> None:
+    executor = FakeExecutor()
+    validator = RecordingValidator()
+    provider = WrongGroundedAggregationProvider()
+    service = QueryEngineService(
+        provider=provider,
+        executor=executor,
+        validator=validator,
+    )
+    user = user_by_email(db_session, "demo.analyst@queryops.local")
+
+    result = service.run(
+        db_session,
+        user,
+        QueryEngineRequest(question="How many privileged users by department?"),
+    )
+
+    query_run = only_query_run(db_session)
+    assert result.status == "failed"
+    assert result.error_code == "provider_response_invalid"
+    assert query_run.query_metadata["semantic_plan_validation"] == {
+        "status": "failed",
+        "reason_code": "grounded_aggregation_mismatch",
+        "aggregation_mismatch": {
+            "expected": [
+                {
+                    "function": "count",
+                    "target": "directory_users.id",
+                    "distinct": True,
+                }
+            ],
+            "actual": [
+                {
+                    "function": "count",
+                    "target": "groups.id",
+                    "distinct": True,
+                }
+            ],
+        },
+    }
+    observation = str(
+        query_run.query_metadata["semantic_plan_validation"][
+            "aggregation_mismatch"
+        ]
+    ).lower()
+    assert "provider_aggregation_alias" not in observation
+    assert "select " not in observation
+    assert "prompt" not in observation
+    assert "literal" not in observation
+    assert "rows" not in observation
+    assert validator.seen_sql == []
+    assert executor.seen_sql == []
 
 
 def test_sql_safety_failure_never_invokes_conformance(
@@ -990,6 +1050,68 @@ class WeakActiveUsersProvider:
                     ),
                 ),
                 group_by=(),
+                having=(),
+                order_by=(),
+                limit=None,
+            ),
+        )
+
+
+class WrongGroundedAggregationProvider:
+    provider_name = "grounded-mismatch-test-provider"
+    model_name = "grounded-mismatch-test-model"
+
+    def generate_sql(
+        self,
+        _question: str,
+        _schema_context: dict[str, Any],
+        _user_context: dict[str, Any],
+        _options: dict[str, Any],
+    ) -> SQLGenerationResult:
+        return SQLGenerationResult(
+            generated_sql="SELECT sanitized candidate",
+            provider_name=self.provider_name,
+            model_name=self.model_name,
+            semantic_plan=SemanticPlan(
+                entity_ids=(
+                    "departments",
+                    "directory_users",
+                    "groups",
+                    "user_group_memberships",
+                ),
+                concept_ids=("privileged_group",),
+                composition_rule_ids=(),
+                metric_id=None,
+                distinct=False,
+                literal_filters=(),
+                relationships=(
+                    SemanticRelationshipIntent(
+                        relationship_id="directory_user_department",
+                        join_type="inner",
+                    ),
+                    SemanticRelationshipIntent(
+                        relationship_id="user_group_membership_group",
+                        join_type="inner",
+                    ),
+                    SemanticRelationshipIntent(
+                        relationship_id="user_group_membership_user",
+                        join_type="inner",
+                    ),
+                ),
+                output_fields=(
+                    SemanticFieldRef(entity_id="departments", column="name"),
+                ),
+                aggregations=(
+                    SemanticAggregationIntent(
+                        id="provider_aggregation_alias",
+                        function="count",
+                        field=SemanticFieldRef(entity_id="groups", column="id"),
+                        distinct=True,
+                    ),
+                ),
+                group_by=(
+                    SemanticFieldRef(entity_id="departments", column="name"),
+                ),
                 having=(),
                 order_by=(),
                 limit=None,
