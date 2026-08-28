@@ -286,6 +286,29 @@ def test_explicit_quantity_by_department_builds_grouped_count_intent() -> None:
     ] == [("count", "directory_users", "id", True)]
 
 
+def test_resolved_scope_reference_is_not_the_grouped_count_subject() -> None:
+    projection = _projection(
+        "How many open support tickets exist in my department by priority?",
+        scope_type="department",
+    )
+    intent = projection.grounded_result_intent
+
+    assert intent is not None
+    assert _field_keys(intent.group_by) == {("support_tickets", "priority")}
+    assert _field_keys(intent.required_output_fields) == {
+        ("support_tickets", "priority")
+    }
+    assert [
+        (
+            item.function,
+            item.target_field,
+            item.distinct,
+        )
+        for item in intent.aggregations
+    ] == [("count", None, False)]
+    assert projection.mandatory_evidence()["entity_ids"] == ["support_tickets"]
+
+
 def test_grouping_without_quantity_does_not_invent_count() -> None:
     projection = _projection("Show users by department.")
     intent = projection.grounded_result_intent

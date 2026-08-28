@@ -296,9 +296,11 @@ def build_semantic_grounding_projection(
         for guidance in catalog.authorization_guidance
         if guidance.scope_type == scope_type
     )
+    resolved_scope_entity_ids: set[str] = set()
     if scope_resolved:
         for guidance in catalog.authorization_guidance:
             if _matches_any_reference(question_tokens, guidance.possessive_references):
+                resolved_scope_entity_ids.add(guidance.scope_entity_id)
                 anchor_entity_ids.discard(guidance.scope_entity_id)
                 # Possessive scope language (for example, "my department") is
                 # authorization context, not a requested business entity.  Keep
@@ -376,6 +378,7 @@ def build_semantic_grounding_projection(
         catalog=catalog,
         question_tokens=question_tokens,
         entity_match_spans=entity_match_spans,
+        resolved_scope_entity_ids=resolved_scope_entity_ids,
         concept_match_spans=concept_match_spans,
         exact_concept_ids=exact_concept_ids,
         exact_metric_ids=exact_metric_ids,
@@ -1023,6 +1026,7 @@ def _build_grounded_result_intent(
     catalog: SemanticCatalog,
     question_tokens: tuple[str, ...],
     entity_match_spans: Mapping[str, set[tuple[int, int]]],
+    resolved_scope_entity_ids: set[str],
     concept_match_spans: Mapping[str, set[tuple[int, int]]],
     exact_concept_ids: set[str],
     exact_metric_ids: set[str],
@@ -1037,6 +1041,11 @@ def _build_grounded_result_intent(
     exact_concept_entity_ids = {
         catalog.concepts_by_id[concept_id].entity_id
         for concept_id in exact_concept_ids
+    }
+    subject_entity_match_spans = {
+        entity_id: spans
+        for entity_id, spans in entity_match_spans.items()
+        if entity_id not in resolved_scope_entity_ids
     }
     required_output_fields = set(
         _explicit_output_fields(
@@ -1069,13 +1078,9 @@ def _build_grounded_result_intent(
         )
         subject_entity_id = _subject_entity_id(
             question_tokens,
-            entity_match_spans,
+            subject_entity_match_spans,
             before_index=marker_start,
-            excluded_entity_ids={
-                entity.id
-                for entity in entities.values()
-                if entity.table == grouping_field.table
-            },
+            excluded_entity_ids=set(),
         )
         explicit_quantity = quantity_span is not None
         implicit_quantity = (
@@ -1137,19 +1142,24 @@ def _build_grounded_result_intent(
         elif subject_entity_id is not None and (
             explicit_quantity or implicit_quantity
         ):
-            target = _authorized_field(
-                subject_entity_id,
-                "id",
-                entities=entities,
-                allowed_columns=allowed_columns,
+            subject_table = entities[subject_entity_id].table
+            target = (
+                None
+                if subject_table == grouping_field.table
+                else _authorized_field(
+                    subject_entity_id,
+                    "id",
+                    entities=entities,
+                    allowed_columns=allowed_columns,
+                )
             )
-            if target is not None:
+            if target is not None or subject_table == grouping_field.table:
                 aggregations.append(
                     GroundedAggregationIntent(
                         id="subject_count",
                         function="count",
                         target_field=target,
-                        distinct=True,
+                        distinct=target is not None,
                     )
                 )
 
@@ -1199,7 +1209,7 @@ def _build_grounded_result_intent(
     if not aggregations and grouping is None and quantity_span is not None:
         subject_entity_id = _subject_entity_id(
             question_tokens,
-            entity_match_spans,
+            subject_entity_match_spans,
             before_index=len(question_tokens),
             excluded_entity_ids=set(),
         )

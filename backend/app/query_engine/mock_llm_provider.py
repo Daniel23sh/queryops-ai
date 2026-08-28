@@ -277,19 +277,10 @@ _MOCK_PLAN_SPECIFICATIONS: dict[str, dict[str, Any]] = {
         "entity_ids": ("support_tickets",),
         "concept_ids": ("open_support_ticket",),
         "relationships": (),
-        "output_fields": (
-            _field("support_tickets", "priority"),
-            _field("support_tickets", "status"),
-        ),
+        "output_fields": (_field("support_tickets", "priority"),),
         "aggregations": _count(),
-        "group_by": (
-            _field("support_tickets", "priority"),
-            _field("support_tickets", "status"),
-        ),
-        "order_by": (
-            _order("support_tickets", "priority"),
-            _order("support_tickets", "status"),
-        ),
+        "group_by": (_field("support_tickets", "priority"),),
+        "order_by": (_order("support_tickets", "priority"),),
     },
     "privileged_group_memberships_by_department": {
         "entity_ids": ("groups", "user_group_memberships"),
@@ -342,4 +333,12 @@ _MOCK_PLAN_SPECIFICATIONS: dict[str, dict[str, Any]] = {
 
 
 def _mock_free_text_sql(template: QueryTemplate) -> str | None:
+    if template.id == "open_support_tickets_by_department":
+        # Free text asks for priority grain only. Explicit template execution
+        # retains the tracked priority-and-status template contract.
+        return (
+            "SELECT priority, COUNT(*) AS ticket_count FROM support_tickets "
+            "WHERE status IN ('open', 'in_progress') "
+            "GROUP BY priority ORDER BY priority"
+        )
     return render_template_sql(template)

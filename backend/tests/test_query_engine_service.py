@@ -124,6 +124,39 @@ def test_successful_known_mock_free_text_query_creates_succeeded_query_run(
     assert query_run.query_metadata["model"] == "mock-queryops-v1"
 
 
+def test_mock_grouped_count_free_text_matches_grounded_result_intent(
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    executor = FakeExecutor()
+    service = QueryEngineService(executor=executor)
+    user = user_by_email(db_session, "demo.analyst@queryops.local")
+
+    result = service.run(
+        db_session,
+        user,
+        QueryEngineRequest(
+            question=(
+                "How many open support tickets exist in my department by priority?"
+            )
+        ),
+    )
+
+    query_run = only_query_run(db_session)
+    assert result.status == "succeeded"
+    assert query_run.status == "succeeded"
+    assert query_run.generated_sql is not None
+    assert query_run.generated_sql.startswith("SELECT priority, COUNT(*)")
+    assert query_run.query_metadata["semantic_plan_validation"] == {
+        "status": "passed",
+        "reason_code": None,
+    }
+    assert query_run.query_metadata["template_id"] == (
+        "open_support_tickets_by_department"
+    )
+
+
 def test_mock_free_text_template_query_applies_default_parameters(
     db_session: Session,
     monkeypatch: pytest.MonkeyPatch,
