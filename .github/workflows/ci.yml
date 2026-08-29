@@ -306,10 +306,14 @@ jobs:
       - name: Apply migrations, seed, and prepare exact-scope workflow
         working-directory: backend
         run: |
+          reference_time="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
           DATABASE_URL="$M8_E2E_DATABASE_URL" alembic upgrade head
           DATABASE_URL="$M8_E2E_DATABASE_URL" alembic current
           DATABASE_URL="$M8_E2E_DATABASE_URL" alembic check
-          DATABASE_URL="$M8_E2E_DATABASE_URL" python scripts/seed_it_operations.py --profile small --reset
+          DATABASE_URL="$M8_E2E_DATABASE_URL" python scripts/seed_it_operations.py \
+            --profile small \
+            --reset \
+            --reference-time "$reference_time"
           python scripts/prepare_m8_e2e.py
 
       - name: Install Playwright Chromium

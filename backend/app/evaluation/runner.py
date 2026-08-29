@@ -22,21 +22,35 @@ from app.evaluation.context import (
     EvaluationSetupError,
     resolve_evaluation_identity,
 )
+from app.evaluation.environment import EvaluationEnvironmentIdentity
 from app.evaluation.contracts import (
     ActualOutcome,
     CaseType,
+    EvaluationComparisonProvenance,
     EvaluationCase,
+    EvaluationQueryProvenance,
     EvaluationSet,
     ExpectedOutcome,
+    ProvenanceAuthorizationEvidence,
 )
 from app.evaluation.loader import load_it_operations_evaluation_set
+from app.evaluation.provenance import (
+    EvaluationProvenanceError,
+    extract_evaluation_query_provenance,
+)
 from app.evaluation.scoring import EvaluationScore, score_evaluation_case
 from app.evaluation.selection import (
     EvaluationFilters,
     evaluation_dataset_digest,
     select_evaluation_cases,
 )
-from app.models.product import DataResource, EvaluationResult, EvaluationRun, RunStatus
+from app.models.product import (
+    DataResource,
+    EvaluationResult,
+    EvaluationRun,
+    QueryRun,
+    RunStatus,
+)
 from app.query_engine.domain_pack import DomainPack
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.llm_provider import LLMProvider, sanitize_provider_measurement
@@ -44,6 +58,7 @@ from app.query_engine.mock_llm_provider import MockLLMProvider
 from app.query_engine.provider_config import ProviderDescriptor, ProviderId
 from app.query_engine.request_authorization import authorize_query_request
 from app.query_engine.result_formatter import QueryEngineServiceResult
+from app.query_engine.semantic_catalog import semantic_catalog_identity
 from app.query_engine.service import QueryEngineRequest, QueryEngineService
 
 
@@ -61,6 +76,19 @@ SAFE_ACTUAL_ERROR_CODES = frozenset(
         "provider_timeout",
         "provider_unavailable",
         "provider_response_invalid",
+        "semantic_conformance_failed",
+        "validation_failed",
+    }
+)
+SAFE_PIPELINE_STAGES = frozenset(
+    {
+        "grounding",
+        "plan_validation",
+        "sql_generation",
+        "sql_safety",
+        "semantic_conformance",
+        "execution",
+        "result_comparison",
     }
 )
 
@@ -115,6 +143,8 @@ class EvaluationRunSummary:
     by_case_type: dict[str, dict[str, int | float]]
     cases: tuple[EvaluationCaseSummary, ...]
     provider_usage: dict[str, int | float] = field(default_factory=dict)
+    semantic_catalog: dict[str, str] = field(default_factory=dict)
+    evaluation_environment: dict[str, str | int] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -127,6 +157,8 @@ class _CaseExecution:
     actual_rows: tuple[Mapping[str, Any], ...]
     actual_referenced_tables: tuple[str, ...]
     error_code: str | None
+    failure_stage: str | None = None
+    stage_reason_code: str | None = None
     provider_measurement: dict[str, Any] | None = None
     provider_failure_fatal: bool = False
 
@@ -137,6 +169,7 @@ class _CompletedCase:
     execution: _CaseExecution
     score: EvaluationScore
     duration_ms: float
+    provenance: EvaluationComparisonProvenance | None = None
 
 
 SessionFactory = Callable[[], Session]
@@ -154,6 +187,7 @@ class EvaluationRunner:
         query_service_factory: QueryServiceFactory | None = None,
         provider_factory: ProviderFactory | None = None,
         provider_descriptor: ProviderDescriptor | None = None,
+        evaluation_environment: EvaluationEnvironmentIdentity | None = None,
     ) -> None:
         self._session_factory = session_factory
         self._dataset_loader = dataset_loader
@@ -164,6 +198,7 @@ class EvaluationRunner:
             provider=ProviderId.MOCK,
             model_label=MockLLMProvider.model_name,
         )
+        self._evaluation_environment = evaluation_environment
         selected_provider_factory = provider_factory or (
             lambda pack: MockLLMProvider(pack)
         )
@@ -178,20 +213,41 @@ class EvaluationRunner:
         self,
         filters: EvaluationFilters | None = None,
     ) -> EvaluationRunSummary:
+        selected_filters = filters or EvaluationFilters()
         evaluation_set = self._dataset_loader()
-        cases = select_evaluation_cases(evaluation_set, filters)
+        cases = select_evaluation_cases(evaluation_set, selected_filters)
         domain_pack = self._domain_pack_loader()
         digest = evaluation_dataset_digest(evaluation_set)
+        catalog_identity = self._verify_catalog_identity(
+            evaluation_set,
+            domain_pack,
+        )
+        if (
+            self._provider_descriptor.provider is ProviderId.OPENAI
+            and self._evaluation_environment is None
+        ):
+            raise EvaluationRunnerError(
+                "evaluation_environment_missing",
+                "OpenAI evaluation requires verified environment evidence.",
+            )
         self._verify_prerequisites(cases)
         query_service = self._query_service_factory(domain_pack)
-        run_id = self._create_run(evaluation_set, digest, cases, filters)
+        run_id = self._create_run(
+            evaluation_set,
+            digest,
+            cases,
+            selected_filters,
+            catalog_identity,
+            self._environment_identity(),
+        )
 
         completed: list[_CompletedCase] = []
         fatal_error: EvaluationRunnerError | None = None
         for case in cases:
             started_at = perf_counter()
+            provenance: EvaluationComparisonProvenance | None = None
             try:
-                execution, expected_rows = self._execute_case(
+                execution, expected_rows, provenance = self._execute_case(
                     case, domain_pack, query_service
                 )
                 score = score_evaluation_case(
@@ -201,6 +257,7 @@ class EvaluationRunner:
                     actual_referenced_tables=execution.actual_referenced_tables,
                     expected_rows=expected_rows,
                     actual_rows=execution.actual_rows,
+                    provenance=provenance,
                 )
                 if execution.provider_failure_fatal:
                     fatal_error = EvaluationRunnerError(
@@ -247,6 +304,7 @@ class EvaluationRunner:
                 execution=execution,
                 score=score,
                 duration_ms=(perf_counter() - started_at) * 1000,
+                provenance=provenance,
             )
             completed.append(completed_case)
             self._persist_result(run_id, completed_case)
@@ -265,12 +323,37 @@ class EvaluationRunner:
             cases,
             completed,
             self._provider_descriptor,
+            catalog_identity,
+            self._environment_identity(),
             status=status,
         )
-        self._finalize_run(run_id, summary, fatal_error)
+        self._finalize_run(run_id, summary, fatal_error, selected_filters)
         if fatal_error is not None:
             raise fatal_error
         return summary
+
+    def _verify_catalog_identity(
+        self,
+        evaluation_set: EvaluationSet,
+        domain_pack: DomainPack,
+    ) -> dict[str, str]:
+        catalog = domain_pack.semantic_catalog
+        if (
+            catalog.domain_id != evaluation_set.domain_id
+            or catalog.dataset_id != evaluation_set.dataset_id
+        ):
+            raise EvaluationRunnerError(
+                "evaluation_catalog_mismatch",
+                "Evaluation semantic catalog identity is invalid.",
+            )
+        return semantic_catalog_identity(catalog)
+
+    def _environment_identity(self) -> dict[str, str | int]:
+        return (
+            self._evaluation_environment.as_dict()
+            if self._evaluation_environment is not None
+            else {}
+        )
 
     def _verify_prerequisites(self, cases: Sequence[EvaluationCase]) -> None:
         try:
@@ -310,7 +393,9 @@ class EvaluationRunner:
         evaluation_set: EvaluationSet,
         digest: str,
         cases: Sequence[EvaluationCase],
-        filters: EvaluationFilters | None,
+        filters: EvaluationFilters,
+        catalog_identity: dict[str, str],
+        environment_identity: dict[str, str | int],
     ) -> UUID:
         run = EvaluationRun(
             requested_by_user_id=None,
@@ -325,7 +410,9 @@ class EvaluationRunner:
                 "dataset_version": evaluation_set.version,
                 "dataset_digest": digest,
                 "selected_count": len(cases),
-                "filters": (filters or EvaluationFilters()).as_safe_dict(),
+                "filters": filters.as_safe_dict(),
+                "semantic_catalog": catalog_identity,
+                "evaluation_environment": environment_identity,
             },
         )
         try:
@@ -345,12 +432,17 @@ class EvaluationRunner:
         case: EvaluationCase,
         domain_pack: DomainPack,
         query_service: QueryEngineService,
-    ) -> tuple[_CaseExecution, tuple[Mapping[str, Any], ...]]:
+    ) -> tuple[
+        _CaseExecution,
+        tuple[Mapping[str, Any], ...],
+        EvaluationComparisonProvenance | None,
+    ]:
         with self._session_factory() as db:
             identity = resolve_evaluation_identity(db, case)
             execution = self._execute_actual(
                 db, identity, case, domain_pack, query_service
             )
+            provenance = _build_case_provenance(db, case, execution)
             expected_rows: tuple[Mapping[str, Any], ...] = ()
             if (
                 case.expected_outcome is ExpectedOutcome.SUCCESS
@@ -363,7 +455,7 @@ class EvaluationRunner:
                     domain_pack,
                 )
                 expected_rows = baseline.rows
-            return execution, expected_rows
+            return execution, expected_rows, provenance
 
     def _execute_actual(
         self,
@@ -428,10 +520,23 @@ class EvaluationRunner:
                 completed.execution.query_execution_attempted
             ),
         }
+        failure_stage = completed.execution.failure_stage
+        if (
+            failure_stage is None
+            and completed.execution.execution_succeeded
+            and not completed.score.passed
+        ):
+            failure_stage = "result_comparison"
+        if failure_stage in SAFE_PIPELINE_STAGES:
+            metrics["failure_stage"] = failure_stage
+        if completed.execution.stage_reason_code is not None:
+            metrics["stage_reason_code"] = completed.execution.stage_reason_code
         if completed.execution.provider_measurement is not None:
             metrics["provider_measurement"] = dict(
                 completed.execution.provider_measurement
             )
+        if completed.provenance is not None:
+            metrics["result_provenance"] = completed.provenance.as_safe_dict()
         result = EvaluationResult(
             evaluation_run_id=run_id,
             query_run_id=completed.execution.query_run_id,
@@ -470,6 +575,7 @@ class EvaluationRunner:
         run_id: UUID,
         summary: EvaluationRunSummary,
         fatal_error: EvaluationRunnerError | None,
+        filters: EvaluationFilters,
     ) -> None:
         try:
             with self._session_factory() as db:
@@ -482,7 +588,11 @@ class EvaluationRunner:
                     )
                 run.status = summary.status
                 run.completed_at = datetime.now(UTC)
-                run.summary = _summary_for_persistence(summary, fatal_error)
+                run.summary = _summary_for_persistence(
+                    summary,
+                    fatal_error,
+                    filters,
+                )
                 db.commit()
         except EvaluationRunnerError:
             raise
@@ -549,6 +659,56 @@ def _denied_case_resources(
     return None
 
 
+def _build_case_provenance(
+    db: Session,
+    case: EvaluationCase,
+    execution: _CaseExecution,
+) -> EvaluationComparisonProvenance | None:
+    expected = _safe_query_provenance(
+        case.baseline_sql,
+        ProvenanceAuthorizationEvidence.FROZEN_BASELINE_VALIDATED,
+    )
+    actual = None
+    if execution.query_run_id is not None:
+        query_run = db.get(QueryRun, execution.query_run_id)
+        if query_run is not None and isinstance(query_run.executed_sql, str):
+            validation = (
+                query_run.query_metadata.get("validation")
+                if isinstance(query_run.query_metadata, dict)
+                else None
+            )
+            evidence = (
+                ProvenanceAuthorizationEvidence.FINAL_SQL_VALIDATED
+                if (
+                    execution.execution_succeeded
+                    and isinstance(validation, dict)
+                    and validation.get("valid") is True
+                )
+                else ProvenanceAuthorizationEvidence.UNVERIFIED
+            )
+            actual = _safe_query_provenance(query_run.executed_sql, evidence)
+    if expected is None and actual is None:
+        return None
+    return EvaluationComparisonProvenance(expected=expected, actual=actual)
+
+
+def _safe_query_provenance(
+    sql: str | None,
+    authorization_evidence: ProvenanceAuthorizationEvidence,
+) -> EvaluationQueryProvenance | None:
+    if sql is None:
+        return None
+    try:
+        return extract_evaluation_query_provenance(
+            sql,
+            authorization_evidence=authorization_evidence,
+        )
+    except EvaluationProvenanceError:
+        # Provenance is supplemental scoring evidence. Unsupported structure must
+        # fail closed by omitting it, without changing established case outcomes.
+        return None
+
+
 def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
     query_run_id = UUID(result.query_run_id) if result.query_run_id else None
     referenced_tables = tuple(
@@ -564,6 +724,19 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
         "provider_unavailable",
         "provider_response_invalid",
     }:
+        plan_validation = result.metadata.get("semantic_plan_validation")
+        grounding = result.metadata.get("semantic_grounding")
+        if isinstance(plan_validation, dict) and plan_validation.get("status") == "failed":
+            failure_stage = "plan_validation"
+            stage_reason_code = _safe_stage_reason(
+                plan_validation.get("reason_code")
+            )
+        elif isinstance(grounding, dict) and grounding.get("status") == "failed":
+            failure_stage = "grounding"
+            stage_reason_code = _safe_stage_reason(grounding.get("reason_code"))
+        else:
+            failure_stage = "sql_generation"
+            stage_reason_code = provider_failure_code
         return _CaseExecution(
             actual_outcome=ActualOutcome.INTERNAL_ERROR,
             execution_succeeded=False,
@@ -573,6 +746,8 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
             actual_rows=(),
             actual_referenced_tables=referenced_tables,
             error_code=provider_failure_code,
+            failure_stage=failure_stage,
+            stage_reason_code=stage_reason_code,
             provider_measurement=provider_measurement,
             provider_failure_fatal=(
                 result.metadata.get("provider_failure_fatal") is True
@@ -590,6 +765,25 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
             error_code=None,
             provider_measurement=provider_measurement,
         )
+    if (
+        result.error_code == "unsafe_sql_blocked"
+        and not isinstance(result.metadata.get("execution"), dict)
+        and result.row_count == 0
+        and not result.rows
+    ):
+        return _CaseExecution(
+            actual_outcome=ActualOutcome.UNSAFE_BLOCKED,
+            execution_succeeded=False,
+            query_invoked=True,
+            query_execution_attempted=False,
+            query_run_id=query_run_id,
+            actual_rows=(),
+            actual_referenced_tables=referenced_tables,
+            error_code="unsafe_sql_blocked",
+            failure_stage="sql_safety",
+            stage_reason_code="unsafe_request",
+            provider_measurement=provider_measurement,
+        )
     if result.clarification_required:
         return _CaseExecution(
             actual_outcome=ActualOutcome.CLARIFICATION,
@@ -600,6 +794,10 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
             actual_rows=(),
             actual_referenced_tables=referenced_tables,
             error_code="clarification_required",
+            failure_stage="grounding",
+            stage_reason_code=_safe_stage_reason(
+                result.metadata.get("unsupported_reason")
+            ),
             provider_measurement=provider_measurement,
         )
     validation = result.metadata.get("validation")
@@ -614,8 +812,37 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
             actual_rows=(),
             actual_referenced_tables=referenced_tables,
             error_code="unsafe_sql_blocked",
+            failure_stage="sql_safety",
+            stage_reason_code=validation_code,
             provider_measurement=provider_measurement,
         )
+    conformance = result.metadata.get("semantic_conformance")
+    if (
+        result.error_code == "semantic_conformance_failed"
+        and isinstance(conformance, dict)
+        and conformance.get("status") == "failed"
+        and not isinstance(result.metadata.get("execution"), dict)
+    ):
+        return _CaseExecution(
+            actual_outcome=ActualOutcome.EXECUTION_FAILED,
+            execution_succeeded=False,
+            query_invoked=True,
+            query_execution_attempted=False,
+            query_run_id=query_run_id,
+            actual_rows=(),
+            actual_referenced_tables=referenced_tables,
+            error_code="semantic_conformance_failed",
+            failure_stage="semantic_conformance",
+            stage_reason_code=_safe_stage_reason(conformance.get("reason_code")),
+            provider_measurement=provider_measurement,
+        )
+    failure_stage = (
+        "execution"
+        if isinstance(result.metadata.get("execution"), dict)
+        else "sql_safety"
+        if isinstance(validation, dict)
+        else "sql_generation"
+    )
     return _CaseExecution(
         actual_outcome=ActualOutcome.EXECUTION_FAILED,
         execution_succeeded=False,
@@ -624,7 +851,19 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
         query_run_id=query_run_id,
         actual_rows=(),
         actual_referenced_tables=referenced_tables,
-        error_code="execution_failed",
+        error_code=(
+            result.error_code
+            if result.error_code in SAFE_ACTUAL_ERROR_CODES
+            else "execution_failed"
+        ),
+        failure_stage=failure_stage,
+        stage_reason_code=(
+            _safe_stage_reason(validation_code)
+            if failure_stage == "sql_safety"
+            else "execution_failed"
+            if failure_stage == "execution"
+            else None
+        ),
         provider_measurement=provider_measurement,
     )
 
@@ -666,8 +905,20 @@ def _provider_identity_failure() -> _CaseExecution:
         actual_rows=(),
         actual_referenced_tables=(),
         error_code="provider_response_invalid",
+        failure_stage="sql_generation",
+        stage_reason_code="provider_response_invalid",
         provider_failure_fatal=True,
     )
+
+
+def _safe_stage_reason(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    if not value or len(value) > 128:
+        return None
+    if not all(character.islower() or character.isdigit() or character == "_" for character in value):
+        return None
+    return value
 
 
 def _build_summary(
@@ -677,6 +928,8 @@ def _build_summary(
     selected: Sequence[EvaluationCase],
     completed: Sequence[_CompletedCase],
     descriptor: ProviderDescriptor,
+    catalog_identity: dict[str, str],
+    environment_identity: dict[str, str | int],
     *,
     status: str,
 ) -> EvaluationRunSummary:
@@ -740,6 +993,8 @@ def _build_summary(
             for item in completed
         ),
         provider_usage=_aggregate_provider_usage(completed),
+        semantic_catalog=dict(catalog_identity),
+        evaluation_environment=dict(environment_identity),
     )
 
 
@@ -798,6 +1053,7 @@ def _aggregate_provider_usage(
 def _summary_for_persistence(
     summary: EvaluationRunSummary,
     fatal_error: EvaluationRunnerError | None,
+    filters: EvaluationFilters,
 ) -> dict[str, Any]:
     return {
         "provider": summary.provider,
@@ -805,6 +1061,7 @@ def _summary_for_persistence(
         "dataset_id": summary.dataset_id,
         "dataset_version": summary.dataset_version,
         "dataset_digest": summary.dataset_digest,
+        "filters": filters.as_safe_dict(),
         "selected_count": summary.selected_count,
         "completed_count": summary.completed_count,
         "passed_count": summary.passed_count,
@@ -818,5 +1075,7 @@ def _summary_for_persistence(
         "by_category": summary.by_category,
         "by_case_type": summary.by_case_type,
         "provider_usage": summary.provider_usage,
+        "semantic_catalog": summary.semantic_catalog,
+        "evaluation_environment": summary.evaluation_environment,
         "failure_code": fatal_error.code if fatal_error else None,
     }

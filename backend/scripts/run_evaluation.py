@@ -7,6 +7,11 @@ from collections.abc import Callable, Sequence
 
 from app.db.session import SessionLocal
 from app.evaluation.contracts import CaseType, EvaluationDifficulty
+from app.evaluation.environment import (
+    EvaluationEnvironmentError,
+    EvaluationEnvironmentIdentity,
+    validate_evaluation_environment_manifest,
+)
 from app.evaluation.loader import EvaluationDatasetValidationError
 from app.evaluation.runner import EvaluationRunSummary, EvaluationRunner, EvaluationRunnerError
 from app.evaluation.selection import EvaluationFilters, EvaluationSelectionError
@@ -19,7 +24,11 @@ from app.query_engine.provider_config import (
 )
 
 
-RunnerFactory = Callable[[ProviderSettings], EvaluationRunner]
+RunnerFactory = Callable[
+    [ProviderSettings, EvaluationEnvironmentIdentity | None],
+    EvaluationRunner,
+]
+EnvironmentLoader = Callable[[str], EvaluationEnvironmentIdentity]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -33,6 +42,10 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("mock", "openai"),
         default="mock",
         help="Select mock (default) or the explicit OpenAI mode.",
+    )
+    parser.add_argument(
+        "--environment-manifest",
+        help="Required sanitized environment manifest for explicit OpenAI evaluation.",
     )
     parser.add_argument(
         "--model",
@@ -62,6 +75,7 @@ def run_cli(
     argv: Sequence[str] | None = None,
     *,
     runner_factory: RunnerFactory | None = None,
+    environment_loader: EnvironmentLoader | None = None,
 ) -> int:
     args = build_parser().parse_args(argv)
     filters = EvaluationFilters(
@@ -74,16 +88,25 @@ def run_cli(
         security_only=args.security_only,
     )
     try:
+        if args.provider == "openai" and not args.environment_manifest:
+            raise EvaluationEnvironmentError("evaluation_environment_missing")
+        if args.provider == "mock" and args.environment_manifest:
+            raise EvaluationEnvironmentError("evaluation_environment_not_applicable")
         settings = load_provider_settings(
             provider_override=args.provider,
             model_override=args.model,
         )
+        environment = None
+        if args.environment_manifest:
+            loader = environment_loader or _load_environment
+            environment = loader(args.environment_manifest)
         factory = runner_factory or _runner_for_settings
-        summary = factory(settings).run(filters)
+        summary = factory(settings, environment).run(filters)
     except (
         EvaluationDatasetValidationError,
         EvaluationSelectionError,
         EvaluationRunnerError,
+        EvaluationEnvironmentError,
         ProviderConfigurationError,
     ) as exc:
         code = getattr(exc, "code", "evaluation_configuration_error")
@@ -113,6 +136,22 @@ def _print_summary(summary: EvaluationRunSummary) -> None:
         f"{summary.dataset_id} v{summary.dataset_version} "
         f"({summary.dataset_digest})"
     )
+    catalog = summary.semantic_catalog
+    print(
+        "Semantic catalog: "
+        f"{catalog.get('catalog_id', 'unknown')} "
+        f"v{catalog.get('catalog_version', 'unknown')} "
+        f"({catalog.get('catalog_hash', 'unknown')})"
+    )
+    environment = summary.evaluation_environment
+    if environment:
+        print(
+            "Evaluation environment: "
+            f"{environment.get('manifest_version', 'unknown')} "
+            f"seed={environment.get('seed_profile', 'unknown')} "
+            f"reference={environment.get('reference_time', 'unknown')} "
+            f"fingerprint={environment.get('database_fingerprint', 'unknown')}"
+        )
     print(
         "Cases: "
         f"selected={summary.selected_count} completed={summary.completed_count} "
@@ -165,12 +204,21 @@ def _print_breakdown(
         )
 
 
-def _runner_for_settings(settings: ProviderSettings) -> EvaluationRunner:
+def _runner_for_settings(
+    settings: ProviderSettings,
+    environment: EvaluationEnvironmentIdentity | None,
+) -> EvaluationRunner:
     return EvaluationRunner(
         SessionLocal,
         provider_descriptor=provider_descriptor(settings),
         provider_factory=lambda pack: create_provider(settings, pack),
+        evaluation_environment=environment,
     )
+
+
+def _load_environment(path: str) -> EvaluationEnvironmentIdentity:
+    with SessionLocal() as db:
+        return validate_evaluation_environment_manifest(db, path)
 
 
 if __name__ == "__main__":

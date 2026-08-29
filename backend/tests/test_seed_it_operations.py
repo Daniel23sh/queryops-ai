@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from sqlalchemy import create_engine, event, func, select
@@ -37,6 +38,7 @@ from app.models.product import (
     RolePermission,
     UserAccessScope,
 )
+from scripts import seed_it_operations
 
 
 DEMO_USER_DEPARTMENTS = {
@@ -242,6 +244,31 @@ def test_seed_profiles_define_expected_target_counts() -> None:
     assert medium.it_audit_events == 1000
 
 
+def test_release_manifest_requires_explicit_valid_reference_time(
+    monkeypatch,
+    capsys,
+) -> None:
+    monkeypatch.setattr(
+        "sys.argv",
+        [
+            "seed_it_operations.py",
+            "--profile",
+            "medium",
+            "--reset",
+            "--manifest-out",
+            "release.json",
+        ],
+    )
+
+    assert seed_it_operations.main() == 2
+    assert capsys.readouterr().err.strip() == (
+        "Seed failed: evaluation_manifest_reference_time_required"
+    )
+    assert seed_it_operations._parse_reference_time(
+        "2026-08-24T12:00:00Z"
+    ) == datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
+
+
 def test_small_seed_creates_expected_counts() -> None:
     with session_scope() as session:
         summary = seed_database(session, profile_name="small", reset=True)
@@ -269,6 +296,21 @@ def test_small_seed_is_deterministic_across_reset() -> None:
         assert second_summary.table_counts == first_summary.table_counts
         assert second_summary.anomaly_counts == first_summary.anomaly_counts
         assert second_fingerprint == first_fingerprint
+
+
+def test_seed_fingerprint_uses_explicit_seed_reference_time() -> None:
+    reference_time = REFERENCE_NOW + timedelta(days=90)
+    with session_scope() as session:
+        summary = seed_database(
+            session,
+            profile_name="small",
+            reset=True,
+            reference_now=reference_time,
+        )
+
+        fingerprint = seed_fingerprint(session, reference_now=reference_time)
+
+        assert fingerprint["anomalies"] == summary.anomaly_counts
 
 
 def test_seed_rows_have_valid_relationships() -> None:

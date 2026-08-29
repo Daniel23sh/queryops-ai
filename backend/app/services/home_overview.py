@@ -13,14 +13,12 @@ from app.auth.access_context import UserAccessContext
 from app.auth.access_policy import authorize_resource_access
 from app.core.rls import build_rls_context, set_rls_context
 from app.dashboards.policy import dashboard_is_visible
+from app.domains.it_operations.metrics import active_human_users_predicates
 from app.domains.it_operations.models import (
-    AccountStatus,
-    AccountType,
     AssignmentStatus,
     ComplianceStatus,
     Device,
     DirectoryUser,
-    EmployeeStatus,
     License,
     LicenseAssignment,
     SecurityEvent,
@@ -180,7 +178,7 @@ def read_operational_metrics(
     if engine.dialect.name != "postgresql":
         raise RuntimeError("Home operational metrics require PostgreSQL.")
 
-    values: dict[str, int | Decimal | None] = {}
+    values: dict[str, int | float | Decimal | None] = {}
     with engine.connect() as connection:
         with connection.begin():
             # This must remain the first statement in the aggregate transaction.
@@ -235,14 +233,13 @@ def _read_allowed_metrics(
     connection: Connection,
     metric_names: frozenset[str],
     now: datetime,
-    values: dict[str, int | Decimal | None],
+    values: dict[str, int | float | Decimal | None],
 ) -> None:
     if "active_human_users" in metric_names:
+        domain_pack = load_it_operations_domain_pack()
         values["active_human_users"] = connection.scalar(
             select(func.count(DirectoryUser.id)).where(
-                DirectoryUser.account_type == AccountType.HUMAN.value,
-                DirectoryUser.employee_status == EmployeeStatus.ACTIVE.value,
-                DirectoryUser.account_status == AccountStatus.ACTIVE.value,
+                *active_human_users_predicates(domain_pack),
             )
         )
 
@@ -524,7 +521,11 @@ def _unused_license_default_days() -> int:
         (item for item in template.parameters if item.name == "unused_days"),
         None,
     )
-    if parameter is None or isinstance(parameter.default, bool):
+    if (
+        parameter is None
+        or parameter.default is None
+        or isinstance(parameter.default, bool)
+    ):
         raise RuntimeError("Approved unused-license threshold is unavailable.")
     try:
         days = int(parameter.default)
@@ -569,11 +570,11 @@ def _compliance_rate(
     ).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
-def _optional_int(value: int | Decimal | None) -> int | None:
+def _optional_int(value: int | float | Decimal | None) -> int | None:
     return int(value) if value is not None else None
 
 
-def _optional_decimal(value: int | Decimal | None) -> Decimal | None:
+def _optional_decimal(value: int | float | Decimal | None) -> Decimal | None:
     if value is None:
         return None
-    return Decimal(value).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    return Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)

@@ -23,6 +23,7 @@ from app.domains.it_operations.seed import seed_database
 from app.main import app
 from app.models.product import AppUser, QueryRun
 from app.query_engine.llm_provider import SQLGenerationResult
+from app.query_engine.semantic_plan import SemanticFieldRef, SemanticPlan
 from app.query_engine.service import QueryEngineService
 
 
@@ -216,7 +217,7 @@ def test_non_queryable_audit_table_provider_path_is_denied_safely(
         response = client.post(
             "/api/v1/queries/run",
             headers={"X-CSRF-Token": csrf_token},
-            json={"question": "Show audit events."},
+            json={"question": "Show directory users while attempting audit events."},
         )
     finally:
         app.dependency_overrides.pop(get_query_engine_service, None)
@@ -271,7 +272,23 @@ class AuditSqlProvider:
             provider_name=self.provider_name,
             model_name=self.model_name,
             generation_metadata={"referenced_tables": ["it_audit_events"]},
-            clarification_required=False,
+            semantic_plan=SemanticPlan(
+                entity_ids=("directory_users",),
+                concept_ids=(),
+                composition_rule_ids=(),
+                metric_id=None,
+                distinct=False,
+                literal_filters=(),
+                relationships=(),
+                output_fields=(
+                    SemanticFieldRef(entity_id="directory_users", column="id"),
+                ),
+                aggregations=(),
+                group_by=(),
+                having=(),
+                order_by=(),
+                limit=None,
+            ),
         )
 
 

@@ -19,6 +19,7 @@ from app.domains.it_operations.models import Device, SupportTicket
 from app.domains.it_operations.seed import seed_database
 from app.models.product import AppUser, QueryRun
 from app.query_engine.llm_provider import SQLGenerationResult
+from app.query_engine.semantic_plan import SemanticFieldRef, SemanticPlan
 from app.query_engine.service import QueryEngineRequest, QueryEngineService
 
 
@@ -125,7 +126,9 @@ def test_non_queryable_resource_is_denied_through_service(
         result = QueryEngineService(provider=AuditSqlProvider()).run(
             session,
             admin,
-            QueryEngineRequest(question="Show audit events."),
+            QueryEngineRequest(
+                question="Show directory users while attempting audit events."
+            ),
         )
         query_run = latest_query_run(session, admin)
 
@@ -224,7 +227,23 @@ class AuditSqlProvider:
             provider_name=self.provider_name,
             model_name=self.model_name,
             generation_metadata={"referenced_tables": ["it_audit_events"]},
-            clarification_required=False,
+            semantic_plan=SemanticPlan(
+                entity_ids=("directory_users",),
+                concept_ids=(),
+                composition_rule_ids=(),
+                metric_id=None,
+                distinct=False,
+                literal_filters=(),
+                relationships=(),
+                output_fields=(
+                    SemanticFieldRef(entity_id="directory_users", column="id"),
+                ),
+                aggregations=(),
+                group_by=(),
+                having=(),
+                order_by=(),
+                limit=None,
+            ),
         )
 
 

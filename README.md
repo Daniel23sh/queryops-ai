@@ -367,7 +367,7 @@ Default local URLs:
 * Backend health endpoint: `http://localhost:8000/health`
 * PostgreSQL: `localhost:5432`
 
-PostgreSQL is included for the local development environment. Milestones 0 through 8 are complete and merged through PR #35. M9 PR1 through PR5 are complete and merged through PR #40 at verified `main` commit `695be1358ea2fcd67fc2cd25c66e2281986dd99f`; M9 PR6 is implementation-complete but V1 readiness remains incomplete. Mock remains the development and CI default, no live OpenAI measurement has yet been accepted as V1 release evidence, and the full manual QA checklist remains open. The application includes both V1 actions, approvals, synchronous execution, action/domain audit, database notification APIs, safe timelines, deterministic template suggestions, requester-owned action lists, exact authorized activity totals, the evaluation dataset/scoring foundation, the governed manual MockLLM/OpenAI runner, role-aware read-only evaluation metrics, and the protected Evaluation workspace.
+PostgreSQL is included for the local development environment. Milestones 0 through 8 are complete and merged through PR #35. M9 PR1 through PR6 are complete and merged through PR #41 at verified `main` commit `c6691a204ccbb9eb007e2e0c6fe419c346745b13`; M9 PR7 is active and V1 readiness remains incomplete. Mock remains the development and CI default, no full OpenAI measurement has yet been accepted as V1 release evidence, and the full manual QA checklist remains open. The application includes both V1 actions, approvals, synchronous execution, action/domain audit, database notification APIs, safe timelines, deterministic template suggestions, requester-owned action lists, exact authorized activity totals, the evaluation dataset/scoring foundation, the governed manual MockLLM/OpenAI runner, role-aware read-only evaluation metrics, and the protected Evaluation workspace.
 
 Stop the stack:
 
@@ -466,13 +466,17 @@ For V1 IT Operations RLS, `app.current_scope_keys` contains comma-separated depa
 Milestone 4 implemented the backend Query Engine foundation, and Milestone 5 PR1 closed the remaining backend compliance gaps needed before Ask Data UI work can begin. The backend includes:
 
 * Domain Pack Loader in `backend/app/query_engine/domain_pack_loader.py`
+* validated semantic catalogs in `backend/app/query_engine/semantic_catalog.py`
 * IT Operations domain pack files under `backend/app/domains/it_operations/domain_pack/`
 * Query Templates API
 * `LLMProvider` interface and deterministic `MockLLMProvider`
 * explicit opt-in `OpenAIProvider` using the synchronous Responses API and strict structured output
+* deterministic semantic grounding with mandatory and optional evidence
+* one-call structured `SemanticPlan` plus SQL provider contract
 * SQL generator wrapper
 * Schema Context Builder
 * read-only SQL Validator
+* SQLGlot semantic conformance over final validator-sanitized SQL
 * dedicated read-only PostgreSQL runtime role hardening
 * scoped SQL Executor that uses PostgreSQL RLS
 * internal Query Engine orchestration service
@@ -484,9 +488,15 @@ Milestone 4 implemented the backend Query Engine foundation, and Milestone 5 PR1
 * hardened safe query metadata for future Ask Data UI technical states
 * PostgreSQL/RLS-backed query tests and security regression tests
 
-The Domain Pack Loader loads the local IT Operations schema, business terms, and approved query templates. It is the source for safe schema context and deterministic template-backed SQL generation. `MockLLMProvider` remains the default, maps known domain-pack questions to structured SQL generation results, and requires no key or network call. The only optional real provider is OpenAI (`LLM_PROVIDER=openai`), using `gpt-5.6-terra` by default through the synchronous Responses API with strict structured output, `store=false`, and no tools, retrieval, streaming, background mode, or conversation state. Merely setting `OPENAI_API_KEY` does not activate it.
+The Domain Pack Loader loads the local IT Operations schema, business terms, approved query templates, and versioned semantic catalog. It is the source for safe schema context, validated business definitions, and deterministic template-backed SQL generation. The IT Operations schema explicitly names its required catalog ID/version and dataset association; a missing, mismatched, or malformed catalog fails closed. The default pack is cached after its first validated load, so query requests do not repeatedly parse configuration files. `MockLLMProvider` remains the default, maps known domain-pack questions to structured SQL generation results, and requires no key or network call. The only optional real provider is OpenAI (`LLM_PROVIDER=openai`), using `gpt-5.6-terra` by default through the synchronous Responses API with strict structured output, `store=false`, and no tools, retrieval, streaming, background mode, or conversation state. Merely setting `OPENAI_API_KEY` does not activate it.
 
-OpenAI mode sends only the natural-language question, authorized queryable table and column names/types, approved schema descriptions and business terms, scope type, and whether scope is global. It does not send application identities, names/emails, scope keys or IDs, permission catalogs, database rows, prior SQL, evaluation case IDs/baselines/expected rows, protected resources, action targets, environment values, or credentials. Generated SQL remains an untrusted candidate: backend authorization, schema authorization, the read-only validator, row and timeout limits, `queryops_query_runtime`, transaction-local context, and PostgreSQL RLS remain authoritative.
+The active catalog is `it_operations_semantic_catalog` version `3` in `backend/app/domains/it_operations/domain_pack/semantic_catalog.yaml` (canonical hash `918df0c63288b7ed7ce700f8442c82bc1ffa3f51e1f4eaa63fd66012af82adb4`). Schema facts remain in `schema.yaml`: queryable tables, allowed columns, types, descriptions, and scope metadata are not duplicated as free-form business rules. The semantic catalog cross-references that validated schema and adds bounded entity references, known enum values, relationships, structured business concepts and predicates, metrics, composition rules, authorization/RLS guidance, restricted resources, and curated examples. Its canonical `active_human_users` metric counts human directory users who are active employees and have active directory accounts.
+
+Free-query generation deterministically grounds bounded natural-language references into mandatory semantic evidence and optional supporting evidence, includes authorized shortest join paths, and always retains the separately authorized schema as the safe fallback. Every projected relationship requires both endpoint tables and both endpoint columns to be authorized. The provider receives a delimited catalog projection with catalog ID/version and returns one structured response containing both a validated `SemanticPlan` and candidate SQL. There is no repair request or second provider call. The provider does not receive the raw catalog, its release hash, or the evaluation dataset. Department possessive references such as “my department” are complete when authorization context resolves department scope; they do not cause a department identifier to be requested or embedded. Business predicates describe the requested population, while PostgreSQL RLS remains authoritative for authorization predicates.
+
+Catalog validation rejects unsupported versions and operators, unknown entities/tables/columns, malformed or incorrectly typed predicate values, invalid relationships, duplicate identifiers, catalog/domain/dataset mismatches, prompt-bloat limits, and any overlap between restricted and queryable resources. To add a concept, update the catalog with references and structured predicates grounded in the existing schema, then run the catalog and provider-contract tests. To add a domain, provide the existing schema/business-term/template files, explicitly associate its catalog in the schema metadata, and add human-reviewed loader and projection tests. Catalog drafts must never be activated automatically; an LLM-generated draft is untrusted configuration until deterministic validation and human review. No catalog-draft generator is included in the trusted runtime.
+
+OpenAI mode sends only the natural-language question, authorized queryable table and column names/types, approved schema descriptions and business terms, the bounded relevant semantic-catalog projection, scope type, and whether scope is global. It does not send application identities, names/emails, scope keys or IDs, permission catalogs, database rows, prior SQL, evaluation case IDs/baselines/expected rows, protected resources, action targets, environment values, or credentials. Generated SQL remains an untrusted candidate. The existing SQL safety validator remains the security boundary; SQLGlot semantic conformance is an additional correctness layer applied afterward to the final validator-sanitized SQL. Only conforming SQL can proceed to referenced-resource authorization, row and timeout limits, `queryops_query_runtime`, transaction-local context, and authoritative PostgreSQL RLS.
 
 To opt into OpenAI for local free-text Ask Data, keep the key outside tracked files and set deployment configuration before starting the backend:
 
@@ -542,6 +552,7 @@ Current Query Engine limitations:
 * User-supplied template parameters are not supported through the public API.
 * Raw SQL input is not supported.
 * OpenAI is the only optional real provider and must be selected explicitly; no fallback or second provider is implemented.
+* Provider output is not repaired: a failed plan, SQL-safety, or semantic-conformance stage is classified and returned without another provider call.
 * Query detail endpoints return only the authenticated user's own runs.
 * Scope-aware query history requires assigned access scopes and the appropriate history permission.
 * Evaluation execution controls, run history, browser provider/model selection, and live-provider CI execution are not implemented. V1 readiness is a read-only policy over explicit persisted evidence.
@@ -616,6 +627,7 @@ Run Query Engine unit/API tests:
 cd backend
 .venv/bin/pytest \
   tests/test_domain_pack_loader.py \
+  tests/test_semantic_catalog.py \
   tests/test_query_templates_api.py \
   tests/test_llm_provider.py \
   tests/test_provider_config.py \
@@ -627,6 +639,17 @@ cd backend
   tests/test_query_api.py \
   tests/test_query_engine_security_regression.py \
   tests/test_query_evaluation_set.py -q
+```
+
+Run the focused offline semantic-catalog and aggregate-scoring regression without a provider key:
+
+```bash
+cd backend
+env -u OPENAI_API_KEY LLM_PROVIDER=mock .venv/bin/pytest \
+  tests/test_semantic_catalog.py \
+  tests/test_openai_provider.py \
+  tests/test_evaluation_scoring.py \
+  tests/test_query_engine_service.py -q
 ```
 
 Run the manual deterministic evaluation after migrating and seeding a PostgreSQL database explicitly:
@@ -648,30 +671,43 @@ Available filters can be combined without changing dataset order:
 .venv/bin/python scripts/run_evaluation.py --case-type authorization --security-only
 ```
 
-OpenAI evaluation is manual and explicitly selected. Run one case first against an already migrated, deterministically seeded disposable PostgreSQL database:
+OpenAI evaluation is manual and explicitly selected. A live-provider smoke must use a non-template free-query case so it cannot bypass the provider. `itops-easy-005` is the frozen easy `free_query` success case with no `template_id`. Set the API key through a secure local environment mechanism without printing or recording it, obtain explicit authorization for the exact API model ID, and run:
 
 ```bash
 cd backend
-export OPENAI_API_KEY='replace-with-a-local-secret'
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_eval_test \
+  .venv/bin/alembic upgrade head
+DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_eval_test \
+  .venv/bin/python scripts/seed_it_operations.py \
+  --profile medium \
+  --reset \
+  --reference-time CURRENT_UTC_SECOND_ALIGNED_ISO8601 \
+  --manifest-out /tmp/queryops-v1-evaluation-manifest.json
 DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_eval_test \
   .venv/bin/python scripts/run_evaluation.py \
   --provider openai \
-  --model gpt-5.6-terra \
-  --case-id itops-easy-001
+  --model EXACT_AUTHORIZED_MODEL \
+  --case-id itops-easy-005 \
+  --environment-manifest /tmp/queryops-v1-evaluation-manifest.json
 ```
 
-Run all 40 cases only when the billable manual measurement is intended:
+The release manifest is created only for an explicitly reset `medium` seed in a PostgreSQL database whose name contains `test`, `eval`, or `e2e`. It binds the clean source revision, Alembic revision, explicit UTC seed reference time, deterministic seed/profile, PostgreSQL/runtime versions, dataset and catalog identities, dependency-manifest hash, bounded counts, and a canonical digest of evaluation-relevant seeded state. It contains no database URL or rows. The runner validates it before provider construction; a missing, stale (over 24 hours), malformed, wrong-revision, wrong-database, or otherwise mismatched manifest fails without an OpenAI call. The runner still never migrates, resets, or seeds a database.
+
+The smoke is valid provider evidence only when the persisted safe usage reports at least one OpenAI call and the semantic case contract passes. `itops-easy-001` is template-backed and therefore must not be used to validate the provider. Run all 40 cases only after the smoke passes and the operator separately or conditionally authorizes the billable full measurement, using the same frozen revision, database, model, and manifest:
 
 ```bash
 DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_eval_test \
   .venv/bin/python scripts/run_evaluation.py \
   --provider openai \
-  --model gpt-5.6-terra
+  --model EXACT_AUTHORIZED_MODEL \
+  --environment-manifest /tmp/queryops-v1-evaluation-manifest.json
 ```
 
-Evaluation persistence contains only stable case metadata, expected/actual outcome classifications, bounded error codes, aggregate counts, scores, safe breakdowns, a dataset digest, validated provider/model identity, and bounded latency/attempt/token measurements. It excludes raw actual/expected rows, prompts, provider payloads or responses, reasoning, request/response IDs, headers, secrets, stack traces, raw driver errors, and new copies of generated or baseline SQL. The Evaluation workspace remains read-only. Mock and OpenAI scores are measurements; only a full eligible OpenAI run can satisfy the versioned M9 PR6 readiness thresholds.
+Evaluation persistence contains only stable case metadata, expected/actual outcome classifications, bounded error codes, aggregate counts, scores, safe breakdowns, a dataset digest, validated provider/model identity, catalog ID/version/hash, bounded evaluation-environment identity, and bounded latency/attempt/token measurements. Catalog content does not replace or silently alter the frozen evaluation dataset digest; its separate hash records the runtime semantic configuration that influenced generation. Readiness requires the current catalog identity and a valid temporally eligible release environment. It excludes raw actual/expected rows, prompts, provider payloads or responses, reasoning, request/response IDs, headers, secrets, stack traces, raw driver errors, database URLs, and new copies of generated or baseline SQL. The Evaluation workspace remains read-only. Mock and OpenAI scores are measurements; only a full eligible OpenAI run can satisfy the versioned M9 PR6 readiness thresholds.
 
 Metric denominators are explicit: overall score is the mean semantic score across completed cases; expected-behavior match rate is exact outcome matches divided by completed cases; each difficulty/category/case-type score is the mean for completed cases in that group; and security pass rate is passed `security`-difficulty cases divided by completed `security`-difficulty cases. Query execution counts include only cases that reached SQL execution, so expected denials, clarifications, and validator blocks are not mislabeled as execution failures.
+
+Result comparison remains strict for ordinary tabular rows, multiple columns, row counts, and aggregate values. The only alias relaxation is a `grouped_rows` result with exactly one expected row and one actual row, each containing exactly one value: the normalized values may compare equal even when the harmless aggregate aliases differ. A different value, null mismatch, missing/extra row, multi-column rename, stable-key result, or ordinary tabular alias change still fails with the existing bounded semantic-mismatch reason.
 
 M9 PR6 adds the fail-closed `queryops-v1-readiness-v1` policy. Check one persisted run without running evaluation or calling a provider:
 
@@ -681,7 +717,7 @@ DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_eval
   .venv/bin/python scripts/check_v1_readiness.py --run-id YOUR_RUN_UUID
 ```
 
-Add `--json` for the fixed bounded machine-readable projection. Exit 0 means `ready`, exit 1 means complete but `not_ready`, and exit 2 means `incomplete` or safe failure. Mock, filtered, stale, partial, failed, running, duplicate, extra, missing, and malformed evidence cannot pass.
+Add `--json` for the fixed bounded machine-readable projection. Exit 0 means `ready`, exit 1 means complete but `not_ready`, and exit 2 means `incomplete` or safe failure. Mock, filtered, stale-dataset, stale-catalog, stale-environment, partial, failed, running, duplicate, extra, missing, and malformed evidence cannot pass.
 
 Run PostgreSQL query/RLS tests:
 
@@ -872,7 +908,7 @@ QueryOps AI is intended to be a portfolio-grade software project that demonstrat
 
 ## Current Status
 
-Milestones 0 through 8 are complete and merged into `main`; M8 PR7 merged through PR #35. Milestone 9 — Evaluation, Quality Measurement & V1 Readiness is active. M9 PR1 through M9 PR5 are complete and merged through PR #40 at verified `main` commit `695be1358ea2fcd67fc2cd25c66e2281986dd99f`. M9 PR6 — V1 Quality Gates, Readiness & Completion is implementation-complete, while V1 readiness remains incomplete. Mock remains the CI default; no live OpenAI measurement has yet been accepted as V1 release evidence and full manual QA has not been completed.
+Milestones 0 through 8 are complete and merged into `main`; M8 PR7 merged through PR #35. M9 PR1 through M9 PR6 are complete and merged through PR #41 at verified `main` commit `c6691a204ccbb9eb007e2e0c6fe419c346745b13`. PR6's Backend, PostgreSQL Security, Frontend, E2E, M8 Primary E2E, and V1 Deterministic Release Gates GitHub checks passed. Milestone 9 — Evaluation, Quality Measurement & V1 Readiness remains active, and M9 PR7 is the release-validation follow-up. Mock remains the CI default; no live OpenAI measurement has yet been accepted as V1 release evidence and full manual QA has not been completed, so Milestone 9 and V1 remain incomplete.
 
 The completed Milestone 7 experience is dark-first with a persistent light option, responsive navigation, My Dashboard as the authenticated home, permission-aware routes, Scope terminology, a responsive dashboard editor, safe visualizations, and command-first Ask Data. The completed Milestone 8 experience adds the two governed V1 actions, requester Actions, exact-scope/global Approvals, scoped/global Audit, database Notifications, synchronous execution, and release-blocking PostgreSQL/browser evidence.
 
@@ -934,7 +970,8 @@ M9 PR2 — Evaluation Runner, Persistence & CLI is complete and merged through P
 M9 PR3 — Role-Aware Evaluation Metrics API is complete and merged through PR #38.
 M9 PR4 — Role-Aware Evaluation Workspace UI is complete and merged through PR #39 at verified `main` commit `f8990b78e86de1d24a51783270e95fc05a07beca`.
 M9 PR5 — Governed Real-LLM Evaluation Mode is complete and merged through PR #40 at verified `main` commit `695be1358ea2fcd67fc2cd25c66e2281986dd99f`.
-M9 PR6 — V1 Quality Gates, Readiness & Completion is implementation-complete. No live OpenAI measurement has yet been accepted as V1 release evidence, full manual QA remains open, and Milestone 9/V1 therefore remain incomplete.
+M9 PR6 — V1 Quality Gates, Readiness & Completion is complete and merged through PR #41 at verified `main` commit `c6691a204ccbb9eb007e2e0c6fe419c346745b13`; all required deterministic GitHub checks passed.
+M9 PR7 — V1 Live Validation, Manual QA, and Release Completion is active. No live OpenAI measurement has yet been accepted as V1 release evidence, full manual QA remains open, and Milestone 9/V1 therefore remain incomplete.
 ```
 
 PR6 keeps backend authorization authoritative while adding exact approval/notification activity badges, permission-aware Approvals and Audit workspaces, synchronous approve/reject dialogs, safe related navigation, and current-recipient database notification controls. Under the current permission catalog, Analyst receives exact-scope approval and Audit UX, Admin receives global/override/self-approval UX, Manager retains requester Actions and notifications without Audit access, and User receives notifications without Actions, Approvals, or Audit navigation. The private planning description of a future limited Manager audit view is not implemented because the backend does not currently grant that permission.

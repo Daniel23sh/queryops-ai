@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import socket
 
-from app.query_engine.llm_provider import LLMProvider
+from app.query_engine.llm_provider import LLMProvider, SQLGenerationOutcome
 from app.query_engine.mock_llm_provider import MockLLMProvider
 
 
@@ -84,6 +84,26 @@ def test_mock_provider_returns_clarification_for_unsupported_question() -> None:
     assert result.unsupported_reason == "unsupported_question"
     assert result.safe_error == "I could not map that question to a supported query."
     assert "supported_template_ids" in result.generation_metadata
+
+
+def test_mock_provider_returns_typed_unsafe_outcome_for_direct_write_request() -> None:
+    provider = MockLLMProvider()
+
+    result = provider.generate_sql(
+        "Update every directory user account to disabled.",
+        SCHEMA_CONTEXT,
+        USER_CONTEXT,
+        {},
+    )
+
+    assert result.outcome is SQLGenerationOutcome.UNSAFE_REQUEST
+    assert result.generated_sql is None
+    assert result.clarification_required is False
+    assert result.unsupported_reason == "unsafe_request"
+    assert result.safe_error == (
+        "The request is not allowed for safe read-only querying."
+    )
+    assert result.generation_metadata["source"] == "mock_unsafe_intent"
 
 
 def test_mock_provider_does_not_require_external_llm_config(monkeypatch) -> None:

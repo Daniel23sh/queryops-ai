@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from app.query_engine.semantic_catalog import SemanticCatalog
+
 
 @dataclass(frozen=True)
 class DomainColumn:
@@ -78,6 +80,7 @@ class DomainPack:
     tables: tuple[DomainTable, ...]
     business_terms: tuple[BusinessTerm, ...]
     query_templates: tuple[QueryTemplate, ...]
+    semantic_catalog: SemanticCatalog
 
     @property
     def tables_by_name(self) -> dict[str, DomainTable]:

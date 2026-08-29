@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Mapping, Sequence
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,7 @@ from app.query_engine.domain_pack import (
     QueryTemplateParameter,
 )
 from app.query_engine.errors import DomainPackValidationError
+from app.query_engine.semantic_catalog_loader import parse_semantic_catalog
 
 
 APP_ROOT = Path(__file__).resolve().parents[1]
@@ -27,6 +29,7 @@ REQUIRED_DOMAIN_PACK_FILES = (
     "schema.yaml",
     "business_terms.yaml",
     "query_templates.yaml",
+    "semantic_catalog.yaml",
 )
 ACTION_SUGGESTION_FIELDS = frozenset(
     {"action_type", "label", "selector_kind", "result_identifier_column"}
@@ -38,6 +41,7 @@ ACTION_SELECTOR_KINDS = {
 SAFE_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
+@lru_cache(maxsize=1)
 def load_it_operations_domain_pack() -> DomainPack:
     return load_domain_pack(IT_OPERATIONS_DOMAIN_PACK_DIR)
 
@@ -54,11 +58,23 @@ def load_domain_pack(pack_path: str | Path) -> DomainPack:
     schema = documents["schema.yaml"]
     business_terms = documents["business_terms.yaml"]
     query_templates = documents["query_templates.yaml"]
+    semantic_catalog_document = documents["semantic_catalog.yaml"]
 
     domain = _required_mapping(schema, "domain", "schema.domain")
     domain_id = _required_str(domain, "id", "schema.domain.id")
     name = _required_str(domain, "name", "schema.domain.name")
     version = _required_str(domain, "version", "schema.domain.version")
+    dataset_id = _required_str(domain, "dataset_id", "schema.domain.dataset_id")
+    semantic_catalog_id = _required_str(
+        domain,
+        "semantic_catalog_id",
+        "schema.domain.semantic_catalog_id",
+    )
+    semantic_catalog_version = _required_str(
+        domain,
+        "semantic_catalog_version",
+        "schema.domain.semantic_catalog_version",
+    )
 
     tables = _parse_tables(_required_list(schema, "tables", "schema.tables"))
     tables_by_name = {table.name: table for table in tables}
@@ -77,6 +93,15 @@ def load_domain_pack(pack_path: str | Path) -> DomainPack:
         _required_list(query_templates, "templates", "query_templates.templates"),
         tables_by_name,
     )
+    semantic_catalog = parse_semantic_catalog(
+        semantic_catalog_document,
+        domain_id=domain_id,
+        expected_catalog_id=semantic_catalog_id,
+        expected_catalog_version=semantic_catalog_version,
+        expected_dataset_id=dataset_id,
+        tables_by_name=tables_by_name,
+        allowed_resource_table_names=allowed_resource_table_names,
+    )
 
     return DomainPack(
         domain_id=domain_id,
@@ -86,6 +111,7 @@ def load_domain_pack(pack_path: str | Path) -> DomainPack:
         tables=tuple(sorted(tables, key=lambda table: table.name)),
         business_terms=tuple(sorted(terms, key=lambda term: term.name)),
         query_templates=tuple(sorted(templates, key=lambda template: template.id)),
+        semantic_catalog=semantic_catalog,
     )
 
 
@@ -124,7 +150,8 @@ def _parse_tables(table_items: Sequence[Any]) -> tuple[DomainTable, ...]:
                     "resource_type",
                     f"{path}.resource_type",
                     default="table",
-                ),
+                )
+                or "table",
             )
         )
     return tuple(tables)

@@ -1,8 +1,21 @@
 # QueryOps V1 Manual QA
 
-Use a freshly migrated and deterministically seeded disposable PostgreSQL database. Record date, tester, commit, browser, viewport, theme, and only safe controlled failure codes. Do not paste SQL, rows, prompts, provider payloads, keys, raw errors, or database URLs into the report.
+Use the unchanged runtime revision and freshly migrated, manifest-verified disposable PostgreSQL database used for the authoritative live evaluation. Record date and Asia/Jerusalem timezone, tester identity, whether QA was human or Codex-assisted, runtime commit, safe manifest/database fingerprint, browser/version, desktop viewport, 390×844 mobile viewport, themes, and only safe controlled failure codes. Do not paste SQL, rows, prompts, provider payloads, keys, raw errors, or database URLs into the report.
 
 Current result: **not performed**. This keeps V1 readiness `incomplete`.
+
+## Environment record
+
+- Date/time (Asia/Jerusalem): not performed
+- Runtime commit: not available
+- Tester: not available
+- Method (human or Codex-assisted): not performed
+- Browser/version: not available
+- Desktop viewport: not available
+- Mobile viewport: 390×844 planned
+- Themes: light and dark planned
+- Evaluation-environment fingerprint: not available
+- Overall result: `incomplete`
 
 ## Roles and governed data access
 

@@ -1,0 +1,567 @@
+{
+  "catalog": {
+    "id": "it_operations_semantic_catalog",
+    "version": "3",
+    "domain_id": "it_operations",
+    "dataset_id": "it_operations_v1"
+  },
+  "restricted_tables": ["it_audit_events"],
+  "entities": [
+    {
+      "id": "departments",
+      "table": "departments",
+      "description": "Business departments used for global reporting and authorization scope.",
+      "natural_language_references": ["department", "departments"],
+      "known_values": []
+    },
+    {
+      "id": "devices",
+      "table": "devices",
+      "description": "Managed endpoint and server devices.",
+      "natural_language_references": ["device", "devices", "endpoint", "endpoints"],
+      "known_values": [
+        {"column": "antivirus_status", "values": ["healthy", "missing", "outdated"]},
+        {"column": "compliance_status", "values": ["compliant", "non_compliant"]}
+      ]
+    },
+    {
+      "id": "directory_users",
+      "table": "directory_users",
+      "description": "Human and service identities represented by directory accounts.",
+      "natural_language_references": ["account", "accounts", "directory user", "directory users", "employee", "employees", "service account", "service accounts", "user", "users"],
+      "known_values": [
+        {"column": "account_status", "values": ["active", "disabled", "locked"]},
+        {"column": "account_type", "values": ["human", "service"]},
+        {"column": "employee_status", "values": ["active", "on_leave", "terminated"]}
+      ]
+    },
+    {
+      "id": "groups",
+      "table": "groups",
+      "description": "Directory and access-control groups.",
+      "natural_language_references": ["access group", "access groups", "group", "groups", "policy review before disablement", "privileged group", "privileged groups", "privileged user", "privileged users"],
+      "known_values": [
+        {"column": "risk_level", "values": ["critical", "high", "low", "medium"]}
+      ]
+    },
+    {
+      "id": "license_assignments",
+      "table": "license_assignments",
+      "description": "Assignment of a software license to a directory user.",
+      "natural_language_references": ["active paid license", "active paid licenses", "license assignment", "license assignments", "licensed user", "licensed users", "paid license", "paid licenses", "reclaim opportunity", "reclaim opportunities"],
+      "known_values": [
+        {"column": "status", "values": ["active", "reclaimed", "suspended"]}
+      ]
+    },
+    {
+      "id": "licenses",
+      "table": "licenses",
+      "description": "Software license products and approved cost metadata.",
+      "natural_language_references": ["license", "licenses", "license product", "license products"],
+      "known_values": []
+    },
+    {
+      "id": "login_events",
+      "table": "login_events",
+      "description": "Directory authentication attempts and their outcomes.",
+      "natural_language_references": ["failed login", "failed logins", "login", "login event", "login events", "logins"],
+      "known_values": [
+        {"column": "event_type", "values": ["failed", "success"]}
+      ]
+    },
+    {
+      "id": "security_events",
+      "table": "security_events",
+      "description": "Security findings associated with users, devices, or departments.",
+      "natural_language_references": ["policy review before disablement", "security event", "security events", "security finding", "security findings"],
+      "known_values": [
+        {"column": "severity", "values": ["critical", "high", "low", "medium"]},
+        {"column": "status", "values": ["false_positive", "investigating", "open", "resolved"]}
+      ]
+    },
+    {
+      "id": "software_installs",
+      "table": "software_installs",
+      "description": "Software installations observed on managed devices.",
+      "natural_language_references": ["installed software", "software", "software install", "software installs"],
+      "known_values": [
+        {"column": "risk_level", "values": ["critical", "high", "low"]}
+      ]
+    },
+    {
+      "id": "support_tickets",
+      "table": "support_tickets",
+      "description": "IT support requests tracked through their service lifecycle.",
+      "natural_language_references": ["support request", "support requests", "support ticket", "support tickets", "ticket", "tickets"],
+      "known_values": [
+        {"column": "priority", "values": ["critical", "high", "low", "medium"]},
+        {"column": "status", "values": ["closed", "in_progress", "open", "resolved"]}
+      ]
+    },
+    {
+      "id": "user_group_memberships",
+      "table": "user_group_memberships",
+      "description": "Membership links between directory users and groups.",
+      "natural_language_references": ["group member", "group members", "group membership", "group memberships", "in privileged group", "in privileged groups", "member of privileged group", "members of privileged groups", "membership", "membership addition", "membership additions", "memberships", "policy review before disablement", "privileged user", "privileged users", "user in privileged group", "users in privileged groups"],
+      "known_values": []
+    }
+  ],
+  "relationships": [
+    {"id": "device_assignee", "from_entity": "devices", "from_column": "assigned_user_id", "to_entity": "directory_users", "to_column": "id", "cardinality": "many_to_one", "optional": true, "description": "A device may be assigned to a directory user."},
+    {"id": "device_department", "from_entity": "devices", "from_column": "department_id", "to_entity": "departments", "to_column": "id", "cardinality": "many_to_one", "optional": false, "description": "A device belongs to a department scope."},
+    {"id": "directory_user_department", "from_entity": "directory_users", "from_column": "department_id", "to_entity": "departments", "to_column": "id", "cardinality": "many_to_one", "optional": false, "description": "A directory user belongs to a department."},
+    {"id": "group_department", "from_entity": "groups", "from_column": "department_id", "to_entity": "departments", "to_column": "id", "cardinality": "many_to_one", "optional": true, "description": "A group may be limited to a department."},
+    {"id": "license_assignment_department", "from_entity": "license_assignments", "from_column": "department_id", "to_entity": "departments", "to_column": "id", "cardinality": "many_to_one", "optional": false, "description": "A license assignment belongs to a department scope."},
+    {"id": "license_assignment_license", "from_entity": "license_assignments", "from_column": "license_id", "to_entity": "licenses", "to_column": "id", "cardinality": "many_to_one", "optional": false, "description": "An assignment identifies its license product."},
+    {"id": "license_assignment_user", "from_entity": "license_assignments", "from_column": "user_id", "to_entity": "directory_users", "to_column": "id", "cardinality": "many_to_one", "optional": false, "description": "An assignment belongs to a directory user."},
+    {"id": "login_event_department", "from_entity": "login_events", "from_column": "department_id", "to_entity": "departments", "to_column": "id", "cardinality": "many_to_one", "optional": false, "description": "A login event is attributed to a department scope."},
+    {"id": "login_event_device", "from_entity": "login_events", "from_column": "device_id", "to_entity": "devices", "to_column": "id", "cardinality": "many_to_one", "optional": true, "description": "A login event may identify its source device."},
+    {"id": "login_event_user", "from_entity": "login_events", "from_column": "user_id", "to_entity": "directory_users", "to_column": "id", "cardinality": "many_to_one", "optional": false, "description": "A login event identifies its directory user."},
+    {"id": "security_event_department", "from_entity": "security_events", "from_column": "department_id", "to_entity": "departments", "to_column": "id", "cardinality": "many_to_one", "optional": true, "description": "A security event may be attributed to a department scope."},
+    {"id": "security_event_device", "from_entity": "security_events", "from_column": "device_id", "to_entity": "devices", "to_column": "id", "cardinality": "many_to_one", "optional": true, "description": "A security event may identify a device."},
+    {"id": "security_event_user", "from_entity": "security_events", "from_column": "user_id", "to_entity": "directory_users", "to_column": "id", "cardinality": "many_to_one", "optional": true, "description": "A security event may identify a directory user."},
+    {"id": "software_install_department", "from_entity": "software_installs", "from_column": "department_id", "to_entity": "departments", "to_column": "id", "cardinality": "many_to_one", "optional": false, "description": "A software installation belongs to a department scope."},
+    {"id": "software_install_device", "from_entity": "software_installs", "from_column": "device_id", "to_entity": "devices", "to_column": "id", "cardinality": "many_to_one", "optional": false, "description": "A software installation belongs to a device."},
+    {"id": "support_ticket_department", "from_entity": "support_tickets", "from_column": "department_id", "to_entity": "departments", "to_column": "id", "cardinality": "many_to_one", "optional": false, "description": "A support ticket belongs to a department scope."},
+    {"id": "user_group_membership_department", "from_entity": "user_group_memberships", "from_column": "department_id", "to_entity": "departments", "to_column": "id", "cardinality": "many_to_one", "optional": false, "description": "A membership belongs to a department scope."},
+    {"id": "user_group_membership_group", "from_entity": "user_group_memberships", "from_column": "group_id", "to_entity": "groups", "to_column": "id", "cardinality": "many_to_one", "optional": false, "description": "A membership identifies its group."},
+    {"id": "user_group_membership_user", "from_entity": "user_group_memberships", "from_column": "user_id", "to_entity": "directory_users", "to_column": "id", "cardinality": "many_to_one", "optional": false, "description": "A membership identifies its directory user."}
+  ],
+  "concepts": [
+    {
+      "id": "active_human_directory_user",
+      "entity_id": "directory_users",
+      "description": "A human directory account belonging to an active employee whose directory account is active.",
+      "natural_language_references": ["active employee account", "active employee accounts", "active human directory user", "active human directory users", "active human user", "active human users"],
+      "all_of_concept_ids": ["human_directory_user", "active_employee", "active_directory_account"]
+    },
+    {
+      "id": "active_directory_account",
+      "entity_id": "directory_users",
+      "description": "A directory account whose account status is active.",
+      "natural_language_references": ["account is active", "accounts are active", "active account", "active accounts", "working account", "working accounts"],
+      "required_predicates": [{"column": "account_status", "operator": "equals", "value": "active"}]
+    },
+    {
+      "id": "active_employee",
+      "entity_id": "directory_users",
+      "description": "A directory user whose employee lifecycle status is active.",
+      "natural_language_references": ["active employee", "active employees", "current employee", "current employees"],
+      "required_predicates": [{"column": "employee_status", "operator": "equals", "value": "active"}]
+    },
+    {
+      "id": "human_directory_user",
+      "entity_id": "directory_users",
+      "description": "A directory account classified for human use.",
+      "natural_language_references": ["employee account", "employee accounts", "human account", "human accounts", "human directory user", "human directory users", "human user", "human users"],
+      "required_predicates": [{"column": "account_type", "operator": "equals", "value": "human"}]
+    },
+    {
+      "id": "active_license_assignment",
+      "entity_id": "license_assignments",
+      "description": "A license assignment whose lifecycle status is active.",
+      "natural_language_references": ["active license assignment", "active license assignments", "active paid license", "active paid licenses"],
+      "required_predicates": [{"column": "status", "operator": "equals", "value": "active"}]
+    },
+    {
+      "id": "disabled_directory_account",
+      "entity_id": "directory_users",
+      "description": "A directory account whose account status is disabled.",
+      "natural_language_references": ["account is disabled", "accounts are disabled", "disabled account", "disabled accounts", "disabled directory account", "disabled directory accounts"],
+      "required_predicates": [{"column": "account_status", "operator": "equals", "value": "disabled"}]
+    },
+    {
+      "id": "failed_login",
+      "entity_id": "login_events",
+      "description": "An authentication attempt whose recorded outcome is failed.",
+      "natural_language_references": ["failed login", "failed login attempt", "failed login attempts", "failed logins"],
+      "required_predicates": [{"column": "event_type", "operator": "equals", "value": "failed"}]
+    },
+    {
+      "id": "missing_antivirus_device",
+      "entity_id": "devices",
+      "description": "A managed device whose antivirus status is missing.",
+      "natural_language_references": ["device with missing antivirus", "devices with missing antivirus", "missing antivirus"],
+      "required_predicates": [{"column": "antivirus_status", "operator": "equals", "value": "missing"}]
+    },
+    {
+      "id": "non_compliant_device",
+      "entity_id": "devices",
+      "description": "A managed device whose compliance status is non-compliant.",
+      "natural_language_references": ["device with non compliant status", "devices with non compliant status", "non compliant status device", "non compliant status devices"],
+      "required_predicates": [{"column": "compliance_status", "operator": "equals", "value": "non_compliant"}]
+    },
+    {
+      "id": "antivirus_attention_device",
+      "entity_id": "devices",
+      "description": "A managed device whose antivirus is missing or outdated.",
+      "natural_language_references": ["device with antivirus issue", "devices with antivirus issues", "missing or outdated antivirus", "outdated or missing antivirus"],
+      "required_predicates": [{"column": "antivirus_status", "operator": "in", "value": ["missing", "outdated"]}]
+    },
+    {
+      "id": "unencrypted_device",
+      "entity_id": "devices",
+      "description": "A managed device whose required encryption is disabled.",
+      "natural_language_references": ["device without encryption", "devices without encryption", "unencrypted device", "unencrypted devices"],
+      "required_predicates": [{"column": "encryption_enabled", "operator": "equals", "value": false}]
+    },
+    {
+      "id": "open_support_ticket",
+      "entity_id": "support_tickets",
+      "description": "A support ticket still open or being worked.",
+      "natural_language_references": ["open support ticket", "open support tickets", "open ticket", "open tickets"],
+      "required_predicates": [{"column": "status", "operator": "in", "value": ["open", "in_progress"]}]
+    },
+    {
+      "id": "privileged_group",
+      "entity_id": "groups",
+      "description": "A group that grants privileged access.",
+      "natural_language_references": ["privileged access group", "privileged access groups", "privileged group", "privileged groups", "privileged user", "privileged users"],
+      "required_predicates": [{"column": "is_privileged", "operator": "equals", "value": true}]
+    },
+    {
+      "id": "service_account",
+      "entity_id": "directory_users",
+      "description": "A directory account classified for service rather than human use.",
+      "natural_language_references": ["service account", "service accounts", "service directory account", "service directory accounts"],
+      "required_predicates": [{"column": "account_type", "operator": "equals", "value": "service"}]
+    },
+    {
+      "id": "terminated_employee",
+      "entity_id": "directory_users",
+      "description": "A directory user whose employee lifecycle status is terminated.",
+      "natural_language_references": ["terminated employee", "terminated employees"],
+      "required_predicates": [{"column": "employee_status", "operator": "equals", "value": "terminated"}]
+    },
+    {
+      "id": "terminated_employee_with_active_account",
+      "entity_id": "directory_users",
+      "description": "A terminated employee whose directory account remains active.",
+      "natural_language_references": ["terminated employee with active account", "terminated employees with active accounts", "terminated employee with active directory account", "terminated employees with active directory accounts"],
+      "all_of_concept_ids": ["terminated_employee", "active_directory_account"],
+      "supersedes": ["terminated_employee"]
+    },
+    {
+      "id": "unsupported_software_install",
+      "entity_id": "software_installs",
+      "description": "A software installation explicitly marked unsupported.",
+      "natural_language_references": ["marked as unsupported", "software marked as unsupported", "unsupported software", "unsupported software install", "unsupported software installs"],
+      "required_predicates": [{"column": "is_unsupported", "operator": "equals", "value": true}]
+    },
+    {
+      "id": "active_exception_license_assignment",
+      "entity_id": "license_assignments",
+      "description": "An active license assignment explicitly marked as an exception.",
+      "natural_language_references": ["active exception license assignment", "active license assignment marked as exception", "active license assignments marked as exceptions"],
+      "required_predicates": [
+        {"column": "status", "operator": "equals", "value": "active"},
+        {"column": "is_exception", "operator": "equals", "value": true}
+      ],
+      "supersedes": ["active_license_assignment"]
+    },
+    {
+      "id": "active_mandatory_license_assignment",
+      "entity_id": "license_assignments",
+      "description": "An active license assignment required by policy.",
+      "natural_language_references": ["active mandatory license", "active mandatory licenses", "mandatory active license", "mandatory active licenses"],
+      "required_predicates": [
+        {"column": "status", "operator": "equals", "value": "active"},
+        {"column": "is_mandatory", "operator": "equals", "value": true}
+      ],
+      "supersedes": ["active_license_assignment"]
+    },
+    {
+      "id": "failed_login_within_30_days",
+      "entity_id": "login_events",
+      "description": "A failed authentication attempt recorded within the last 30 days.",
+      "natural_language_references": ["failed login in the last 30 days", "failed login spike", "failed login spikes", "failed logins in the last 30 days"],
+      "required_predicates": [
+        {"column": "event_type", "operator": "equals", "value": "failed"},
+        {"column": "occurred_at", "operator": "within_last_days", "value": 30}
+      ],
+      "supersedes": ["failed_login"]
+    },
+    {
+      "id": "high_confidence_unused_license_assignment",
+      "entity_id": "license_assignments",
+      "description": "An active non-mandatory, non-exception assignment with no use or no use for more than 90 days.",
+      "natural_language_references": ["high confidence unused license", "high confidence unused licenses", "high-confidence unused license", "high-confidence unused licenses"],
+      "required_predicates": [
+        {"column": "status", "operator": "equals", "value": "active"},
+        {"column": "is_mandatory", "operator": "equals", "value": false},
+        {"column": "is_exception", "operator": "equals", "value": false},
+        {"column": "last_used_at", "operator": "is_null_or_older_than_days", "value": 90}
+      ],
+      "supersedes": ["unused_license_assignment"]
+    },
+    {
+      "id": "high_risk_unsupported_software_install",
+      "entity_id": "software_installs",
+      "description": "An unsupported software installation classified as high risk.",
+      "natural_language_references": ["high risk unsupported software", "high-risk unsupported software", "unsupported high risk software", "unsupported high-risk software"],
+      "required_predicates": [
+        {"column": "is_unsupported", "operator": "equals", "value": true},
+        {"column": "risk_level", "operator": "equals", "value": "high"}
+      ]
+    },
+    {
+      "id": "high_severity_open_security_event",
+      "entity_id": "security_events",
+      "description": "A high or critical security event that is open or under investigation.",
+      "natural_language_references": ["high severity open security event", "high severity security event", "high severity security events", "high-severity security event", "high-severity security events"],
+      "required_predicates": [
+        {"column": "severity", "operator": "in", "value": ["high", "critical"]},
+        {"column": "status", "operator": "in", "value": ["open", "investigating"]}
+      ],
+      "supersedes": ["open_security_event"]
+    },
+    {
+      "id": "inactive_directory_user",
+      "entity_id": "directory_users",
+      "description": "A directory user with no successful login or no successful login for more than 90 days.",
+      "natural_language_references": ["inactive directory user", "inactive directory users", "inactive privileged user", "inactive privileged users", "inactive user", "inactive users", "user who has not logged in for 90 days", "users who have not logged in for 90 days"],
+      "required_predicates": [
+        {"column": "last_login_at", "operator": "is_null_or_older_than_days", "value": 90}
+      ]
+    },
+    {
+      "id": "inactive_human_directory_user",
+      "entity_id": "directory_users",
+      "description": "An active human directory account with no successful login or no successful login for more than 90 days.",
+      "natural_language_references": ["inactive human directory user", "inactive human directory users", "inactive human user", "inactive human users"],
+      "all_of_concept_ids": ["human_directory_user", "active_directory_account", "inactive_directory_user"]
+    },
+    {
+      "id": "open_security_event",
+      "entity_id": "security_events",
+      "description": "A security event that is open or under investigation.",
+      "natural_language_references": ["open security event", "open security events"],
+      "required_predicates": [{"column": "status", "operator": "in", "value": ["open", "investigating"]}]
+    },
+    {
+      "id": "open_support_ticket_older_than_30_days",
+      "entity_id": "support_tickets",
+      "description": "An open or in-progress support ticket opened more than 30 days ago.",
+      "natural_language_references": ["open support ticket older than 30 days", "open support tickets older than 30 days", "open ticket older than 30 days", "open tickets older than 30 days"],
+      "required_predicates": [
+        {"column": "status", "operator": "in", "value": ["open", "in_progress"]},
+        {"column": "opened_at", "operator": "older_than_days", "value": 30}
+      ],
+      "supersedes": ["open_support_ticket"]
+    },
+    {
+      "id": "outdated_software_install",
+      "entity_id": "software_installs",
+      "description": "A software installation explicitly marked outdated.",
+      "natural_language_references": ["outdated software", "outdated software install", "outdated software installs"],
+      "required_predicates": [{"column": "is_outdated", "operator": "equals", "value": true}]
+    },
+    {
+      "id": "recent_privileged_group_membership",
+      "entity_id": "user_group_memberships",
+      "description": "A group membership added within the last 30 days; combine it with the privileged-group concept when privilege is requested.",
+      "natural_language_references": ["group membership additions in the last 30 days", "membership additions in the last 30 days", "recent group membership addition", "recent group membership additions", "recent privileged group membership", "recent privileged group memberships"],
+      "required_predicates": [
+        {"column": "added_at", "operator": "within_last_days", "value": 30}
+      ]
+    },
+    {
+      "id": "risky_device",
+      "entity_id": "devices",
+      "description": "A managed device whose compliance status is non-compliant.",
+      "natural_language_references": ["risky device", "risky devices"],
+      "required_predicates": [{"column": "compliance_status", "operator": "equals", "value": "non_compliant"}]
+    },
+    {
+      "id": "stale_device",
+      "entity_id": "devices",
+      "description": "A device with no check-in or no check-in for more than 30 days.",
+      "natural_language_references": ["device has not reported recently", "device not reported in 30 days", "device not reported recently", "device that has not reported in 30 days", "devices have not reported recently", "devices not reported in 30 days", "devices not reported recently", "devices that have not reported in 30 days", "stale device", "stale devices"],
+      "required_predicates": [
+        {"column": "last_seen_at", "operator": "is_null_or_older_than_days", "value": 30}
+      ]
+    },
+    {
+      "id": "unresolved_critical_security_event",
+      "entity_id": "security_events",
+      "description": "A critical security event that is open or under investigation.",
+      "natural_language_references": ["open critical security event", "open critical security events", "unresolved critical security event", "unresolved critical security events"],
+      "required_predicates": [
+        {"column": "severity", "operator": "equals", "value": "critical"},
+        {"column": "status", "operator": "in", "value": ["open", "investigating"]}
+      ],
+      "supersedes": ["open_security_event"]
+    },
+    {
+      "id": "non_exception_license_assignment",
+      "entity_id": "license_assignments",
+      "description": "A license assignment that is not marked as an exception.",
+      "natural_language_references": ["excluding exception assignment", "excluding exception assignments", "excluding mandatory and exception assignments", "non exception assignment", "non exception assignments", "non-exception assignment", "non-exception assignments"],
+      "required_predicates": [{"column": "is_exception", "operator": "equals", "value": false}]
+    },
+    {
+      "id": "unused_license_assignment",
+      "entity_id": "license_assignments",
+      "description": "An active non-mandatory assignment with no use or no use for more than 60 days.",
+      "natural_language_references": ["reclaim opportunity", "reclaim opportunities", "unused license", "unused licenses", "unused paid license", "unused paid licenses"],
+      "required_predicates": [
+        {"column": "status", "operator": "equals", "value": "active"},
+        {"column": "is_mandatory", "operator": "equals", "value": false},
+        {"column": "last_used_at", "operator": "is_null_or_older_than_days", "value": 60}
+      ]
+    }
+  ],
+  "metrics": [
+    {
+      "id": "active_human_users",
+      "entity_id": "directory_users",
+      "description": "Count human directory users who are active employees and have active directory accounts.",
+      "natural_language_references": ["active human directory users", "active human users", "active users"],
+      "required_concept_ids": ["active_human_directory_user"],
+      "aggregation": {"function": "count", "description": "Count matching directory-user rows."}
+    }
+  ],
+  "composition_rules": [
+    {
+      "id": "non_compliant_device_posture",
+      "description": "A device has non-compliant posture when its compliance status is non-compliant, its antivirus is missing or outdated, or encryption is disabled.",
+      "natural_language_references": ["non compliant device", "non compliant devices", "non-compliant device", "non-compliant devices", "non compliant posture", "non-compliant posture"],
+      "all_of_concept_ids": [],
+      "or_concept_ids": ["non_compliant_device", "antivirus_attention_device", "unencrypted_device"]
+    },
+    {
+      "id": "disablement_policy_review",
+      "description": "A disablement policy review applies when the inactive human user is privileged or has an unresolved critical security event.",
+      "natural_language_references": ["policy review before disablement", "requires policy review before disablement"],
+      "all_of_concept_ids": [],
+      "or_concept_ids": ["privileged_group", "unresolved_critical_security_event"]
+    }
+  ],
+  "authorization_guidance": [
+    {
+      "scope_type": "department",
+      "scope_entity_id": "departments",
+      "possessive_references": ["my authorized area", "my department", "my scope", "our department", "within my department"],
+      "enforcement": "postgresql_rls",
+      "description": "When the supplied authorization context resolves department scope, possessive department or authorized-area references are complete. Do not request, infer, or embed a department identifier. Generate the supported query and rely on PostgreSQL RLS for department filtering. Clarify only when the authorization context does not resolve the referenced scope."
+    }
+  ],
+  "examples": [
+    {
+      "id": "active_user_metric",
+      "request": "Count the active users in the authorized area.",
+      "entity_ids": ["directory_users"],
+      "concept_ids": [],
+      "composition_rule_ids": [],
+      "metric_id": "active_human_users",
+      "distinct": false,
+      "literal_filters": [],
+      "relationships": [],
+      "aggregation_functions": [],
+      "group_by": [],
+      "clarification_reason": null
+    },
+    {
+      "id": "not_disabled_accounts_literal",
+      "request": "Count directory accounts that are not disabled.",
+      "entity_ids": ["directory_users"],
+      "concept_ids": [],
+      "composition_rule_ids": [],
+      "metric_id": null,
+      "distinct": false,
+      "literal_filters": [{"field": {"entity_id": "directory_users", "column": "account_status"}, "operator": "not_equals", "value": "disabled"}],
+      "relationships": [],
+      "aggregation_functions": ["count"],
+      "group_by": [],
+      "clarification_reason": null
+    },
+    {
+      "id": "active_service_accounts",
+      "request": "Count service accounts whose directory access is active.",
+      "entity_ids": ["directory_users"],
+      "concept_ids": ["active_directory_account", "service_account"],
+      "composition_rule_ids": [],
+      "metric_id": null,
+      "distinct": false,
+      "literal_filters": [],
+      "relationships": [],
+      "aggregation_functions": ["count"],
+      "group_by": [],
+      "clarification_reason": null
+    },
+    {
+      "id": "terminated_active_accounts",
+      "request": "Count terminated employees whose directory account remains active.",
+      "entity_ids": ["directory_users"],
+      "concept_ids": ["terminated_employee_with_active_account"],
+      "composition_rule_ids": [],
+      "metric_id": null,
+      "distinct": false,
+      "literal_filters": [],
+      "relationships": [],
+      "aggregation_functions": ["count"],
+      "group_by": [],
+      "clarification_reason": null
+    },
+    {
+      "id": "active_employees_with_non_compliant_devices",
+      "request": "List current employees who have non-compliant devices.",
+      "entity_ids": ["devices", "directory_users"],
+      "concept_ids": ["active_employee", "human_directory_user"],
+      "composition_rule_ids": ["non_compliant_device_posture"],
+      "metric_id": null,
+      "distinct": true,
+      "literal_filters": [],
+      "relationships": [{"relationship_id":"device_assignee","join_type":"inner"}],
+      "aggregation_functions": [],
+      "group_by": [],
+      "clarification_reason": null
+    },
+    {
+      "id": "unused_assignments_by_department",
+      "request": "Group unused license assignments by department.",
+      "entity_ids": ["departments", "license_assignments"],
+      "concept_ids": ["unused_license_assignment"],
+      "composition_rule_ids": [],
+      "metric_id": null,
+      "distinct": false,
+      "literal_filters": [],
+      "relationships": [{"relationship_id":"license_assignment_department","join_type":"inner"}],
+      "aggregation_functions": ["count"],
+      "group_by": [{"entity_id": "departments", "column": "name"}],
+      "clarification_reason": null
+    },
+    {
+      "id": "disablement_policy_review_candidates",
+      "request": "Find inactive human users who require policy review before disablement.",
+      "entity_ids": ["directory_users", "groups", "security_events", "user_group_memberships"],
+      "concept_ids": ["inactive_human_directory_user"],
+      "composition_rule_ids": ["disablement_policy_review"],
+      "metric_id": null,
+      "distinct": true,
+      "literal_filters": [],
+      "relationships": [
+        {"relationship_id":"security_event_user","join_type":"left"},
+        {"relationship_id":"user_group_membership_group","join_type":"left"},
+        {"relationship_id":"user_group_membership_user","join_type":"left"}
+      ],
+      "aggregation_functions": [],
+      "group_by": [],
+      "clarification_reason": null
+    },
+    {
+      "id": "ambiguous_available_accounts",
+      "request": "Show available accounts.",
+      "entity_ids": ["directory_users"],
+      "concept_ids": [],
+      "composition_rule_ids": [],
+      "metric_id": null,
+      "distinct": false,
+      "literal_filters": [],
+      "relationships": [],
+      "aggregation_functions": [],
+      "group_by": [],
+      "clarification_reason": "ambiguous_question"
+    }
+  ]
+}

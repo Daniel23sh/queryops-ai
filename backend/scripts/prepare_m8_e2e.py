@@ -17,6 +17,7 @@ from app.models.product import AccessScope, AppUser, UserAccessScope
 ANALYST_EMAIL = "demo.analyst@queryops.local"
 FINANCE_SCOPE_TYPE = "department"
 FINANCE_SCOPE_KEY = "finance"
+E2E_RECLAIM_CANDIDATE_COUNT = 2
 _SAFE_DATABASE_MARKER = re.compile(
     r"(?:^|[_-])(?:test|dev|e2e)(?:$|[_-])",
     re.IGNORECASE,
@@ -35,6 +36,7 @@ class PreparationResult:
     analyst_user_id: str
     finance_scope_id: str
     created: bool
+    selected_human_assignments: int
     stabilized_service_assignments: int
 
 
@@ -135,11 +137,37 @@ def prepare_e2e_state(session: Session, *, now: datetime) -> PreparationResult:
     for service_assignment in service_assignments:
         service_assignment.last_used_at = now
 
+    human_assignments = session.scalars(
+        select(LicenseAssignment)
+        .join(DirectoryUser, DirectoryUser.id == LicenseAssignment.user_id)
+        .where(
+            LicenseAssignment.department_id == finance.department_id,
+            LicenseAssignment.status == "active",
+            LicenseAssignment.is_mandatory.is_(False),
+            DirectoryUser.account_type == "human",
+        )
+        .order_by(
+            LicenseAssignment.last_used_at.asc().nulls_first(),
+            LicenseAssignment.id.asc(),
+        )
+    ).all()
+    if len(human_assignments) < E2E_RECLAIM_CANDIDATE_COUNT:
+        raise RuntimeError(
+            "The deterministic small seed does not contain enough Finance "
+            "human reclaim candidates for M8 E2E."
+        )
+    for human_assignment in human_assignments:
+        human_assignment.last_used_at = now
+    selected_human_assignments = human_assignments[:E2E_RECLAIM_CANDIDATE_COUNT]
+    for human_assignment in selected_human_assignments:
+        human_assignment.last_used_at = now - timedelta(days=61)
+
     session.flush()
     return PreparationResult(
         analyst_user_id=str(analyst.id),
         finance_scope_id=str(finance.id),
         created=created,
+        selected_human_assignments=len(selected_human_assignments),
         stabilized_service_assignments=len(service_assignments),
     )
 
@@ -199,6 +227,8 @@ def main() -> None:
     print(
         "M8 E2E Finance scope for Demo Analyst: "
         f"{status} (user={result.analyst_user_id}, scope={result.finance_scope_id}); "
+        "deterministic human reclaim candidates: "
+        f"{result.selected_human_assignments}; "
         "Finance service-account reclaim candidates stabilized: "
         f"{result.stabilized_service_assignments}."
     )

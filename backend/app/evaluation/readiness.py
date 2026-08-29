@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import math
+import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
@@ -13,6 +15,10 @@ from app.evaluation.contracts import (
     EvaluationDifficulty,
     EvaluationSet,
     ExpectedOutcome,
+)
+from app.evaluation.environment import (
+    reference_time_is_eligible,
+    validate_persisted_environment_identity,
 )
 from app.evaluation.selection import evaluation_dataset_digest
 from app.evaluation.scoring import SAFE_FAILURE_REASONS
@@ -27,6 +33,8 @@ V1_RESULT_ACCURACY_THRESHOLD = 0.75
 V1_UNSAFE_BLOCK_THRESHOLD = 1.0
 V1_CLARIFICATION_THRESHOLD = 0.80
 V1_SECURITY_THRESHOLD = 1.0
+_SAFE_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_SAFE_DIGEST = re.compile(r"^[0-9a-f]{64}$")
 
 
 class ReadinessVerdict(str, Enum):
@@ -56,6 +64,7 @@ class ReadinessResultEvidence:
 class ReadinessRunEvidence:
     run_id: UUID
     status: str
+    started_at: datetime | None
     completed_at: datetime | None
     summary: Any
     results: tuple[ReadinessResultEvidence, ...]
@@ -92,6 +101,8 @@ class ReadinessAssessment:
     dataset_id: str
     dataset_version: str
     dataset_digest: str
+    semantic_catalog: dict[str, str]
+    evaluation_environment: dict[str, str | int]
     selected_count: int | None
     completed_count: int | None
     average_latency_ms: float | None
@@ -186,20 +197,38 @@ def evaluate_v1_readiness(
     evidence: ReadinessRunEvidence | None,
     *,
     deterministic_evidence_passed: bool,
+    semantic_catalog_identity: Mapping[str, Any],
 ) -> ReadinessAssessment:
     digest = evaluation_dataset_digest(evaluation_set)
+    current_catalog = _validated_catalog_identity(semantic_catalog_identity)
+    if current_catalog is None:
+        return _incomplete(
+            evaluation_set,
+            digest,
+            "semantic_catalog_identity_mismatch",
+        )
     if evidence is None:
-        return _incomplete(evaluation_set, digest, "qualifying_run_missing")
-
-    validated = _validate_evidence(evaluation_set, digest, evidence)
+        return _incomplete(
+            evaluation_set,
+            digest,
+            "qualifying_run_missing",
+            semantic_catalog=current_catalog,
+        )
+    validated = _validate_evidence(
+        evaluation_set,
+        digest,
+        current_catalog,
+        evidence,
+    )
     if isinstance(validated, str):
         return _incomplete(
             evaluation_set,
             digest,
             validated,
             evidence=evidence,
+            semantic_catalog=current_catalog,
         )
-    summary, results, usage = validated
+    summary, results, usage, environment = validated
 
     gates: list[ReadinessGate] = [
         ReadinessGate(
@@ -342,6 +371,8 @@ def evaluate_v1_readiness(
         dataset_id=evaluation_set.dataset_id,
         dataset_version=evaluation_set.version,
         dataset_digest=digest,
+        semantic_catalog=current_catalog,
+        evaluation_environment=environment.as_dict(),
         selected_count=V1_REQUIRED_CASE_COUNT,
         completed_count=V1_REQUIRED_CASE_COUNT,
         average_latency_ms=round(
@@ -355,8 +386,14 @@ def evaluate_v1_readiness(
 def _validate_evidence(
     evaluation_set: EvaluationSet,
     digest: str,
+    semantic_catalog_identity: dict[str, str],
     evidence: ReadinessRunEvidence,
-) -> tuple[dict[str, Any], tuple[_ParsedResult, ...], ReadinessUsage] | str:
+) -> tuple[
+    dict[str, Any],
+    tuple[_ParsedResult, ...],
+    ReadinessUsage,
+    Any,
+] | str:
     if evidence.status != "succeeded" or evidence.completed_at is None:
         return "run_incomplete"
     if not isinstance(evidence.summary, dict):
@@ -372,6 +409,19 @@ def _validate_evidence(
         or summary.get("dataset_digest") != digest
     ):
         return "dataset_identity_mismatch"
+    if _validated_catalog_identity(summary.get("semantic_catalog")) != (
+        semantic_catalog_identity
+    ):
+        return "semantic_catalog_identity_mismatch"
+    environment = validate_persisted_environment_identity(
+        summary.get("evaluation_environment")
+    )
+    if (
+        environment is None
+        or evidence.started_at is None
+        or not reference_time_is_eligible(environment, evidence.started_at)
+    ):
+        return "evaluation_environment_mismatch"
     if summary.get("filters") != {
         "case_id": None,
         "difficulty": None,
@@ -408,9 +458,13 @@ def _validate_evidence(
         if parsed_result.provider_measurement is not None:
             measurements.append(parsed_result.provider_measurement)
     usage = _usage(measurements)
-    if usage is None or not _usage_matches(summary.get("provider_usage"), usage):
+    if (
+        usage is None
+        or usage.call_count == 0
+        or not _usage_matches(summary.get("provider_usage"), usage)
+    ):
         return "result_set_malformed"
-    return summary, tuple(parsed), usage
+    return summary, tuple(parsed), usage, environment
 
 
 def _parse_result(
@@ -582,6 +636,7 @@ def _incomplete(
     reason_code: str,
     *,
     evidence: ReadinessRunEvidence | None = None,
+    semantic_catalog: dict[str, str] | None = None,
 ) -> ReadinessAssessment:
     gates = tuple(
         ReadinessGate(
@@ -605,6 +660,8 @@ def _incomplete(
         dataset_id=evaluation_set.dataset_id,
         dataset_version=evaluation_set.version,
         dataset_digest=digest,
+        semantic_catalog=semantic_catalog or {},
+        evaluation_environment={},
         selected_count=None,
         completed_count=None,
         average_latency_ms=None,
@@ -633,3 +690,29 @@ def _bounded_count(value: Any) -> bool:
 
 def _exact_int(value: Any, expected: int) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value == expected
+
+
+def _validated_catalog_identity(value: Any) -> dict[str, str] | None:
+    if not isinstance(value, Mapping) or set(value) != {
+        "catalog_id",
+        "catalog_version",
+        "catalog_hash",
+    }:
+        return None
+    catalog_id = value.get("catalog_id")
+    catalog_version = value.get("catalog_version")
+    catalog_hash = value.get("catalog_hash")
+    if (
+        not isinstance(catalog_id, str)
+        or _SAFE_IDENTIFIER.fullmatch(catalog_id) is None
+        or not isinstance(catalog_version, str)
+        or not 1 <= len(catalog_version) <= 64
+        or not isinstance(catalog_hash, str)
+        or _SAFE_DIGEST.fullmatch(catalog_hash) is None
+    ):
+        return None
+    return {
+        "catalog_id": catalog_id,
+        "catalog_version": catalog_version,
+        "catalog_hash": catalog_hash,
+    }

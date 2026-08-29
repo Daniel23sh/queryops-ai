@@ -77,6 +77,31 @@ def test_existing_six_template_evaluation_cases_are_represented() -> None:
         assert template_cases[template_id].question == pack.template(template_id).natural_language_question
 
 
+def test_medium_009_baseline_uses_tracked_non_compliant_device_posture() -> None:
+    evaluation_set = load_it_operations_evaluation_set()
+    pack = load_it_operations_domain_pack()
+    case = evaluation_set.cases_by_id["itops-medium-009"]
+
+    assert pack.business_terms_by_name["non-compliant device"].description == (
+        "A managed device with non-compliant posture, outdated antivirus, "
+        "missing antivirus, or disabled encryption."
+    )
+    assert (
+        "compliance_status = 'non_compliant' OR antivirus_status IN "
+        "('outdated', 'missing') OR encryption_enabled = false"
+        in pack.template("non_compliant_devices_by_department").sql
+    )
+    assert (
+        "d.compliance_status = 'non_compliant' OR d.antivirus_status IN "
+        "('outdated', 'missing') OR d.encryption_enabled = false"
+        in case.baseline_sql
+    )
+    expected_columns = {entry.table: set(entry.columns) for entry in case.expected_columns}
+    assert {"compliance_status", "antivirus_status", "encryption_enabled"} <= (
+        expected_columns["devices"]
+    )
+
+
 def test_roles_scope_modes_and_security_non_execution_expectations_are_valid() -> None:
     evaluation_set = load_it_operations_evaluation_set()
     security_cases = [

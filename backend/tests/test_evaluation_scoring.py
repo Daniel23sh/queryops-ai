@@ -6,8 +6,13 @@ from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from app.evaluation.contracts import ComparisonMode, ExpectedOutcome
+from app.evaluation.contracts import (
+    ComparisonMode,
+    ExpectedOutcome,
+    ProvenanceAuthorizationEvidence,
+)
 from app.evaluation.loader import load_it_operations_evaluation_set
+from app.evaluation.provenance import build_evaluation_comparison_provenance
 from app.evaluation.scoring import score_evaluation_case
 
 
@@ -15,7 +20,7 @@ def _successful_case():
     return load_it_operations_evaluation_set().cases_by_id["itops-easy-005"]
 
 
-def _score(case, expected_rows, actual_rows, *, tables=None):
+def _score(case, expected_rows, actual_rows, *, tables=None, provenance=None):
     return score_evaluation_case(
         case,
         actual_outcome=ExpectedOutcome.SUCCESS,
@@ -23,6 +28,19 @@ def _score(case, expected_rows, actual_rows, *, tables=None):
         actual_referenced_tables=case.expected_tables if tables is None else tables,
         expected_rows=expected_rows,
         actual_rows=actual_rows,
+        provenance=provenance,
+    )
+
+
+def _provenance(expected_sql: str, actual_sql: str, *, validated: bool = True):
+    return build_evaluation_comparison_provenance(
+        baseline_sql=expected_sql,
+        final_sql=actual_sql,
+        actual_authorization_evidence=(
+            ProvenanceAuthorizationEvidence.FINAL_SQL_VALIDATED
+            if validated
+            else ProvenanceAuthorizationEvidence.UNVERIFIED
+        ),
     )
 
 
@@ -48,6 +66,69 @@ def test_aggregation_group_comparison_is_semantic() -> None:
         [{"count": 3.0, "priority": "low"}, {"count": 2, "priority": "high"}],
     )
     assert score.passed is True
+
+
+def test_single_grouped_aggregate_ignores_only_a_harmless_alias() -> None:
+    case = _successful_case()
+
+    score = _score(
+        case,
+        [{"active_user_count": 7}],
+        [{"active_human_user_count": Decimal("7.0")}],
+    )
+
+    assert score.passed is True
+    assert score.result_correct is True
+
+
+def test_single_grouped_aggregate_still_rejects_a_different_value() -> None:
+    case = _successful_case()
+
+    different_alias = _score(
+        case,
+        [{"active_user_count": 7}],
+        [{"active_human_user_count": 8}],
+    )
+    same_alias = _score(
+        case,
+        [{"active_user_count": 7}],
+        [{"active_user_count": 8}],
+    )
+
+    assert different_alias.result_correct is False
+    assert different_alias.failure_reasons == ("result_semantics_mismatch",)
+    assert same_alias.result_correct is False
+
+
+def test_grouped_alias_relaxation_does_not_apply_to_multi_column_rows() -> None:
+    case = _successful_case()
+    score = _score(
+        case,
+        [{"status": "active", "user_count": 7}],
+        [{"state": "active", "human_count": 7}],
+    )
+
+    assert score.result_correct is False
+    assert score.failure_reasons == ("result_semantics_mismatch",)
+
+
+def test_grouped_alias_relaxation_preserves_row_shape_and_null_semantics() -> None:
+    case = _successful_case()
+
+    assert _score(case, [{"expected": None}], [{"actual": None}]).passed is True
+    assert _score(case, [{"expected": None}], [{"actual": 0}]).passed is False
+    missing = _score(case, [], [{"actual": 0}])
+    extra = _score(case, [{"expected": 0}], [])
+    assert missing.failure_reasons == ("row_count_mismatch",)
+    assert extra.failure_reasons == ("row_count_mismatch",)
+
+
+def test_ordinary_field_alias_without_provenance_remains_strict() -> None:
+    case = replace(_successful_case(), comparison_mode=ComparisonMode.UNORDERED_ROWS)
+
+    score = _score(case, [{"active_user_count": 7}], [{"renamed_count": 7}])
+
+    assert score.result_correct is False
 
 
 def test_duplicate_row_multiplicity_is_not_discarded() -> None:
@@ -131,6 +212,470 @@ def test_stable_key_comparison_and_missing_key_are_safe() -> None:
     missing = _score(case, [{"id": 1}], [{"name": "not-returned"}])
     assert missing.passed is False
     assert missing.failure_reasons == ("missing_stable_key",)
+
+
+def test_provenance_resolves_stable_identity_across_aliases() -> None:
+    case = load_it_operations_evaluation_set().cases_by_id["itops-hard-005"]
+    provenance = _provenance(
+        "SELECT devices.id AS device_id FROM devices",
+        "SELECT devices.id AS id FROM devices",
+    )
+
+    score = _score(
+        case,
+        [{"device_id": "device-1"}],
+        [{"id": "device-1"}],
+        provenance=provenance,
+    )
+
+    assert score.passed is True
+
+
+def test_provenance_rejects_unrelated_id_as_stable_identity() -> None:
+    case = load_it_operations_evaluation_set().cases_by_id["itops-hard-005"]
+    provenance = _provenance(
+        "SELECT devices.id AS device_id FROM devices",
+        "SELECT directory_users.id AS id FROM directory_users",
+    )
+
+    score = _score(
+        case,
+        [{"device_id": "same-value"}],
+        [{"id": "same-value"}],
+        provenance=provenance,
+    )
+
+    assert score.result_correct is False
+    assert score.failure_reasons == ("missing_stable_key",)
+
+
+def test_stable_alias_without_provenance_remains_fail_closed() -> None:
+    case = load_it_operations_evaluation_set().cases_by_id["itops-hard-005"]
+
+    score = _score(case, [{"device_id": "device-1"}], [{"id": "device-1"}])
+
+    assert score.result_correct is False
+    assert score.failure_reasons == ("missing_stable_key",)
+
+
+def test_provenance_matches_ordinary_field_aliases_by_canonical_identity() -> None:
+    case = load_it_operations_evaluation_set().cases_by_id["itops-medium-006"]
+    expected_sql = (
+        "SELECT departments.name AS department_name, "
+        "COUNT(DISTINCT directory_users.id) AS user_count "
+        "FROM departments JOIN directory_users "
+        "ON directory_users.department_id = departments.id "
+        "GROUP BY departments.name ORDER BY departments.name"
+    )
+    actual_sql = (
+        "SELECT departments.name AS name, "
+        "COUNT(DISTINCT directory_users.id) AS user_count "
+        "FROM departments JOIN directory_users "
+        "ON directory_users.department_id = departments.id "
+        "GROUP BY departments.name"
+    )
+
+    score = _score(
+        case,
+        [
+            {"department_name": "Finance", "user_count": 4},
+            {"department_name": "Security", "user_count": 3},
+        ],
+        [
+            {"name": "Security", "user_count": 3},
+            {"name": "Finance", "user_count": 4},
+        ],
+        provenance=_provenance(expected_sql, actual_sql),
+    )
+
+    assert score.passed is True
+
+
+def test_same_alias_with_different_canonical_field_fails() -> None:
+    case = replace(_successful_case(), comparison_mode=ComparisonMode.UNORDERED_ROWS)
+    provenance = _provenance(
+        "SELECT departments.name AS label FROM departments CROSS JOIN groups",
+        "SELECT groups.name AS label FROM departments CROSS JOIN groups",
+    )
+
+    score = _score(
+        case,
+        [{"label": "Operations"}],
+        [{"label": "Operations"}],
+        provenance=provenance,
+    )
+
+    assert score.result_correct is False
+
+
+def test_different_aliases_with_different_canonical_fields_fail() -> None:
+    case = replace(_successful_case(), comparison_mode=ComparisonMode.UNORDERED_ROWS)
+    provenance = _provenance(
+        "SELECT departments.name AS department_name "
+        "FROM departments CROSS JOIN groups",
+        "SELECT groups.name AS group_name FROM departments CROSS JOIN groups",
+    )
+
+    score = _score(
+        case,
+        [{"department_name": "Operations"}],
+        [{"group_name": "Operations"}],
+        provenance=provenance,
+    )
+
+    assert score.result_correct is False
+
+
+def test_ambiguous_duplicate_canonical_field_aliases_fail_closed() -> None:
+    case = replace(_successful_case(), comparison_mode=ComparisonMode.UNORDERED_ROWS)
+    provenance = _provenance(
+        "SELECT departments.name AS department_name FROM departments",
+        "SELECT departments.name AS name, departments.name AS label FROM departments",
+    )
+
+    score = _score(
+        case,
+        [{"department_name": "Operations"}],
+        [{"name": "Operations", "label": "Operations"}],
+        provenance=provenance,
+    )
+
+    assert score.result_correct is False
+
+
+def test_unauthorized_ordinary_field_cannot_use_canonical_alias_mapping() -> None:
+    case = replace(_successful_case(), comparison_mode=ComparisonMode.UNORDERED_ROWS)
+    provenance = _provenance(
+        "SELECT departments.name AS department_name FROM departments",
+        "SELECT departments.name AS name FROM departments",
+    )
+    assert provenance.expected is not None
+    assert provenance.actual is not None
+    expected_unauthorized = replace(
+        provenance,
+        expected=replace(
+            provenance.expected,
+            outputs=(replace(provenance.expected.outputs[0], authorized=False),),
+        ),
+    )
+    actual_unauthorized = replace(
+        provenance,
+        actual=replace(
+            provenance.actual,
+            outputs=(replace(provenance.actual.outputs[0], authorized=False),),
+        ),
+    )
+
+    for unauthorized_provenance in (expected_unauthorized, actual_unauthorized):
+        score = _score(
+            case,
+            [{"department_name": "Operations"}],
+            [{"name": "Operations"}],
+            provenance=unauthorized_provenance,
+        )
+
+        assert score.result_correct is False
+
+
+def test_unverified_ordinary_field_alias_mapping_fails_closed() -> None:
+    case = replace(_successful_case(), comparison_mode=ComparisonMode.UNORDERED_ROWS)
+    provenance = _provenance(
+        "SELECT departments.name AS department_name FROM departments",
+        "SELECT departments.name AS name FROM departments",
+        validated=False,
+    )
+
+    score = _score(
+        case,
+        [{"department_name": "Operations"}],
+        [{"name": "Operations"}],
+        provenance=provenance,
+    )
+
+    assert score.result_correct is False
+
+
+def test_ordinary_field_alias_mapping_requires_equal_row_grain() -> None:
+    case = replace(_successful_case(), comparison_mode=ComparisonMode.UNORDERED_ROWS)
+    provenance = _provenance(
+        "SELECT departments.name AS department_name FROM departments",
+        "SELECT departments.name AS name FROM departments GROUP BY departments.name",
+    )
+
+    score = _score(
+        case,
+        [{"department_name": "Operations"}],
+        [{"name": "Operations"}],
+        provenance=provenance,
+    )
+
+    assert score.result_correct is False
+
+
+def test_ordinary_field_alias_mapping_still_compares_values() -> None:
+    case = replace(_successful_case(), comparison_mode=ComparisonMode.UNORDERED_ROWS)
+    provenance = _provenance(
+        "SELECT departments.name AS department_name FROM departments",
+        "SELECT departments.name AS name FROM departments",
+    )
+
+    score = _score(
+        case,
+        [{"department_name": "Operations"}],
+        [{"name": "Security"}],
+        provenance=provenance,
+    )
+
+    assert score.result_correct is False
+
+
+def test_provenance_matches_equivalent_grouped_aggregate_aliases() -> None:
+    case = load_it_operations_evaluation_set().cases_by_id["itops-hard-009"]
+    provenance = _provenance(
+        "SELECT groups.id, COUNT(*) AS addition_count FROM groups "
+        "GROUP BY groups.id ORDER BY addition_count DESC",
+        "SELECT groups.id, COUNT(*) AS membership_addition_count FROM groups "
+        "GROUP BY groups.id ORDER BY membership_addition_count DESC",
+    )
+
+    score = _score(
+        case,
+        [
+            {"id": "group-1", "addition_count": 5},
+            {"id": "group-2", "addition_count": 3},
+        ],
+        [
+            {"id": "group-1", "membership_addition_count": 5},
+            {"id": "group-2", "membership_addition_count": 3},
+        ],
+        provenance=provenance,
+    )
+
+    assert score.passed is True
+
+
+def test_provenance_does_not_equate_count_and_count_distinct() -> None:
+    case = load_it_operations_evaluation_set().cases_by_id["itops-hard-009"]
+    provenance = _provenance(
+        "SELECT groups.id, COUNT(user_group_memberships.user_id) AS addition_count "
+        "FROM groups JOIN user_group_memberships "
+        "ON user_group_memberships.group_id = groups.id GROUP BY groups.id",
+        "SELECT groups.id, COUNT(DISTINCT user_group_memberships.user_id) "
+        "AS addition_count FROM groups JOIN user_group_memberships "
+        "ON user_group_memberships.group_id = groups.id GROUP BY groups.id",
+    )
+
+    score = _score(
+        case,
+        [{"id": "group-1", "addition_count": 2}],
+        [{"id": "group-1", "addition_count": 2}],
+        provenance=provenance,
+    )
+
+    assert score.result_correct is False
+
+
+def test_provenance_does_not_equate_different_aggregation_targets() -> None:
+    case = load_it_operations_evaluation_set().cases_by_id["itops-hard-009"]
+    provenance = _provenance(
+        "SELECT groups.id, COUNT(user_group_memberships.user_id) AS item_count "
+        "FROM groups JOIN user_group_memberships "
+        "ON user_group_memberships.group_id = groups.id GROUP BY groups.id",
+        "SELECT groups.id, COUNT(user_group_memberships.group_id) AS item_count "
+        "FROM groups JOIN user_group_memberships "
+        "ON user_group_memberships.group_id = groups.id GROUP BY groups.id",
+    )
+
+    score = _score(
+        case,
+        [{"id": "group-1", "item_count": 2}],
+        [{"id": "group-1", "item_count": 2}],
+        provenance=provenance,
+    )
+
+    assert score.result_correct is False
+
+
+def test_count_rows_and_count_field_remain_semantically_distinct() -> None:
+    case = load_it_operations_evaluation_set().cases_by_id["itops-medium-012"]
+    expected_sql = (
+        "SELECT departments.name, security_events.severity, COUNT(*) AS event_count "
+        "FROM departments JOIN security_events "
+        "ON security_events.department_id = departments.id "
+        "GROUP BY departments.name, security_events.severity"
+    )
+    actual_sql = (
+        "SELECT departments.name, security_events.severity, "
+        "COUNT(security_events.id) AS event_count "
+        "FROM departments LEFT JOIN security_events "
+        "ON security_events.department_id = departments.id "
+        "GROUP BY departments.name, security_events.severity"
+    )
+
+    score = _score(
+        case,
+        [{"name": "Operations", "severity": "high", "event_count": 2}],
+        [{"name": "Operations", "severity": "high", "event_count": 2}],
+        provenance=_provenance(expected_sql, actual_sql),
+    )
+
+    assert score.result_correct is False
+
+
+def test_authorized_extra_output_passes_at_same_grain_and_multiplicity() -> None:
+    case = load_it_operations_evaluation_set().cases_by_id["itops-medium-015"]
+    expected_sql = (
+        "SELECT user_group_memberships.user_id, groups.name AS group_name "
+        "FROM groups JOIN user_group_memberships "
+        "ON user_group_memberships.group_id = groups.id"
+    )
+    actual_sql = (
+        "SELECT user_group_memberships.user_id, groups.name AS group_name, "
+        "user_group_memberships.group_id FROM groups "
+        "JOIN user_group_memberships "
+        "ON user_group_memberships.group_id = groups.id"
+    )
+
+    score = _score(
+        case,
+        [
+            {"user_id": "user-1", "group_name": "Admins"},
+            {"user_id": "user-2", "group_name": "Security"},
+        ],
+        [
+            {"user_id": "user-1", "group_name": "Admins", "group_id": "g-1"},
+            {"user_id": "user-2", "group_name": "Security", "group_id": "g-2"},
+        ],
+        provenance=_provenance(expected_sql, actual_sql),
+    )
+
+    assert score.passed is True
+
+
+def test_unverified_extra_output_remains_fail_closed() -> None:
+    case = load_it_operations_evaluation_set().cases_by_id["itops-medium-015"]
+    expected_sql = "SELECT user_id FROM user_group_memberships"
+    actual_sql = "SELECT user_id, group_id FROM user_group_memberships"
+
+    score = _score(
+        case,
+        [{"user_id": "user-1"}],
+        [{"user_id": "user-1", "group_id": "group-1"}],
+        provenance=_provenance(expected_sql, actual_sql, validated=False),
+    )
+
+    assert score.result_correct is False
+
+
+def test_extra_output_with_different_row_grain_fails() -> None:
+    case = load_it_operations_evaluation_set().cases_by_id["itops-medium-015"]
+    provenance = _provenance(
+        "SELECT user_group_memberships.user_id FROM user_group_memberships",
+        "SELECT user_group_memberships.user_id, user_group_memberships.group_id "
+        "FROM user_group_memberships GROUP BY user_group_memberships.user_id, "
+        "user_group_memberships.group_id",
+    )
+
+    score = _score(
+        case,
+        [{"user_id": "user-1"}],
+        [{"user_id": "user-1", "group_id": "group-1"}],
+        provenance=provenance,
+    )
+
+    assert score.result_correct is False
+
+
+def test_extra_output_projection_cannot_collapse_distinct_rows() -> None:
+    case = load_it_operations_evaluation_set().cases_by_id["itops-medium-015"]
+    provenance = _provenance(
+        "SELECT user_group_memberships.user_id FROM user_group_memberships",
+        "SELECT user_group_memberships.user_id, user_group_memberships.group_id "
+        "FROM user_group_memberships",
+    )
+
+    score = _score(
+        case,
+        [{"user_id": "user-1"}, {"user_id": "user-1"}],
+        [
+            {"user_id": "user-1", "group_id": "group-1"},
+            {"user_id": "user-1", "group_id": "group-2"},
+        ],
+        provenance=provenance,
+    )
+
+    assert score.result_correct is False
+
+
+def test_missing_expected_canonical_output_fails() -> None:
+    case = load_it_operations_evaluation_set().cases_by_id["itops-medium-015"]
+    provenance = _provenance(
+        "SELECT user_group_memberships.user_id, groups.name AS group_name "
+        "FROM groups JOIN user_group_memberships "
+        "ON user_group_memberships.group_id = groups.id",
+        "SELECT groups.name AS group_name, user_group_memberships.group_id "
+        "FROM groups JOIN user_group_memberships "
+        "ON user_group_memberships.group_id = groups.id",
+    )
+
+    score = _score(
+        case,
+        [{"user_id": "user-1", "group_name": "Admins"}],
+        [{"group_name": "Admins", "group_id": "group-1"}],
+        provenance=provenance,
+    )
+
+    assert score.result_correct is False
+
+
+def test_bounded_different_stable_key_subset_still_fails_with_provenance() -> None:
+    case = replace(
+        load_it_operations_evaluation_set().cases_by_id["itops-easy-006"],
+        expected_tables=("license_assignments",),
+    )
+    provenance = _provenance(
+        "SELECT license_assignments.id FROM license_assignments",
+        "SELECT license_assignments.id FROM license_assignments",
+    )
+    expected = [{"id": f"assignment-{index}"} for index in range(100)]
+    actual = [{"id": f"assignment-{index}"} for index in range(1, 101)]
+
+    score = _score(case, expected, actual, provenance=provenance)
+
+    assert score.result_correct is False
+
+
+def test_extra_output_without_provenance_preserves_exact_key_behavior() -> None:
+    case = replace(_successful_case(), comparison_mode=ComparisonMode.UNORDERED_ROWS)
+
+    score = _score(case, [{"id": 1}], [{"id": 1, "name": "extra"}])
+
+    assert score.result_correct is False
+
+
+def test_provenance_does_not_relax_order_within_primary_ties() -> None:
+    case = load_it_operations_evaluation_set().cases_by_id["itops-hard-009"]
+    provenance = _provenance(
+        "SELECT groups.name, COUNT(*) AS addition_count FROM groups "
+        "GROUP BY groups.name ORDER BY addition_count DESC, groups.name ASC",
+        "SELECT groups.name, COUNT(*) AS membership_addition_count FROM groups "
+        "GROUP BY groups.name ORDER BY membership_addition_count DESC",
+    )
+
+    score = _score(
+        case,
+        [
+            {"name": "Alpha", "addition_count": 5},
+            {"name": "Beta", "addition_count": 5},
+        ],
+        [
+            {"name": "Beta", "membership_addition_count": 5},
+            {"name": "Alpha", "membership_addition_count": 5},
+        ],
+        provenance=provenance,
+    )
+
+    assert score.result_correct is False
 
 
 def test_score_diagnostics_never_include_raw_rows() -> None:

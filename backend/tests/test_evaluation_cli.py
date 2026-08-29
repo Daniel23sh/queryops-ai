@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+from app.evaluation.environment import EvaluationEnvironmentIdentity
+from app.evaluation.environment import EvaluationEnvironmentError
 from app.evaluation.runner import (
     EvaluationCaseSummary,
     EvaluationRunSummary,
@@ -14,13 +16,14 @@ from scripts.run_evaluation import run_cli
 def test_cli_defaults_to_full_selection_and_reports_low_score_safely(capsys) -> None:
     fake = _FakeRunner(_summary())
 
-    exit_code = run_cli([], runner_factory=lambda _settings: fake)
+    exit_code = run_cli([], runner_factory=lambda _settings, _environment: fake)
 
     output = capsys.readouterr()
     assert exit_code == 0
     assert fake.filters.case_id is None
     assert fake.filters.difficulty is None
     assert "Provider: mock (mock-queryops-v1)" in output.out
+    assert "Semantic catalog: it_operations_semantic_catalog v3" in output.out
     assert "selected=40 completed=40 passed=6 failed=34" in output.out
     assert "itops-security-003" in output.out
     assert "UPDATE directory_users" not in output.out
@@ -32,7 +35,7 @@ def test_cli_parses_single_and_group_filters(capsys) -> None:
     assert (
         run_cli(
             ["--case-id", "itops-easy-001"],
-            runner_factory=lambda _settings: single,
+            runner_factory=lambda _settings, _environment: single,
         )
         == 0
     )
@@ -48,7 +51,7 @@ def test_cli_parses_single_and_group_filters(capsys) -> None:
                 "authorization",
                 "--security-only",
             ],
-            runner_factory=lambda _settings: group,
+            runner_factory=lambda _settings, _environment: group,
         )
         == 0
     )
@@ -66,7 +69,10 @@ def test_cli_fatal_failure_is_nonzero_and_hides_raw_exception(capsys) -> None:
                 "Evaluation database prerequisites could not be verified safely.",
             )
 
-    exit_code = run_cli([], runner_factory=lambda _settings: FatalRunner())
+    exit_code = run_cli(
+        [],
+        runner_factory=lambda _settings, _environment: FatalRunner(),
+    )
 
     output = capsys.readouterr()
     assert exit_code == 2
@@ -83,7 +89,10 @@ def test_cli_invalid_selection_fails_clearly(capsys) -> None:
                 "Unknown evaluation case id: itops-easy-999"
             )
 
-    exit_code = run_cli([], runner_factory=lambda _settings: InvalidSelectionRunner())
+    exit_code = run_cli(
+        [],
+        runner_factory=lambda _settings, _environment: InvalidSelectionRunner(),
+    )
 
     output = capsys.readouterr()
     assert exit_code == 2
@@ -114,8 +123,12 @@ def test_cli_openai_selection_is_explicit_and_uses_requested_model(
             "gpt-5.6-terra",
             "--case-id",
             "itops-easy-001",
+            "--environment-manifest",
+            "safe-manifest.json",
         ],
-        runner_factory=lambda settings: seen_settings.append(settings) or fake,
+        runner_factory=lambda settings, _environment: seen_settings.append(settings)
+        or fake,
+        environment_loader=lambda _path: _environment_identity(),
     )
 
     output = capsys.readouterr()
@@ -126,19 +139,64 @@ def test_cli_openai_selection_is_explicit_and_uses_requested_model(
     assert "never-print-this-key" not in output.out + output.err
 
 
-def test_cli_missing_openai_key_and_mock_model_mismatch_fail_before_runner(
+def test_cli_openai_requires_verified_environment_before_runner(
     capsys,
     monkeypatch,
 ) -> None:
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("OPENAI_API_KEY", "never-print-this-key")
 
-    def must_not_build(_settings):
+    def must_not_build(_settings, _environment):
         raise AssertionError("runner must not be built")
 
     assert (
         run_cli(
             ["--provider", "openai"],
             runner_factory=must_not_build,
+        )
+        == 2
+    )
+    missing = capsys.readouterr()
+    assert "evaluation_environment_missing" in missing.err
+
+    assert (
+        run_cli(
+            [
+                "--provider",
+                "openai",
+                "--environment-manifest",
+                "safe-manifest.json",
+            ],
+            runner_factory=must_not_build,
+            environment_loader=lambda _path: (_ for _ in ()).throw(
+                EvaluationEnvironmentError("evaluation_environment_mismatch")
+            ),
+        )
+        == 2
+    )
+    invalid = capsys.readouterr()
+    assert "evaluation_environment_mismatch" in invalid.err
+    assert "never-print-this-key" not in missing.err + invalid.err
+
+
+def test_cli_missing_openai_key_and_mock_model_mismatch_fail_before_runner(
+    capsys,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    def must_not_build(_settings, _environment):
+        raise AssertionError("runner must not be built")
+
+    assert (
+        run_cli(
+            [
+                "--provider",
+                "openai",
+                "--environment-manifest",
+                "safe-manifest.json",
+            ],
+            runner_factory=must_not_build,
+            environment_loader=lambda _path: _environment_identity(),
         )
         == 2
     )
@@ -167,7 +225,8 @@ def test_cli_ignores_api_key_when_provider_is_not_selected(
 
     exit_code = run_cli(
         [],
-        runner_factory=lambda settings: seen_settings.append(settings) or fake,
+        runner_factory=lambda settings, _environment: seen_settings.append(settings)
+        or fake,
     )
 
     output = capsys.readouterr()
@@ -238,4 +297,27 @@ def _summary(
             "output_tokens": 0,
             "total_tokens": 0,
         },
+        semantic_catalog={
+            "catalog_id": "it_operations_semantic_catalog",
+            "catalog_version": "3",
+            "catalog_hash": "b" * 64,
+        },
+        evaluation_environment=(
+            _environment_identity().as_dict() if provider == "openai" else {}
+        ),
+    )
+
+
+def _environment_identity() -> EvaluationEnvironmentIdentity:
+    return EvaluationEnvironmentIdentity(
+        manifest_version="queryops-evaluation-environment-v1",
+        seed_version="it-operations-seed-v1",
+        seed_profile="medium",
+        seed=42,
+        reference_time="2026-08-24T12:00:00Z",
+        source_git_sha="a" * 40,
+        alembic_revision="0010_disable_inactive_user",
+        postgres_version="16.9",
+        database_fingerprint="c" * 64,
+        dependency_manifest_hash="d" * 64,
     )

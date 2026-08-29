@@ -14,7 +14,10 @@ from app.query_engine.openai_provider import (
     ProviderFailure,
     build_safe_prompt_projection,
 )
+from app.query_engine.llm_provider import SQLGenerationOutcome
 from app.query_engine.provider_config import OpenAIProviderSettings
+from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
+from app.query_engine.semantic_catalog import build_semantic_catalog_projection
 from app.query_engine.sql_validator import validate_sql
 
 
@@ -71,6 +74,73 @@ USER_CONTEXT = {
     "full_name": "Private Manager",
     "permissions": ["can_view_everything"],
 }
+ACTIVE_HUMAN_SCHEMA_CONTEXT = {
+    "domain": "it_operations",
+    "domain_name": "IT Operations",
+    "domain_version": "1",
+    "allowed_tables": ["directory_users"],
+    "allowed_columns": {
+        "directory_users": [
+            "account_status",
+            "account_type",
+            "employee_status",
+        ]
+    },
+    "tables": [
+        {
+            "name": "directory_users",
+            "description": "Directory identity records.",
+            "columns": [
+                {"name": "account_status", "data_type": "string"},
+                {"name": "account_type", "data_type": "string"},
+                {"name": "employee_status", "data_type": "string"},
+            ],
+            "resource": {
+                "resource_type": "table",
+                "schema_name": "public",
+                "table_name": "directory_users",
+                "sensitivity_level": "scoped_restricted",
+                "scope_type": "department",
+                "scope_column": "department_id",
+                "is_queryable": True,
+                "llm_exposure_level": "aggregate_safe",
+            },
+        }
+    ],
+    "business_terms": [],
+}
+DEVICE_PLAN = {
+    "entity_ids": ["devices"],
+    "concept_ids": [],
+    "composition_rule_ids": [],
+    "metric_id": None,
+    "distinct": False,
+    "literal_filters": [],
+    "relationships": [],
+    "output_fields": [
+        {"entity_id": "devices", "column": "operating_system"}
+    ],
+    "aggregations": [],
+    "group_by": [],
+    "having": [],
+    "order_by": [],
+    "limit": None,
+}
+ACTIVE_HUMAN_PLAN = {
+    "entity_ids": ["directory_users"],
+    "concept_ids": [],
+    "composition_rule_ids": [],
+    "metric_id": "active_human_users",
+    "distinct": False,
+    "literal_filters": [],
+    "relationships": [],
+    "output_fields": [],
+    "aggregations": [],
+    "group_by": [],
+    "having": [],
+    "order_by": [],
+    "limit": None,
+}
 
 
 class FakeResponses:
@@ -92,7 +162,7 @@ class FakeResponses:
             raise self.error
         if self.response is not None:
             return self.response
-        parsed = kwargs["text_format"].model_validate(self.payload)
+        parsed = kwargs["text_format"].model_validate_json(json.dumps(self.payload))
         return response_for(parsed)
 
 
@@ -183,6 +253,7 @@ def test_safe_prompt_projection_contains_only_explicit_authorized_fields() -> No
         "authorization": {
             "scope_type": "department",
             "has_global_scope": False,
+            "scope_reference_resolved": True,
         },
         "tables": [
             {
@@ -225,6 +296,7 @@ def test_openai_provider_parses_sql_and_extracts_only_safe_usage() -> None:
     client = FakeClient(
         {
             "outcome": "sql",
+            "semantic_plan": DEVICE_PLAN,
             "sql": "SELECT operating_system FROM devices ORDER BY operating_system",
             "clarification_reason": None,
         }
@@ -262,11 +334,246 @@ def test_openai_provider_parses_sql_and_extracts_only_safe_usage() -> None:
     assert "private@example.com" not in call["input"]
 
 
+def test_department_possessive_scope_is_resolved_by_authorization_context() -> None:
+    question = "Show active devices in my department."
+    client = FakeClient(
+        {
+            "outcome": "sql",
+            "semantic_plan": DEVICE_PLAN,
+            "sql": (
+                "SELECT id, operating_system FROM devices "
+                "WHERE operating_system IS NOT NULL"
+            ),
+            "clarification_reason": None,
+        }
+    )
+    provider = provider_for(client)
+
+    result = provider.generate_sql(question, SCHEMA_CONTEXT, USER_CONTEXT, {})
+
+    assert result.clarification_required is False
+    call = client.responses.calls[0]
+    prompt = json.loads(call["input"])
+    assert prompt["authorization"] == {
+        "scope_type": "department",
+        "has_global_scope": False,
+        "scope_reference_resolved": True,
+    }
+    instructions = " ".join(call["instructions"].lower().split())
+    for possessive_reference in (
+        "my department",
+        "our department",
+        "within my department",
+        "my scope",
+        "my authorized area",
+    ):
+        assert possessive_reference in instructions
+    assert "do not require a department name or identifier" in instructions
+    assert "without inventing or embedding a scope identifier" in instructions
+    assert "postgresql rls" in instructions
+    assert "genuinely missing or ambiguous" in instructions
+
+
+def test_active_human_semantic_catalog_requires_all_business_predicates() -> None:
+    question = "How many active human directory users are in my department?"
+    user_context = {
+        "scope_type": "department",
+        "has_global_scope": False,
+        "scope_reference_resolved": True,
+    }
+    catalog = load_it_operations_domain_pack().semantic_catalog
+    semantic_projection = build_semantic_catalog_projection(
+        catalog,
+        question,
+        ACTIVE_HUMAN_SCHEMA_CONTEXT,
+        user_context,
+    )
+    client = FakeClient(
+        {
+            "outcome": "sql",
+            "semantic_plan": ACTIVE_HUMAN_PLAN,
+            "sql": (
+                "SELECT COUNT(*) AS active_human_user_count "
+                "FROM directory_users "
+                "WHERE account_type = 'human' "
+                "AND employee_status = 'active' "
+                "AND account_status = 'active'"
+            ),
+            "clarification_reason": None,
+        }
+    )
+
+    result = provider_for(client).generate_sql(
+        question,
+        ACTIVE_HUMAN_SCHEMA_CONTEXT,
+        user_context,
+        {"semantic_catalog": semantic_projection},
+    )
+
+    assert result.clarification_required is False
+    validation = validate_sql(result.generated_sql or "", ACTIVE_HUMAN_SCHEMA_CONTEXT)
+    assert validation.valid is True
+    assert set(validation.referenced_columns["directory_users"]) == {
+        "account_status",
+        "account_type",
+        "employee_status",
+    }
+    call = client.responses.calls[0]
+    prompt = json.loads(call["input"])
+    concepts = {
+        concept["id"]: concept
+        for concept in prompt["semantic_catalog"]["concepts"]
+    }
+    concept = concepts["active_human_directory_user"]
+    assert {
+        (item["column"], item["operator"], item["value"])
+        for concept_id in concept["all_of_concept_ids"]
+        for item in concepts[concept_id]["required_predicates"]
+    } == {
+        ("account_type", "equals", "human"),
+        ("employee_status", "equals", "active"),
+        ("account_status", "equals", "active"),
+    }
+    assert prompt["authorization"]["scope_reference_resolved"] is True
+    assert "department_id" not in call["input"]
+    instructions = " ".join(call["instructions"].lower().split())
+    assert "preserve every structured required_predicate" in instructions
+    assert "business predicates are required query meaning" in instructions
+    assert "authorization predicates are separate" in instructions
+    assert "combine all_of_concept_ids conjunctively" in instructions
+    assert "combine those branches with sql or" in instructions
+    assert "never select only one branch" in instructions
+    assert "set metric_id to that metric" in instructions
+    assert "do not add or restate its count or sum in aggregations" in instructions
+    assert (
+        "leave output_fields, aggregations, group_by, having, and order_by empty"
+        in instructions
+    )
+    assert "limit null" in instructions
+    assert "sql still implements the metric definition" in instructions
+    assert result.generation_metadata["semantic_catalog"] == (
+        semantic_projection.as_observation()
+    )
+
+
+def test_active_human_sql_omitting_employee_status_is_detectable_offline() -> None:
+    sql = (
+        "SELECT COUNT(*) AS active_human_user_count FROM directory_users "
+        "WHERE account_type = 'human' AND account_status = 'active'"
+    )
+
+    validation = validate_sql(sql, ACTIVE_HUMAN_SCHEMA_CONTEXT)
+
+    assert validation.valid is True
+    assert set(validation.referenced_columns["directory_users"]) == {
+        "account_status",
+        "account_type",
+    }
+    assert "employee_status" not in validation.referenced_columns["directory_users"]
+
+
+def test_structured_concept_overrides_only_matching_legacy_business_term() -> None:
+    catalog = load_it_operations_domain_pack().semantic_catalog
+    schema_context = {
+        **SCHEMA_CONTEXT,
+        "allowed_columns": {
+            "devices": [
+                "id",
+                "operating_system",
+                "compliance_status",
+                "antivirus_status",
+                "encryption_enabled",
+            ]
+        },
+        "tables": [
+            {
+                **SCHEMA_CONTEXT["tables"][0],
+                "columns": [
+                        *SCHEMA_CONTEXT["tables"][0]["columns"],
+                        {"name": "compliance_status", "data_type": "string"},
+                        {"name": "antivirus_status", "data_type": "string"},
+                        {"name": "encryption_enabled", "data_type": "boolean"},
+                ],
+            }
+        ],
+        "business_terms": [
+            {
+                "name": "non-compliant device",
+                "description": "Conflicting legacy definition.",
+                "related_tables": ["devices"],
+            },
+            {
+                "name": "Active device",
+                "description": "Unrelated fallback glossary definition.",
+                "related_tables": ["devices"],
+            },
+        ],
+    }
+    semantic_projection = build_semantic_catalog_projection(
+        catalog,
+        "Show non-compliant devices.",
+        schema_context,
+        USER_CONTEXT,
+    )
+
+    prompt = build_safe_prompt_projection(
+        "Show non-compliant devices.",
+        schema_context,
+        USER_CONTEXT,
+        semantic_projection,
+    )
+
+    assert [term["name"] for term in prompt["business_terms"]] == ["Active device"]
+    assert {
+        concept["id"] for concept in prompt["semantic_catalog"]["concepts"]
+    } >= {
+        "antivirus_attention_device",
+        "non_compliant_device",
+        "unencrypted_device",
+    }
+    assert [
+        rule["id"] for rule in prompt["semantic_catalog"]["composition_rules"]
+    ] == ["non_compliant_device_posture"]
+
+
+def test_unresolved_scope_preserves_missing_information_clarification() -> None:
+    client = FakeClient(
+        {
+            "outcome": "clarification",
+            "semantic_plan": None,
+            "sql": None,
+            "clarification_reason": "missing_information",
+        }
+    )
+    provider = provider_for(client)
+
+    result = provider.generate_sql(
+        "Show the relevant records for my authorized area.",
+        SCHEMA_CONTEXT,
+        {"scope_type": "none", "has_global_scope": False},
+        {},
+    )
+
+    assert result.generated_sql is None
+    assert result.clarification_required is True
+    assert result.unsupported_reason == "missing_information"
+    call = client.responses.calls[0]
+    prompt = json.loads(call["input"])
+    assert prompt["authorization"] == {
+        "scope_type": "none",
+        "has_global_scope": False,
+        "scope_reference_resolved": False,
+    }
+    instructions = " ".join(call["instructions"].lower().split())
+    assert "authorization scope is unresolved" in instructions
+
+
 def test_openai_provider_returns_controlled_clarification() -> None:
     provider = provider_for(
         FakeClient(
             {
                 "outcome": "clarification",
+                "semantic_plan": None,
                 "sql": None,
                 "clarification_reason": "ambiguous_question",
             }
@@ -281,19 +588,120 @@ def test_openai_provider_returns_controlled_clarification() -> None:
     assert result.safe_error == "Please clarify the query request."
 
 
-def test_openai_provider_maps_refusal_to_controlled_outcome() -> None:
+def test_openai_provider_returns_bounded_unsafe_request_without_sql() -> None:
+    question = "Delete every active human directory user."
+    user_context = {
+        "scope_type": "department",
+        "has_global_scope": False,
+        "scope_reference_resolved": True,
+    }
+    catalog = load_it_operations_domain_pack().semantic_catalog
+    semantic_projection = build_semantic_catalog_projection(
+        catalog,
+        question,
+        ACTIVE_HUMAN_SCHEMA_CONTEXT,
+        user_context,
+    )
+    client = FakeClient(
+        {
+            "outcome": "unsafe_request",
+            "semantic_plan": None,
+            "sql": None,
+            "clarification_reason": None,
+        }
+    )
+
+    result = provider_for(client).generate_sql(
+        question,
+        ACTIVE_HUMAN_SCHEMA_CONTEXT,
+        user_context,
+        {"semantic_catalog": semantic_projection},
+    )
+
+    assert result.outcome is SQLGenerationOutcome.UNSAFE_REQUEST
+    assert result.generated_sql is None
+    assert result.clarification_required is False
+    assert result.unsupported_reason == "unsafe_request"
+    assert result.generation_metadata["referenced_tables"] == [
+        "directory_users"
+    ]
+    assert "response-id-must-not-persist" not in str(result)
+    instructions = " ".join(client.responses.calls[0]["instructions"].split())
+    assert "must contain no SQL" in instructions
+    assert "not a missing-information clarification" in instructions
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "outcome": "sql",
+            "semantic_plan": None,
+            "sql": None,
+            "clarification_reason": None,
+        },
+        {
+            "outcome": "sql",
+            "semantic_plan": DEVICE_PLAN,
+            "sql": "SELECT id FROM devices",
+            "clarification_reason": "missing_information",
+        },
+        {
+            "outcome": "clarification",
+            "semantic_plan": None,
+            "sql": "SELECT id FROM devices",
+            "clarification_reason": "missing_information",
+        },
+        {
+            "outcome": "clarification",
+            "semantic_plan": None,
+            "sql": None,
+            "clarification_reason": None,
+        },
+        {
+            "outcome": "unsafe_request",
+            "semantic_plan": None,
+            "sql": "DELETE FROM devices",
+            "clarification_reason": None,
+        },
+        {
+            "outcome": "unsafe_request",
+            "semantic_plan": None,
+            "sql": None,
+            "clarification_reason": "unsupported_request",
+        },
+        {
+            "outcome": "unknown",
+            "semantic_plan": None,
+            "sql": None,
+            "clarification_reason": None,
+        },
+    ],
+)
+def test_openai_provider_rejects_inconsistent_structured_outcomes(
+    payload: dict[str, Any],
+) -> None:
+    provider = provider_for(FakeClient(payload))
+
+    with pytest.raises(ProviderFailure) as exc_info:
+        provider.generate_sql(QUESTION, SCHEMA_CONTEXT, USER_CONTEXT, {})
+
+    assert exc_info.value.code == "provider_response_invalid"
+    assert "DELETE" not in str(exc_info.value)
+
+
+def test_openai_provider_maps_refusal_to_controlled_failure() -> None:
     response = response_for(None)
     response.output = [
         {"content": [{"type": "refusal", "refusal": "raw refusal detail"}]}
     ]
     provider = provider_for(FakeClient(response=response))
 
-    result = provider.generate_sql(QUESTION, SCHEMA_CONTEXT, USER_CONTEXT, {})
+    with pytest.raises(ProviderFailure) as exc_info:
+        provider.generate_sql(QUESTION, SCHEMA_CONTEXT, USER_CONTEXT, {})
 
-    assert result.generated_sql is None
-    assert result.clarification_required is True
-    assert result.unsupported_reason == "provider_refusal"
-    assert "raw refusal detail" not in str(result)
+    assert exc_info.value.code == "provider_refusal"
+    assert "raw refusal detail" not in str(exc_info.value)
 
 
 @pytest.mark.parametrize(
@@ -320,7 +728,12 @@ def test_openai_provider_rejects_excessively_long_or_markdown_sql() -> None:
     for sql in ("S" * (MAX_SQL_LENGTH + 1), "```sql\nSELECT id FROM devices\n```"):
         provider = provider_for(
             FakeClient(
-                {"outcome": "sql", "sql": sql, "clarification_reason": None}
+                {
+                    "outcome": "sql",
+                    "semantic_plan": DEVICE_PLAN,
+                    "sql": sql,
+                    "clarification_reason": None,
+                }
             )
         )
 
@@ -332,7 +745,12 @@ def test_openai_provider_rejects_excessively_long_or_markdown_sql() -> None:
 
 def test_openai_provider_does_not_call_client_without_authorized_schema() -> None:
     client = FakeClient(
-        {"outcome": "sql", "sql": "SELECT 1", "clarification_reason": None}
+        {
+            "outcome": "sql",
+            "semantic_plan": DEVICE_PLAN,
+            "sql": "SELECT 1",
+            "clarification_reason": None,
+        }
     )
     provider = provider_for(client)
 
@@ -353,6 +771,7 @@ def test_prompt_injection_cannot_bypass_governed_sql_validation() -> None:
         FakeClient(
             {
                 "outcome": "sql",
+                "semantic_plan": DEVICE_PLAN,
                 "sql": "UPDATE devices SET operating_system = 'owned'",
                 "clarification_reason": None,
             }
