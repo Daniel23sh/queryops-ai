@@ -6,7 +6,7 @@ from typing import Any
 
 from app.query_engine.domain_pack import DomainPack, QueryTemplate
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
-from app.query_engine.llm_provider import SQLGenerationOutcome, SQLGenerationResult
+from app.query_engine.llm_provider import PlanGenerationOutcome, PlanGenerationResult
 from app.query_engine.semantic_catalog import SemanticCatalogProjection
 from app.query_engine.semantic_plan import (
     SemanticAggregationIntent,
@@ -15,7 +15,6 @@ from app.query_engine.semantic_plan import (
     SemanticPlan,
     SemanticRelationshipIntent,
 )
-from app.query_engine.template_sql import render_template_sql
 
 
 class MockLLMProvider:
@@ -29,13 +28,13 @@ class MockLLMProvider:
             for template in self._domain_pack.query_templates
         }
 
-    def generate_sql(
+    def generate_plan(
         self,
         question: str,
         schema_context: Mapping[str, Any],
         user_context: Mapping[str, Any],
         options: Mapping[str, Any],
-    ) -> SQLGenerationResult:
+    ) -> PlanGenerationResult:
         if _is_unsafe_request(question):
             semantic_projection = options.get("semantic_catalog")
             referenced_tables = (
@@ -47,11 +46,10 @@ class MockLLMProvider:
                 if isinstance(semantic_projection, SemanticCatalogProjection)
                 else []
             )
-            return SQLGenerationResult(
-                generated_sql=None,
+            return PlanGenerationResult(
                 provider_name=self.provider_name,
                 model_name=self.model_name,
-                outcome=SQLGenerationOutcome.UNSAFE_REQUEST,
+                outcome=PlanGenerationOutcome.UNSAFE_REQUEST,
                 generation_metadata={
                     "source": "mock_unsafe_intent",
                     "question_fingerprint": _normalize_question(question),
@@ -62,22 +60,13 @@ class MockLLMProvider:
             )
 
         template = self._template_for_request(question, options)
-        if template is None or template.sql is None:
+        if template is None:
             return self._unsupported_result(question, schema_context, user_context)
 
-        rendered_sql = (
-            _mock_free_text_sql(template)
-            if options.get("template_id") is None
-            else render_template_sql(template)
-        )
-        if rendered_sql is None:
-            return self._unsupported_result(question, schema_context, user_context)
-
-        return SQLGenerationResult(
-            generated_sql=rendered_sql,
+        return PlanGenerationResult(
             provider_name=self.provider_name,
             model_name=self.model_name,
-            outcome=SQLGenerationOutcome.SQL,
+            outcome=PlanGenerationOutcome.PLAN,
             generation_metadata={
                 "template_id": template.id,
                 "source": "domain_pack_template",
@@ -118,12 +107,11 @@ class MockLLMProvider:
         question: str,
         schema_context: Mapping[str, Any],
         user_context: Mapping[str, Any],
-    ) -> SQLGenerationResult:
-        return SQLGenerationResult(
-            generated_sql=None,
+    ) -> PlanGenerationResult:
+        return PlanGenerationResult(
             provider_name=self.provider_name,
             model_name=self.model_name,
-            outcome=SQLGenerationOutcome.CLARIFICATION,
+            outcome=PlanGenerationOutcome.CLARIFICATION,
             generation_metadata={
                 "supported_template_ids": [
                     template.id for template in self._domain_pack.query_templates
@@ -330,15 +318,3 @@ _MOCK_PLAN_SPECIFICATIONS: dict[str, dict[str, Any]] = {
         ),
     },
 }
-
-
-def _mock_free_text_sql(template: QueryTemplate) -> str | None:
-    if template.id == "open_support_tickets_by_department":
-        # Free text asks for priority grain only. Explicit template execution
-        # retains the tracked priority-and-status template contract.
-        return (
-            "SELECT priority, COUNT(*) AS ticket_count FROM support_tickets "
-            "WHERE status IN ('open', 'in_progress') "
-            "GROUP BY priority ORDER BY priority"
-        )
-    return render_template_sql(template)

@@ -13,18 +13,17 @@ MAX_PROVIDER_DURATION_MS = 86_400_000.0
 MAX_PROVIDER_USAGE_COUNT = 1_000_000_000
 
 
-class SQLGenerationOutcome(str, Enum):
-    SQL = "sql"
+class PlanGenerationOutcome(str, Enum):
+    PLAN = "plan"
     CLARIFICATION = "clarification"
     UNSAFE_REQUEST = "unsafe_request"
 
 
 @dataclass(frozen=True)
-class SQLGenerationResult:
-    generated_sql: str | None
+class PlanGenerationResult:
     provider_name: str
     model_name: str
-    outcome: SQLGenerationOutcome = SQLGenerationOutcome.SQL
+    outcome: PlanGenerationOutcome = PlanGenerationOutcome.PLAN
     generation_metadata: dict[str, Any] = field(default_factory=dict)
     semantic_plan: SemanticPlan | None = None
     unsupported_reason: str | None = None
@@ -32,34 +31,34 @@ class SQLGenerationResult:
 
     @property
     def clarification_required(self) -> bool:
-        return self.outcome is SQLGenerationOutcome.CLARIFICATION
+        return self.outcome is PlanGenerationOutcome.CLARIFICATION
 
     @property
     def unsafe_request(self) -> bool:
-        return self.outcome is SQLGenerationOutcome.UNSAFE_REQUEST
+        return self.outcome is PlanGenerationOutcome.UNSAFE_REQUEST
 
 
 class LLMProvider(Protocol):
     provider_name: str
     model_name: str
 
-    def generate_sql(
+    def generate_plan(
         self,
         question: str,
         schema_context: Mapping[str, Any],
         user_context: Mapping[str, Any],
         options: Mapping[str, Any],
-    ) -> SQLGenerationResult:
-        """Return structured SQL generation output without executing SQL."""
+    ) -> PlanGenerationResult:
+        """Return structured semantic planning output without executing SQL."""
         ...
 
 
 class LLMProviderFailure(RuntimeError):
     def __init__(self, code: str, *, fatal: bool = False) -> None:
-        super().__init__("SQL generation is unavailable.")
+        super().__init__("Semantic planning is unavailable.")
         self.code = code
         self.fatal = fatal
-        self.safe_message = "SQL generation is unavailable."
+        self.safe_message = "Semantic planning is unavailable."
 
 
 def sanitize_provider_measurement(value: Any) -> dict[str, Any] | None:
