@@ -311,16 +311,11 @@ def test_resolved_scope_reference_is_not_the_grouped_count_subject() -> None:
     assert projection.mandatory_evidence()["entity_ids"] == ["support_tickets"]
 
 
-def test_grouping_without_quantity_does_not_invent_count() -> None:
+def test_grouping_without_quantity_or_bridge_does_not_invent_result_shape() -> None:
     projection = _projection("Show users by department.")
-    intent = projection.grounded_result_intent
 
-    assert intent is not None
-    assert intent.row_grain is not None
-    assert intent.row_grain.mode == "grouped"
-    assert _field_keys(intent.group_by) == {("departments", "name")}
-    assert intent.aggregations == ()
-    assert intent.having == ()
+    assert projection.grounded_result_intent is None
+    assert projection.suggested_result_intent is None
 
 
 def test_explicit_failed_login_threshold_builds_grouped_having_intent() -> None:
@@ -383,10 +378,19 @@ def test_implicit_quantity_bridge_is_suggested_not_required() -> None:
     required = projection.grounded_result_intent
     suggested = projection.suggested_result_intent
 
-    assert required is not None
-    assert required.aggregations == ()
-    assert _field_keys(required.group_by) == {("licenses", "product_name")}
+    assert required is None
     assert suggested is not None
+    assert suggested.row_grain is not None
+    assert suggested.row_grain.mode == "grouped"
+    assert _field_keys(suggested.row_grain.identity_fields) == {
+        ("licenses", "product_name")
+    }
+    assert _field_keys(suggested.required_output_fields) == {
+        ("licenses", "product_name")
+    }
+    assert _field_keys(suggested.group_by) == {
+        ("licenses", "product_name")
+    }
     assert [
         (
             item.function,
@@ -411,84 +415,81 @@ def test_explicit_output_attributes_resolve_to_canonical_fields() -> None:
     }
 
 
+def test_explicit_output_remains_required_with_ambiguous_grouping() -> None:
+    projection = _projection(
+        "Show users in privileged groups by department name."
+    )
+    required = projection.grounded_result_intent
+    suggested = projection.suggested_result_intent
+
+    assert required is not None
+    assert _field_keys(required.required_output_fields) == {
+        ("departments", "name")
+    }
+    assert required.row_grain is None
+    assert required.group_by == ()
+    assert required.aggregations == ()
+    assert suggested is not None
+    assert _field_keys(suggested.group_by) == {("departments", "name")}
+
+
 def test_structural_result_intent_cases_keep_required_suggested_boundary() -> None:
     cases = load_it_operations_evaluation_set().cases_by_id
-    expected = {
-        "itops-medium-006": {
-            "group_by": {("departments", "name")},
-            "aggregation": None,
-            "suggested_aggregation": (
-                "count",
-                "directory_users",
-                "id",
-                True,
-            ),
-            "having": (),
-            "detail": None,
-        },
-        "itops-medium-008": {
-            "group_by": {("login_events", "user_id")},
-            "aggregation": ("count", "login_events", "id", False),
-            "suggested_aggregation": None,
-            "having": (("greater_than", 5),),
-            "detail": None,
-        },
-        "itops-medium-014": {
-            "group_by": set(),
-            "aggregation": None,
-            "suggested_aggregation": None,
-            "having": (),
-            "detail": {("license_assignments", "id")},
-        },
+    ambiguous_case = cases["itops-medium-006"]
+    ambiguous = _projection(
+        ambiguous_case.question,
+        scope_type=ambiguous_case.required_scope_type or "none",
+    )
+    assert ambiguous.grounded_result_intent is None
+    assert ambiguous.suggested_result_intent is not None
+    assert ambiguous.suggested_result_intent.row_grain is not None
+    assert ambiguous.suggested_result_intent.row_grain.mode == "grouped"
+    assert _field_keys(ambiguous.suggested_result_intent.group_by) == {
+        ("departments", "name")
     }
+    suggested_aggregation = ambiguous.suggested_result_intent.aggregations[0]
+    assert suggested_aggregation.target_field is not None
+    assert (
+        suggested_aggregation.function,
+        suggested_aggregation.target_field.table,
+        suggested_aggregation.target_field.column,
+        suggested_aggregation.distinct,
+    ) == ("count", "directory_users", "id", True)
 
-    for case_id, requirements in expected.items():
-        case = cases[case_id]
-        projection = _projection(
-            case.question,
-            scope_type=case.required_scope_type or "none",
-        )
-        intent = projection.grounded_result_intent
-        if case_id == "itops-medium-014":
-            assert intent is None
-            suggested = projection.suggested_result_intent
-            assert suggested is not None
-            assert suggested.row_grain is not None
-            assert _field_keys(suggested.row_grain.identity_fields) == requirements[
-                "detail"
-            ]
-            continue
+    threshold_case = cases["itops-medium-008"]
+    threshold = _projection(
+        threshold_case.question,
+        scope_type=threshold_case.required_scope_type or "none",
+    )
+    assert threshold.grounded_result_intent is not None
+    assert _field_keys(threshold.grounded_result_intent.group_by) == {
+        ("login_events", "user_id")
+    }
+    threshold_aggregation = threshold.grounded_result_intent.aggregations[0]
+    assert threshold_aggregation.target_field is not None
+    assert (
+        threshold_aggregation.function,
+        threshold_aggregation.target_field.table,
+        threshold_aggregation.target_field.column,
+        threshold_aggregation.distinct,
+    ) == ("count", "login_events", "id", False)
+    assert tuple(
+        (item.operator, item.value)
+        for item in threshold.grounded_result_intent.having
+    ) == (("greater_than", 5),)
+    assert threshold.suggested_result_intent is None
 
-        assert intent is not None
-        assert _field_keys(intent.group_by) == requirements["group_by"]
-        aggregation = requirements["aggregation"]
-        if aggregation is None:
-            assert intent.aggregations == ()
-        else:
-            item = intent.aggregations[0]
-            assert (
-                item.function,
-                item.target_field.table if item.target_field else None,
-                item.target_field.column if item.target_field else None,
-                item.distinct,
-            ) == aggregation
-        assert tuple(
-            (item.operator, item.value) for item in intent.having
-        ) == requirements["having"]
-        assert requirements["detail"] is None
-        suggested_aggregation = requirements["suggested_aggregation"]
-        suggested = projection.suggested_result_intent
-        if suggested_aggregation is None:
-            assert suggested is None or suggested.aggregations == ()
-        else:
-            assert suggested is not None
-            item = suggested.aggregations[0]
-            assert (
-                item.function,
-                item.target_field.table if item.target_field else None,
-                item.target_field.column if item.target_field else None,
-                item.distinct,
-            ) == suggested_aggregation
+    detail_case = cases["itops-medium-014"]
+    detail = _projection(
+        detail_case.question,
+        scope_type=detail_case.required_scope_type or "none",
+    )
+    assert detail.grounded_result_intent is None
+    assert detail.suggested_result_intent is not None
+    assert detail.suggested_result_intent.row_grain is not None
+    assert _field_keys(detail.suggested_result_intent.row_grain.identity_fields) == {
+        ("license_assignments", "id")
+    }
 
 
 def test_required_and_suggested_intent_serialization_is_deterministic_and_bounded(
@@ -501,8 +502,11 @@ def test_required_and_suggested_intent_serialization_is_deterministic_and_bounde
     second = projection.as_prompt_dict()
 
     assert first == second
-    assert first["result_intent"]["required"] is not None
+    assert first["result_intent"]["required"] is None
     assert first["result_intent"]["suggested"] is not None
+    assert first["result_intent"]["suggested"]["group_by"] == [
+        {"table": "licenses", "column": "product_name"}
+    ]
     assert "grounded_result_intent" not in first
     assert _size(projection) <= MAX_SEMANTIC_PROJECTION_BYTES
 
@@ -517,12 +521,8 @@ def test_ambiguous_baseline_only_result_semantics_are_not_grounded() -> None:
     assert hard_004.grounded_result_intent is None
 
     medium_004 = _projection(cases["itops-medium-004"].question)
-    assert medium_004.grounded_result_intent is not None
-    assert medium_004.grounded_result_intent.aggregations == ()
-    assert medium_004.grounded_result_intent.having == ()
-    assert _field_keys(medium_004.grounded_result_intent.group_by) == {
-        ("licenses", "product_name")
-    }
+    assert medium_004.grounded_result_intent is None
+    assert medium_004.suggested_result_intent is None
 
 
 def test_result_intent_query_engine_modules_do_not_import_evaluation() -> None:

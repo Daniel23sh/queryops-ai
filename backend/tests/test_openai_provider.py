@@ -523,10 +523,19 @@ def test_provider_request_distinguishes_required_and_suggested_intent() -> None:
     call = client.responses.calls[0]
     prompt = json.loads(call["input"])
     result_intent = prompt["semantic_catalog"]["result_intent"]
-    assert result_intent["required"]["group_by"] == [
+    assert result_intent["required"] is None
+    assert result_intent["suggested"]["row_grain"] == {
+        "mode": "grouped",
+        "identity_fields": [
+            {"table": "licenses", "column": "product_name"}
+        ],
+    }
+    assert result_intent["suggested"]["required_output_fields"] == [
         {"table": "licenses", "column": "product_name"}
     ]
-    assert result_intent["required"]["aggregations"] == []
+    assert result_intent["suggested"]["group_by"] == [
+        {"table": "licenses", "column": "product_name"}
+    ]
     assert result_intent["suggested"]["aggregations"] == [
         {
             "id": "subject_count",

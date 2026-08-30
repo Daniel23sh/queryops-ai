@@ -356,8 +356,8 @@ def test_output_and_limit_contracts_fail_closed() -> None:
         )
 
 
-def test_grounded_grouped_count_plan_passes_and_detail_plan_fails() -> None:
-    correct = _plan(
+def test_suggested_grouped_count_and_detail_plans_both_pass() -> None:
+    grouped = _plan(
         entity_ids=(
             "departments",
             "directory_users",
@@ -383,22 +383,17 @@ def test_grounded_grouped_count_plan_passes_and_detail_plan_fails() -> None:
     )
     question = "Show users in privileged groups by department."
 
-    assert _validate(correct, question)
+    assert _validate(grouped, question)
 
-    detailed = correct.model_copy(
+    detailed = grouped.model_copy(
         update={
             "output_fields": (_field("directory_users", "id"),),
             "aggregations": (),
             "group_by": (),
         }
     )
-    with pytest.raises(SemanticPlanValidationError) as exc_info:
-        _validate(detailed, question)
-    assert exc_info.value.reason in {
-        "required_output_missing",
-        "grounded_aggregation_mismatch",
-        "result_grain_mismatch",
-    }
+
+    assert _validate(detailed, question)
 
 
 def test_grounded_required_output_and_group_grain_fail_closed() -> None:
