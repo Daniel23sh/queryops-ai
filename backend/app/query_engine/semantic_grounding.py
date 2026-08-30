@@ -374,7 +374,7 @@ def build_semantic_grounding_projection(
     anchor_entity_ids.update(
         eligible_concepts[concept_id].entity_id for concept_id in selected_concept_ids
     )
-    grounded_result_intent = _build_grounded_result_intent(
+    grounded_result_intent, suggested_result_intent = _build_grounded_result_intents(
         catalog=catalog,
         question_tokens=question_tokens,
         entity_match_spans=entity_match_spans,
@@ -386,13 +386,15 @@ def build_semantic_grounding_projection(
         entities=eligible_entities,
         allowed_columns=allowed_columns,
     )
-    if grounded_result_intent is not None:
+    for result_intent in (grounded_result_intent, suggested_result_intent):
+        if result_intent is None:
+            continue
         entity_id_by_table = {
             entity.table: entity.id for entity in eligible_entities.values()
         }
         anchor_entity_ids.update(
             entity_id_by_table[field.table]
-            for field in grounded_result_intent.referenced_fields()
+            for field in result_intent.referenced_fields()
             if field.table in entity_id_by_table
         )
 
@@ -510,6 +512,7 @@ def build_semantic_grounding_projection(
             )
         ),
         grounded_result_intent=grounded_result_intent,
+        suggested_result_intent=suggested_result_intent,
     )
     projection = _fit_projection(
         projection,
@@ -942,6 +945,7 @@ def _copy_projection(
         "candidate_signals": projection.candidate_signals,
         "authoritative_business_terms": projection.authoritative_business_terms,
         "grounded_result_intent": projection.grounded_result_intent,
+        "suggested_result_intent": projection.suggested_result_intent,
     }
     values.update(changes)
     return SemanticCatalogProjection(**values)
@@ -1021,7 +1025,7 @@ def _remove_superseded_candidates(
     return selected_concept_ids - superseded
 
 
-def _build_grounded_result_intent(
+def _build_grounded_result_intents(
     *,
     catalog: SemanticCatalog,
     question_tokens: tuple[str, ...],
@@ -1033,10 +1037,10 @@ def _build_grounded_result_intent(
     relationships: tuple[SemanticRelationship, ...],
     entities: Mapping[str, SemanticEntity],
     allowed_columns: Mapping[str, frozenset[str]],
-) -> GroundedResultIntent | None:
+) -> tuple[GroundedResultIntent | None, GroundedResultIntent | None]:
     # Canonical V1 metrics already own their complete scalar result contract.
     if exact_metric_ids:
-        return None
+        return None, None
 
     exact_concept_entity_ids = {
         catalog.concepts_by_id[concept_id].entity_id
@@ -1063,19 +1067,18 @@ def _build_grounded_result_intent(
     threshold = _explicit_numeric_threshold(question_tokens)
     quantity_span = _explicit_quantity_span(question_tokens)
     aggregations: list[GroundedAggregationIntent] = []
+    suggested_aggregations: list[GroundedAggregationIntent] = []
     having: list[GroundedHavingIntent] = []
     row_grain: GroundedRowGrain | None = None
+    suggested_row_grain: GroundedRowGrain | None = None
+    suggested_output_fields: set[GroundedFieldIdentity] = set()
     group_by: tuple[GroundedFieldIdentity, ...] = ()
+    suggested_group_by: tuple[GroundedFieldIdentity, ...] = ()
     distinct: bool | None = None
+    suggested_distinct: bool | None = None
 
     if grouping is not None:
         grouping_field, marker_start = grouping
-        group_by = (grouping_field,)
-        required_output_fields.add(grouping_field)
-        row_grain = GroundedRowGrain(
-            mode="grouped",
-            identity_fields=group_by,
-        )
         subject_entity_id = _subject_entity_id(
             question_tokens,
             subject_entity_match_spans,
@@ -1093,6 +1096,13 @@ def _build_grounded_result_intent(
                 entities=entities,
             )
         )
+        if explicit_quantity or threshold is not None:
+            group_by = (grouping_field,)
+            required_output_fields.add(grouping_field)
+            row_grain = GroundedRowGrain(
+                mode="grouped",
+                identity_fields=group_by,
+            )
         if subject_entity_id is not None and threshold is not None:
             requested_grouping_table = grouping_field.table
             relationship_group_field = _relationship_group_field(
@@ -1154,14 +1164,22 @@ def _build_grounded_result_intent(
                 )
             )
             if target is not None or subject_table == grouping_field.table:
-                aggregations.append(
-                    GroundedAggregationIntent(
-                        id="subject_count",
-                        function="count",
-                        target_field=target,
-                        distinct=target is not None,
-                    )
+                aggregation = GroundedAggregationIntent(
+                    id="subject_count",
+                    function="count",
+                    target_field=target,
+                    distinct=target is not None,
                 )
+                if explicit_quantity:
+                    aggregations.append(aggregation)
+                else:
+                    suggested_aggregations.append(aggregation)
+                    suggested_group_by = (grouping_field,)
+                    suggested_output_fields.add(grouping_field)
+                    suggested_row_grain = GroundedRowGrain(
+                        mode="grouped",
+                        identity_fields=suggested_group_by,
+                    )
 
     if not aggregations and threshold is not None:
         counted_entity_id = _threshold_counted_entity_id(
@@ -1223,7 +1241,11 @@ def _build_grounded_result_intent(
                 )
             )
 
-    if row_grain is None and not aggregations:
+    if (
+        row_grain is None
+        and suggested_row_grain is None
+        and not aggregations
+    ):
         detail_entity_id = _detail_fact_entity_id(
             exact_concept_entity_ids,
             relationships,
@@ -1240,11 +1262,11 @@ def _build_grounded_result_intent(
                 allowed_columns=allowed_columns,
             )
             if detail_identity is not None:
-                row_grain = GroundedRowGrain(
+                suggested_row_grain = GroundedRowGrain(
                     mode="detail",
                     identity_fields=(detail_identity,),
                 )
-                required_output_fields.add(detail_identity)
+                suggested_output_fields.add(detail_identity)
                 for entity_id in sorted(exact_concept_entity_ids):
                     identity = _authorized_field(
                         entity_id,
@@ -1253,8 +1275,8 @@ def _build_grounded_result_intent(
                         allowed_columns=allowed_columns,
                     )
                     if identity is not None:
-                        required_output_fields.add(identity)
-                distinct = False
+                        suggested_output_fields.add(identity)
+                suggested_distinct = False
 
     if (
         row_grain is None
@@ -1264,20 +1286,44 @@ def _build_grounded_result_intent(
         and not having
         and distinct is None
     ):
-        return None
-    return GroundedResultIntent(
-        row_grain=row_grain,
-        required_output_fields=tuple(
-            sorted(
-                required_output_fields,
-                key=lambda item: (item.table, item.column),
-            )
-        ),
-        aggregations=tuple(aggregations),
-        group_by=group_by,
-        having=tuple(having),
-        distinct=distinct,
-    )
+        required_intent = None
+    else:
+        required_intent = GroundedResultIntent(
+            row_grain=row_grain,
+            required_output_fields=tuple(
+                sorted(
+                    required_output_fields,
+                    key=lambda item: (item.table, item.column),
+                )
+            ),
+            aggregations=tuple(aggregations),
+            group_by=group_by,
+            having=tuple(having),
+            distinct=distinct,
+        )
+
+    if (
+        suggested_row_grain is None
+        and not suggested_output_fields
+        and not suggested_aggregations
+        and not suggested_group_by
+        and suggested_distinct is None
+    ):
+        suggested_intent = None
+    else:
+        suggested_intent = GroundedResultIntent(
+            row_grain=suggested_row_grain,
+            required_output_fields=tuple(
+                sorted(
+                    suggested_output_fields,
+                    key=lambda item: (item.table, item.column),
+                )
+            ),
+            aggregations=tuple(suggested_aggregations),
+            group_by=suggested_group_by,
+            distinct=suggested_distinct,
+        )
+    return required_intent, suggested_intent
 
 
 def _explicit_grouping_field(

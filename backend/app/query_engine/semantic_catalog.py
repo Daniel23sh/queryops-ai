@@ -202,7 +202,11 @@ class SemanticCatalogProjection:
     examples: tuple[dict[str, Any], ...]
     candidate_signals: tuple[dict[str, str], ...]
     authoritative_business_terms: tuple[str, ...]
+    # The established grounded intent remains the fail-closed required contract.
     grounded_result_intent: GroundedResultIntent | None = None
+    # Suggested intent is deterministic planner guidance and is never validated
+    # as a requirement.
+    suggested_result_intent: GroundedResultIntent | None = None
 
     def as_prompt_dict(self) -> dict[str, Any]:
         return {
@@ -219,11 +223,18 @@ class SemanticCatalogProjection:
             "examples": [dict(example) for example in self.examples],
             "candidate_signals": [dict(signal) for signal in self.candidate_signals],
             "mandatory_semantic_evidence": self.mandatory_evidence(),
-            "grounded_result_intent": (
-                self.grounded_result_intent.as_safe_dict()
-                if self.grounded_result_intent is not None
-                else None
-            ),
+            "result_intent": {
+                "required": (
+                    self.grounded_result_intent.as_safe_dict()
+                    if self.grounded_result_intent is not None
+                    else None
+                ),
+                "suggested": (
+                    self.suggested_result_intent.as_safe_dict()
+                    if self.suggested_result_intent is not None
+                    else None
+                ),
+            },
         }
 
     def mandatory_evidence(self) -> dict[str, list[str]]:
@@ -263,6 +274,11 @@ class SemanticCatalogProjection:
             "grounded_result_intent": (
                 self.grounded_result_intent.as_safe_dict()
                 if self.grounded_result_intent is not None
+                else None
+            ),
+            "suggested_result_intent": (
+                self.suggested_result_intent.as_safe_dict()
+                if self.suggested_result_intent is not None
                 else None
             ),
         }
@@ -306,6 +322,9 @@ def safe_semantic_catalog_observation(value: Any) -> dict[str, Any] | None:
     grounded_result_intent = safe_grounded_result_intent(
         value.get("grounded_result_intent")
     )
+    suggested_result_intent = safe_grounded_result_intent(
+        value.get("suggested_result_intent")
+    )
     if (
         not isinstance(catalog_id, str)
         or _SAFE_IDENTIFIER.fullmatch(catalog_id) is None
@@ -324,6 +343,10 @@ def safe_semantic_catalog_observation(value: Any) -> dict[str, Any] | None:
             value.get("grounded_result_intent") is not None
             and grounded_result_intent is None
         )
+        or (
+            value.get("suggested_result_intent") is not None
+            and suggested_result_intent is None
+        )
     ):
         return None
     return {
@@ -338,6 +361,7 @@ def safe_semantic_catalog_observation(value: Any) -> dict[str, Any] | None:
         "selected_example_ids": example_ids,
         "mandatory_semantic_evidence": mandatory,
         "grounded_result_intent": grounded_result_intent,
+        "suggested_result_intent": suggested_result_intent,
     }
 
 

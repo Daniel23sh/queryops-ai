@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# ruff: noqa: F401, F811 -- imported fixtures intentionally expose this release gate.
+
 import uuid
 from datetime import timedelta
 
