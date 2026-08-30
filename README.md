@@ -1,987 +1,238 @@
 # QueryOps AI
 
-QueryOps AI is planned as a governed conversational data workspace that will let users query structured business data in natural language, save insights as dashboards, and execute controlled operational actions through approval and audit workflows.
+[![CI](https://github.com/Daniel23sh/queryops-ai/actions/workflows/ci.yml/badge.svg)](https://github.com/Daniel23sh/queryops-ai/actions/workflows/ci.yml)
 
-The project is being built to demonstrate how AI can be used not only to generate SQL, but also to support safe data exploration, reusable insights, permission-aware workflows, and auditable operational actions.
+QueryOps AI is a governed conversational data workspace for asking questions over structured business data, saving useful results, and carrying approved operational changes through policy and audit workflows. It goes beyond a text-to-SQL demo by treating authorization, semantic correctness, database safety, and action governance as first-class runtime concerns.
 
-## Overview
+The current domain implementation is IT Operations, backed by deterministic synthetic data for directory users, departments, licenses, devices, support tickets, access groups, security events, and related operational records.
 
-Modern organizations often have valuable structured data stored in databases, but many business users cannot access it directly without help from analysts, developers, or IT teams.
+## What It Does
 
-QueryOps AI is designed to solve this with a controlled interface where users will be able to:
+QueryOps AI gives business and technical users a shared workflow for governed data access:
 
-* ask questions about structured data in natural language
-* receive SQL-backed results
-* view explanations and assumptions
-* save useful results as dashboard cards
-* explore personal, shared, and scope-aware dashboards
-* request operational actions based on query results
-* route sensitive actions through approval flows
-* keep a complete audit trail of important operations
+```text
+Request
+  ├── free-text question
+  │     → authorized schema and semantic grounding
+  │     → provider-generated SemanticPlan + candidate SQL
+  │     → Required Intent, plan, SQL-safety, and conformance checks
+  └── approved template
+        → deterministic provider-free SQL
+              │
+              ▼
+       resource authorization and scoped PostgreSQL execution under RLS
+              │
+              ▼
+       result, visualization, dashboard card, or governed export
 
-The system is designed as a generic platform. The first implementation domain is IT Operations, but the core architecture should support additional domains in the future.
-
-## First Domain: IT Operations
-
-The first domain pack focuses on IT Operations data.
-
-It uses synthetic but realistic operational data, including:
-
-* departments
-* directory users
-* login events
-* licenses
-* license assignments
-* devices
-* software installs
-* support tickets
-* groups
-* user group memberships
-* security events
-* IT audit events
-
-Example questions the product should support:
-
-* Which users have not logged in for more than 90 days and still have paid licenses?
-* How many unused licenses exist by department?
-* Which privileged users are inactive?
-* Which devices are non-compliant or have outdated software?
-* How many open support tickets exist by department and priority?
-* Which terminated employees still have active accounts or assigned devices?
-
-The IT Operations domain is only the first domain pack. Domain-specific tables, queries, dashboards, and actions should remain separate from the generic core engine.
-
-## Core Product Flow
-
-The intended product flow is:
-
-```txt
-Natural language question
-→ safe SQL generation
-→ SQL validation
-→ scoped database execution
-→ explained result
-→ saved insight or dashboard card
-→ suggested operational action
-→ action preview
-→ approval
-→ execution
-→ audit log
+Eligible result
+  → deterministic action preview
+  → policy and approval
+  → narrow backend execution
+  → audit and notification records
 ```
 
-This makes QueryOps AI more than a text-to-SQL demo. It is designed as a governed operational data product.
+Approved query templates bypass the LLM provider. Free-text queries use the current provider contract, which returns both a structured `SemanticPlan` and candidate SQL in one call. Deterministic grounding separates result semantics into:
 
-## Main Capabilities
+- **Required Intent** — high-confidence requirements that are validated fail-closed.
+- **Suggested Intent** — non-binding planner guidance that cannot independently reject an otherwise valid plan.
 
-Planned V1 capabilities include:
+The candidate SQL remains untrusted and must pass every downstream control before execution.
 
-* authentication and user onboarding
-* role-based permissions
-* natural-language data queries
-* predefined query templates
-* SQL generation and validation
-* scoped query execution
-* PostgreSQL Row-Level Security
-* query history
-* saved cards
-* dashboard catalog
-* personal, shared, and scope-aware dashboards
-* controlled CSV export
-* action recommendations
-* action preview
-* approval workflow
-* notifications
-* audit logs
-* evaluation and testing screens
+## Key Capabilities
 
-## User Roles
+- **Natural-language and template queries:** Run free-text questions when permitted or use approved, provider-free query templates.
+- **Semantic planning:** Ground questions against a versioned IT Operations Semantic Catalog, mandatory business concepts, canonical metrics, and Required/Suggested result intent.
+- **Governed execution:** Validate structured plans and read-only SQL, check SQLGlot semantic conformance, and execute only sanitized SQL through a restricted PostgreSQL runtime role.
+- **Scope-aware access:** Apply effective permissions, assigned scopes, role-aware SQL visibility, and PostgreSQL Row-Level Security (RLS).
+- **Dashboards and visualizations:** Save successful query runs as cards, arrange responsive dashboards, refresh under the current viewer's scope, and render supported table, KPI, chart, gauge, and status views.
+- **Controlled export:** Revalidate and re-execute eligible reports for CSV export under current-viewer authorization, with sanitization and audit records.
+- **Governed operational actions:** Preview, request, approve, synchronously execute, and audit `reclaim_unused_license` and `disable_inactive_user` through deterministic handlers.
+- **Workflow visibility:** Provide requester action tracking, approval queues, scoped audit views, and database-backed notifications.
+- **Evaluation infrastructure:** Measure Query Engine behavior with a fixed IT Operations dataset, sanitized persisted results, role-aware read-only metrics, and a fail-closed readiness assessment.
 
-QueryOps AI is planned around four main roles.
+## Governance and Security
 
-### User
+Authorization is enforced by the backend and database; frontend capability checks are usability controls, not the security boundary.
 
-A regular user with limited read-only access.
-
-Users can view approved dashboards, use approved templates, and access only the data they are allowed to see.
-
-### Manager
-
-A department-level business user.
-
-Managers can ask natural-language questions about their department, view business-level insights, and create personal dashboards. They do not see raw SQL.
-
-### Analyst
-
-A technical department user.
-
-Analysts can ask questions, view generated SQL, inspect query details, create department-level dashboard cards, and approve limited department actions according to policy.
-
-### Admin
-
-A global administrator.
-
-Admins can manage users, approve role upgrades, access global data, manage global dashboards, approve sensitive actions, and view full audit and evaluation data.
+- `UserAccessContext` combines effective permissions with assigned department or global scopes.
+- PostgreSQL RLS restricts operational reads and writes using transaction-local viewer context.
+- The LLM sees an allowlisted projection of authorized schema and business semantics—not database rows, user identities, scope keys, credentials, evaluation baselines, or action targets.
+- Generated SQL is accepted only as a candidate. The backend enforces read-only syntax, allowed resources, limits, semantic-plan consistency, and SQL semantic conformance before execution.
+- Query execution uses a restricted non-owner, read-only PostgreSQL role.
+- The LLM never mutates operational data. Actions use explicit selectors, deterministic previews, current-state revalidation, policy checks, approval rules, a narrowly privileged action role, and atomic audit/notification writes.
+- Sensitive response fields, including SQL and evaluation diagnostics, are projected according to effective permissions.
 
 ## Architecture
 
-QueryOps AI is planned as a monorepo with a separate frontend, backend, and database layer.
-
-```txt
-User Browser
-→ React Frontend
-→ FastAPI Backend
-→ Auth and Permission Layer
-→ Query Engine / Action Engine
-→ PostgreSQL with RLS
-→ Response Formatter
-→ Dashboard / Tables / Charts
+```text
+React + TypeScript frontend
+        │
+        ▼
+FastAPI API
+  ├── demo auth, sessions, CSRF, permissions, and scopes
+  ├── Query Engine ── Mock/OpenAI provider abstraction
+  ├── dashboards, refresh, visualization metadata, and export
+  ├── Action Engine ── policy, approval, execution, audit, notifications
+  └── evaluation runner, metrics, and readiness policy
+        │
+        ▼
+SQLAlchemy + Alembic
+        │
+        ▼
+PostgreSQL 16
+  ├── product and IT Operations data
+  ├── Row-Level Security
+  └── restricted query and action runtime roles
 ```
 
-The frontend never communicates directly with the database or the LLM provider. All sensitive operations go through the backend, where authorization, validation, policy checks, and audit logging are enforced.
+The repository is a monorepo:
 
-## Planned Tech Stack
+- `frontend/` contains the responsive React application.
+- `backend/` contains the API, Query Engine, Action Engine, domain pack, evaluation services, migrations, and tests.
+- `docs/` contains public QA, security, and evaluation documentation.
 
-### Frontend
+IT Operations is implemented as the first domain pack; the core query and action infrastructure remains separated from its domain-specific schema, semantic definitions, templates, and handlers.
 
-* React
-* TypeScript
-* Vite
-* React Router
-* Tailwind CSS
-* Lucide icons
-* shadcn/ui
-* Recharts
-* dnd-kit
+## Tech Stack
 
-### Backend
-
-* Python
-* FastAPI
-* Pydantic
-* SQLAlchemy 2
-* Alembic
-* Pytest
-
-### Database
-
-* PostgreSQL
-* Row-Level Security
-* Alembic migrations
-* deterministic synthetic seed data
-
-### Authentication
-
-Planned authentication modes:
-
-* production-like mode using Supabase Auth with Google OAuth
-* local demo mode using seeded demo users
-
-Supabase is planned to handle external identity only. QueryOps AI manages its own application users, roles, departments, permissions, and approval policies.
-
-### AI Layer
-
-The backend should use an LLM provider abstraction.
-
-The LLM should not execute SQL directly and should never perform database mutations. Any generated SQL must pass backend validation before execution.
-
-Operational actions are executed only by deterministic backend logic after preview, policy checks, approval, and audit logging.
-
-## Planned Repository Structure
-
-```txt
-queryops-ai/
-  backend/
-    app/
-    tests/
-    pyproject.toml
-
-  frontend/
-    src/
-    package.json
-
-  docs/
-    planning/        # local/private planning documents, ignored by Git
-
-  README.md
-  PROJECT_PLAN.md
-  AGENTS.md
-  docker-compose.yml
-  .env.example
-  .gitignore
-```
-
-## Local Planning Documents
-
-The full planning documents may exist locally under:
-
-```txt
-docs/planning/
-```
-
-These files are intentionally ignored by Git and are used as private implementation context when working with a local development agent.
-
-Expected local planning files:
-
-```txt
-01-product-brief.md
-02-mvp-prd.md
-03-technical-architecture.md
-04-it-operations-domain-pack.md
-05-security-permissions-matrix.md
-06-actions-approvals-audit.md
-07-api-contract.md
-08-ui-flows-wireframes.md
-09-evaluation-testing-plan.md
-10-development-milestones.md
-```
-
-The repository should remain usable without committing these private planning documents.
-
-## Security Model
-
-Security is a core part of the product design.
-
-The planned security model includes:
-
-* backend-managed permissions
-* role-based and permission-based access control
-* PostgreSQL Row-Level Security
-* safe SQL validation
-* restricted SQL visibility by role
-* scoped query execution
-* controlled CSV export
-* action approval policies
-* prevention of self-approval where required
-* audit logging for sensitive operations
-* limited LLM data exposure
-
-The system should not rely on frontend visibility rules alone. The backend and database must enforce the actual access rules.
-
-## Action and Approval Model
-
-QueryOps AI is designed to support controlled operational actions.
-
-Example V1 actions for the IT Operations domain:
-
-* reclaim unused license
-* disable inactive user
-
-Actions follow a governed lifecycle:
-
-```txt
-suggested
-→ preview
-→ submitted for approval
-→ approved or rejected
-→ executed
-→ audited
-```
-
-The LLM may suggest an action type, but it does not choose final records, approve changes, or mutate the database. The backend calculates the preview, checks eligibility, enforces policy, executes the operation, and writes audit logs.
-
-M8 PR4 completes the two V1 backend actions, `reclaim_unused_license` and `disable_inactive_user`, through the shared action lifecycle:
-
-```txt
-POST /api/v1/actions/preview
-POST /api/v1/actions/request
-GET  /api/v1/actions
-GET  /api/v1/actions/{action_request_id}
-POST /api/v1/actions/{action_request_id}/cancel
-GET  /api/v1/approvals/pending
-POST /api/v1/approvals/{approval_id}/approve
-POST /api/v1/approvals/{approval_id}/reject
-```
-
-The backend deterministically reads current operational data through `queryops_query_runtime`, a read-only transaction, transaction-local RLS context, and PostgreSQL RLS. Draft previews expire after 30 minutes and submitted approvals after 24 hours. Approval synchronously revalidates current rows and dependencies before entering the narrow write role. License reclaim uses current assignment policy; inactive-user disablement requires an active human with no successful login for at least 90 days. Service accounts are always skipped. Privileged humans, humans with open critical security events, and cross-scope humans require Admin override; more than 20 actionable records is a request-level Admin rule.
-
-Successful execution atomically persists the domain mutation, application lifecycle audit, one domain audit per changed record, lifecycle state, and database-only notifications. Failure rolls back all success-side effects and uses a separate safe failure transaction. M8 PR5 adds requester UX for deterministic current-result suggestions, safe previews, submission, owned action tracking/detail, persisted timelines, and pending cancellation. M8 PR6 adds permission-aware Approvals and Audit workspaces, synchronous decision UX, current-recipient notification access, and exact activity totals without changing those backend guarantees. M8 PR7 adds isolated release-blocking browser coverage, a tracked security matrix, and explicit no-skip PostgreSQL CI gates. Milestone 8 is complete and merged through PR #35.
-
-## Evaluation and Testing
-
-M9 PR1 adds the authoritative 40-case IT Operations evaluation dataset, strict loader, and semantic scoring foundation. M9 PR2 adds a synchronous backend runner that uses the production Query Engine boundary, executes evaluator-only baselines through the restricted read-only PostgreSQL runtime and transaction-local RLS, persists sanitized measurements, and provides a manual MockLLM CLI. M9 PR3 adds five read-only, role-aware metrics endpoints over that sanitized persistence, M9 PR4 adds the protected read-only Evaluation workspace at `/evaluation`, and M9 PR5 adds the one explicit opt-in governed OpenAI mode while keeping MockLLM as the default:
-
-```txt
-GET /api/v1/evaluation/overview
-GET /api/v1/evaluation/queries
-GET /api/v1/evaluation/actions
-GET /api/v1/evaluation/security
-GET /api/v1/evaluation/dashboards
-GET /api/v1/evaluation/readiness
-```
-
-User is denied evaluation access. Manager requires `can_view_department_evaluation` and receives business-only metrics recalculated for the Manager's assigned department scopes. Analyst requires `can_view_scope_evaluation` and receives recalculated assigned-scope technical metrics; referenced-resource metadata additionally requires `can_view_sql`. Admin requires `can_view_global_evaluation` plus global scope and receives the safe global technical view. Scope selection is server-authoritative and is not accepted from the browser.
-
-`run_id` selects an accessible run explicitly. Without it, the API selects the latest eligible completed run for the current dataset across the supported `mock` and `openai` providers by completion time and ID; running runs never become the default. Unknown and inaccessible run IDs share the same safe not-found response. Partially completed or malformed measurements are labeled as partial or unavailable instead of being converted to fabricated zero scores. The current dataset measures query and security behavior only, so Actions and Dashboards return `not_measured`, zero measured cases, and a null score.
-
-The Evaluation workspace is available only with `can_view_department_evaluation`, `can_view_scope_evaluation`, or `can_view_global_evaluation`; `can_view_sql` alone does not grant route access. It loads Overview without a caller-selected run and reuses the exact latest visible run returned by the backend for Queries, Actions, Security, and Dashboards. Tabs and supported Query filters are URL-addressable for back/forward navigation, but the browser provides no run history or arbitrary run-ID control. Manager receives the business-only API projection. Analyst and Admin see technical fields only when the backend returns them, and referenced-resource metadata is never inferred from role.
-
-The workspace cannot start, rerun, delete, or configure evaluation and does not cache metrics in local storage. Actions and Dashboards remain explicitly **Not measured**, and the Security view preserves exact mismatches such as a failed unsafe-SQL expectation. Loading, unavailable, partial, forbidden, invalid-filter, and not-found states use controlled messages and do not render backend error detail.
-
-All counts and ratios use only visible, structurally valid case measurements. Overall score and expected-behavior match rate use completed visible cases as their denominator; security pass rate uses completed visible security cases; breakdown scores use completed visible cases in that group. A zero-case denominator produces `null`, never a fabricated zero score.
-
-The metrics and readiness APIs never execute evaluation, Query Engine requests, provider calls, trusted baselines, or product-domain SQL. They never return SQL, raw rows, prompts, provider payloads, secrets, stack traces, raw database errors, arbitrary usage objects, or arbitrary stored JSON. The read-only workspace shows only the validated provider/model label already selected by the server and adds no provider selector, key settings, or execution control. The centralized `queryops-v1-readiness-v1` policy recomputes release thresholds only from complete eligible persisted evidence; it does not make provider identity a pass condition.
-
-Planned testing areas:
-
-* backend API tests
-* permission tests
-* PostgreSQL RLS tests
-* SQL validation tests
-* query execution tests
-* action authorization tests
-* approval workflow tests
-* audit tests
-* CSV export tests
-* frontend role-based rendering tests
-* end-to-end demo flow tests
-* mock LLM provider tests
-* real LLM evaluation outside regular CI
-
-Security-related tests should be treated as release-blocking.
+- **Frontend:** React, TypeScript, Vite, React Router, Tailwind CSS, Recharts, dnd-kit, React Grid Layout
+- **Backend:** Python, FastAPI, Pydantic, SQLAlchemy 2, Alembic, SQLGlot
+- **Data:** PostgreSQL 16, psycopg, deterministic Faker-based seed profiles
+- **AI:** Provider abstraction with deterministic MockLLM and explicit opt-in OpenAI Responses API support
+- **Testing and tooling:** Pytest, Ruff, Pyright, Vitest, Testing Library, ESLint, Playwright, Docker Compose, GitHub Actions
 
 ## Local Development
 
-Local development setup will use Docker Compose.
+### Prerequisites
 
-Copy the example environment file if you want local overrides:
+- Docker with Docker Compose
+- Git
+- Optional for host-based development: Python 3.11+ and Node.js 22
+
+### Docker quick start
+
+From a fresh clone:
 
 ```bash
 cp .env.example .env
+docker compose up -d --build
+docker compose exec backend alembic upgrade head
+docker compose exec backend python scripts/seed_it_operations.py --profile small --reset
 ```
 
-Start the local development stack:
+Then open:
 
-```bash
-docker compose up --build
-```
+- Frontend: <http://localhost:5173>
+- Backend health check: <http://localhost:8000/health>
+- Interactive API docs: <http://localhost:8000/docs>
 
-This starts:
+The login screen offers seeded Admin, Analyst, Manager, and User profiles so the permission and scope differences can be explored without external identity infrastructure.
 
-* PostgreSQL database
-* FastAPI backend
-* React frontend
-
-Default local URLs:
-
-* Frontend: `http://localhost:5173`
-* Backend health endpoint: `http://localhost:8000/health`
-* PostgreSQL: `localhost:5432`
-
-PostgreSQL is included for the local development environment. Milestones 0 through 8 are complete and merged through PR #35. M9 PR1 through PR6 are complete and merged through PR #41 at verified `main` commit `c6691a204ccbb9eb007e2e0c6fe419c346745b13`; M9 PR7 is active and V1 readiness remains incomplete. Mock remains the development and CI default, no full OpenAI measurement has yet been accepted as V1 release evidence, and the full manual QA checklist remains open. The application includes both V1 actions, approvals, synchronous execution, action/domain audit, database notification APIs, safe timelines, deterministic template suggestions, requester-owned action lists, exact authorized activity totals, the evaluation dataset/scoring foundation, the governed manual MockLLM/OpenAI runner, role-aware read-only evaluation metrics, and the protected Evaluation workspace.
-
-Stop the stack:
+Stop the stack without deleting the database volume:
 
 ```bash
 docker compose down
 ```
 
-Remove the local PostgreSQL volume only when you intentionally want to reset local database state:
+The checked-in environment example is intended for local development. Replace `SESSION_SECRET_KEY` and database credentials before using the stack in any shared environment.
+
+### Optional host-based development
+
+Start PostgreSQL with Docker, then run the backend from the host:
 
 ```bash
-docker compose down -v
-```
+docker compose up -d postgres
 
-### Backend
-
-The backend skeleton can be run locally without Docker with:
-
-```bash
 cd backend
-python -m venv .venv
+python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+python -m pip install -e ".[dev]"
+export DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops
+alembic upgrade head
+python scripts/seed_it_operations.py --profile small --reset
 uvicorn app.main:app --reload
 ```
 
-Run backend tests:
-
-```bash
-pytest
-ruff check app scripts
-pyright
-python -m compileall -q app scripts
-```
-
-Run Alembic commands from the host with PostgreSQL running:
-
-```bash
-export DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops
-alembic current
-alembic upgrade head
-alembic check
-```
-
-When running inside Docker Compose, the backend uses the `postgres` service hostname from `DATABASE_URL`.
-
-Run PostgreSQL-backed RLS tests with local Postgres:
-
-```bash
-docker compose up -d postgres
-cd backend
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic upgrade head
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic check
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/pytest tests/test_rls_postgres.py -q
-```
-
-PostgreSQL is required for true RLS verification. SQLite-based tests can validate helper behavior and migration compatibility, but they do not enforce PostgreSQL Row-Level Security policies.
-
-### Isolated M8 E2E preparation
-
-The state-changing M8 workflow must never use the normal development database. Use a fresh PostgreSQL cluster with no volume, create a separately named E2E database, and keep the normal database URL only as the safety comparator:
-
-```bash
-docker run --rm -d --name queryops-m8-e2e \
-  -e POSTGRES_DB=queryops -e POSTGRES_USER=queryops -e POSTGRES_PASSWORD=queryops \
-  -p 55433:5432 postgres:16-alpine
-docker exec queryops-m8-e2e createdb -U queryops queryops_e2e_test
-
-cd backend
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:55433/queryops_e2e_test \
-  .venv/bin/alembic upgrade head
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:55433/queryops_e2e_test \
-  .venv/bin/python scripts/seed_it_operations.py --profile small --reset
-M8_E2E_DATABASE_DISPOSABLE=1 \
-M8_E2E_DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:55433/queryops_e2e_test \
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:55433/queryops \
-POSTGRES_DB=queryops \
-  .venv/bin/python scripts/prepare_m8_e2e.py
-```
-
-The preparation script is PostgreSQL-only and idempotent. It rejects missing opt-in, non-loopback endpoints, database names without a test/dev/e2e marker, the configured normal application database, ambiguous URLs, and endpoint query overrides. Run the backend with `DATABASE_URL` pointed at `queryops_e2e_test`, run `frontend/e2e/m8-workflow.spec.ts` once with retries disabled, then run `docker stop queryops-m8-e2e` so Docker removes the container. The general E2E suite excludes `@m8-primary`; CI owns a separate fresh database for the state-changing workflow.
-
-RLS runtime context is set transaction-locally before scoped reads using:
-
-```txt
-app.current_user_id
-app.current_role
-app.current_scope_type
-app.current_scope_keys
-app.has_global_scope
-```
-
-For V1 IT Operations RLS, `app.current_scope_keys` contains comma-separated department UUID strings from assigned department access scopes. Human-readable `access_scopes.scope_key` values such as `finance` remain product metadata; domain table RLS compares against `department_id` UUIDs. Missing RLS context fails closed at the policy layer unless `app.has_global_scope` is true.
-
-### Query Engine Backend
-
-Milestone 4 implemented the backend Query Engine foundation, and Milestone 5 PR1 closed the remaining backend compliance gaps needed before Ask Data UI work can begin. The backend includes:
-
-* Domain Pack Loader in `backend/app/query_engine/domain_pack_loader.py`
-* validated semantic catalogs in `backend/app/query_engine/semantic_catalog.py`
-* IT Operations domain pack files under `backend/app/domains/it_operations/domain_pack/`
-* Query Templates API
-* `LLMProvider` interface and deterministic `MockLLMProvider`
-* explicit opt-in `OpenAIProvider` using the synchronous Responses API and strict structured output
-* deterministic semantic grounding with mandatory and optional evidence
-* one-call structured `SemanticPlan` plus SQL provider contract
-* SQL generator wrapper
-* Schema Context Builder
-* read-only SQL Validator
-* SQLGlot semantic conformance over final validator-sanitized SQL
-* dedicated read-only PostgreSQL runtime role hardening
-* scoped SQL Executor that uses PostgreSQL RLS
-* internal Query Engine orchestration service
-* Query Run API and `QueryRun` persistence
-* query clarification endpoint
-* own-history and scope-aware query history endpoints
-* `department-history` V1 compatibility alias
-* deterministic self-correction for safe validation failures
-* hardened safe query metadata for future Ask Data UI technical states
-* PostgreSQL/RLS-backed query tests and security regression tests
-
-The Domain Pack Loader loads the local IT Operations schema, business terms, approved query templates, and versioned semantic catalog. It is the source for safe schema context, validated business definitions, and deterministic template-backed SQL generation. The IT Operations schema explicitly names its required catalog ID/version and dataset association; a missing, mismatched, or malformed catalog fails closed. The default pack is cached after its first validated load, so query requests do not repeatedly parse configuration files. `MockLLMProvider` remains the default, maps known domain-pack questions to structured SQL generation results, and requires no key or network call. The only optional real provider is OpenAI (`LLM_PROVIDER=openai`), using `gpt-5.6-terra` by default through the synchronous Responses API with strict structured output, `store=false`, and no tools, retrieval, streaming, background mode, or conversation state. Merely setting `OPENAI_API_KEY` does not activate it.
-
-The active catalog is `it_operations_semantic_catalog` version `3` in `backend/app/domains/it_operations/domain_pack/semantic_catalog.yaml` (canonical hash `918df0c63288b7ed7ce700f8442c82bc1ffa3f51e1f4eaa63fd66012af82adb4`). Schema facts remain in `schema.yaml`: queryable tables, allowed columns, types, descriptions, and scope metadata are not duplicated as free-form business rules. The semantic catalog cross-references that validated schema and adds bounded entity references, known enum values, relationships, structured business concepts and predicates, metrics, composition rules, authorization/RLS guidance, restricted resources, and curated examples. Its canonical `active_human_users` metric counts human directory users who are active employees and have active directory accounts.
-
-Free-query generation deterministically grounds bounded natural-language references into mandatory semantic evidence and optional supporting evidence, includes authorized shortest join paths, and always retains the separately authorized schema as the safe fallback. Every projected relationship requires both endpoint tables and both endpoint columns to be authorized. The provider receives a delimited catalog projection with catalog ID/version and returns one structured response containing both a validated `SemanticPlan` and candidate SQL. There is no repair request or second provider call. The provider does not receive the raw catalog, its release hash, or the evaluation dataset. Department possessive references such as “my department” are complete when authorization context resolves department scope; they do not cause a department identifier to be requested or embedded. Business predicates describe the requested population, while PostgreSQL RLS remains authoritative for authorization predicates.
-
-Catalog validation rejects unsupported versions and operators, unknown entities/tables/columns, malformed or incorrectly typed predicate values, invalid relationships, duplicate identifiers, catalog/domain/dataset mismatches, prompt-bloat limits, and any overlap between restricted and queryable resources. To add a concept, update the catalog with references and structured predicates grounded in the existing schema, then run the catalog and provider-contract tests. To add a domain, provide the existing schema/business-term/template files, explicitly associate its catalog in the schema metadata, and add human-reviewed loader and projection tests. Catalog drafts must never be activated automatically; an LLM-generated draft is untrusted configuration until deterministic validation and human review. No catalog-draft generator is included in the trusted runtime.
-
-OpenAI mode sends only the natural-language question, authorized queryable table and column names/types, approved schema descriptions and business terms, the bounded relevant semantic-catalog projection, scope type, and whether scope is global. It does not send application identities, names/emails, scope keys or IDs, permission catalogs, database rows, prior SQL, evaluation case IDs/baselines/expected rows, protected resources, action targets, environment values, or credentials. Generated SQL remains an untrusted candidate. The existing SQL safety validator remains the security boundary; SQLGlot semantic conformance is an additional correctness layer applied afterward to the final validator-sanitized SQL. Only conforming SQL can proceed to referenced-resource authorization, row and timeout limits, `queryops_query_runtime`, transaction-local context, and authoritative PostgreSQL RLS.
-
-To opt into OpenAI for local free-text Ask Data, keep the key outside tracked files and set deployment configuration before starting the backend:
-
-```bash
-export LLM_PROVIDER=openai
-export OPENAI_API_KEY='replace-with-a-local-secret'
-export OPENAI_MODEL=gpt-5.6-terra
-```
-
-OpenAI API access and billing are separate from ChatGPT access or subscriptions. Do not commit or print the key. Real requests can incur API usage costs; MockLLM stays the default for normal development, automated tests, and CI.
-
-Query Templates API:
-
-```txt
-GET /api/v1/query-templates
-GET /api/v1/query-templates/{id}
-```
-
-Query Run API:
-
-```txt
-POST /api/v1/queries/run
-POST /api/v1/queries/{query_run_id}/clarify
-GET /api/v1/queries/history
-GET /api/v1/queries/scope-history
-GET /api/v1/queries/department-history
-GET /api/v1/queries/{query_run_id}
-```
-
-SQL visibility is permission-controlled:
-
-* Manager responses do not include `generated_sql` or `executed_sql`.
-* Analyst and Admin responses include SQL only through `can_view_sql`.
-* SQL visibility is an API response rule; `QueryRun` may store generated and executed SQL internally for auditability and testing.
-
-RLS runtime model:
-
-* The local `queryops` role owns tables, so PostgreSQL table-owner RLS bypass is relevant.
-* Query execution switches transaction-locally to the dedicated non-owner read-only role `queryops_query_runtime`.
-* The runtime role has SELECT-only grants for allowed queryable tables and cannot access non-queryable `it_audit_events`.
-* Query execution uses validator `sanitized_sql`, transaction-local RLS context, PostgreSQL RLS, read-only transaction mode, statement timeout, and row caps.
-
-Action approval runtime model:
-
-* `reclaim_unused_license` and `disable_inactive_user` approvals revalidate current rows and execute synchronously through the non-owner `queryops_action_runtime` role.
-* The action role is `NOLOGIN`, `NOINHERIT`, `NOSUPERUSER`, and `NOBYPASSRLS`, and is granted to the explicit application login role from `QUERYOPS_APP_DATABASE_ROLE` with inheritance disabled and SET enabled; action code must use `SET LOCAL ROLE`.
-* Its grants are limited to required reads, three `license_assignments` UPDATE columns, `directory_users.account_status`/`updated_at` UPDATE, and scoped `it_audit_events` INSERT. Role-scoped PostgreSQL policies bind mutations to the active scope and allow only active human users to become disabled.
-* Approval, mutation, application/domain audit, and database notifications commit atomically. Failure state is recorded separately after a rollback.
-* Backend APIs provide pending approval review/decisions, current-recipient notification reads, and permission-scoped audit reads. Requester Actions plus the approval, audit, and notification workspaces are complete under Milestone 8.
-
-Current Query Engine limitations:
-
-* User-supplied template parameters are not supported through the public API.
-* Raw SQL input is not supported.
-* OpenAI is the only optional real provider and must be selected explicitly; no fallback or second provider is implemented.
-* Provider output is not repaired: a failed plan, SQL-safety, or semantic-conformance stage is classified and returned without another provider call.
-* Query detail endpoints return only the authenticated user's own runs.
-* Scope-aware query history requires assigned access scopes and the appropriate history permission.
-* Evaluation execution controls, run history, browser provider/model selection, and live-provider CI execution are not implemented. V1 readiness is a read-only policy over explicit persisted evidence.
-* Scheduled card refresh, scheduled/background actions, and external notification delivery are not implemented.
-
-### Role-Aware Home and Dashboard Browser
-
-M7 PR2 adds these authenticated read endpoints:
-
-```txt
-GET /api/v1/home/overview
-GET /api/v1/dashboards/library
-GET /api/v1/dashboards/{dashboard_id}
-```
-
-Home always returns the current app user's personal product summary. User receives no operational domain metrics. Manager and Analyst receive aggregate-only operational metrics across their authorized scopes. Admin receives global operational aggregates and independently permission-gated product administration counts. Operational reads use existing `DataResource` authorization, `queryops_query_runtime`, a read-only transaction, transaction-local `UserAccessContext` RLS settings, and PostgreSQL RLS. QueryOps app users are never matched to IT Operations directory users by email, name, provider identity, or any other inferred identity.
-
-My Dashboard at `/` includes an Owned/Shared library with title/description search, All/Owned/Shared filters, Recently updated/Name/Created sorting, compact personal dashboard creation, and an accessible metadata-only preview dialog. Preview never refreshes cards or fetches results. `Open dashboard` navigates to `/dashboards/:dashboardId`, where existing current-viewer refresh and permission-gated CSV export remain available. Owned personal dashboards retain explicit arrange-only M6 ordering compatibility.
-
-Home and the new dashboard read APIs do not return SQL, raw operational rows, raw card config, raw card layout, owner email, or sensitive event detail. PR2 does not add charts, card resizing, an editor, Add Card, context menus, or an Ask Data redesign; those areas remain deferred.
-
-### Dashboard Editor and Visualizations
-
-M7 PR3 upgrades `/dashboards/:dashboardId` while keeping View mode as the default. Authorized owners can enter Edit mode, draft layout changes locally, save with optimistic `layout_version` concurrency, or cancel without persisting. Desktop and tablet use constrained 12-column and 6-column grids with drag and approved resize presets; mobile uses a single column with explicit Move Up, Move Down, and size presets instead of free drag-resize.
-
-Approved presets provide compact, standard, and tall card sizes: Tables can use 2/3/4 grid-row heights, Cartesian charts add compact and large layouts, and overflowing Table or Status list content scrolls inside the card without resizing the dashboard automatically.
-
-Dashboard cards support KPI, Table, Bar, Line, Area, Donut, Semicircle gauge, Stacked bar, and Status list presentations. QueryOps recommends a compatible visualization from the current in-memory refresh result. A saved manual override remains authoritative, `Reset to recommended` restores automatic selection, and incompatible manual choices render a safe Table fallback without deleting the preference. Refreshed rows are never persisted in card config, layout, local storage, or URL state.
-
-The full dashboard route provides accessible right-click, ellipsis, and keyboard card menus for authorized refresh, CSV export, source view, rename, visualization changes, resize presets, duplicate, and remove actions. Dashboard owners can rename, create a personal duplicate, or soft-archive the dashboard. Source view is gated by effective `can_view_sql` and returns only the original question and stored sanitized/executed SQL. Card removal preserves its `SavedQuery` and all `QueryRun` history.
-
-Edit mode can add cards from approved templates or eligible recent successful query results. Both flows continue through the existing Query Engine, Save as Card, current-viewer refresh, SQL validation, read-only runtime, PostgreSQL RLS, and export/audit boundaries. PR3 does not add cross-dashboard card movement, shared-dashboard personalization, department/global creation, Ask Data redesign, or Milestone 8 features.
-
-### Ask Data Redesign and Final UX Hardening
-
-M7 PR4 keeps Ask Data at `/ask` and replaces the previous multi-panel workspace with a command-first hierarchy: question composer, stable current result, and collapsed progressive details. Users without free-query permission select an approved template; permitted roles can ask free questions or edit a selected template question, which safely clears the template association.
-
-Templates and the five most recent own query requests open in accessible drawers that become full-screen sheets on mobile. Quick history always requests `limit=5`, `offset=0`, and `include_sql=false`; it reruns a new governed query and never restores historic rows or exposes SQL. Current results reuse the PR3 visualization recommendation and renderer for an in-memory Visual/Table switch with Table as the safe fallback.
-
-Successful results expose one compact Save to Dashboard / Export CSV toolbar. Save targets personal dashboards, reuses the existing QueryRun-to-card endpoint, and applies only a sanitized recommended visualization—never result rows. Export continues through the backend CSV endpoint and its current-viewer RLS, validation, sanitization, policy, and audit controls. SQL and Diagnostics are absent from the DOM without effective `can_view_sql`.
-
-The shared overlay system traps focus, restores it predictably, locks background scrolling, supports Escape and backdrop dismissal, and remains full-width on small screens. The dashboard editor's dedicated handle supports pointer and arrow-key movement without turning adjacent controls into drag targets. Focused Chromium Playwright coverage exercises User, Analyst, and Admin flows, responsive drawers, restricted export behavior, save/open-dashboard behavior, and persisted handle movement.
-
-### CSV Export and Dashboard Card Refresh
-
-Milestone 6 PR3 added controlled CSV export for successful owned query runs and visible dashboard cards:
-
-```txt
-POST /api/v1/query-runs/{query_run_id}/export-csv
-POST /api/v1/cards/{card_id}/export-csv
-```
-
-Both endpoints require authentication, valid CSRF, and `can_export_results`, which is seeded for Analyst and Admin. Analysts may export only when every referenced `DataResource` is queryable and exportable. Admin also receives `can_export_restricted_results`, allowing export when every referenced resource is queryable but one or more is normally non-exportable. Resources marked `is_queryable=false` and missing resources remain blocked for every role.
-
-Admin restricted exports do not bypass the normal export boundary. Stored SQL is revalidated and re-executed through the read-only `queryops_query_runtime` role under the current viewer's RLS context with row limits and CSV injection protection. Every successful export is audited; restricted Admin exports record the override permission and safe restricted table names without SQL or raw rows.
-
-The optional `filename` must be printable ASCII, may omit the `.csv` extension, and may produce a final filename of at most 255 characters. `include_headers` defaults to `true` and must be a boolean.
-
-Milestone 6 PR4 added authorized browser downloads for both export endpoints. Ask Data exposes Export CSV only for successful exportable query runs and dashboard cards expose Export CSV only when the current user has `can_export_results`. The frontend never builds CSV from visible rows; it downloads the backend response so SQL validation, current-viewer RLS, sanitization, export policy, and audit remain authoritative.
-
-PR4 also added current-viewer card refresh:
-
-```txt
-POST /api/v1/cards/{card_id}/refresh
-```
-
-Refresh requires authentication and CSRF, checks dashboard visibility, locates the latest successful linked query run, validates stored executed SQL again, verifies trusted referenced-table metadata, and executes only validator-sanitized SQL through `queryops_query_runtime` in a read-only transaction with transaction-local RLS. The preview returns at most 100 rows and never returns SQL or runtime details. Each successful refresh creates a linked `QueryRun` owned by the current viewer without persisting raw rows. Personal dashboard cards refresh once when loaded and can be refreshed manually; a failed manual refresh keeps the previous in-memory result visible.
-
-Run Query Engine unit/API tests:
-
-```bash
-cd backend
-.venv/bin/pytest \
-  tests/test_domain_pack_loader.py \
-  tests/test_semantic_catalog.py \
-  tests/test_query_templates_api.py \
-  tests/test_llm_provider.py \
-  tests/test_provider_config.py \
-  tests/test_openai_provider.py \
-  tests/test_sql_generator.py \
-  tests/test_schema_context.py \
-  tests/test_sql_validator.py \
-  tests/test_query_engine_service.py \
-  tests/test_query_api.py \
-  tests/test_query_engine_security_regression.py \
-  tests/test_query_evaluation_set.py -q
-```
-
-Run the focused offline semantic-catalog and aggregate-scoring regression without a provider key:
-
-```bash
-cd backend
-env -u OPENAI_API_KEY LLM_PROVIDER=mock .venv/bin/pytest \
-  tests/test_semantic_catalog.py \
-  tests/test_openai_provider.py \
-  tests/test_evaluation_scoring.py \
-  tests/test_query_engine_service.py -q
-```
-
-Run the manual deterministic evaluation after migrating and seeding a PostgreSQL database explicitly:
-
-```bash
-cd backend
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops \
-  .venv/bin/python scripts/run_evaluation.py
-```
-
-The runner defaults to `MockLLMProvider` and runs all 40 cases in stable order. The database must already be at the current Alembic head and contain the deterministic IT Operations seed. The runner never migrates, resets, or seeds the database. Use a disposable database when preparing isolated evaluation data.
-
-Available filters can be combined without changing dataset order:
-
-```bash
-.venv/bin/python scripts/run_evaluation.py --case-id itops-easy-001
-.venv/bin/python scripts/run_evaluation.py --difficulty security
-.venv/bin/python scripts/run_evaluation.py --category licenses
-.venv/bin/python scripts/run_evaluation.py --case-type authorization --security-only
-```
-
-OpenAI evaluation is manual and explicitly selected. A live-provider smoke must use a non-template free-query case so it cannot bypass the provider. `itops-easy-005` is the frozen easy `free_query` success case with no `template_id`. Set the API key through a secure local environment mechanism without printing or recording it, obtain explicit authorization for the exact API model ID, and run:
-
-```bash
-cd backend
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_eval_test \
-  .venv/bin/alembic upgrade head
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_eval_test \
-  .venv/bin/python scripts/seed_it_operations.py \
-  --profile medium \
-  --reset \
-  --reference-time CURRENT_UTC_SECOND_ALIGNED_ISO8601 \
-  --manifest-out /tmp/queryops-v1-evaluation-manifest.json
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_eval_test \
-  .venv/bin/python scripts/run_evaluation.py \
-  --provider openai \
-  --model EXACT_AUTHORIZED_MODEL \
-  --case-id itops-easy-005 \
-  --environment-manifest /tmp/queryops-v1-evaluation-manifest.json
-```
-
-The release manifest is created only for an explicitly reset `medium` seed in a PostgreSQL database whose name contains `test`, `eval`, or `e2e`. It binds the clean source revision, Alembic revision, explicit UTC seed reference time, deterministic seed/profile, PostgreSQL/runtime versions, dataset and catalog identities, dependency-manifest hash, bounded counts, and a canonical digest of evaluation-relevant seeded state. It contains no database URL or rows. The runner validates it before provider construction; a missing, stale (over 24 hours), malformed, wrong-revision, wrong-database, or otherwise mismatched manifest fails without an OpenAI call. The runner still never migrates, resets, or seeds a database.
-
-The smoke is valid provider evidence only when the persisted safe usage reports at least one OpenAI call and the semantic case contract passes. `itops-easy-001` is template-backed and therefore must not be used to validate the provider. Run all 40 cases only after the smoke passes and the operator separately or conditionally authorizes the billable full measurement, using the same frozen revision, database, model, and manifest:
-
-```bash
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_eval_test \
-  .venv/bin/python scripts/run_evaluation.py \
-  --provider openai \
-  --model EXACT_AUTHORIZED_MODEL \
-  --environment-manifest /tmp/queryops-v1-evaluation-manifest.json
-```
-
-Evaluation persistence contains only stable case metadata, expected/actual outcome classifications, bounded error codes, aggregate counts, scores, safe breakdowns, a dataset digest, validated provider/model identity, catalog ID/version/hash, bounded evaluation-environment identity, and bounded latency/attempt/token measurements. Catalog content does not replace or silently alter the frozen evaluation dataset digest; its separate hash records the runtime semantic configuration that influenced generation. Readiness requires the current catalog identity and a valid temporally eligible release environment. It excludes raw actual/expected rows, prompts, provider payloads or responses, reasoning, request/response IDs, headers, secrets, stack traces, raw driver errors, database URLs, and new copies of generated or baseline SQL. The Evaluation workspace remains read-only. Mock and OpenAI scores are measurements; only a full eligible OpenAI run can satisfy the versioned M9 PR6 readiness thresholds.
-
-Metric denominators are explicit: overall score is the mean semantic score across completed cases; expected-behavior match rate is exact outcome matches divided by completed cases; each difficulty/category/case-type score is the mean for completed cases in that group; and security pass rate is passed `security`-difficulty cases divided by completed `security`-difficulty cases. Query execution counts include only cases that reached SQL execution, so expected denials, clarifications, and validator blocks are not mislabeled as execution failures.
-
-Result comparison remains strict for ordinary tabular rows, multiple columns, row counts, and aggregate values. The only alias relaxation is a `grouped_rows` result with exactly one expected row and one actual row, each containing exactly one value: the normalized values may compare equal even when the harmless aggregate aliases differ. A different value, null mismatch, missing/extra row, multi-column rename, stable-key result, or ordinary tabular alias change still fails with the existing bounded semantic-mismatch reason.
-
-M9 PR6 adds the fail-closed `queryops-v1-readiness-v1` policy. Check one persisted run without running evaluation or calling a provider:
-
-```bash
-cd backend
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_eval_test \
-  .venv/bin/python scripts/check_v1_readiness.py --run-id YOUR_RUN_UUID
-```
-
-Add `--json` for the fixed bounded machine-readable projection. Exit 0 means `ready`, exit 1 means complete but `not_ready`, and exit 2 means `incomplete` or safe failure. Mock, filtered, stale-dataset, stale-catalog, stale-environment, partial, failed, running, duplicate, extra, missing, and malformed evidence cannot pass.
-
-Run PostgreSQL query/RLS tests:
-
-```bash
-docker compose up -d postgres
-cd backend
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic upgrade head
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic check
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/pytest \
-  tests/test_rls_postgres.py \
-  tests/test_query_runtime_role_postgres.py \
-  tests/test_sql_executor_postgres.py \
-  tests/test_query_engine_postgres.py \
-  tests/test_query_api_postgres.py \
-  tests/test_query_engine_security_postgres.py -q -rs
-```
-
-Safe local API smoke examples:
-
-```bash
-# Login as a manager. Save cookies and copy csrf_token from the JSON response.
-curl -i -c /tmp/queryops-cookies.txt \
-  -H "Content-Type: application/json" \
-  -X POST http://localhost:8000/api/v1/demo/login \
-  -d '{"email":"demo.manager@queryops.local"}'
-
-# Use the csrf_token from login for POST requests.
-export CSRF_TOKEN="paste-csrf-token-here"
-
-curl -b /tmp/queryops-cookies.txt \
-  http://localhost:8000/api/v1/query-templates
-
-curl -b /tmp/queryops-cookies.txt \
-  -H "Content-Type: application/json" \
-  -H "X-CSRF-Token: $CSRF_TOKEN" \
-  -X POST http://localhost:8000/api/v1/queries/run \
-  -d '{"question":"How many open support tickets exist in my department by priority?","template_id":"open_support_tickets_by_department"}'
-
-curl -b /tmp/queryops-cookies.txt \
-  http://localhost:8000/api/v1/queries/history
-
-curl -b /tmp/queryops-cookies.txt \
-  http://localhost:8000/api/v1/queries/{query_run_id}
-```
-
-The manager example intentionally does not return raw SQL. Use an Analyst or Admin demo session to verify SQL visibility through `can_view_sql`.
-
-Seed deterministic development data after migrations have been applied:
-
-```bash
-docker compose up -d postgres
-cd backend
-.venv/bin/alembic upgrade head
-.venv/bin/python scripts/seed_it_operations.py --profile small --reset
-.venv/bin/python scripts/seed_it_operations.py --profile medium --reset
-```
-
-The seed script is development-only and deterministic. Supported profiles are `small` for fast local or CI-style checks and `medium` for demo-scale local data. The `--reset` flag deletes seeded rows from the product and IT Operations tables before reseeding; it does not drop tables or modify Alembic migration state.
-
-After updating an existing development database to the final Milestone 6 export policy, rerun the seed command with the current profile and `--reset`. Existing rows are not updated in place, so the reset is required to install `can_export_results`, Admin-only `can_export_restricted_results`, and the current `DataResource.is_exportable` policy.
-
-Local demo auth uses seeded users through `POST /api/v1/demo/login`, then hydrates the current user with `GET /api/v1/auth/me`. Login sets a signed, expiring httpOnly `qo_session` cookie and a readable `qo_csrf` cookie; state-changing authenticated requests such as `POST /api/v1/auth/logout` must send `X-CSRF-Token`.
-
-### Frontend
-
-The frontend skeleton can be run locally without Docker with:
+In another terminal:
 
 ```bash
 cd frontend
-npm install
+npm ci
 npm run dev
 ```
 
-Build and test commands:
+## AI Provider
+
+MockLLM is the normal development and CI default. It requires no network access or API key.
+
+OpenAI is available only through explicit configuration:
+
+```env
+LLM_PROVIDER=openai
+OPENAI_API_KEY=replace-with-a-local-secret
+OPENAI_MODEL=gpt-5.6-terra
+```
+
+Setting `OPENAI_API_KEY` alone does not activate OpenAI. Real-provider requests can incur API charges; keep secrets out of tracked files and use MockLLM for routine development and tests.
+
+The OpenAI provider currently returns a structured `SemanticPlan` and candidate SQL in one request. QueryOps validates both and makes no repair or fallback provider call.
+
+## Testing
+
+Install dependencies once before running the local quality gates.
+
+Backend:
 
 ```bash
-npm run build
+cd backend
+python -m pip install -e ".[dev]"
+ruff check app scripts
+pyright
+python -m compileall -q app scripts
+pytest
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm ci
 npm run lint
 npm run typecheck:app
 npm run typecheck:node
 npm test
-npx playwright install chromium
-npm run test:e2e
+npm run build
 ```
 
-The frontend auth client calls the backend at `http://localhost:8000` by default.
-Override it with `VITE_API_BASE_URL` if needed.
-
-## Verification
-
-### Backend
-
-```bash
-cd backend
-python -m pip install --upgrade pip
-pip install -e ".[dev]"
-pytest
-```
-
-Run the PostgreSQL RLS subset:
-
-```bash
-docker compose up -d postgres
-cd backend
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic upgrade head
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/alembic check
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops .venv/bin/pytest tests/test_rls_postgres.py -q
-```
-
-Run the full backend suite with PostgreSQL-specific tests against a separate disposable database. Action tests refuse the configured application database and require an explicit destructive-test opt-in:
-
-```bash
-docker compose up -d postgres
-docker compose exec postgres dropdb --if-exists -U queryops queryops_test
-docker compose exec postgres createdb -U queryops queryops_test
-cd backend
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_test .venv/bin/alembic upgrade head
-DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_test .venv/bin/alembic check
-POSTGRES_TEST_DATABASE_DISPOSABLE=1 \
-POSTGRES_TEST_DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops_test \
-  .venv/bin/pytest
-```
-
-Never point `POSTGRES_TEST_DATABASE_URL` at the normal `POSTGRES_DB`. The action PostgreSQL fixtures run Alembic and reset deterministic seed data.
-
-### Frontend
+With the Docker quick-start stack running, execute the general browser flows locally:
 
 ```bash
 cd frontend
-npm install
-npm test
-npm run build
 npx playwright install chromium
-npm run test:e2e
+npx playwright test --grep-invert @m8-primary
 ```
 
-### Docker Compose
+Some backend security and RLS tests require PostgreSQL and intentionally skip without a disposable test database. The state-changing `@m8-primary` browser flow also requires its isolated disposable database preparation. GitHub Actions runs the authoritative deterministic gates across backend tests, an isolated PostgreSQL security suite, frontend checks, general browser flows, and the state-changing action workflow. Detailed QA, security, and evaluation procedures are linked under [Documentation](#documentation).
 
-With Docker Desktop or another Docker daemon running:
+## Project Status
 
-```bash
-cp .env.example .env
-docker compose config
-docker compose up --build
-```
+The core Query Engine, Ask Data workspace, dashboard and export flows, scope-aware authorization, PostgreSQL RLS, two governed IT Operations actions, approvals, audit views, notifications, and evaluation/readiness infrastructure are implemented.
 
-## Environment Variables
+The project remains under active V1 hardening. Text-to-SQL architecture and evaluation work continue, demo authentication is the only usable auth mode, actions execute synchronously, notifications are database-only, and the implemented action catalog is intentionally limited to two IT Operations workflows. Final manual QA and qualifying live-provider evidence have not been completed, so V1 readiness remains **incomplete** and the repository should not be treated as production-ready.
 
-A `.env.example` file should document all required environment variables.
+## Documentation
 
-Example planned variables:
+- [Detailed project plan and development history](PROJECT_PLAN.md)
+- [V1 manual QA checklist](docs/qa/v1-manual-qa.md)
+- [V1 quality gates](docs/evaluation/v1-quality-gates.md)
+- [V1 readiness report](docs/evaluation/v1-readiness-report.md)
+- [Action security test matrix](docs/security/m8-release-test-matrix.md)
 
-```env
-AUTH_MODE=demo
-SESSION_SECRET_KEY=queryops-local-session-secret
-SESSION_COOKIE_SECURE=false
-SESSION_MAX_AGE_SECONDS=28800
-POSTGRES_DB=queryops
-POSTGRES_USER=queryops
-POSTGRES_PASSWORD=queryops
-POSTGRES_PORT=5432
-QUERYOPS_APP_DATABASE_ROLE=queryops
-POSTGRES_TEST_DATABASE_DISPOSABLE=0
-BACKEND_PORT=8000
-FRONTEND_PORT=5173
-DATABASE_URL=postgresql+psycopg://queryops:queryops@postgres:5432/queryops
-VITE_API_BASE_URL=http://localhost:8000
-```
+## Maintainer
 
-Real secrets must never be committed to Git.
-
-## Project Goals
-
-QueryOps AI is intended to be a portfolio-grade software project that demonstrates:
-
-* practical AI product design
-* backend architecture
-* database modeling
-* permission-aware data access
-* secure SQL execution
-* action approval workflows
-* auditability
-* synthetic data generation
-* evaluation methodology
-* clean frontend dashboards
-* Docker-based local development
-* strong documentation and incremental delivery
-
-## Current Status
-
-Milestones 0 through 8 are complete and merged into `main`; M8 PR7 merged through PR #35. M9 PR1 through M9 PR6 are complete and merged through PR #41 at verified `main` commit `c6691a204ccbb9eb007e2e0c6fe419c346745b13`. PR6's Backend, PostgreSQL Security, Frontend, E2E, M8 Primary E2E, and V1 Deterministic Release Gates GitHub checks passed. Milestone 9 — Evaluation, Quality Measurement & V1 Readiness remains active, and M9 PR7 is the release-validation follow-up. Mock remains the CI default; no live OpenAI measurement has yet been accepted as V1 release evidence and full manual QA has not been completed, so Milestone 9 and V1 remain incomplete.
-
-The completed Milestone 7 experience is dark-first with a persistent light option, responsive navigation, My Dashboard as the authenticated home, permission-aware routes, Scope terminology, a responsive dashboard editor, safe visualizations, and command-first Ask Data. The completed Milestone 8 experience adds the two governed V1 actions, requester Actions, exact-scope/global Approvals, scoped/global Audit, database Notifications, synchronous execution, and release-blocking PostgreSQL/browser evidence.
-
-Implemented foundation functionality includes:
-
-* FastAPI backend skeleton with `GET /health`
-* React + TypeScript + Vite frontend shell with backend health check
-* Docker Compose setup for PostgreSQL, backend, and frontend
-* `.env.example` with safe local placeholders
-* basic backend and frontend tests
-* initial GitHub Actions CI workflow
-* SQLAlchemy and Alembic database foundation
-* product and IT Operations domain schema
-* deterministic IT Operations seed profiles and seed tests
-* local demo auth session endpoints with CSRF protection and session expiration
-* role and permission mapping with role upgrade request flow
-* Access Context Foundation with access scopes, data resources, and simple access decisions
-* scope-aware PostgreSQL RLS policies for department-scoped IT Operations domain tables
-* RLS context helper and initial security/RLS test suite
-* backend Query Engine foundation with domain packs, templates, mock generation, schema context, SQL validation, scoped read-only execution, Query Run API, `QueryRun` persistence, and security regression tests
-* Ask Data frontend with role-gated SQL and diagnostics
-* dashboard catalog, personal dashboards, and saved dashboard cards
-* controlled query-run and dashboard-card CSV export with permissions, exportability policy, current-viewer RLS execution, CSV injection protection, and successful export audit persistence
-* authorized Ask Data and dashboard-card CSV download controls
-* automatic/manual dashboard-card refresh under current-viewer RLS with safe table previews and viewer-owned refresh history
-* role-aware Home personal/scoped/global aggregate summaries without app-user/directory-user identity inference
-* Owned/Shared dashboard search, filters, sorting, accessible safe preview, and `/dashboards/:dashboardId`
-* full dashboard presentation with preserved secure refresh/export and explicit owned-personal arrange compatibility
-* explicit capability-gated dashboard View/Edit modes with optimistic layout concurrency
-* responsive 12/6/1 grid layouts with constrained desktop/tablet resize and mobile presets
-* nine safe visualization types with deterministic recommendation, manual override, and accessible fallback behavior
-* authorized dashboard/card context menus, mutations, SQL source view, and Add Card sources
-* command-first Ask Data with accessible template and five-item own-history drawers
-* PR3-powered in-memory Visual/Table result switching and progressive technical details
-* consolidated governed result save/export controls and clarification-safe state handling
-* requester Actions UX with deterministic current-template recommendations, safe preview/submission, owned tracking/detail, timelines, and cancellation
-* permission-aware Approvals and Audit workspaces, synchronous decision UX, exact activity badges, and current-recipient database notification controls
-* deterministic Chromium Playwright coverage in CI
-* authoritative 40-case evaluation dataset, strict loader, and semantic scoring primitives
-* synchronous governed MockLLM/OpenAI evaluation runner with sanitized persistence and an explicit manual CLI
-* one opt-in OpenAI Responses API provider with minimized authorized context, strict structured output, bounded failure/usage metadata, and no ambient SDK routing
-
-Current milestone status:
-
-```txt
-Milestone 6 — Dashboards, Cards & CSV Export is complete.
-Milestone 7 — Product UX & Dashboard Redesign is complete.
-M7 PR1 — Product Shell, Routing & Navigation is complete and merged through PR #25.
-M7 PR2 — Role-Aware Home & Dashboard Browser is complete and merged through PR #26.
-M7 PR3 — Dashboard Editor, Grid & Visualizations is complete and merged through PR #27.
-M7 PR4 — Ask Data Redesign & Final UX Hardening is complete and merged through PR #28.
-M8 PR1 through PR4 are complete and merged through PR #32.
-M8 PR5 — Requester Actions UX is complete and merged through PR #33.
-M8 PR6 — Approvals, Audit & Notifications UX is complete and merged through PR #34.
-M8 PR7 — E2E, Security Hardening & Completion is complete and merged through PR #35.
-Milestone 8 — Actions, Approvals & Audit is complete.
-M9 PR1 — Evaluation Dataset & Scoring Foundation is complete and merged through PR #36.
-M9 PR2 — Evaluation Runner, Persistence & CLI is complete and merged through PR #37.
-M9 PR3 — Role-Aware Evaluation Metrics API is complete and merged through PR #38.
-M9 PR4 — Role-Aware Evaluation Workspace UI is complete and merged through PR #39 at verified `main` commit `f8990b78e86de1d24a51783270e95fc05a07beca`.
-M9 PR5 — Governed Real-LLM Evaluation Mode is complete and merged through PR #40 at verified `main` commit `695be1358ea2fcd67fc2cd25c66e2281986dd99f`.
-M9 PR6 — V1 Quality Gates, Readiness & Completion is complete and merged through PR #41 at verified `main` commit `c6691a204ccbb9eb007e2e0c6fe419c346745b13`; all required deterministic GitHub checks passed.
-M9 PR7 — V1 Live Validation, Manual QA, and Release Completion is active. No live OpenAI measurement has yet been accepted as V1 release evidence, full manual QA remains open, and Milestone 9/V1 therefore remain incomplete.
-```
-
-PR6 keeps backend authorization authoritative while adding exact approval/notification activity badges, permission-aware Approvals and Audit workspaces, synchronous approve/reject dialogs, safe related navigation, and current-recipient database notification controls. Under the current permission catalog, Analyst receives exact-scope approval and Audit UX, Admin receives global/override/self-approval UX, Manager retains requester Actions and notifications without Audit access, and User receives notifications without Actions, Approvals, or Audit navigation. The private planning description of a future limited Manager audit view is not implemented because the backend does not currently grant that permission.
-
-PR7 verification passed 14 guarded-database tests, the exact 20-case action-security suite plus two concurrency cases, 756 default backend tests with 151 expected PostgreSQL-only skips, all 907 disposable-PostgreSQL tests with no skips, 247 frontend tests, TypeScript, the production build, seven general Chromium flows, two isolated primary/negative M8 flows, and a fresh Alembic upgrade/current/no-diff check through migration 0010. The tracked release matrix maps all exact 20 and broader 30 security cases. The final **Manual M8 PR7 release review — not a CodeRabbit result** found and fixed 4 Minor issues with no Critical or Major finding and no unresolved actionable issue.
-
-PR7 changed no schema, migration, normal seed, permission, role mapping, RLS, action policy, lifecycle, execution, audit writer, notification recipient, or public API contract. M8 intentionally remains limited to `reclaim_unused_license` and `disable_inactive_user`, synchronous execution, and database-only notifications. It has no automatic retry or rollback action, queue, worker, scheduler, Redis, WebSocket, or external delivery. Operational intervention is still required if both execution and separate failure persistence fail.
-
-PR5 persists the order of cards in owned personal dashboards through `DashboardCard.position`. It includes accessible drag-and-drop and Move Up / Move Down controls, but does not add card resizing, x/y grid coordinates, width/height persistence, advanced `layout` behavior, scheduled refresh, dashboard starring/cloning, actions, approvals, notifications, real external LLM calls, Supabase Auth, Redis/background jobs, or domain expansion. Those deferred areas remain outside Milestone 6.
+Maintained by [Daniel23sh](https://github.com/Daniel23sh).
 
 ## License
 
-No license has been selected yet.
+No license has been selected for this repository.
