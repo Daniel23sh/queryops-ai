@@ -22,7 +22,7 @@ from app.domains.it_operations.seed import seed_database
 from app.main import app
 from app.models.product import AppUser, QueryRun
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
-from app.query_engine.llm_provider import SQLGenerationResult
+from app.query_engine.llm_provider import PlanGenerationResult
 from app.query_engine.runtime_role import QUERY_RUNTIME_ROLE
 from app.query_engine.semantic_conformance import SemanticConformanceResult
 from app.query_engine.semantic_plan import (
@@ -53,7 +53,11 @@ def test_service_path_executes_as_runtime_role_not_table_owner(
         admin = user_by_email(session, "demo.admin@queryops.local")
 
         result = QueryEngineService(
-            provider=StaticSQLProvider(
+            provider=StaticPlanProvider(
+                "SELECT current_user AS runtime_user, id, name "
+                "FROM departments ORDER BY name LIMIT 1"
+            ),
+            semantic_sql_renderer=StaticSQLRenderer(
                 "SELECT current_user AS runtime_user, id, name "
                 "FROM departments ORDER BY name LIMIT 1"
             ),
@@ -81,7 +85,12 @@ def test_analyst_cross_department_filter_still_returns_no_rows_under_rls(
         assert finance_id is not None
 
         result = QueryEngineService(
-            provider=StaticSQLProvider(
+            provider=StaticPlanProvider(
+                "SELECT id, department_id, email "
+                f"FROM directory_users WHERE department_id = '{finance_id}' "
+                "ORDER BY email"
+            ),
+            semantic_sql_renderer=StaticSQLRenderer(
                 "SELECT id, department_id, email "
                 f"FROM directory_users WHERE department_id = '{finance_id}' "
                 "ORDER BY email"
@@ -107,7 +116,10 @@ def test_manager_api_audit_table_failure_does_not_leak_sql_or_table_name(
 ) -> None:
     clear_query_runs(postgres_engine)
     app.dependency_overrides[get_query_engine_service] = lambda: QueryEngineService(
-        provider=StaticSQLProvider("SELECT id, event_type FROM it_audit_events")
+        provider=StaticPlanProvider("SELECT id, event_type FROM it_audit_events"),
+        semantic_sql_renderer=StaticSQLRenderer(
+            "SELECT id, event_type FROM it_audit_events"
+        ),
     )
     try:
         csrf_token = login(client, "demo.manager@queryops.local")
@@ -179,27 +191,34 @@ def test_template_evaluation_cases_execute_deterministically_against_seeded_post
     assert set(first.metadata["referenced_tables"]) == set(template.referenced_tables)
 
 
-class StaticSQLProvider:
+class StaticPlanProvider:
     provider_name = "static-security-postgres-provider"
     model_name = "static-security-postgres-model"
 
-    def __init__(self, generated_sql: str) -> None:
-        self.generated_sql = generated_sql
+    def __init__(self, renderer_sql: str) -> None:
+        self.renderer_sql = renderer_sql
 
-    def generate_sql(
+    def generate_plan(
         self,
         _question: str,
         _schema_context: Mapping[str, Any],
         _user_context: Mapping[str, Any],
         _options: Mapping[str, Any],
-    ) -> SQLGenerationResult:
-        return SQLGenerationResult(
-            generated_sql=self.generated_sql,
+    ) -> PlanGenerationResult:
+        return PlanGenerationResult(
             provider_name=self.provider_name,
             model_name=self.model_name,
             generation_metadata={"source": "security_postgres_test"},
-            semantic_plan=_security_postgres_plan(self.generated_sql),
+            semantic_plan=_security_postgres_plan(self.renderer_sql),
         )
+
+
+class StaticSQLRenderer:
+    def __init__(self, sql: str) -> None:
+        self.sql = sql
+
+    def __call__(self, *_args: Any) -> str:
+        return self.sql
 
 
 def _security_postgres_plan(sql: str) -> SemanticPlan:

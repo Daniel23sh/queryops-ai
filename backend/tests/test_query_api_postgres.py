@@ -22,7 +22,7 @@ from app.domains.it_operations.models import Device, SupportTicket
 from app.domains.it_operations.seed import seed_database
 from app.main import app
 from app.models.product import AppUser, QueryRun
-from app.query_engine.llm_provider import SQLGenerationResult
+from app.query_engine.llm_provider import PlanGenerationResult
 from app.query_engine.semantic_plan import SemanticFieldRef, SemanticPlan
 from app.query_engine.service import QueryEngineService
 
@@ -174,6 +174,10 @@ def test_api_persists_query_run_with_safe_metadata(
         query_run = session.get(QueryRun, data["query_run_id"])
         assert query_run is not None
         assert query_run.status == "succeeded"
+        assert query_run.generated_sql == data["generated_sql"]
+        assert query_run.executed_sql == data["executed_sql"]
+        assert "FROM devices" in query_run.generated_sql
+        assert "LIMIT" in query_run.executed_sql
         assert query_run.query_metadata["provider"] == "mock"
         assert query_run.query_metadata["validation"]["valid"] is True
     assert data["metadata"]["provider"] == "mock"
@@ -203,13 +207,14 @@ def test_unsupported_api_request_persists_failed_query_run(
         assert query_run.error_message == "I could not map that question to a supported query."
 
 
-def test_non_queryable_audit_table_provider_path_is_denied_safely(
+def test_non_queryable_audit_table_renderer_path_is_denied_safely(
     client: TestClient,
     postgres_engine: Engine,
 ) -> None:
     clear_query_runs(postgres_engine)
     app.dependency_overrides[get_query_engine_service] = lambda: QueryEngineService(
-        provider=AuditSqlProvider()
+        provider=AuditPlanProvider(),
+        semantic_sql_renderer=AuditSQLRenderer(),
     )
     try:
         csrf_token = login(client, "demo.admin@queryops.local")
@@ -256,19 +261,18 @@ def test_uuid_datetime_decimal_and_boolean_rows_serialize_safely(
     assert isinstance(first_row["last_used_at"], str | None)
 
 
-class AuditSqlProvider:
+class AuditPlanProvider:
     provider_name = "audit-test-provider"
     model_name = "audit-test-model"
 
-    def generate_sql(
+    def generate_plan(
         self,
         _question: str,
         _schema_context: dict[str, Any],
         _user_context: dict[str, Any],
         _options: dict[str, Any],
-    ) -> SQLGenerationResult:
-        return SQLGenerationResult(
-            generated_sql="SELECT id, event_type FROM it_audit_events",
+    ) -> PlanGenerationResult:
+        return PlanGenerationResult(
             provider_name=self.provider_name,
             model_name=self.model_name,
             generation_metadata={"referenced_tables": ["it_audit_events"]},
@@ -290,6 +294,11 @@ class AuditSqlProvider:
                 limit=None,
             ),
         )
+
+
+class AuditSQLRenderer:
+    def __call__(self, *_args: Any) -> str:
+        return "SELECT id, event_type FROM it_audit_events"
 
 
 def post_template_run(client: TestClient, csrf_token: str):
