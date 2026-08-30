@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import uuid
 from collections.abc import Generator
@@ -23,6 +24,7 @@ from app.query_engine.semantic_conformance import (
 from app.query_engine.semantic_plan import (
     SemanticAggregationIntent,
     SemanticFieldRef,
+    SemanticHavingIntent,
     SemanticOrderIntent,
     SemanticPlan,
     SemanticRelationshipIntent,
@@ -31,6 +33,7 @@ from app.query_engine.service import (
     QueryEngineRequest,
     QueryEngineService,
     QueryEngineServiceResult,
+    _safe_field_mismatch_observation,
 )
 from app.query_engine.sql_executor import SQLExecutionResult
 from app.query_engine.sql_validator import SQLValidationResult, validate_sql
@@ -448,6 +451,57 @@ def test_correction_failure_returns_safe_failure_metadata(
     assert "internal table detail" not in str(query_run.query_metadata)
 
 
+def _privileged_grouped_count_plan(
+    *,
+    output_fields: tuple[SemanticFieldRef, ...],
+    group_by: tuple[SemanticFieldRef, ...] | None = None,
+) -> SemanticPlan:
+    department_name = SemanticFieldRef(entity_id="departments", column="name")
+    return SemanticPlan(
+        entity_ids=(
+            "departments",
+            "directory_users",
+            "groups",
+            "user_group_memberships",
+        ),
+        concept_ids=("privileged_group",),
+        composition_rule_ids=(),
+        metric_id=None,
+        distinct=False,
+        literal_filters=(),
+        relationships=(
+            SemanticRelationshipIntent(
+                relationship_id="directory_user_department",
+                join_type="inner",
+            ),
+            SemanticRelationshipIntent(
+                relationship_id="user_group_membership_group",
+                join_type="inner",
+            ),
+            SemanticRelationshipIntent(
+                relationship_id="user_group_membership_user",
+                join_type="inner",
+            ),
+        ),
+        output_fields=output_fields,
+        aggregations=(
+            SemanticAggregationIntent(
+                id="provider_alias_not_persisted",
+                function="count",
+                field=SemanticFieldRef(
+                    entity_id="directory_users",
+                    column="id",
+                ),
+                distinct=True,
+            ),
+        ),
+        group_by=(department_name,) if group_by is None else group_by,
+        having=(),
+        order_by=(),
+        limit=None,
+    )
+
+
 @pytest.mark.parametrize(
     ("sql", "expected_error_code"),
     [
@@ -663,6 +717,150 @@ def test_grounded_aggregation_mismatch_persists_only_safe_identities(
     assert "prompt" not in observation
     assert "literal" not in observation
     assert "rows" not in observation
+    assert validator.seen_sql == []
+    assert executor.seen_sql == []
+
+
+@pytest.mark.parametrize(
+    ("plan", "expected_validation"),
+    [
+        (
+            _privileged_grouped_count_plan(output_fields=()),
+            {
+                "status": "failed",
+                "reason_code": "required_output_missing",
+                "required_output_mismatch": {
+                    "expected": ["departments.name"],
+                    "actual": [],
+                },
+            },
+        ),
+        (
+            _privileged_grouped_count_plan(
+                output_fields=(
+                    SemanticFieldRef(entity_id="departments", column="name"),
+                    SemanticFieldRef(entity_id="groups", column="name"),
+                ),
+                group_by=(
+                    SemanticFieldRef(entity_id="departments", column="name"),
+                    SemanticFieldRef(entity_id="groups", column="name"),
+                ),
+            ),
+            {
+                "status": "failed",
+                "reason_code": "grounded_group_by_mismatch",
+                "group_by_mismatch": {
+                    "expected": ["departments.name"],
+                    "actual": ["departments.name", "groups.name"],
+                },
+            },
+        ),
+    ],
+)
+def test_result_intent_field_mismatch_persists_only_relevant_canonical_fields(
+    db_session: Session,
+    plan: SemanticPlan,
+    expected_validation: dict[str, Any],
+) -> None:
+    executor = FakeExecutor()
+    validator = RecordingValidator()
+    service = QueryEngineService(
+        provider=StaticPlanProvider(plan),
+        executor=executor,
+        validator=validator,
+    )
+    user = user_by_email(db_session, "demo.analyst@queryops.local")
+
+    result = service.run(
+        db_session,
+        user,
+        QueryEngineRequest(question="How many privileged users by department?"),
+    )
+
+    query_run = only_query_run(db_session)
+    assert result.status == "failed"
+    assert result.error_code == "provider_response_invalid"
+    assert query_run.query_metadata["semantic_plan_validation"] == expected_validation
+    serialized = json.dumps(query_run.query_metadata, sort_keys=True)
+    for forbidden in ("SELECT provider", "prompt", "rows", '"value"'):
+        assert forbidden not in serialized
+    assert validator.seen_sql == []
+    assert executor.seen_sql == []
+
+
+def test_result_intent_field_observation_bound_is_fail_closed() -> None:
+    oversized = [f"table_{index}.column" for index in range(65)]
+
+    assert (
+        _safe_field_mismatch_observation(
+            {"expected": oversized, "actual": []}
+        )
+        is None
+    )
+
+
+def test_grounded_having_mismatch_persists_only_structural_shape(
+    db_session: Session,
+) -> None:
+    executor = FakeExecutor()
+    validator = RecordingValidator()
+    provider = WrongGroundedHavingProvider()
+    service = QueryEngineService(
+        provider=provider,
+        executor=executor,
+        validator=validator,
+    )
+    user = user_by_email(db_session, "demo.analyst@queryops.local")
+
+    result = service.run(
+        db_session,
+        user,
+        QueryEngineRequest(
+            question=(
+                "Show users with more than five failed logins in the last 30 days."
+            )
+        ),
+    )
+
+    query_run = only_query_run(db_session)
+    assert result.status == "failed"
+    assert result.error_code == "provider_response_invalid"
+    plan_validation = query_run.query_metadata["semantic_plan_validation"]
+    assert plan_validation == {
+        "status": "failed",
+        "reason_code": "grounded_having_mismatch",
+        "having_mismatch": {
+            "expected": [
+                {
+                    "aggregation": {
+                        "function": "count",
+                        "target": "login_events.id",
+                        "distinct": False,
+                    },
+                    "operator": "greater_than",
+                }
+            ],
+            "actual": [
+                {
+                    "aggregation": {
+                        "function": "count",
+                        "target": "login_events.id",
+                        "distinct": False,
+                    },
+                    "operator": "greater_than",
+                }
+            ],
+        },
+    }
+    serialized = json.dumps(plan_validation, sort_keys=True)
+    for forbidden in (
+        "provider_having_alias",
+        '"value"',
+        "SELECT ",
+        "prompt",
+        "rows",
+    ):
+        assert forbidden not in serialized
     assert validator.seen_sql == []
     assert executor.seen_sql == []
 
@@ -1116,6 +1314,81 @@ class WrongGroundedAggregationProvider:
                 order_by=(),
                 limit=None,
             ),
+        )
+
+
+class WrongGroundedHavingProvider:
+    provider_name = "grounded-having-mismatch-test-provider"
+    model_name = "grounded-having-mismatch-test-model"
+
+    def generate_sql(
+        self,
+        _question: str,
+        _schema_context: dict[str, Any],
+        _user_context: dict[str, Any],
+        _options: dict[str, Any],
+    ) -> SQLGenerationResult:
+        return SQLGenerationResult(
+            generated_sql="SELECT provider SQL must not persist",
+            provider_name=self.provider_name,
+            model_name=self.model_name,
+            semantic_plan=SemanticPlan(
+                entity_ids=("login_events",),
+                concept_ids=("failed_login_within_30_days",),
+                composition_rule_ids=(),
+                metric_id=None,
+                distinct=False,
+                literal_filters=(),
+                relationships=(),
+                output_fields=(
+                    SemanticFieldRef(entity_id="login_events", column="user_id"),
+                ),
+                aggregations=(
+                    SemanticAggregationIntent(
+                        id="provider_having_alias",
+                        function="count",
+                        field=SemanticFieldRef(
+                            entity_id="login_events",
+                            column="id",
+                        ),
+                        distinct=False,
+                    ),
+                ),
+                group_by=(
+                    SemanticFieldRef(entity_id="login_events", column="user_id"),
+                ),
+                having=(
+                    SemanticHavingIntent(
+                        aggregation_id="provider_having_alias",
+                        operator="greater_than",
+                        value=6,
+                    ),
+                ),
+                order_by=(),
+                limit=None,
+            ),
+        )
+
+
+class StaticPlanProvider:
+    provider_name = "static-plan-test-provider"
+    model_name = "static-plan-test-model"
+
+    def __init__(self, plan: SemanticPlan) -> None:
+        self.plan = plan
+
+    def generate_sql(
+        self,
+        _question: str,
+        _schema_context: dict[str, Any],
+        _user_context: dict[str, Any],
+        _options: dict[str, Any],
+    ) -> SQLGenerationResult:
+        return SQLGenerationResult(
+            generated_sql="SELECT provider content must not persist",
+            provider_name=self.provider_name,
+            model_name=self.model_name,
+            semantic_plan=self.plan,
         )
 
 

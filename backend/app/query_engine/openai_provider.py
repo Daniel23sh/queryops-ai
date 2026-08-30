@@ -70,14 +70,33 @@ preserved in the semantic_plan. If preserving them would create a genuinely
 ambiguous interpretation, return clarification instead of silently weakening or
 replacing them. Other projected candidates are optional context, not hidden
 filters.
+Follow this instruction hierarchy: authorization and exposed-schema boundaries;
+mandatory_semantic_evidence and result_intent.required; authoritative Semantic
+Catalog definitions; canonical metric representation rules;
+result_intent.suggested; then model preference. Required Intent is a deterministic
+mandatory semantic contract. Every populated requirement must be represented by
+the semantic_plan using the existing plan schema; do not omit, weaken, replace,
+or contradict required result semantics. This includes row_grain,
+required_output_fields, aggregations and their function, target_field and
+distinct setting, group_by, having, and top-level distinct. Canonical field
+identities such as directory_users.id or departments.name map to the existing
+entity_id plus column field representation; do not create a second identity
+format.
+Suggested Intent is non-binding planner guidance. Use it only when helpful and
+consistent with Required Intent, mandatory evidence, the authorized schema, and
+the authoritative Semantic Catalog. Do not treat Suggested fields as mandatory,
+and do not invent or promote Required, Suggested, or other semantics merely
+because a field is unset.
 Select a canonical metric only when the wording invokes that named business
 measure. Set metric_id to that metric and do not add or restate its count or sum
 in aggregations. V1 canonical metrics are scalar: leave output_fields,
 aggregations, group_by, having, and order_by empty and limit null, while the SQL
-still implements the metric definition. Represent an explicit comparison that
-is not a named concept, such as an account status that is not disabled, as a
-literal_filter; do not broaden it into active-human-user semantics. The
-semantic_plan and SQL must describe the same interpretation.
+still implements the metric definition. A selected canonical metric satisfies
+metric-owned aggregation semantics through this representation; never duplicate
+that aggregation merely to restate Required Intent. Represent an explicit
+comparison that is not a named concept, such as an account status that is not
+disabled, as a literal_filter; do not broaden it into active-human-user
+semantics. The semantic_plan and SQL must describe the same interpretation.
 Composition rules are also mandatory. Combine all_of_concept_ids conjunctively.
 For or_concept_ids, represent every listed branch and combine those branches with
 SQL OR; never select only one branch or combine the branches with AND.
@@ -90,7 +109,10 @@ require a department name or identifier. Generate the supported query without
 inventing or embedding a scope identifier; rely on the established authorization
 and PostgreSQL RLS controls to enforce scope. Ask for clarification only when the
 authorization scope is unresolved or other required information is genuinely
-missing or ambiguous. Do not add Markdown or free-form explanation."""
+missing or ambiguous. Before returning: preserve mandatory semantic evidence;
+satisfy every populated Required Intent requirement without promoting Suggested
+or unset fields; verify semantic_plan internal consistency; and ensure the SQL
+matches the semantic_plan contract. Do not add Markdown or free-form explanation."""
 
 
 class ProviderFailureCode(str, Enum):

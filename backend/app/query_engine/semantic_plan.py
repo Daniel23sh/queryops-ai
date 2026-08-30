@@ -385,6 +385,8 @@ def validate_semantic_plan(
     if plan.group_by and not plan.aggregations:
         raise SemanticPlanValidationError("group_by_without_aggregation")
     if projection.grounded_result_intent is not None:
+        # Only the grounded required contract is fail-closed. The sibling
+        # suggested_result_intent is deliberately not consumed by validation.
         _validate_grounded_result_intent(
             plan,
             projection.grounded_result_intent,
@@ -488,7 +490,14 @@ def _validate_grounded_result_intent(
     )
     plan_output_fields = {_field_key(field) for field in plan.output_fields}
     if required_output_fields is None or not required_output_fields <= plan_output_fields:
-        raise SemanticPlanValidationError("required_output_missing")
+        raise SemanticPlanValidationError(
+            "required_output_missing",
+            safe_observation=_field_mismatch_observation(
+                intent.required_output_fields,
+                plan.output_fields,
+                domain_pack,
+            ),
+        )
 
     expected_group_by = _grounded_field_keys(
         intent.group_by,
@@ -551,7 +560,14 @@ def _validate_grounded_result_intent(
 
     if intent.group_by:
         if expected_group_by is None or expected_group_by != actual_group_by:
-            raise SemanticPlanValidationError("grounded_group_by_mismatch")
+            raise SemanticPlanValidationError(
+                "grounded_group_by_mismatch",
+                safe_observation=_field_mismatch_observation(
+                    intent.group_by,
+                    plan.group_by,
+                    domain_pack,
+                ),
+            )
 
     if intent.having:
         expected_aggregations_by_id = {
@@ -583,11 +599,27 @@ def _validate_grounded_result_intent(
             )
             for item in plan.having
         }
-        if None in expected_aggregations_by_id.values() or expected_having != actual_having:
-            raise SemanticPlanValidationError("grounded_having_mismatch")
+        if (
+            None in expected_aggregations_by_id.values()
+            or expected_having != actual_having
+        ):
+            raise SemanticPlanValidationError(
+                "grounded_having_mismatch",
+                safe_observation=_having_mismatch_observation(
+                    intent,
+                    plan,
+                    domain_pack,
+                ),
+            )
 
     if intent.distinct is not None and plan.distinct is not intent.distinct:
-        raise SemanticPlanValidationError("grounded_distinct_mismatch")
+        raise SemanticPlanValidationError(
+            "grounded_distinct_mismatch",
+            safe_observation={
+                "expected": intent.distinct,
+                "actual": plan.distinct,
+            },
+        )
 
     if intent.row_grain is None:
         return
@@ -596,13 +628,34 @@ def _validate_grounded_result_intent(
         table_to_entity_id,
     )
     if grain_fields is None:
-        raise SemanticPlanValidationError("result_grain_mismatch")
+        raise SemanticPlanValidationError(
+            "result_grain_mismatch",
+            safe_observation=_grain_mismatch_observation(
+                intent,
+                plan,
+                domain_pack,
+            ),
+        )
     if intent.row_grain.mode == "grouped":
         if grain_fields != {_field_key(field) for field in plan.group_by}:
-            raise SemanticPlanValidationError("result_grain_mismatch")
+            raise SemanticPlanValidationError(
+                "result_grain_mismatch",
+                safe_observation=_grain_mismatch_observation(
+                    intent,
+                    plan,
+                    domain_pack,
+                ),
+            )
         return
     if plan.aggregations or plan.group_by or not grain_fields <= plan_output_fields:
-        raise SemanticPlanValidationError("result_grain_mismatch")
+        raise SemanticPlanValidationError(
+            "result_grain_mismatch",
+            safe_observation=_grain_mismatch_observation(
+                intent,
+                plan,
+                domain_pack,
+            ),
+        )
 
 
 def _grounded_field_keys(
@@ -822,15 +875,132 @@ def _aggregation_mismatch_observation(
         }
         for item in actual
     ]
+
     def sort_key(item: dict[str, Any]) -> tuple[Any, ...]:
         return (
             item["function"],
             item["target"] or "",
             item["distinct"],
         )
+
     return {
         "expected": sorted(expected_items, key=sort_key),
         "actual": sorted(actual_items, key=sort_key),
+    }
+
+
+def _field_mismatch_observation(
+    expected: tuple[GroundedFieldIdentity, ...],
+    actual: tuple[SemanticFieldRef, ...],
+    domain_pack: DomainPack,
+) -> dict[str, Any]:
+    entities_by_id = domain_pack.semantic_catalog.entities_by_id
+    return {
+        "expected": sorted(f"{field.table}.{field.column}" for field in expected)[
+            :MAX_PLAN_ITEMS
+        ],
+        "actual": sorted(
+            f"{entities_by_id[field.entity_id].table}.{field.column}"
+            for field in actual
+            if field.entity_id in entities_by_id
+        )[:MAX_PLAN_ITEMS],
+    }
+
+
+def _safe_aggregation_shape(
+    aggregation: GroundedAggregationIntent | SemanticAggregationIntent | None,
+    domain_pack: DomainPack,
+) -> dict[str, Any] | None:
+    if aggregation is None:
+        return None
+    if isinstance(aggregation, GroundedAggregationIntent):
+        target = (
+            f"{aggregation.target_field.table}.{aggregation.target_field.column}"
+            if aggregation.target_field is not None
+            else None
+        )
+    else:
+        entities_by_id = domain_pack.semantic_catalog.entities_by_id
+        target = (
+            f"{entities_by_id[aggregation.field.entity_id].table}."
+            f"{aggregation.field.column}"
+            if aggregation.field is not None
+            and aggregation.field.entity_id in entities_by_id
+            else None
+        )
+    return {
+        "function": aggregation.function,
+        "target": target,
+        "distinct": aggregation.distinct,
+    }
+
+
+def _having_mismatch_observation(
+    intent: GroundedResultIntent,
+    plan: SemanticPlan,
+    domain_pack: DomainPack,
+) -> dict[str, Any]:
+    expected_aggregations = {item.id: item for item in intent.aggregations}
+    actual_aggregations = {item.id: item for item in plan.aggregations}
+    expected = [
+        {
+            "aggregation": _safe_aggregation_shape(
+                expected_aggregations.get(item.aggregation_id),
+                domain_pack,
+            ),
+            "operator": item.operator,
+        }
+        for item in intent.having
+    ]
+    actual = [
+        {
+            "aggregation": _safe_aggregation_shape(
+                actual_aggregations.get(item.aggregation_id),
+                domain_pack,
+            ),
+            "operator": item.operator,
+        }
+        for item in plan.having
+    ]
+
+    def sort_key(item: dict[str, Any]) -> str:
+        return repr(item)
+
+    return {
+        "expected": sorted(expected, key=sort_key)[:MAX_PLAN_ITEMS],
+        "actual": sorted(actual, key=sort_key)[:MAX_PLAN_ITEMS],
+    }
+
+
+def _grain_mismatch_observation(
+    intent: GroundedResultIntent,
+    plan: SemanticPlan,
+    domain_pack: DomainPack,
+) -> dict[str, Any]:
+    assert intent.row_grain is not None
+    if plan.group_by:
+        actual_mode = "grouped"
+        actual_fields = plan.group_by
+    elif plan.aggregations:
+        actual_mode = "aggregated"
+        actual_fields = plan.output_fields
+    else:
+        actual_mode = "detail"
+        actual_fields = plan.output_fields
+    identities = _field_mismatch_observation(
+        intent.row_grain.identity_fields,
+        actual_fields,
+        domain_pack,
+    )
+    return {
+        "expected": {
+            "mode": intent.row_grain.mode,
+            "identities": identities["expected"],
+        },
+        "actual": {
+            "mode": actual_mode,
+            "identities": identities["actual"],
+        },
     }
 
 

@@ -440,8 +440,9 @@ class QueryEngineService:
                 "status": "failed",
                 "reason_code": exc.reason,
             }
-            if exc.safe_observation is not None:
-                plan_validation["aggregation_mismatch"] = exc.safe_observation
+            observation_key = _PLAN_VALIDATION_OBSERVATION_KEYS.get(exc.reason)
+            if observation_key is not None and exc.safe_observation is not None:
+                plan_validation[observation_key] = exc.safe_observation
             return replace(
                 generation_result,
                 generated_sql=None,
@@ -634,14 +635,15 @@ def _base_metadata(
                 "status": status,
                 "reason_code": reason_code,
             }
-            if reason_code == "grounded_aggregation_mismatch":
-                aggregation_mismatch = _safe_aggregation_mismatch_observation(
-                    plan_validation.get("aggregation_mismatch")
-                )
-                if aggregation_mismatch is not None:
-                    metadata["semantic_plan_validation"][
-                        "aggregation_mismatch"
-                    ] = aggregation_mismatch
+            if isinstance(reason_code, str):
+                observation_key = _PLAN_VALIDATION_OBSERVATION_KEYS.get(reason_code)
+                sanitizer = _PLAN_VALIDATION_OBSERVATION_SANITIZERS.get(reason_code)
+                if observation_key is not None and sanitizer is not None:
+                    observation = sanitizer(plan_validation.get(observation_key))
+                    if observation is not None:
+                        metadata["semantic_plan_validation"][
+                            observation_key
+                        ] = observation
     metadata["repair_attempted"] = False
     failure_code = generation_metadata.get("provider_failure_code")
     if isinstance(failure_code, str) and failure_code in {
@@ -697,6 +699,129 @@ def _safe_aggregation_mismatch_observation(value: Any) -> dict[str, Any] | None:
             )
         sanitized[side] = safe_items
     return sanitized
+
+
+_SAFE_CANONICAL_FIELD = re.compile(
+    r"[A-Za-z_][A-Za-z0-9_]{0,127}\.[A-Za-z_][A-Za-z0-9_]{0,127}"
+)
+_SAFE_HAVING_OPERATORS = {
+    "equals",
+    "greater_than",
+    "greater_than_or_equal",
+    "less_than",
+    "less_than_or_equal",
+}
+
+
+def _safe_field_mismatch_observation(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict) or set(value) != {"expected", "actual"}:
+        return None
+    sanitized: dict[str, list[str]] = {}
+    for side in ("expected", "actual"):
+        fields = value.get(side)
+        if (
+            not isinstance(fields, list)
+            or len(fields) > 64
+            or any(
+                not isinstance(field, str)
+                or _SAFE_CANONICAL_FIELD.fullmatch(field) is None
+                for field in fields
+            )
+        ):
+            return None
+        sanitized[side] = sorted(set(fields))
+    return sanitized
+
+
+def _safe_distinct_mismatch_observation(value: Any) -> dict[str, Any] | None:
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"expected", "actual"}
+        or not isinstance(value.get("expected"), bool)
+        or not isinstance(value.get("actual"), bool)
+    ):
+        return None
+    return {"expected": value["expected"], "actual": value["actual"]}
+
+
+def _safe_grain_mismatch_observation(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict) or set(value) != {"expected", "actual"}:
+        return None
+    sanitized: dict[str, Any] = {}
+    for side in ("expected", "actual"):
+        grain = value.get(side)
+        if not isinstance(grain, dict) or set(grain) != {"mode", "identities"}:
+            return None
+        mode = grain.get("mode")
+        identities = grain.get("identities")
+        if (
+            mode not in {"detail", "grouped", "aggregated"}
+            or not isinstance(identities, list)
+            or len(identities) > 64
+            or any(
+                not isinstance(identity, str)
+                or _SAFE_CANONICAL_FIELD.fullmatch(identity) is None
+                for identity in identities
+            )
+        ):
+            return None
+        sanitized[side] = {
+            "mode": mode,
+            "identities": sorted(set(identities)),
+        }
+    return sanitized
+
+
+def _safe_having_mismatch_observation(value: Any) -> dict[str, Any] | None:
+    if not isinstance(value, dict) or set(value) != {"expected", "actual"}:
+        return None
+    sanitized: dict[str, Any] = {}
+    for side in ("expected", "actual"):
+        conditions = value.get(side)
+        if not isinstance(conditions, list) or len(conditions) > 64:
+            return None
+        safe_conditions: list[dict[str, Any]] = []
+        for condition in conditions:
+            if (
+                not isinstance(condition, dict)
+                or set(condition) != {"aggregation", "operator"}
+                or condition.get("operator") not in _SAFE_HAVING_OPERATORS
+            ):
+                return None
+            aggregation = _safe_aggregation_mismatch_observation(
+                {
+                    "expected": [condition.get("aggregation")],
+                    "actual": [],
+                }
+            )
+            if aggregation is None:
+                return None
+            safe_conditions.append(
+                {
+                    "aggregation": aggregation["expected"][0],
+                    "operator": condition["operator"],
+                }
+            )
+        sanitized[side] = safe_conditions
+    return sanitized
+
+
+_PLAN_VALIDATION_OBSERVATION_KEYS: dict[str, str] = {
+    "required_output_missing": "required_output_mismatch",
+    "grounded_aggregation_mismatch": "aggregation_mismatch",
+    "grounded_group_by_mismatch": "group_by_mismatch",
+    "grounded_having_mismatch": "having_mismatch",
+    "grounded_distinct_mismatch": "distinct_mismatch",
+    "result_grain_mismatch": "grain_mismatch",
+}
+_PLAN_VALIDATION_OBSERVATION_SANITIZERS = {
+    "required_output_missing": _safe_field_mismatch_observation,
+    "grounded_aggregation_mismatch": _safe_aggregation_mismatch_observation,
+    "grounded_group_by_mismatch": _safe_field_mismatch_observation,
+    "grounded_having_mismatch": _safe_having_mismatch_observation,
+    "grounded_distinct_mismatch": _safe_distinct_mismatch_observation,
+    "result_grain_mismatch": _safe_grain_mismatch_observation,
+}
 
 
 def _safe_request_metadata(metadata: dict[str, Any]) -> dict[str, Any]:

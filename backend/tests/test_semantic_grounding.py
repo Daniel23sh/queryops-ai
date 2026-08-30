@@ -54,6 +54,8 @@ def test_exact_metric_is_mandatory_but_negated_literal_is_not() -> None:
         "metric_ids": ["active_human_users"],
         "rule_ids": [],
     }
+    assert exact.grounded_result_intent is None
+    assert exact.suggested_result_intent is None
 
     literal = _projection("How many users are not disabled?")
     assert literal.mandatory_evidence() == {
@@ -353,23 +355,47 @@ def test_vague_login_spike_does_not_invent_numeric_having() -> None:
     assert intent is None or intent.having == ()
 
 
-def test_assignment_request_preserves_detail_identity_and_multiplicity() -> None:
+def test_inferred_detail_identity_is_suggested_not_required() -> None:
     projection = _projection(
         "Show inactive users with active mandatory licenses."
     )
-    intent = projection.grounded_result_intent
+    required = projection.grounded_result_intent
+    suggested = projection.suggested_result_intent
 
-    assert intent is not None
-    assert intent.row_grain is not None
-    assert intent.row_grain.mode == "detail"
-    assert _field_keys(intent.row_grain.identity_fields) == {
+    assert required is None
+    assert suggested is not None
+    assert suggested.row_grain is not None
+    assert suggested.row_grain.mode == "detail"
+    assert _field_keys(suggested.row_grain.identity_fields) == {
         ("license_assignments", "id")
     }
-    assert _field_keys(intent.required_output_fields) == {
+    assert _field_keys(suggested.required_output_fields) == {
         ("directory_users", "id"),
         ("license_assignments", "id"),
     }
-    assert intent.distinct is False
+    assert suggested.distinct is False
+
+
+def test_implicit_quantity_bridge_is_suggested_not_required() -> None:
+    projection = _projection(
+        "Show users with active license assignments by product."
+    )
+    required = projection.grounded_result_intent
+    suggested = projection.suggested_result_intent
+
+    assert required is not None
+    assert required.aggregations == ()
+    assert _field_keys(required.group_by) == {("licenses", "product_name")}
+    assert suggested is not None
+    assert [
+        (
+            item.function,
+            item.target_field.table if item.target_field else None,
+            item.target_field.column if item.target_field else None,
+            item.distinct,
+        )
+        for item in suggested.aggregations
+    ] == [("count", "directory_users", "id", True)]
 
 
 def test_explicit_output_attributes_resolve_to_canonical_fields() -> None:
@@ -385,24 +411,32 @@ def test_explicit_output_attributes_resolve_to_canonical_fields() -> None:
     }
 
 
-def test_structural_result_intent_cases_remain_fail_closed() -> None:
+def test_structural_result_intent_cases_keep_required_suggested_boundary() -> None:
     cases = load_it_operations_evaluation_set().cases_by_id
     expected = {
         "itops-medium-006": {
             "group_by": {("departments", "name")},
-            "aggregation": ("count", "directory_users", "id", True),
+            "aggregation": None,
+            "suggested_aggregation": (
+                "count",
+                "directory_users",
+                "id",
+                True,
+            ),
             "having": (),
             "detail": None,
         },
         "itops-medium-008": {
             "group_by": {("login_events", "user_id")},
             "aggregation": ("count", "login_events", "id", False),
+            "suggested_aggregation": None,
             "having": (("greater_than", 5),),
             "detail": None,
         },
         "itops-medium-014": {
             "group_by": set(),
             "aggregation": None,
+            "suggested_aggregation": None,
             "having": (),
             "detail": {("license_assignments", "id")},
         },
@@ -410,10 +444,21 @@ def test_structural_result_intent_cases_remain_fail_closed() -> None:
 
     for case_id, requirements in expected.items():
         case = cases[case_id]
-        intent = _projection(
+        projection = _projection(
             case.question,
             scope_type=case.required_scope_type or "none",
-        ).grounded_result_intent
+        )
+        intent = projection.grounded_result_intent
+        if case_id == "itops-medium-014":
+            assert intent is None
+            suggested = projection.suggested_result_intent
+            assert suggested is not None
+            assert suggested.row_grain is not None
+            assert _field_keys(suggested.row_grain.identity_fields) == requirements[
+                "detail"
+            ]
+            continue
+
         assert intent is not None
         assert _field_keys(intent.group_by) == requirements["group_by"]
         aggregation = requirements["aggregation"]
@@ -430,10 +475,36 @@ def test_structural_result_intent_cases_remain_fail_closed() -> None:
         assert tuple(
             (item.operator, item.value) for item in intent.having
         ) == requirements["having"]
-        detail = requirements["detail"]
-        if detail is not None:
-            assert intent.row_grain is not None
-            assert _field_keys(intent.row_grain.identity_fields) == detail
+        assert requirements["detail"] is None
+        suggested_aggregation = requirements["suggested_aggregation"]
+        suggested = projection.suggested_result_intent
+        if suggested_aggregation is None:
+            assert suggested is None or suggested.aggregations == ()
+        else:
+            assert suggested is not None
+            item = suggested.aggregations[0]
+            assert (
+                item.function,
+                item.target_field.table if item.target_field else None,
+                item.target_field.column if item.target_field else None,
+                item.distinct,
+            ) == suggested_aggregation
+
+
+def test_required_and_suggested_intent_serialization_is_deterministic_and_bounded(
+) -> None:
+    projection = _projection(
+        "Show users with active license assignments by product."
+    )
+
+    first = projection.as_prompt_dict()
+    second = projection.as_prompt_dict()
+
+    assert first == second
+    assert first["result_intent"]["required"] is not None
+    assert first["result_intent"]["suggested"] is not None
+    assert "grounded_result_intent" not in first
+    assert _size(projection) <= MAX_SEMANTIC_PROJECTION_BYTES
 
 
 def test_ambiguous_baseline_only_result_semantics_are_not_grounded() -> None:

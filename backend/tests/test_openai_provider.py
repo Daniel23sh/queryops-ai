@@ -184,6 +184,38 @@ def provider_for(client: FakeClient) -> OpenAIProvider:
     )
 
 
+def _full_schema_context() -> dict[str, Any]:
+    pack = load_it_operations_domain_pack()
+    allowed_tables = set(pack.allowed_resource_table_names)
+    tables = [table for table in pack.tables if table.name in allowed_tables]
+    return {
+        "domain": pack.domain_id,
+        "domain_name": pack.name,
+        "domain_version": pack.version,
+        "allowed_tables": sorted(allowed_tables),
+        "allowed_columns": {
+            table.name: [column.name for column in table.columns]
+            for table in tables
+        },
+        "tables": [
+            {
+                "name": table.name,
+                "description": table.description,
+                "columns": [
+                    {
+                        "name": column.name,
+                        "data_type": column.data_type,
+                        "description": column.description,
+                    }
+                    for column in table.columns
+                ],
+            }
+            for table in tables
+        ],
+        "business_terms": [],
+    }
+
+
 def test_openai_client_disables_ambient_sdk_routing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -453,6 +485,87 @@ def test_active_human_semantic_catalog_requires_all_business_predicates() -> Non
     assert "sql still implements the metric definition" in instructions
     assert result.generation_metadata["semantic_catalog"] == (
         semantic_projection.as_observation()
+    )
+
+
+def test_provider_request_distinguishes_required_and_suggested_intent() -> None:
+    question = "Show users with active license assignments by product."
+    schema_context = _full_schema_context()
+    user_context = {
+        "scope_type": "global",
+        "has_global_scope": True,
+        "scope_reference_resolved": True,
+    }
+    catalog = load_it_operations_domain_pack().semantic_catalog
+    semantic_projection = build_semantic_catalog_projection(
+        catalog,
+        question,
+        schema_context,
+        user_context,
+    )
+    client = FakeClient(
+        {
+            "outcome": "sql",
+            "semantic_plan": DEVICE_PLAN,
+            "sql": "SELECT id FROM devices",
+            "clarification_reason": None,
+        }
+    )
+
+    provider_for(client).generate_sql(
+        question,
+        schema_context,
+        user_context,
+        {"semantic_catalog": semantic_projection},
+    )
+
+    assert len(client.responses.calls) == 1
+    call = client.responses.calls[0]
+    prompt = json.loads(call["input"])
+    result_intent = prompt["semantic_catalog"]["result_intent"]
+    assert result_intent["required"]["group_by"] == [
+        {"table": "licenses", "column": "product_name"}
+    ]
+    assert result_intent["required"]["aggregations"] == []
+    assert result_intent["suggested"]["aggregations"] == [
+        {
+            "id": "subject_count",
+            "function": "count",
+            "target_field": {"table": "directory_users", "column": "id"},
+            "distinct": True,
+        }
+    ]
+    assert "grounded_result_intent" not in prompt["semantic_catalog"]
+
+    instructions = " ".join(call["instructions"].split()).lower()
+    assert (
+        "required intent is a deterministic mandatory semantic contract"
+        in instructions
+    )
+    for dimension in (
+        "row_grain",
+        "required_output_fields",
+        "aggregations",
+        "function",
+        "target_field",
+        "group_by",
+        "having",
+        "top-level distinct",
+    ):
+        assert dimension in instructions
+    assert "suggested intent is non-binding planner guidance" in instructions
+    assert "do not treat suggested fields as mandatory" in instructions
+    assert "merely because a field is unset" in instructions
+    assert "never duplicate that aggregation" in instructions
+    assert "preserve mandatory semantic evidence" in instructions
+    assert "ensure the sql matches the semantic_plan contract" in instructions
+    assert "itops-" not in call["input"]
+    assert "baseline" not in call["input"].lower()
+    assert "expected sql" not in instructions
+
+    response_schema = call["text_format"].model_json_schema()["properties"]
+    assert {"outcome", "semantic_plan", "sql", "clarification_reason"} == set(
+        response_schema
     )
 
 

@@ -66,7 +66,11 @@ class GroundedHavingIntent(BaseModel):
 
 
 class GroundedResultIntent(BaseModel):
-    """Deterministic required result semantics, independent of SQL syntax."""
+    """Deterministically grounded result semantics, independent of SQL syntax.
+
+    Enforcement is determined by the projection slot: grounded/required intent
+    is fail-closed, while suggested intent is planner guidance only.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 

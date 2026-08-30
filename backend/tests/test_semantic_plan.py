@@ -12,6 +12,8 @@ from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.result_intent import (
     GroundedAggregationIntent,
     GroundedFieldIdentity,
+    GroundedResultIntent,
+    GroundedRowGrain,
 )
 from app.query_engine.semantic_catalog import (
     SemanticRelationshipCardinality,
@@ -427,6 +429,10 @@ def test_grounded_required_output_and_group_grain_fail_closed() -> None:
     with pytest.raises(SemanticPlanValidationError) as exc_info:
         _validate(base, question)
     assert exc_info.value.reason == "required_output_missing"
+    assert exc_info.value.safe_observation == {
+        "expected": ["departments.name"],
+        "actual": [],
+    }
 
     extra_group = base.model_copy(
         update={
@@ -443,6 +449,10 @@ def test_grounded_required_output_and_group_grain_fail_closed() -> None:
     with pytest.raises(SemanticPlanValidationError) as exc_info:
         _validate(extra_group, question)
     assert exc_info.value.reason == "grounded_group_by_mismatch"
+    assert exc_info.value.safe_observation == {
+        "expected": ["departments.name"],
+        "actual": ["departments.name", "groups.name"],
+    }
 
 
 @pytest.mark.parametrize(
@@ -752,6 +762,31 @@ def test_grounded_explicit_having_mismatch_fails_closed() -> None:
             "Show users with more than five failed logins in the last 30 days.",
         )
     assert exc_info.value.reason == "grounded_having_mismatch"
+    assert exc_info.value.safe_observation == {
+        "expected": [
+            {
+                "aggregation": {
+                    "function": "count",
+                    "target": "login_events.id",
+                    "distinct": False,
+                },
+                "operator": "greater_than",
+            }
+        ],
+        "actual": [
+            {
+                "aggregation": {
+                    "function": "count",
+                    "target": "login_events.id",
+                    "distinct": False,
+                },
+                "operator": "greater_than",
+            }
+        ],
+    }
+    assert "5" not in str(exc_info.value.safe_observation)
+    assert "6" not in str(exc_info.value.safe_observation)
+    assert "failed_count" not in str(exc_info.value.safe_observation)
 
     correct = plan.model_copy(
         update={
@@ -770,7 +805,81 @@ def test_grounded_explicit_having_mismatch_fails_closed() -> None:
     )
 
 
-def test_grounded_assignment_detail_rejects_distinct_user_collapse() -> None:
+def test_required_distinct_mismatch_exposes_only_booleans() -> None:
+    domain_pack, schema_context, projection = _validation_inputs(
+        "Show directory users."
+    )
+    projection = replace(
+        projection,
+        grounded_result_intent=GroundedResultIntent(distinct=True),
+    )
+    plan = _plan(
+        entity_ids=("directory_users",),
+        distinct=False,
+        output_fields=(_field("directory_users", "id"),),
+    )
+
+    with pytest.raises(SemanticPlanValidationError) as exc_info:
+        validate_semantic_plan(
+            plan,
+            domain_pack=domain_pack,
+            projection=projection,
+            schema_context=schema_context,
+            scope_reference_resolved=True,
+        )
+
+    assert exc_info.value.reason == "grounded_distinct_mismatch"
+    assert exc_info.value.safe_observation == {
+        "expected": True,
+        "actual": False,
+    }
+
+
+def test_required_grain_mismatch_exposes_mode_and_canonical_identities() -> None:
+    domain_pack, schema_context, projection = _validation_inputs(
+        "Show directory users."
+    )
+    identity = GroundedFieldIdentity(table="directory_users", column="id")
+    projection = replace(
+        projection,
+        grounded_result_intent=GroundedResultIntent(
+            row_grain=GroundedRowGrain(
+                mode="detail",
+                identity_fields=(identity,),
+            ),
+            required_output_fields=(identity,),
+        ),
+    )
+    plan = _plan(
+        entity_ids=("directory_users",),
+        output_fields=(_field("directory_users", "id"),),
+        aggregations=(_count(),),
+        group_by=(_field("directory_users", "id"),),
+    )
+
+    with pytest.raises(SemanticPlanValidationError) as exc_info:
+        validate_semantic_plan(
+            plan,
+            domain_pack=domain_pack,
+            projection=projection,
+            schema_context=schema_context,
+            scope_reference_resolved=True,
+        )
+
+    assert exc_info.value.reason == "result_grain_mismatch"
+    assert exc_info.value.safe_observation == {
+        "expected": {
+            "mode": "detail",
+            "identities": ["directory_users.id"],
+        },
+        "actual": {
+            "mode": "grouped",
+            "identities": ["directory_users.id"],
+        },
+    }
+
+
+def test_suggested_assignment_detail_does_not_reject_valid_plan() -> None:
     question = "Show inactive users with active mandatory licenses."
     collapsed = _plan(
         entity_ids=("directory_users", "license_assignments"),
@@ -783,24 +892,34 @@ def test_grounded_assignment_detail_rejects_distinct_user_collapse() -> None:
         output_fields=(_field("directory_users", "id"),),
     )
 
-    with pytest.raises(SemanticPlanValidationError) as exc_info:
-        _validate(collapsed, question)
-    assert exc_info.value.reason == "required_output_missing"
+    assert _validate(collapsed, question)
 
-    wrong_distinct = collapsed.model_copy(
-        update={
-            "output_fields": (
-                _field("directory_users", "id"),
-                _field("license_assignments", "id"),
+
+def test_suggested_implicit_count_mismatch_does_not_reject_valid_plan() -> None:
+    plan = _plan(
+        entity_ids=("directory_users", "license_assignments", "licenses"),
+        concept_ids=("active_license_assignment",),
+        relationships=(
+            _relationship("license_assignment_user", "inner"),
+            _relationship("license_assignment_license", "inner"),
+        ),
+        output_fields=(_field("licenses", "product_name"),),
+        aggregations=(
+            SemanticAggregationIntent(
+                id="assignment_count",
+                function="count",
+                field=_field("license_assignments", "id"),
+                distinct=False,
             ),
-        }
+        ),
+        group_by=(_field("licenses", "product_name"),),
     )
-    with pytest.raises(SemanticPlanValidationError) as exc_info:
-        _validate(wrong_distinct, question)
-    assert exc_info.value.reason == "grounded_distinct_mismatch"
 
-    correct = wrong_distinct.model_copy(update={"distinct": False})
-    assert _validate(correct, question)
+    # Grounding suggests distinct users, but that inference is not explicit.
+    assert _validate(
+        plan,
+        "Show users with active license assignments by product.",
+    )
 
 
 def test_partial_grounded_intent_does_not_require_unspecified_aggregate() -> None:
