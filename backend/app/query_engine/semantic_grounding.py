@@ -398,7 +398,7 @@ def build_semantic_grounding_projection(
             if field.table in entity_id_by_table
         )
 
-    selected_relationship_ids, path_entity_ids = _select_shortest_relationship_paths(
+    selected_relationship_ids, path_entity_ids = _select_minimal_relationship_graph(
         anchor_entity_ids,
         eligible_relationships,
     )
@@ -556,14 +556,21 @@ def _relationship_is_authorized(
     )
 
 
-def _select_shortest_relationship_paths(
+def _select_minimal_relationship_graph(
     anchors: set[str],
     relationships: tuple[SemanticRelationship, ...],
 ) -> tuple[set[str], set[str]]:
     if len(anchors) < 2:
         return set(), set(anchors)
+
+    ordered_relationships = tuple(
+        sorted(relationships, key=lambda relationship: relationship.id)
+    )
+    relationships_by_id = {
+        relationship.id: relationship for relationship in ordered_relationships
+    }
     adjacency: dict[str, list[tuple[str, str]]] = {}
-    for relationship in relationships:
+    for relationship in ordered_relationships:
         adjacency.setdefault(relationship.from_entity, []).append(
             (relationship.to_entity, relationship.id)
         )
@@ -573,25 +580,126 @@ def _select_shortest_relationship_paths(
     for edges in adjacency.values():
         edges.sort()
 
-    relationship_ids: set[str] = set()
+    relationship_ids = {
+        relationship.id
+        for relationship in ordered_relationships
+        if relationship.from_entity in anchors
+        and relationship.to_entity in anchors
+    }
     entity_ids = set(anchors)
-    ordered = sorted(anchors)
-    for index, start in enumerate(ordered):
-        for target in ordered[index + 1 :]:
-            paths = _all_shortest_paths(start, target, adjacency)
-            for entities, path_relationships in paths[:2]:
-                entity_ids.update(entities)
-                relationship_ids.update(path_relationships)
+    while True:
+        components = _selected_graph_components(
+            anchors,
+            entity_ids,
+            relationship_ids,
+            relationships_by_id,
+        )
+        if len(components) <= 1:
+            break
+        candidate_paths: list[tuple[tuple[str, ...], tuple[str, ...]]] = []
+        for index, start_component in enumerate(components):
+            for target_component in components[index + 1 :]:
+                candidate_paths.extend(
+                    _all_shortest_component_paths(
+                        start_component,
+                        target_component,
+                        adjacency,
+                        blocked_entities=(
+                            entity_ids - start_component - target_component
+                        ),
+                    )
+                )
+        if not candidate_paths:
+            break
+        path_entities, path_relationships = min(
+            candidate_paths,
+            key=lambda path: _connector_path_rank(
+                path,
+                relationships_by_id=relationships_by_id,
+                selected_relationship_ids=relationship_ids,
+                selected_entity_ids=entity_ids,
+            ),
+        )
+        relationship_ids.update(path_relationships)
+        entity_ids.update(path_entities)
     return relationship_ids, entity_ids
 
 
-def _all_shortest_paths(
-    start: str,
-    target: str,
+def _selected_graph_components(
+    anchors: set[str],
+    selected_entity_ids: set[str],
+    selected_relationship_ids: set[str],
+    relationships_by_id: Mapping[str, SemanticRelationship],
+) -> tuple[frozenset[str], ...]:
+    adjacency: dict[str, set[str]] = {}
+    for relationship_id in sorted(selected_relationship_ids):
+        relationship = relationships_by_id[relationship_id]
+        adjacency.setdefault(relationship.from_entity, set()).add(
+            relationship.to_entity
+        )
+        adjacency.setdefault(relationship.to_entity, set()).add(
+            relationship.from_entity
+        )
+
+    remaining = set(selected_entity_ids)
+    components: list[frozenset[str]] = []
+    while remaining:
+        frontier = deque([min(remaining)])
+        visited: set[str] = set()
+        while frontier:
+            entity_id = frontier.popleft()
+            if entity_id in visited:
+                continue
+            visited.add(entity_id)
+            frontier.extend(sorted(adjacency.get(entity_id, set()) - visited))
+        component = frozenset(visited)
+        if anchors & component:
+            components.append(component)
+        remaining.difference_update(visited)
+    return tuple(
+        sorted(
+            components,
+            key=lambda component: (
+                tuple(sorted(anchors & component)),
+                tuple(sorted(component)),
+            ),
+        )
+    )
+
+
+def _connector_path_rank(
+    path: tuple[tuple[str, ...], tuple[str, ...]],
+    *,
+    relationships_by_id: Mapping[str, SemanticRelationship],
+    selected_relationship_ids: set[str],
+    selected_entity_ids: set[str],
+) -> tuple[int, int, int, tuple[str, ...], tuple[str, ...]]:
+    path_entities, path_relationships = path
+    new_relationship_ids = tuple(
+        sorted(set(path_relationships) - selected_relationship_ids)
+    )
+    new_entity_ids = tuple(sorted(set(path_entities) - selected_entity_ids))
+    return (
+        len(new_relationship_ids),
+        sum(
+            relationships_by_id[relationship_id].optional
+            for relationship_id in new_relationship_ids
+        ),
+        len(new_entity_ids),
+        new_relationship_ids,
+        new_entity_ids,
+    )
+
+
+def _all_shortest_component_paths(
+    starts: frozenset[str],
+    targets: frozenset[str],
     adjacency: Mapping[str, list[tuple[str, str]]],
+    *,
+    blocked_entities: set[str],
 ) -> list[tuple[tuple[str, ...], tuple[str, ...]]]:
     frontier: deque[tuple[str, tuple[str, ...], tuple[str, ...]]] = deque(
-        [(start, (start,), ())]
+        (start, (start,), ()) for start in sorted(starts)
     )
     best_depth: int | None = None
     paths: list[tuple[tuple[str, ...], tuple[str, ...]]] = []
@@ -601,11 +709,15 @@ def _all_shortest_paths(
         if best_depth is not None and depth >= best_depth:
             continue
         for neighbor, relationship_id in adjacency.get(current, []):
-            if neighbor in entities:
+            if (
+                neighbor in entities
+                or neighbor in blocked_entities
+                or neighbor in starts
+            ):
                 continue
             candidate_entities = (*entities, neighbor)
             candidate_relationships = (*relationships, relationship_id)
-            if neighbor == target:
+            if neighbor in targets:
                 best_depth = len(candidate_relationships)
                 paths.append((candidate_entities, candidate_relationships))
             else:
