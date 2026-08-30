@@ -764,6 +764,7 @@ def test_equal_connector_rank_prefers_fewer_new_path_entities() -> None:
             ("z_existing_a_x", "z_existing_x_b"),
         ),
         relationships_by_id=relationships_by_id,
+        selected_relationship_ids=set(),
         selected_entity_ids=selected_entity_ids,
     )
     new_path_rank = _connector_path_rank(
@@ -772,10 +773,29 @@ def test_equal_connector_rank_prefers_fewer_new_path_entities() -> None:
             ("a_new_a_y", "a_new_y_b"),
         ),
         relationships_by_id=relationships_by_id,
+        selected_relationship_ids=set(),
         selected_entity_ids=selected_entity_ids,
     )
 
     assert existing_path_rank < new_path_rank
+
+
+def test_existing_path_entity_is_used_for_minimal_next_connector() -> None:
+    relationships = (
+        _graph_relationship("a_a_x", "anchor_a", "path_x"),
+        _graph_relationship("b_x_b", "path_x", "anchor_b"),
+        _graph_relationship("z_x_c", "path_x", "anchor_c", optional=True),
+        _graph_relationship("c_a_z", "anchor_a", "path_z"),
+        _graph_relationship("d_z_c", "path_z", "anchor_c"),
+    )
+
+    relationship_ids, entity_ids = _select_minimal_relationship_graph(
+        {"anchor_a", "anchor_b", "anchor_c"},
+        relationships,
+    )
+
+    assert relationship_ids == {"a_a_x", "b_x_b", "z_x_c"}
+    assert entity_ids == {"anchor_a", "anchor_b", "anchor_c", "path_x"}
 
 
 def test_relationship_graph_tie_break_is_stable_when_input_is_reordered() -> None:
