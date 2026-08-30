@@ -12,9 +12,15 @@ from app.evaluation.loader import load_it_operations_evaluation_set
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.errors import DomainPackValidationError
 from app.query_engine.result_intent import GroundedFieldIdentity
+from app.query_engine.semantic_grounding import (
+    _connector_path_rank,
+    _select_minimal_relationship_graph,
+)
 from app.query_engine.semantic_catalog import (
     MAX_SEMANTIC_PROJECTION_BYTES,
     SemanticCatalogProjection,
+    SemanticRelationship,
+    SemanticRelationshipCardinality,
     build_semantic_catalog_projection,
 )
 
@@ -440,6 +446,12 @@ def test_structural_result_intent_cases_keep_required_suggested_boundary() -> No
         ambiguous_case.question,
         scope_type=ambiguous_case.required_scope_type or "none",
     )
+    assert ambiguous.mandatory_evidence() == {
+        "entity_ids": ["groups", "user_group_memberships"],
+        "concept_ids": ["privileged_group"],
+        "metric_ids": [],
+        "rule_ids": [],
+    }
     assert ambiguous.grounded_result_intent is None
     assert ambiguous.suggested_result_intent is not None
     assert ambiguous.suggested_result_intent.row_grain is not None
@@ -455,6 +467,13 @@ def test_structural_result_intent_cases_keep_required_suggested_boundary() -> No
         suggested_aggregation.target_field.column,
         suggested_aggregation.distinct,
     ) == ("count", "directory_users", "id", True)
+    assert set(ambiguous.as_observation()["selected_relationship_ids"]) == {
+        "directory_user_department",
+        "group_department",
+        "user_group_membership_department",
+        "user_group_membership_group",
+        "user_group_membership_user",
+    }
 
     threshold_case = cases["itops-medium-008"]
     threshold = _projection(
@@ -638,6 +657,186 @@ def test_unique_description_fallback_is_narrow_and_ambiguous_fallback_is_empty()
     assert ambiguous.candidate_signals == ()
 
 
+def test_relationship_graph_preserves_direct_anchor_relationship() -> None:
+    relationships = (
+        _graph_relationship(
+            "license_assignment_license",
+            "license_assignments",
+            "licenses",
+        ),
+        _graph_relationship(
+            "assignment_department",
+            "license_assignments",
+            "departments",
+        ),
+        _graph_relationship(
+            "department_license",
+            "departments",
+            "licenses",
+        ),
+    )
+
+    relationship_ids, entity_ids = _select_minimal_relationship_graph(
+        {"license_assignments", "licenses"},
+        relationships,
+    )
+
+    assert relationship_ids == {"license_assignment_license"}
+    assert entity_ids == {"license_assignments", "licenses"}
+
+
+def test_connected_direct_anchor_graph_does_not_expand_alternate_paths() -> None:
+    relationships = (
+        _graph_relationship("anchor_a_b", "anchor_a", "anchor_b"),
+        _graph_relationship("anchor_b_c", "anchor_b", "anchor_c"),
+        _graph_relationship("alternate_a_x", "anchor_a", "path_x"),
+        _graph_relationship("alternate_x_c", "path_x", "anchor_c"),
+    )
+
+    relationship_ids, entity_ids = _select_minimal_relationship_graph(
+        {"anchor_a", "anchor_b", "anchor_c"},
+        relationships,
+    )
+
+    assert relationship_ids == {"anchor_a_b", "anchor_b_c"}
+    assert entity_ids == {"anchor_a", "anchor_b", "anchor_c"}
+
+
+def test_relationship_graph_adds_only_one_required_connector() -> None:
+    relationships = (
+        _graph_relationship("anchor_a_b", "anchor_a", "anchor_b"),
+        _graph_relationship("connector_b_x", "anchor_b", "path_x"),
+        _graph_relationship("connector_x_c", "path_x", "anchor_c"),
+        _graph_relationship("alternate_b_y", "anchor_b", "path_y"),
+        _graph_relationship("alternate_y_c", "path_y", "anchor_c"),
+    )
+
+    relationship_ids, entity_ids = _select_minimal_relationship_graph(
+        {"anchor_a", "anchor_b", "anchor_c"},
+        relationships,
+    )
+
+    assert relationship_ids == {
+        "anchor_a_b",
+        "alternate_b_y",
+        "alternate_y_c",
+    }
+    assert entity_ids == {"anchor_a", "anchor_b", "anchor_c", "path_y"}
+
+
+def test_equal_hop_connector_prefers_fewer_optional_relationships() -> None:
+    relationships = (
+        _graph_relationship(
+            "a_optional_a_y",
+            "anchor_a",
+            "path_y",
+            optional=True,
+        ),
+        _graph_relationship("a_optional_y_b", "path_y", "anchor_b"),
+        _graph_relationship("z_required_a_x", "anchor_a", "path_x"),
+        _graph_relationship("z_required_x_b", "path_x", "anchor_b"),
+    )
+
+    relationship_ids, entity_ids = _select_minimal_relationship_graph(
+        {"anchor_a", "anchor_b"},
+        relationships,
+    )
+
+    assert relationship_ids == {"z_required_a_x", "z_required_x_b"}
+    assert entity_ids == {"anchor_a", "anchor_b", "path_x"}
+
+
+def test_equal_connector_rank_prefers_fewer_new_path_entities() -> None:
+    relationships = (
+        _graph_relationship("a_new_a_y", "anchor_a", "path_y"),
+        _graph_relationship("a_new_y_b", "path_y", "anchor_b"),
+        _graph_relationship("z_existing_a_x", "anchor_a", "path_x"),
+        _graph_relationship("z_existing_x_b", "path_x", "anchor_b"),
+    )
+    relationships_by_id = {
+        relationship.id: relationship for relationship in relationships
+    }
+    selected_entity_ids = {"anchor_a", "anchor_b", "path_x"}
+
+    existing_path_rank = _connector_path_rank(
+        (
+            ("anchor_a", "path_x", "anchor_b"),
+            ("z_existing_a_x", "z_existing_x_b"),
+        ),
+        relationships_by_id=relationships_by_id,
+        selected_entity_ids=selected_entity_ids,
+    )
+    new_path_rank = _connector_path_rank(
+        (
+            ("anchor_a", "path_y", "anchor_b"),
+            ("a_new_a_y", "a_new_y_b"),
+        ),
+        relationships_by_id=relationships_by_id,
+        selected_entity_ids=selected_entity_ids,
+    )
+
+    assert existing_path_rank < new_path_rank
+
+
+def test_relationship_graph_tie_break_is_stable_when_input_is_reordered() -> None:
+    relationships = (
+        _graph_relationship("a_a_x", "anchor_a", "path_x"),
+        _graph_relationship("b_x_b", "path_x", "anchor_b"),
+        _graph_relationship("c_a_y", "anchor_a", "path_y"),
+        _graph_relationship("d_y_b", "path_y", "anchor_b"),
+    )
+
+    selected = _select_minimal_relationship_graph(
+        {"anchor_a", "anchor_b"},
+        relationships,
+    )
+    reordered = _select_minimal_relationship_graph(
+        {"anchor_a", "anchor_b"},
+        tuple(reversed(relationships)),
+    )
+
+    assert selected == reordered
+    assert selected == (
+        {"a_a_x", "b_x_b"},
+        {"anchor_a", "anchor_b", "path_x"},
+    )
+
+
+def test_disconnected_relationship_graph_remains_safely_disconnected() -> None:
+    relationships = (
+        _graph_relationship("a_b", "anchor_a", "path_b"),
+        _graph_relationship("c_d", "anchor_c", "path_d"),
+    )
+
+    relationship_ids, entity_ids = _select_minimal_relationship_graph(
+        {"anchor_a", "anchor_c"},
+        relationships,
+    )
+
+    assert relationship_ids == set()
+    assert entity_ids == {"anchor_a", "anchor_c"}
+
+
+def test_real_multi_anchor_graph_uses_membership_chain_without_department() -> None:
+    projection = _projection(
+        "Show failed logins for users in privileged groups."
+    )
+    observation = projection.as_observation()
+
+    assert set(observation["selected_entity_ids"]) == {
+        "directory_users",
+        "groups",
+        "login_events",
+        "user_group_memberships",
+    }
+    assert set(observation["selected_relationship_ids"]) == {
+        "login_event_user",
+        "user_group_membership_group",
+        "user_group_membership_user",
+    }
+    assert "departments" not in observation["selected_entity_ids"]
+
+
 def test_intermediate_path_entities_do_not_import_unrelated_semantics() -> None:
     projection = _projection("Show devices and access groups.")
     observation = projection.as_observation()
@@ -651,7 +850,53 @@ def test_intermediate_path_entities_do_not_import_unrelated_semantics() -> None:
     concept_entities = {
         concept["entity_id"] for concept in projection.as_prompt_dict()["concepts"]
     }
+    metric_entities = {
+        metric["entity_id"] for metric in projection.as_prompt_dict()["metrics"]
+    }
     assert not (path_only_entities & concept_entities)
+    assert not (path_only_entities & metric_entities)
+    assert not (
+        path_only_entities
+        & set(projection.mandatory_evidence()["entity_ids"])
+    )
+
+
+def test_examples_do_not_expand_the_selected_relationship_graph() -> None:
+    pack = load_it_operations_domain_pack()
+    relevant = next(
+        example
+        for example in pack.semantic_catalog.examples
+        if example.id == "active_employees_with_non_compliant_devices"
+    )
+    unrelated = next(
+        example
+        for example in pack.semantic_catalog.examples
+        if example.id == "unused_assignments_by_department"
+    )
+    catalog = replace(
+        pack.semantic_catalog,
+        examples=(
+            relevant,
+            replace(
+                unrelated,
+                id="matching_request_with_unselected_relationship",
+                request=relevant.request,
+            ),
+        ),
+    )
+
+    projection = build_semantic_catalog_projection(
+        catalog,
+        relevant.request,
+        _schema_context(),
+        _user_context("global"),
+    )
+    observation = projection.as_observation()
+
+    assert observation["selected_relationship_ids"] == ["device_assignee"]
+    assert observation["selected_example_ids"] == [
+        "active_employees_with_non_compliant_devices"
+    ]
 
 
 def test_examples_require_direct_evidence_not_broad_entity_context() -> None:
@@ -763,3 +1008,22 @@ def _field_keys(
     fields: Iterable[GroundedFieldIdentity],
 ) -> set[tuple[str, str]]:
     return {(field.table, field.column) for field in fields}
+
+
+def _graph_relationship(
+    relationship_id: str,
+    from_entity: str,
+    to_entity: str,
+    *,
+    optional: bool = False,
+) -> SemanticRelationship:
+    return SemanticRelationship(
+        id=relationship_id,
+        from_entity=from_entity,
+        from_column="id",
+        to_entity=to_entity,
+        to_column="id",
+        cardinality=SemanticRelationshipCardinality.MANY_TO_ONE,
+        optional=optional,
+        description=relationship_id,
+    )

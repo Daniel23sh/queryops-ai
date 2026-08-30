@@ -398,7 +398,7 @@ def build_semantic_grounding_projection(
             if field.table in entity_id_by_table
         )
 
-    selected_relationship_ids, path_entity_ids = _select_shortest_relationship_paths(
+    selected_relationship_ids, path_entity_ids = _select_minimal_relationship_graph(
         anchor_entity_ids,
         eligible_relationships,
     )
@@ -556,14 +556,21 @@ def _relationship_is_authorized(
     )
 
 
-def _select_shortest_relationship_paths(
+def _select_minimal_relationship_graph(
     anchors: set[str],
     relationships: tuple[SemanticRelationship, ...],
 ) -> tuple[set[str], set[str]]:
     if len(anchors) < 2:
         return set(), set(anchors)
+
+    ordered_relationships = tuple(
+        sorted(relationships, key=lambda relationship: relationship.id)
+    )
+    relationships_by_id = {
+        relationship.id: relationship for relationship in ordered_relationships
+    }
     adjacency: dict[str, list[tuple[str, str]]] = {}
-    for relationship in relationships:
+    for relationship in ordered_relationships:
         adjacency.setdefault(relationship.from_entity, []).append(
             (relationship.to_entity, relationship.id)
         )
@@ -573,16 +580,99 @@ def _select_shortest_relationship_paths(
     for edges in adjacency.values():
         edges.sort()
 
-    relationship_ids: set[str] = set()
+    relationship_ids = {
+        relationship.id
+        for relationship in ordered_relationships
+        if relationship.from_entity in anchors
+        and relationship.to_entity in anchors
+    }
     entity_ids = set(anchors)
     ordered = sorted(anchors)
-    for index, start in enumerate(ordered):
-        for target in ordered[index + 1 :]:
-            paths = _all_shortest_paths(start, target, adjacency)
-            for entities, path_relationships in paths[:2]:
-                entity_ids.update(entities)
-                relationship_ids.update(path_relationships)
+    while True:
+        components = _connected_anchor_components(
+            anchors,
+            relationship_ids,
+            relationships_by_id,
+        )
+        if len(components) <= 1:
+            break
+        component_by_anchor = {
+            anchor: index
+            for index, component in enumerate(components)
+            for anchor in component
+        }
+        candidate_paths: list[tuple[tuple[str, ...], tuple[str, ...]]] = []
+        for index, start in enumerate(ordered):
+            for target in ordered[index + 1 :]:
+                if component_by_anchor[start] == component_by_anchor[target]:
+                    continue
+                candidate_paths.extend(
+                    _all_shortest_paths(start, target, adjacency)
+                )
+        if not candidate_paths:
+            break
+        path_entities, path_relationships = min(
+            candidate_paths,
+            key=lambda path: _connector_path_rank(
+                path,
+                relationships_by_id=relationships_by_id,
+                selected_entity_ids=entity_ids,
+            ),
+        )
+        relationship_ids.update(path_relationships)
+        entity_ids.update(path_entities)
     return relationship_ids, entity_ids
+
+
+def _connected_anchor_components(
+    anchors: set[str],
+    selected_relationship_ids: set[str],
+    relationships_by_id: Mapping[str, SemanticRelationship],
+) -> tuple[frozenset[str], ...]:
+    adjacency: dict[str, set[str]] = {}
+    for relationship_id in sorted(selected_relationship_ids):
+        relationship = relationships_by_id[relationship_id]
+        adjacency.setdefault(relationship.from_entity, set()).add(
+            relationship.to_entity
+        )
+        adjacency.setdefault(relationship.to_entity, set()).add(
+            relationship.from_entity
+        )
+
+    remaining = set(anchors)
+    components: list[frozenset[str]] = []
+    while remaining:
+        frontier = deque([min(remaining)])
+        visited: set[str] = set()
+        while frontier:
+            entity_id = frontier.popleft()
+            if entity_id in visited:
+                continue
+            visited.add(entity_id)
+            frontier.extend(sorted(adjacency.get(entity_id, set()) - visited))
+        component = frozenset(anchors & visited)
+        components.append(component)
+        remaining.difference_update(component)
+    return tuple(sorted(components, key=lambda component: tuple(sorted(component))))
+
+
+def _connector_path_rank(
+    path: tuple[tuple[str, ...], tuple[str, ...]],
+    *,
+    relationships_by_id: Mapping[str, SemanticRelationship],
+    selected_entity_ids: set[str],
+) -> tuple[int, int, int, tuple[str, ...], tuple[str, ...]]:
+    path_entities, path_relationships = path
+    return (
+        len(path_relationships),
+        sum(
+            relationships_by_id[relationship_id].optional
+            for relationship_id in path_relationships
+        ),
+        len(set(path_entities) - selected_entity_ids),
+        tuple(sorted(path_relationships)),
+        tuple(sorted(path_entities)),
+    )
 
 
 def _all_shortest_paths(
