@@ -4,56 +4,71 @@ Policy: `queryops-v1-readiness-v1`
 
 ## Source state
 
-- Verified source `main`: `c6691a204ccbb9eb007e2e0c6fe419c346745b13`
-- PR6 merge: PR #41, `Feature/m9 v1 quality gates readiness`
-- PR6 final feature commit: `ee681da738466031478d982d53d1b3d0ef40b75f`
-- PR6 GitHub checks: Backend, PostgreSQL Security, Frontend, E2E, M8 Primary E2E, and V1 Deterministic Release Gates passed
-- PR7 branch: `feature/m9-v1-release-validation-completion`
-- PR7 base HEAD: `e9ee2ccae205549185c246ca3ca02794f0b2786e`
-- PR7 runtime commit: not frozen
-- Dataset: `it_operations_v1`, version `1`
-- Dataset digest: `1e7b12fbf35de4d2c52937a762f3960df444eb3303ee7061a0e4506819c22bc4`
+- Verified PR11 base `main`: `ec0c812ee6b651eb936a24f8e91c346baa9837d8` (PR #45 / M9 PR10 merge)
+- PR8 merge: PR #43, `216cea5`
+- PR9 merge: PR #44, `49a43fa`
+- PR10 merge: PR #45, `ec0c812`
+- PR11 branch: `feature/m9-evaluation-v2-stability-release-gate`
+- PR11 implementation commit: not yet frozen
+- Dataset: `it_operations_v2`, version `2`
+- Dataset digest: `913f8232a795ff59dd2a4ffc5b657bf69239c16182f257fd2850b68d9003de9b`
+- Historical V1 digest: `1e7b12fbf35de4d2c52937a762f3960df444eb3303ee7061a0e4506819c22bc4`
+- Canary: `it_operations_v2_stability_canary`, version `1`, 10 cases
+- Canary digest: `a32105296cf0017aa48124470acd95952df72a156b50aa37710762e5f11494cd`
 - Semantic catalog: `it_operations_semantic_catalog`, version `3`
 - Semantic catalog hash: `918df0c63288b7ed7ce700f8442c82bc1ffa3f51e1f4eaa63fd66012af82adb4`
-- Evaluation environment: pending final PR7 manifest identity
+- Evaluation environment: no frozen live-evidence identity
 
-Semantic catalog v3 provides primitive/composed directory-user concepts, canonical `active_human_users`, deterministic mandatory/optional semantic grounding, and a one-call structured `SemanticPlan` plus SQL contract. There is no repair or second provider call. The existing SQL safety validator remains the security boundary; SQLGlot semantic conformance is an additional correctness layer over final sanitized SQL before execution, and PostgreSQL RLS remains authoritative. Evaluation records classify generation, SQL-safety, semantic-conformance, execution, and scoring stages.
+PR8 made Required Intent deterministic, binding, and fail-closed while keeping Suggested Intent non-binding. PR9 added the minimal deterministic semantic grounding graph. PR10 changed the provider contract to return a `SemanticPlan` only; the backend validates the plan, renders SQL deterministically, applies SQL safety and SQLGlot semantic conformance, and then executes through the restricted runtime role under PostgreSQL RLS. There is no provider SQL, repair call, second provider call, or fallback.
 
-The `itops-medium-009` baseline correction is objectively justified by the established “non-compliant device” business term and deterministic template, which both define the posture as non-compliant status, missing/outdated antivirus, or disabled encryption. Runtime score improvement was not used as evidence.
+PR11 implements Evaluation V2 semantic contracts, planner and runtime failure-stage measurement, renderer/conformance defect tracking, the fixed V2 canary, three-run stability assessment, exact canary-to-full candidate matching, planner implementation integrity, and fail-closed V2 readiness projection. Historical V1 remains immutable.
 
 ## Live measurement
 
-Not performed on the final PR7 runtime. No prior diagnostic or partial live run is accepted as V1 release evidence. Fresh authorization is required after the behavior-affecting runtime is frozen and all deterministic checks pass.
-
-The release-validation smoke procedure uses frozen case `itops-easy-005`, an easy `free_query` success case with no template. Template-backed `itops-easy-001` is not accepted as provider validation because it can complete without an OpenAI call. A qualifying smoke must show at least one sanitized provider call, and the exact API model ID must be explicitly authorized before execution.
+No qualifying OpenAI run has been performed or accepted for this PR11 candidate. No prior diagnostic, V1, filtered, partial, mismatched, or pre-PR11 run is accepted as release evidence. Fresh explicit authorization is required after the source revision and deterministic environment are frozen.
 
 - Provider/model: not available
-- Run ID: not available
-- Completion: not available
-- Gate values: not available
+- Stable canary runs: 0 of 3
+- Canary stability assessment: `incomplete`
+- Qualifying full V2 run ID: not available
+- Full-run gate values: not available
 - Safe call/attempt/token/latency totals: not available
+
+The live procedure is three matching executions of the fixed 10-case V2 canary followed, only if stability passes, by one matching complete unfiltered 40-case V2 run. Authorization must identify the exact OpenAI API model and maximum number of billable runs. This report does not authorize a live request.
 
 ## Deterministic evidence
 
-The current network-free PR7 implementation candidate has the following deterministic evidence:
+PR11's staged network-free implementation checks through the Evaluation workspace passed:
 
-- focused Text-to-SQL: 375 passed
-- default backend: 1,100 passed, 156 expected PostgreSQL-only skips
-- fresh disposable PostgreSQL 16 backend: 1,236 passed, zero failures and zero skips
-- exact M8 action-security release suite: 20 passed
-- frontend Vitest: 274 passed
-- Ruff, Pyright with zero errors/warnings, ESLint, application TypeScript, Node/Vite TypeScript, and production build: passed
-- Playwright: 12 general flows and two isolated M8 flows passed
-- Docker Compose: backend and frontend up; PostgreSQL healthy
-- Alembic: head `0010_disable_inactive_user`; check passed
-- Codex Security scan `f7036ba0-9e86-40c4-9e2d-0177908bbc31`: completed across all 17 changed runtime/configuration surfaces with zero findings
+- V2 contracts and dataset loader checks: passed
+- planner observation, Required Intent adherence, semantic scoring, and failure-stage checks: passed
+- deterministic canary selection and digest checks: passed
+- three-run stability and fail-closed mismatch/malformed/oscillation checks: passed
+- V2 readiness, candidate matching, deterministic-gate, and planner-integrity checks: passed
+- frontend Evaluation readiness projection: 274 Vitest tests, ESLint, both TypeScript checks, and production build passed
 
-These results support commit/freeze of the implementation candidate. They are not live-provider or manual-QA evidence and do not make V1 ready. The broad suites predate only the baseline-decision regression, documentation updates, security-scan finalization, and task-owned resource cleanup; focused post-change checks are recorded separately during final stabilization.
+The final branch-wide backend, disposable-PostgreSQL, migration, security/RLS, and browser regression checkpoint is still to be recorded on the frozen PR11 candidate. The earlier PR7 full deterministic evidence remains historical baseline evidence and is not presented as proof of this changed runtime.
+
+## Manual QA
+
+The complete manual QA checklist has not been completed on a frozen PR11 candidate. Automated tests and live evaluation metrics cannot substitute for this requirement.
+
+## Current release state
+
+| Requirement | State |
+| --- | --- |
+| PR11 focused deterministic implementation gates | passed |
+| Final branch-wide deterministic regression | pending |
+| Evaluation V2 framework | implemented |
+| Three-run canary evidence | missing |
+| Full qualifying V2 run | missing |
+| Complete manual QA | missing |
+| V1 readiness | `incomplete` |
 
 ## Verdict
 
 `incomplete`
 
-PR7 implementation stabilization is prepared for commit/freeze, but release evidence is not complete. Milestone 9 and QueryOps AI V1 must not be marked complete until an immutable candidate is tested by an explicitly authorized qualifying OpenAI smoke/full 40-case evaluation and the complete manual QA checklist passes on that unchanged candidate.
+PR11 implementation is not yet frozen and live release evidence is pending. Milestone 9 and QueryOps AI V1 must not be marked complete until all deterministic gates pass on the immutable candidate, three matching canary runs are stable, a matching complete V2 full run passes every threshold with no renderer or conformance defects, and the full manual QA checklist passes on that unchanged candidate.
 
 This report contains no prompts, SQL, expected or actual rows, provider payloads, secrets, raw errors, database URLs, or evaluator baselines.
