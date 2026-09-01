@@ -6,11 +6,18 @@ from pathlib import Path
 
 import pytest
 
-from app.evaluation.contracts import EvaluationDifficulty, ExpectedOutcome
+from app.evaluation.contracts import (
+    EvaluationAnswerability,
+    EvaluationDifficulty,
+    EvaluationSemanticSource,
+    ExpectedOutcome,
+)
 from app.evaluation.loader import (
     EVALUATION_DATASET_PATH,
+    EVALUATION_V2_DATASET_PATH,
     EvaluationDatasetValidationError,
     load_it_operations_evaluation_set,
+    load_it_operations_evaluation_v2_set,
 )
 from app.evaluation.selection import evaluation_dataset_digest
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
@@ -25,6 +32,7 @@ EXPECTED_TEMPLATE_IDS = {
     "unused_licenses_by_department",
 }
 V1_DATASET_DIGEST = "1e7b12fbf35de4d2c52937a762f3960df444eb3303ee7061a0e4506819c22bc4"
+V2_DATASET_DIGEST = "913f8232a795ff59dd2a4ffc5b657bf69239c16182f257fd2850b68d9003de9b"
 
 
 def _semantic_contract_for_outcome(outcome: str) -> dict[str, object]:
@@ -91,6 +99,96 @@ def test_v1_remains_loadable_with_frozen_digest_and_no_semantic_contract() -> No
     assert evaluation_set.version == "1"
     assert all(case.semantic_contract is None for case in evaluation_set.cases)
     assert evaluation_dataset_digest(evaluation_set) == V1_DATASET_DIGEST
+
+
+def test_reviewed_v2_dataset_is_complete_answerable_and_digest_frozen() -> None:
+    evaluation_set = load_it_operations_evaluation_v2_set()
+
+    assert EVALUATION_V2_DATASET_PATH.name == "evaluation_questions_v2.yaml"
+    assert evaluation_set.dataset_id == "it_operations_v2"
+    assert evaluation_set.version == "2"
+    assert len(evaluation_set.cases) == 40
+    assert Counter(case.difficulty for case in evaluation_set.cases) == {
+        EvaluationDifficulty.EASY: 10,
+        EvaluationDifficulty.MEDIUM: 15,
+        EvaluationDifficulty.HARD: 10,
+        EvaluationDifficulty.SECURITY: 5,
+    }
+    assert len(evaluation_set.cases_by_id) == 40
+    assert evaluation_dataset_digest(evaluation_set) == V2_DATASET_DIGEST
+
+    for case in evaluation_set.cases:
+        contract = case.semantic_contract
+        assert contract is not None
+        if case.expected_outcome is ExpectedOutcome.SUCCESS:
+            assert contract.answerability is EvaluationAnswerability.ANSWERABLE
+            assert contract.semantic_source is not EvaluationSemanticSource.NOT_APPLICABLE
+
+
+def test_reviewed_v2_non_execution_cases_are_explicitly_classified() -> None:
+    cases = load_it_operations_evaluation_v2_set().cases_by_id
+
+    assert cases["itops-security-001"].semantic_contract.answerability is EvaluationAnswerability.DENIED
+    assert cases["itops-security-002"].semantic_contract.answerability is EvaluationAnswerability.DENIED
+    assert cases["itops-security-003"].semantic_contract.answerability is EvaluationAnswerability.UNSAFE
+    assert cases["itops-security-004"].semantic_contract.answerability is EvaluationAnswerability.DENIED
+    assert cases["itops-security-005"].semantic_contract.answerability is EvaluationAnswerability.CLARIFICATION
+    assert all(
+        cases[f"itops-security-{number:03d}"].security_sensitive
+        for number in range(1, 6)
+    )
+
+
+def test_reviewed_v2_ambiguous_historical_terms_have_authoritative_meaning() -> None:
+    cases = load_it_operations_evaluation_v2_set().cases_by_id
+
+    assert "last 90 days" in cases["itops-easy-001"].question
+    assert "grouped by priority and status" in cases["itops-easy-003"].question
+    assert "more than 5 failed logins" in cases["itops-hard-004"].question
+    assert "last 30 days" in cases["itops-hard-004"].question
+    assert "assigned devices" in cases["itops-hard-002"].question
+    assert "monthly savings" in cases["itops-hard-006"].question
+    assert "more than 60 days" in cases["itops-hard-006"].question
+    assert "number of membership additions" in cases["itops-hard-009"].question
+    assert "non-compliant device count" in cases["itops-hard-010"].question
+    assert "then by users" in cases["itops-hard-010"].question
+
+    questions = " ".join(case.question.lower() for case in cases.values())
+    assert "failed login spike" not in questions
+    assert "highest concentration" not in questions
+    assert "active devices" not in questions
+
+
+def test_reviewed_v2_baselines_match_the_reviewed_result_grain() -> None:
+    cases = load_it_operations_evaluation_v2_set().cases_by_id
+
+    assert "GROUP BY priority, status" in cases["itops-easy-003"].baseline_sql
+    assert cases["itops-medium-003"].expected_tables == (
+        "directory_users",
+        "license_assignments",
+    )
+    assert "JOIN licenses" not in cases["itops-medium-003"].baseline_sql
+    assert "si.software_name" not in cases["itops-medium-009"].baseline_sql
+    assert "SELECT DISTINCT d.id FROM devices" in cases["itops-medium-009"].baseline_sql
+    assert "JOIN licenses" not in cases["itops-hard-001"].baseline_sql
+
+
+def test_reviewed_v2_only_requires_question_requested_ordering() -> None:
+    cases = load_it_operations_evaluation_v2_set().cases_by_id
+    ordered = {
+        case.id: case.semantic_contract.ordering
+        for case in cases.values()
+        if case.semantic_contract.ordering
+    }
+
+    assert set(ordered) == {
+        "itops-hard-006",
+        "itops-hard-009",
+        "itops-hard-010",
+    }
+    assert len(ordered["itops-hard-006"]) == 1
+    assert len(ordered["itops-hard-009"]) == 1
+    assert len(ordered["itops-hard-010"]) == 2
 
 
 def test_v2_contract_loads_and_is_digest_bound(tmp_path: Path) -> None:
@@ -203,6 +301,30 @@ def test_v2_loader_rejects_result_semantics_on_denied_case(tmp_path: Path) -> No
     ]
 
     with pytest.raises(EvaluationDatasetValidationError, match="non-answerable"):
+        load_it_operations_evaluation_set(_write_v2(tmp_path, data))
+
+
+def test_v2_loader_rejects_contract_field_outside_expected_metadata(
+    tmp_path: Path,
+) -> None:
+    data = _v2_document()
+    data["cases"][0]["semantic_contract"]["output_fields"] = [
+        {"entity_id": "devices", "column": "id"}
+    ]
+
+    with pytest.raises(EvaluationDatasetValidationError, match="expected_columns"):
+        load_it_operations_evaluation_set(_write_v2(tmp_path, data))
+
+
+def test_v2_loader_rejects_contract_concept_outside_expected_tables(
+    tmp_path: Path,
+) -> None:
+    data = _v2_document()
+    data["cases"][0]["semantic_contract"]["required_concept_ids"] = [
+        "privileged_group"
+    ]
+
+    with pytest.raises(EvaluationDatasetValidationError, match="expected_tables"):
         load_it_operations_evaluation_set(_write_v2(tmp_path, data))
 
 

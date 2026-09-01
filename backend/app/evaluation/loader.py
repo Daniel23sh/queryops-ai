@@ -151,6 +151,17 @@ def load_it_operations_evaluation_set(
     )
 
 
+def load_it_operations_evaluation_v2_set(
+    *,
+    domain_pack: DomainPack | None = None,
+) -> EvaluationSet:
+    """Load the reviewed V2 suite without changing the historical V1 default."""
+    return load_it_operations_evaluation_set(
+        EVALUATION_V2_DATASET_PATH,
+        domain_pack=domain_pack,
+    )
+
+
 def _parse_case(
     raw: Any,
     index: int,
@@ -553,7 +564,7 @@ def _validate_case_expectations(case: EvaluationCase, path: str, pack: DomainPac
     if case.scope_mode is not ScopeMode.NONE and case.required_scope_type is None:
         raise EvaluationDatasetValidationError(f"{path} has scope mode without a scope type")
     if case.semantic_contract is not None:
-        _validate_semantic_contract_expectations(case, path)
+        _validate_semantic_contract_expectations(case, path, pack)
     if case.baseline_sql is not None:
         _validate_baseline_sql(case, path, pack)
 
@@ -561,6 +572,7 @@ def _validate_case_expectations(case: EvaluationCase, path: str, pack: DomainPac
 def _validate_semantic_contract_expectations(
     case: EvaluationCase,
     path: str,
+    pack: DomainPack,
 ) -> None:
     contract = case.semantic_contract
     if contract is None:
@@ -603,6 +615,54 @@ def _validate_semantic_contract_expectations(
     ):
         raise EvaluationDatasetValidationError(
             f"{path}.semantic_contract has group_by without aggregation"
+        )
+
+    expected_columns = {
+        item.table: set(item.columns) for item in case.expected_columns
+    }
+    contract_fields = [
+        *contract.grain_fields,
+        *contract.output_fields,
+        *contract.group_by,
+        *(
+            item.field
+            for item in contract.aggregations
+            if item.field is not None
+        ),
+        *(
+            item.field
+            for item in contract.ordering
+            if item.field is not None
+        ),
+    ]
+    catalog = pack.semantic_catalog
+    for field in contract_fields:
+        table = catalog.entities_by_id[field.entity_id].table
+        if field.column not in expected_columns.get(table, set()):
+            raise EvaluationDatasetValidationError(
+                f"{path}.semantic_contract field contradicts expected_columns"
+            )
+
+    semantic_entity_ids = {
+        catalog.concepts_by_id[concept_id].entity_id
+        for concept_id in contract.required_concept_ids
+    }
+    if contract.required_metric_id is not None:
+        semantic_entity_ids.add(
+            catalog.metrics_by_id[contract.required_metric_id].entity_id
+        )
+    rules_by_id = {rule.id: rule for rule in catalog.composition_rules}
+    for rule_id in contract.required_composition_rule_ids:
+        rule = rules_by_id[rule_id]
+        for concept_id in (*rule.all_of_concept_ids, *rule.or_concept_ids):
+            semantic_entity_ids.add(catalog.concepts_by_id[concept_id].entity_id)
+    semantic_tables = {
+        catalog.entities_by_id[entity_id].table
+        for entity_id in semantic_entity_ids
+    }
+    if not semantic_tables <= set(case.expected_tables):
+        raise EvaluationDatasetValidationError(
+            f"{path}.semantic_contract concepts contradict expected_tables"
         )
 
 
