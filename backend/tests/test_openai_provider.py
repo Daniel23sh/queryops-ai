@@ -304,6 +304,9 @@ def test_openai_provider_parses_plan_and_extracts_only_safe_usage() -> None:
         "total_tokens": 120,
     }
     call = client.responses.calls[0]
+    assert call["model"] == "gpt-5.6-terra"
+    assert call["reasoning"] == {"effort": "low"}
+    assert call["max_output_tokens"] == 2048
     assert call["store"] is False
     for disabled in ("tools", "background", "stream", "conversation"):
         assert disabled not in call
@@ -351,6 +354,17 @@ def test_required_and_suggested_intent_remain_in_plan_only_request() -> None:
     assert result_intent["suggested"]["group_by"] == [
         {"table": "licenses", "column": "product_name"}
     ]
+    assert result_intent["suggested"]["required_output_fields"] == [
+        {"table": "licenses", "column": "product_name"}
+    ]
+    assert result_intent["suggested"]["aggregations"] == [
+        {
+            "id": "subject_count",
+            "function": "count",
+            "target_field": {"table": "directory_users", "column": "id"},
+            "distinct": True,
+        }
+    ]
     instructions = " ".join(call["instructions"].lower().split())
     assert "required intent is a deterministic mandatory semantic contract" in instructions
     assert "suggested intent is non-binding planner guidance" in instructions
@@ -360,6 +374,142 @@ def test_required_and_suggested_intent_remain_in_plan_only_request() -> None:
     assert "return a catalog-referenced semantic_plan" in instructions
     assert "itops-" not in call["input"]
     assert "baseline" not in call["input"].lower()
+
+
+def test_department_possessive_scope_is_resolved_by_authorization_context() -> None:
+    question = "Show active devices in my department."
+    client = FakeClient(
+        {
+            "outcome": "plan",
+            "semantic_plan": DEVICE_PLAN,
+            "clarification_reason": None,
+        }
+    )
+
+    result = provider_for(client).generate_plan(
+        question,
+        SCHEMA_CONTEXT,
+        USER_CONTEXT,
+        {},
+    )
+
+    assert result.outcome is PlanGenerationOutcome.PLAN
+    assert result.semantic_plan is not None
+    call = client.responses.calls[0]
+    prompt = json.loads(call["input"])
+    assert prompt["authorization"] == {
+        "scope_type": "department",
+        "has_global_scope": False,
+        "scope_reference_resolved": True,
+    }
+    instructions = " ".join(call["instructions"].lower().split())
+    for possessive_reference in (
+        "my department",
+        "our department",
+        "within my department",
+        "my scope",
+        "my authorized area",
+    ):
+        assert possessive_reference in instructions
+    assert "do not require a department name or identifier" in instructions
+    assert "without inventing or embedding a scope identifier" in instructions
+    assert "postgresql rls" in instructions
+    assert "genuinely missing or ambiguous" in instructions
+
+
+def test_unresolved_scope_preserves_missing_information_clarification() -> None:
+    client = FakeClient(
+        {
+            "outcome": "clarification",
+            "semantic_plan": None,
+            "clarification_reason": "missing_information",
+        }
+    )
+
+    result = provider_for(client).generate_plan(
+        "Show the relevant records for my authorized area.",
+        SCHEMA_CONTEXT,
+        {"scope_type": "none", "has_global_scope": False},
+        {},
+    )
+
+    assert result.outcome is PlanGenerationOutcome.CLARIFICATION
+    assert result.clarification_required is True
+    assert result.semantic_plan is None
+    assert not hasattr(result, "generated_sql")
+    assert result.unsupported_reason == "missing_information"
+    call = client.responses.calls[0]
+    prompt = json.loads(call["input"])
+    assert prompt["authorization"] == {
+        "scope_type": "none",
+        "has_global_scope": False,
+        "scope_reference_resolved": False,
+    }
+    instructions = " ".join(call["instructions"].lower().split())
+    assert "authorization scope is unresolved" in instructions
+
+
+def test_structured_concept_overrides_only_matching_legacy_business_term() -> None:
+    schema_context = {
+        **SCHEMA_CONTEXT,
+        "allowed_columns": {
+            "devices": [
+                "id",
+                "operating_system",
+                "compliance_status",
+                "antivirus_status",
+                "encryption_enabled",
+            ]
+        },
+        "tables": [
+            {
+                **SCHEMA_CONTEXT["tables"][0],
+                "columns": [
+                    *SCHEMA_CONTEXT["tables"][0]["columns"],
+                    {"name": "compliance_status", "data_type": "string"},
+                    {"name": "antivirus_status", "data_type": "string"},
+                    {"name": "encryption_enabled", "data_type": "boolean"},
+                ],
+            }
+        ],
+        "business_terms": [
+            {
+                "name": "non-compliant device",
+                "description": "Conflicting legacy definition.",
+                "related_tables": ["devices"],
+            },
+            {
+                "name": "Active device",
+                "description": "Unrelated fallback glossary definition.",
+                "related_tables": ["devices"],
+            },
+        ],
+    }
+    projection = build_semantic_catalog_projection(
+        load_it_operations_domain_pack().semantic_catalog,
+        "Show non-compliant devices.",
+        schema_context,
+        USER_CONTEXT,
+    )
+
+    prompt = build_safe_prompt_projection(
+        "Show non-compliant devices.",
+        schema_context,
+        USER_CONTEXT,
+        projection,
+    )
+
+    assert [term["name"] for term in prompt["business_terms"]] == ["Active device"]
+    assert {
+        concept["id"] for concept in prompt["semantic_catalog"]["concepts"]
+    } >= {
+        "antivirus_attention_device",
+        "non_compliant_device",
+        "unencrypted_device",
+    }
+    assert [
+        rule["id"] for rule in prompt["semantic_catalog"]["composition_rules"]
+    ] == ["non_compliant_device_posture"]
 
 
 def test_active_human_catalog_and_metric_planning_rules_are_preserved() -> None:
