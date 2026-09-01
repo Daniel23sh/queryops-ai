@@ -6,13 +6,20 @@ from collections import Counter
 from collections.abc import Mapping, Sequence
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
-from typing import Any, TypeVar
+from typing import Any, Literal, TypeVar, cast
 
 from app.evaluation.contracts import (
     CaseType,
     ComparisonMode,
+    EvaluationAnswerability,
     EvaluationCase,
     EvaluationDifficulty,
+    EvaluationSemanticAggregation,
+    EvaluationSemanticContract,
+    EvaluationSemanticField,
+    EvaluationSemanticHaving,
+    EvaluationSemanticOrdering,
+    EvaluationSemanticSource,
     EvaluationSet,
     ExpectedOutcome,
     ExpectedTableColumns,
@@ -28,6 +35,9 @@ from app.query_engine.sql_validator import validate_sql
 
 
 EVALUATION_DATASET_PATH = IT_OPERATIONS_DOMAIN_PACK_DIR / "evaluation_questions.yaml"
+EVALUATION_V2_DATASET_PATH = (
+    IT_OPERATIONS_DOMAIN_PACK_DIR / "evaluation_questions_v2.yaml"
+)
 EXPECTED_CASE_COUNT = 40
 EXPECTED_DIFFICULTY_COUNTS = {
     EvaluationDifficulty.EASY: 10,
@@ -59,8 +69,34 @@ CASE_FIELDS = frozenset(
         "template_id",
     }
 )
+V2_CASE_FIELDS = CASE_FIELDS | {"semantic_contract"}
+SEMANTIC_CONTRACT_FIELDS = frozenset(
+    {
+        "answerability",
+        "semantic_source",
+        "required_concept_ids",
+        "required_metric_id",
+        "required_composition_rule_ids",
+        "grain_fields",
+        "output_fields",
+        "aggregations",
+        "group_by",
+        "having",
+        "ordering",
+    }
+)
+SEMANTIC_FIELD_FIELDS = frozenset({"entity_id", "column"})
+SEMANTIC_AGGREGATION_FIELDS = frozenset(
+    {"id", "function", "field", "distinct"}
+)
+SEMANTIC_HAVING_FIELDS = frozenset({"aggregation_id", "operator", "value"})
+SEMANTIC_ORDERING_FIELDS = frozenset(
+    {"target_kind", "field", "aggregation_id", "direction"}
+)
 CASE_ID = re.compile(r"^itops-(easy|medium|hard|security)-[0-9]{3}$")
+SEMANTIC_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 SUPPORTED_SCOPE_TYPES = frozenset({"department", "global"})
+MAX_SEMANTIC_ITEMS = 64
 TEnum = TypeVar("TEnum")
 
 
@@ -92,11 +128,20 @@ def load_it_operations_evaluation_set(
     dataset_id = _string(root["dataset_id"], "dataset_id")
     domain_id = _string(root["domain_id"], "domain_id")
     version = _string(root["version"], "version")
+    if version not in {"1", "2"}:
+        raise EvaluationDatasetValidationError("Evaluation dataset version is unsupported")
+    if version == "2" and dataset_id != "it_operations_v2":
+        raise EvaluationDatasetValidationError(
+            "Evaluation V2 dataset_id must be it_operations_v2"
+        )
     if domain_id != pack.domain_id:
         raise EvaluationDatasetValidationError("Evaluation domain_id does not match domain pack")
 
     raw_cases = _list(root["cases"], "cases")
-    cases = tuple(_parse_case(item, index, pack) for index, item in enumerate(raw_cases))
+    cases = tuple(
+        _parse_case(item, index, pack, dataset_version=version)
+        for index, item in enumerate(raw_cases)
+    )
     _validate_complete_set(cases)
     return EvaluationSet(
         dataset_id=dataset_id,
@@ -106,10 +151,17 @@ def load_it_operations_evaluation_set(
     )
 
 
-def _parse_case(raw: Any, index: int, pack: DomainPack) -> EvaluationCase:
+def _parse_case(
+    raw: Any,
+    index: int,
+    pack: DomainPack,
+    *,
+    dataset_version: str,
+) -> EvaluationCase:
     path = f"cases[{index}]"
     item = _mapping(raw, path)
-    _require_exact_fields(item, CASE_FIELDS, path)
+    is_v2 = dataset_version == "2"
+    _require_exact_fields(item, V2_CASE_FIELDS if is_v2 else CASE_FIELDS, path)
     case_id = _string(item["id"], f"{path}.id")
     if not CASE_ID.fullmatch(case_id):
         raise EvaluationDatasetValidationError(f"{path}.id is not a stable case id")
@@ -159,6 +211,11 @@ def _parse_case(raw: Any, index: int, pack: DomainPack) -> EvaluationCase:
     if template_id is not None and template_id not in pack.templates_by_id:
         raise EvaluationDatasetValidationError(f"{path}.template_id is unknown")
 
+    semantic_contract = (
+        _parse_semantic_contract(item["semantic_contract"], path, pack)
+        if is_v2
+        else None
+    )
     case = EvaluationCase(
         id=case_id,
         question=_string(item["question"], f"{path}.question"),
@@ -179,6 +236,7 @@ def _parse_case(raw: Any, index: int, pack: DomainPack) -> EvaluationCase:
         numeric_tolerance=tolerance,
         stable_key_columns=stable_keys,
         template_id=template_id,
+        semantic_contract=semantic_contract,
     )
     _validate_case_expectations(case, path, pack)
     return case
@@ -211,6 +269,252 @@ def _parse_expected_columns(
                 )
         entries.append(ExpectedTableColumns(table=table_name, columns=columns))
     return tuple(entries)
+
+
+def _parse_semantic_contract(
+    raw: Any,
+    case_path: str,
+    pack: DomainPack,
+) -> EvaluationSemanticContract:
+    path = f"{case_path}.semantic_contract"
+    item = _mapping(raw, path)
+    _require_exact_fields(item, SEMANTIC_CONTRACT_FIELDS, path)
+    answerability = _enum(
+        EvaluationAnswerability,
+        item["answerability"],
+        f"{path}.answerability",
+    )
+    semantic_source = _enum(
+        EvaluationSemanticSource,
+        item["semantic_source"],
+        f"{path}.semantic_source",
+    )
+    required_concept_ids = _semantic_identifiers(
+        item["required_concept_ids"], f"{path}.required_concept_ids"
+    )
+    required_metric_id = _optional_semantic_identifier(
+        item["required_metric_id"], f"{path}.required_metric_id"
+    )
+    required_rule_ids = _semantic_identifiers(
+        item["required_composition_rule_ids"],
+        f"{path}.required_composition_rule_ids",
+    )
+    grain_fields = _parse_semantic_fields(
+        item["grain_fields"], f"{path}.grain_fields", pack
+    )
+    output_fields = _parse_semantic_fields(
+        item["output_fields"], f"{path}.output_fields", pack
+    )
+    aggregations = _parse_semantic_aggregations(
+        item["aggregations"], f"{path}.aggregations", pack
+    )
+    group_by = _parse_semantic_fields(
+        item["group_by"], f"{path}.group_by", pack
+    )
+    aggregation_ids = {aggregation.id for aggregation in aggregations}
+    having = _parse_semantic_having(
+        item["having"], f"{path}.having", aggregation_ids
+    )
+    ordering = _parse_semantic_ordering(
+        item["ordering"], f"{path}.ordering", pack, aggregation_ids
+    )
+
+    concept_ids = pack.semantic_catalog.concepts_by_id
+    unknown_concepts = sorted(set(required_concept_ids) - set(concept_ids))
+    if unknown_concepts:
+        raise EvaluationDatasetValidationError(
+            f"{path}.required_concept_ids references unknown concept"
+        )
+    if (
+        required_metric_id is not None
+        and required_metric_id not in pack.semantic_catalog.metrics_by_id
+    ):
+        raise EvaluationDatasetValidationError(
+            f"{path}.required_metric_id references unknown metric"
+        )
+    known_rule_ids = {
+        rule.id for rule in pack.semantic_catalog.composition_rules
+    }
+    if set(required_rule_ids) - known_rule_ids:
+        raise EvaluationDatasetValidationError(
+            f"{path}.required_composition_rule_ids references unknown rule"
+        )
+
+    return EvaluationSemanticContract(
+        answerability=answerability,
+        semantic_source=semantic_source,
+        required_concept_ids=required_concept_ids,
+        required_metric_id=required_metric_id,
+        required_composition_rule_ids=required_rule_ids,
+        grain_fields=grain_fields,
+        output_fields=output_fields,
+        aggregations=aggregations,
+        group_by=group_by,
+        having=having,
+        ordering=ordering,
+    )
+
+
+def _parse_semantic_fields(
+    raw: Any,
+    path: str,
+    pack: DomainPack,
+) -> tuple[EvaluationSemanticField, ...]:
+    fields = tuple(
+        _parse_semantic_field(item, f"{path}[{index}]", pack)
+        for index, item in enumerate(_bounded_list(raw, path))
+    )
+    if len(fields) != len(set(fields)):
+        raise EvaluationDatasetValidationError(f"{path} must not contain duplicates")
+    return fields
+
+
+def _parse_semantic_field(
+    raw: Any,
+    path: str,
+    pack: DomainPack,
+) -> EvaluationSemanticField:
+    item = _mapping(raw, path)
+    _require_exact_fields(item, SEMANTIC_FIELD_FIELDS, path)
+    entity_id = _semantic_identifier(item["entity_id"], f"{path}.entity_id")
+    column = _semantic_identifier(item["column"], f"{path}.column")
+    entity = pack.semantic_catalog.entities_by_id.get(entity_id)
+    if entity is None:
+        raise EvaluationDatasetValidationError(f"{path} references unknown entity")
+    table = pack.tables_by_name.get(entity.table)
+    if table is None or column not in table.columns_by_name:
+        raise EvaluationDatasetValidationError(
+            f"{path} references unknown entity field"
+        )
+    return EvaluationSemanticField(entity_id=entity_id, column=column)
+
+
+def _parse_semantic_aggregations(
+    raw: Any,
+    path: str,
+    pack: DomainPack,
+) -> tuple[EvaluationSemanticAggregation, ...]:
+    aggregations: list[EvaluationSemanticAggregation] = []
+    for index, raw_item in enumerate(_bounded_list(raw, path)):
+        item_path = f"{path}[{index}]"
+        item = _mapping(raw_item, item_path)
+        _require_exact_fields(item, SEMANTIC_AGGREGATION_FIELDS, item_path)
+        aggregation_id = _semantic_identifier(item["id"], f"{item_path}.id")
+        function = _one_of(
+            item["function"], {"count", "sum"}, f"{item_path}.function"
+        )
+        field = (
+            None
+            if item["field"] is None
+            else _parse_semantic_field(item["field"], f"{item_path}.field", pack)
+        )
+        if function == "sum" and field is None:
+            raise EvaluationDatasetValidationError(
+                f"{item_path}.field is required for sum"
+            )
+        aggregations.append(
+            EvaluationSemanticAggregation(
+                id=aggregation_id,
+                function=cast(Literal["count", "sum"], function),
+                field=field,
+                distinct=_boolean(item["distinct"], f"{item_path}.distinct"),
+            )
+        )
+    if len({item.id for item in aggregations}) != len(aggregations):
+        raise EvaluationDatasetValidationError(
+            f"{path} must use unique aggregation ids"
+        )
+    return tuple(aggregations)
+
+
+def _parse_semantic_having(
+    raw: Any,
+    path: str,
+    aggregation_ids: set[str],
+) -> tuple[EvaluationSemanticHaving, ...]:
+    having: list[EvaluationSemanticHaving] = []
+    operators = {
+        "equals",
+        "greater_than",
+        "greater_than_or_equal",
+        "less_than",
+        "less_than_or_equal",
+    }
+    for index, raw_item in enumerate(_bounded_list(raw, path)):
+        item_path = f"{path}[{index}]"
+        item = _mapping(raw_item, item_path)
+        _require_exact_fields(item, SEMANTIC_HAVING_FIELDS, item_path)
+        aggregation_id = _semantic_identifier(
+            item["aggregation_id"], f"{item_path}.aggregation_id"
+        )
+        if aggregation_id not in aggregation_ids:
+            raise EvaluationDatasetValidationError(
+                f"{item_path}.aggregation_id references unknown aggregation"
+            )
+        operator = _one_of(item["operator"], operators, f"{item_path}.operator")
+        value = _required_decimal(item["value"], f"{item_path}.value")
+        having.append(
+            EvaluationSemanticHaving(
+                aggregation_id=aggregation_id,
+                operator=cast(
+                    Literal[
+                        "equals",
+                        "greater_than",
+                        "greater_than_or_equal",
+                        "less_than",
+                        "less_than_or_equal",
+                    ],
+                    operator,
+                ),
+                value=value,
+            )
+        )
+    return tuple(having)
+
+
+def _parse_semantic_ordering(
+    raw: Any,
+    path: str,
+    pack: DomainPack,
+    aggregation_ids: set[str],
+) -> tuple[EvaluationSemanticOrdering, ...]:
+    ordering: list[EvaluationSemanticOrdering] = []
+    for index, raw_item in enumerate(_bounded_list(raw, path)):
+        item_path = f"{path}[{index}]"
+        item = _mapping(raw_item, item_path)
+        _require_exact_fields(item, SEMANTIC_ORDERING_FIELDS, item_path)
+        target_kind = _one_of(
+            item["target_kind"], {"field", "aggregation"}, f"{item_path}.target_kind"
+        )
+        direction = _one_of(
+            item["direction"], {"asc", "desc"}, f"{item_path}.direction"
+        )
+        field = (
+            None
+            if item["field"] is None
+            else _parse_semantic_field(item["field"], f"{item_path}.field", pack)
+        )
+        aggregation_id = _optional_semantic_identifier(
+            item["aggregation_id"], f"{item_path}.aggregation_id"
+        )
+        if target_kind == "field":
+            if field is None or aggregation_id is not None:
+                raise EvaluationDatasetValidationError(
+                    f"{item_path} has an inconsistent field ordering target"
+                )
+        elif field is not None or aggregation_id not in aggregation_ids:
+            raise EvaluationDatasetValidationError(
+                f"{item_path} has an inconsistent aggregation ordering target"
+            )
+        ordering.append(
+            EvaluationSemanticOrdering(
+                target_kind=cast(Literal["field", "aggregation"], target_kind),
+                field=field,
+                aggregation_id=aggregation_id,
+                direction=cast(Literal["asc", "desc"], direction),
+            )
+        )
+    return tuple(ordering)
 
 
 def _validate_case_expectations(case: EvaluationCase, path: str, pack: DomainPack) -> None:
@@ -248,8 +552,58 @@ def _validate_case_expectations(case: EvaluationCase, path: str, pack: DomainPac
         raise EvaluationDatasetValidationError(f"{path} has scope type without a scope mode")
     if case.scope_mode is not ScopeMode.NONE and case.required_scope_type is None:
         raise EvaluationDatasetValidationError(f"{path} has scope mode without a scope type")
+    if case.semantic_contract is not None:
+        _validate_semantic_contract_expectations(case, path)
     if case.baseline_sql is not None:
         _validate_baseline_sql(case, path, pack)
+
+
+def _validate_semantic_contract_expectations(
+    case: EvaluationCase,
+    path: str,
+) -> None:
+    contract = case.semantic_contract
+    if contract is None:
+        return
+    answerability_by_outcome = {
+        ExpectedOutcome.SUCCESS: EvaluationAnswerability.ANSWERABLE,
+        ExpectedOutcome.CLARIFICATION: EvaluationAnswerability.CLARIFICATION,
+        ExpectedOutcome.DENIED: EvaluationAnswerability.DENIED,
+        ExpectedOutcome.UNSAFE_BLOCKED: EvaluationAnswerability.UNSAFE,
+    }
+    if contract.answerability is not answerability_by_outcome[case.expected_outcome]:
+        raise EvaluationDatasetValidationError(
+            f"{path}.semantic_contract contradicts expected_outcome"
+        )
+    semantic_details = (
+        contract.required_concept_ids,
+        contract.required_composition_rule_ids,
+        contract.grain_fields,
+        contract.output_fields,
+        contract.aggregations,
+        contract.group_by,
+        contract.having,
+        contract.ordering,
+    )
+    if contract.answerability is not EvaluationAnswerability.ANSWERABLE:
+        if contract.required_metric_id is not None or any(semantic_details):
+            raise EvaluationDatasetValidationError(
+                f"{path}.semantic_contract defines result semantics for a non-answerable case"
+            )
+    elif contract.semantic_source is EvaluationSemanticSource.NOT_APPLICABLE:
+        raise EvaluationDatasetValidationError(
+            f"{path}.semantic_contract must document an answerability source"
+        )
+    if contract.having and not contract.aggregations:
+        raise EvaluationDatasetValidationError(
+            f"{path}.semantic_contract has HAVING without aggregation"
+        )
+    if contract.group_by and not (
+        contract.aggregations or contract.required_metric_id is not None
+    ):
+        raise EvaluationDatasetValidationError(
+            f"{path}.semantic_contract has group_by without aggregation"
+        )
 
 
 def _validate_baseline_sql(case: EvaluationCase, path: str, pack: DomainPack) -> None:
@@ -323,6 +677,15 @@ def _list(value: Any, path: str) -> Sequence[Any]:
     return value
 
 
+def _bounded_list(value: Any, path: str) -> Sequence[Any]:
+    items = _list(value, path)
+    if len(items) > MAX_SEMANTIC_ITEMS:
+        raise EvaluationDatasetValidationError(
+            f"{path} exceeds the maximum item count"
+        )
+    return items
+
+
 def _string(value: Any, path: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise EvaluationDatasetValidationError(f"{path} must be a non-empty string")
@@ -333,6 +696,29 @@ def _optional_string(value: Any, path: str) -> str | None:
     if value is None:
         return None
     return _string(value, path)
+
+
+def _semantic_identifier(value: Any, path: str) -> str:
+    identifier = _string(value, path)
+    if not SEMANTIC_IDENTIFIER.fullmatch(identifier):
+        raise EvaluationDatasetValidationError(f"{path} must be a safe identifier")
+    return identifier
+
+
+def _optional_semantic_identifier(value: Any, path: str) -> str | None:
+    if value is None:
+        return None
+    return _semantic_identifier(value, path)
+
+
+def _semantic_identifiers(value: Any, path: str) -> tuple[str, ...]:
+    items = tuple(
+        _semantic_identifier(item, f"{path}[{index}]")
+        for index, item in enumerate(_bounded_list(value, path))
+    )
+    if len(items) != len(set(items)):
+        raise EvaluationDatasetValidationError(f"{path} must not contain duplicates")
+    return tuple(sorted(items))
 
 
 def _boolean(value: Any, path: str) -> bool:
@@ -360,6 +746,20 @@ def _optional_decimal(value: Any, path: str) -> Decimal | None:
     if not parsed.is_finite() or parsed < 0:
         raise EvaluationDatasetValidationError(f"{path} must be finite and non-negative")
     return parsed
+
+
+def _required_decimal(value: Any, path: str) -> Decimal:
+    parsed = _optional_decimal(value, path)
+    if parsed is None:
+        raise EvaluationDatasetValidationError(f"{path} must be a decimal string")
+    return parsed
+
+
+def _one_of(value: Any, choices: set[str], path: str) -> str:
+    candidate = _string(value, path)
+    if candidate not in choices:
+        raise EvaluationDatasetValidationError(f"{path} has an unknown value")
+    return candidate
 
 
 def _enum(enum_type: type[TEnum], value: Any, path: str) -> TEnum:

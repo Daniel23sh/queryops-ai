@@ -12,6 +12,7 @@ from app.evaluation.loader import (
     EvaluationDatasetValidationError,
     load_it_operations_evaluation_set,
 )
+from app.evaluation.selection import evaluation_dataset_digest
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 
 
@@ -23,6 +24,48 @@ EXPECTED_TEMPLATE_IDS = {
     "privileged_group_memberships_by_department",
     "unused_licenses_by_department",
 }
+V1_DATASET_DIGEST = "1e7b12fbf35de4d2c52937a762f3960df444eb3303ee7061a0e4506819c22bc4"
+
+
+def _semantic_contract_for_outcome(outcome: str) -> dict[str, object]:
+    answerability = {
+        "success": "answerable",
+        "clarification": "clarification",
+        "denied": "denied",
+        "unsafe_blocked": "unsafe",
+    }[outcome]
+    return {
+        "answerability": answerability,
+        "semantic_source": (
+            "explicit_question" if outcome == "success" else "not_applicable"
+        ),
+        "required_concept_ids": [],
+        "required_metric_id": None,
+        "required_composition_rule_ids": [],
+        "grain_fields": [],
+        "output_fields": [],
+        "aggregations": [],
+        "group_by": [],
+        "having": [],
+        "ordering": [],
+    }
+
+
+def _v2_document() -> dict[str, object]:
+    data = json.loads(EVALUATION_DATASET_PATH.read_text(encoding="utf-8"))
+    data["dataset_id"] = "it_operations_v2"
+    data["version"] = "2"
+    for case in data["cases"]:
+        case["semantic_contract"] = _semantic_contract_for_outcome(
+            case["expected_outcome"]
+        )
+    return data
+
+
+def _write_v2(tmp_path: Path, data: dict[str, object] | None = None) -> Path:
+    path = tmp_path / "evaluation_v2.yaml"
+    path.write_text(json.dumps(data or _v2_document()), encoding="utf-8")
+    return path
 
 
 def test_dataset_has_exact_distribution_unique_ids_and_deterministic_order() -> None:
@@ -39,6 +82,128 @@ def test_dataset_has_exact_distribution_unique_ids_and_deterministic_order() -> 
     assert [case.id for case in first.cases] == sorted(case.id for case in first.cases)
     assert len(first.cases_by_id) == 40
     assert first == second
+
+
+def test_v1_remains_loadable_with_frozen_digest_and_no_semantic_contract() -> None:
+    evaluation_set = load_it_operations_evaluation_set()
+
+    assert evaluation_set.dataset_id == "it_operations_v1"
+    assert evaluation_set.version == "1"
+    assert all(case.semantic_contract is None for case in evaluation_set.cases)
+    assert evaluation_dataset_digest(evaluation_set) == V1_DATASET_DIGEST
+
+
+def test_v2_contract_loads_and_is_digest_bound(tmp_path: Path) -> None:
+    first = load_it_operations_evaluation_set(_write_v2(tmp_path))
+    data = _v2_document()
+    concept_id = load_it_operations_domain_pack().semantic_catalog.concepts[0].id
+    data["cases"][0]["semantic_contract"]["required_concept_ids"] = [concept_id]
+    second = load_it_operations_evaluation_set(_write_v2(tmp_path, data))
+
+    assert first.dataset_id == "it_operations_v2"
+    assert first.version == "2"
+    assert all(case.semantic_contract is not None for case in first.cases)
+    assert evaluation_dataset_digest(first) != evaluation_dataset_digest(second)
+
+
+def test_v2_semantic_identifier_order_is_canonical_for_digest(tmp_path: Path) -> None:
+    concepts = load_it_operations_domain_pack().semantic_catalog.concepts
+    assert len(concepts) >= 2
+    first_data = _v2_document()
+    first_data["cases"][0]["semantic_contract"]["required_concept_ids"] = [
+        concepts[0].id,
+        concepts[1].id,
+    ]
+    second_data = _v2_document()
+    second_data["cases"][0]["semantic_contract"]["required_concept_ids"] = [
+        concepts[1].id,
+        concepts[0].id,
+    ]
+
+    first = load_it_operations_evaluation_set(_write_v2(tmp_path, first_data))
+    second = load_it_operations_evaluation_set(_write_v2(tmp_path, second_data))
+
+    assert evaluation_dataset_digest(first) == evaluation_dataset_digest(second)
+
+
+def test_v2_non_result_cases_omit_irrelevant_semantic_fields(tmp_path: Path) -> None:
+    evaluation_set = load_it_operations_evaluation_set(_write_v2(tmp_path))
+
+    for case in evaluation_set.cases:
+        if case.expected_outcome is ExpectedOutcome.SUCCESS:
+            continue
+        assert case.semantic_contract is not None
+        safe = case.semantic_contract.as_safe_dict()
+        assert safe["required_concept_ids"] == []
+        assert safe["required_metric_id"] is None
+        assert safe["aggregations"] == []
+        assert safe["output_fields"] == []
+
+
+@pytest.mark.parametrize(
+    ("mutate_contract", "message"),
+    [
+        (
+            lambda contract: contract.update(
+                {"required_concept_ids": ["unknown_concept"]}
+            ),
+            "unknown concept",
+        ),
+        (
+            lambda contract: contract.update({"required_metric_id": "unknown_metric"}),
+            "unknown metric",
+        ),
+        (
+            lambda contract: contract.update(
+                {"required_composition_rule_ids": ["unknown_rule"]}
+            ),
+            "unknown rule",
+        ),
+        (
+            lambda contract: contract.update(
+                {"output_fields": [{"entity_id": "unknown_entity", "column": "id"}]}
+            ),
+            "unknown entity",
+        ),
+        (
+            lambda contract: contract.update(
+                {
+                    "output_fields": [
+                        {"entity_id": "directory_users", "column": "unknown_column"}
+                    ]
+                }
+            ),
+            "unknown entity field",
+        ),
+        (
+            lambda contract: contract.update({"surprise": True}),
+            "unknown fields",
+        ),
+    ],
+)
+def test_v2_loader_rejects_malformed_semantic_contracts(
+    tmp_path: Path,
+    mutate_contract,
+    message: str,
+) -> None:
+    data = _v2_document()
+    mutate_contract(data["cases"][0]["semantic_contract"])
+
+    with pytest.raises(EvaluationDatasetValidationError, match=message):
+        load_it_operations_evaluation_set(_write_v2(tmp_path, data))
+
+
+def test_v2_loader_rejects_result_semantics_on_denied_case(tmp_path: Path) -> None:
+    data = _v2_document()
+    denied = next(
+        case for case in data["cases"] if case["expected_outcome"] == "denied"
+    )
+    denied["semantic_contract"]["output_fields"] = [
+        {"entity_id": "directory_users", "column": "id"}
+    ]
+
+    with pytest.raises(EvaluationDatasetValidationError, match="non-answerable"):
+        load_it_operations_evaluation_set(_write_v2(tmp_path, data))
 
 
 def test_dataset_references_only_known_tables_and_columns() -> None:

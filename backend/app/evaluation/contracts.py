@@ -28,6 +28,20 @@ class ExpectedOutcome(str, Enum):
     CLARIFICATION = "clarification"
 
 
+class EvaluationAnswerability(str, Enum):
+    ANSWERABLE = "answerable"
+    CLARIFICATION = "clarification"
+    DENIED = "denied"
+    UNSAFE = "unsafe"
+
+
+class EvaluationSemanticSource(str, Enum):
+    EXPLICIT_QUESTION = "explicit_question"
+    CATALOG = "catalog"
+    BOTH = "both"
+    NOT_APPLICABLE = "not_applicable"
+
+
 class ActualOutcome(str, Enum):
     SUCCESS = "success"
     DENIED = "denied"
@@ -208,6 +222,99 @@ class ExpectedTableColumns:
     columns: tuple[str, ...]
 
 
+@dataclass(frozen=True, order=True)
+class EvaluationSemanticField:
+    entity_id: str
+    column: str
+
+    def as_safe_dict(self) -> dict[str, str]:
+        return {"entity_id": self.entity_id, "column": self.column}
+
+
+@dataclass(frozen=True)
+class EvaluationSemanticAggregation:
+    id: str
+    function: Literal["count", "sum"]
+    field: EvaluationSemanticField | None
+    distinct: bool
+
+    def as_safe_dict(self) -> dict[str, Any]:
+        return {
+            "id": self.id,
+            "function": self.function,
+            "field": self.field.as_safe_dict() if self.field is not None else None,
+            "distinct": self.distinct,
+        }
+
+
+@dataclass(frozen=True)
+class EvaluationSemanticHaving:
+    aggregation_id: str
+    operator: Literal[
+        "equals",
+        "greater_than",
+        "greater_than_or_equal",
+        "less_than",
+        "less_than_or_equal",
+    ]
+    value: Decimal
+
+    def as_safe_dict(self) -> dict[str, str]:
+        return {
+            "aggregation_id": self.aggregation_id,
+            "operator": self.operator,
+            "value": str(self.value),
+        }
+
+
+@dataclass(frozen=True)
+class EvaluationSemanticOrdering:
+    target_kind: Literal["field", "aggregation"]
+    field: EvaluationSemanticField | None
+    aggregation_id: str | None
+    direction: Literal["asc", "desc"]
+
+    def as_safe_dict(self) -> dict[str, Any]:
+        return {
+            "target_kind": self.target_kind,
+            "field": self.field.as_safe_dict() if self.field is not None else None,
+            "aggregation_id": self.aggregation_id,
+            "direction": self.direction,
+        }
+
+
+@dataclass(frozen=True)
+class EvaluationSemanticContract:
+    answerability: EvaluationAnswerability
+    semantic_source: EvaluationSemanticSource
+    required_concept_ids: tuple[str, ...]
+    required_metric_id: str | None
+    required_composition_rule_ids: tuple[str, ...]
+    grain_fields: tuple[EvaluationSemanticField, ...]
+    output_fields: tuple[EvaluationSemanticField, ...]
+    aggregations: tuple[EvaluationSemanticAggregation, ...]
+    group_by: tuple[EvaluationSemanticField, ...]
+    having: tuple[EvaluationSemanticHaving, ...]
+    ordering: tuple[EvaluationSemanticOrdering, ...]
+
+    def as_safe_dict(self) -> dict[str, Any]:
+        return {
+            "answerability": self.answerability.value,
+            "semantic_source": self.semantic_source.value,
+            "required_concept_ids": list(self.required_concept_ids),
+            "required_metric_id": self.required_metric_id,
+            "required_composition_rule_ids": list(
+                self.required_composition_rule_ids
+            ),
+            "grain_fields": [field.as_safe_dict() for field in self.grain_fields],
+            "output_fields": [field.as_safe_dict() for field in self.output_fields],
+            "aggregations": [item.as_safe_dict() for item in self.aggregations],
+            "group_by": [field.as_safe_dict() for field in self.group_by],
+            "having": [item.as_safe_dict() for item in self.having],
+            "ordering": [item.as_safe_dict() for item in self.ordering],
+        }
+
+
 @dataclass(frozen=True)
 class EvaluationCase:
     id: str
@@ -229,6 +336,7 @@ class EvaluationCase:
     numeric_tolerance: Decimal | None
     stable_key_columns: tuple[str, ...]
     template_id: str | None
+    semantic_contract: EvaluationSemanticContract | None = None
 
 
 @dataclass(frozen=True)

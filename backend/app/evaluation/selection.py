@@ -67,8 +67,12 @@ def select_evaluation_cases(
 
 
 def evaluation_dataset_digest(evaluation_set: EvaluationSet) -> str:
+    document = asdict(evaluation_set)
+    for case in document["cases"]:
+        if case.get("semantic_contract") is None:
+            case.pop("semantic_contract", None)
     canonical = json.dumps(
-        asdict(evaluation_set),
+        document,
         default=_json_default,
         sort_keys=True,
         separators=(",", ":"),
