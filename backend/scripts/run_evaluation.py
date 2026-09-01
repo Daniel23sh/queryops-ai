@@ -13,8 +13,13 @@ from app.evaluation.environment import (
     validate_evaluation_environment_manifest,
 )
 from app.evaluation.loader import EvaluationDatasetValidationError
+from app.evaluation.loader import load_it_operations_evaluation_v2_set
 from app.evaluation.runner import EvaluationRunSummary, EvaluationRunner, EvaluationRunnerError
-from app.evaluation.selection import EvaluationFilters, EvaluationSelectionError
+from app.evaluation.selection import (
+    EvaluationFilters,
+    EvaluationSelectionError,
+    EvaluationSuite,
+)
 from app.query_engine.provider_config import (
     ProviderConfigurationError,
     ProviderSettings,
@@ -42,6 +47,12 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("mock", "openai"),
         default="mock",
         help="Select mock (default) or the explicit OpenAI mode.",
+    )
+    parser.add_argument(
+        "--suite",
+        choices=[suite.value for suite in EvaluationSuite],
+        default=EvaluationSuite.FULL.value,
+        help="Select the complete V2 dataset (default) or the fixed V2 canary.",
     )
     parser.add_argument(
         "--environment-manifest",
@@ -101,7 +112,10 @@ def run_cli(
             loader = environment_loader or _load_environment
             environment = loader(args.environment_manifest)
         factory = runner_factory or _runner_for_settings
-        summary = factory(settings, environment).run(filters)
+        summary = factory(settings, environment).run(
+            filters,
+            suite=EvaluationSuite(args.suite),
+        )
     except (
         EvaluationDatasetValidationError,
         EvaluationSelectionError,
@@ -136,6 +150,13 @@ def _print_summary(summary: EvaluationRunSummary) -> None:
         f"{summary.dataset_id} v{summary.dataset_version} "
         f"({summary.dataset_digest})"
     )
+    suite = summary.evaluation_suite
+    if suite:
+        print(
+            "Suite: "
+            f"{suite.get('id', 'unknown')} v{suite.get('version', 'unknown')} "
+            f"({suite.get('digest', 'unknown')})"
+        )
     catalog = summary.semantic_catalog
     print(
         "Semantic catalog: "
@@ -228,6 +249,7 @@ def _runner_for_settings(
 ) -> EvaluationRunner:
     return EvaluationRunner(
         SessionLocal,
+        dataset_loader=load_it_operations_evaluation_v2_set,
         provider_descriptor=provider_descriptor(settings),
         provider_factory=lambda pack: create_provider(settings, pack),
         evaluation_environment=environment,

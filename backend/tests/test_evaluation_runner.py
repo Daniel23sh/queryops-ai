@@ -27,8 +27,10 @@ from app.evaluation.runner import (
     _classify_query_result,
 )
 from app.evaluation.selection import (
+    CANARY_CASE_IDS,
     EvaluationFilters,
     EvaluationSelectionError,
+    EvaluationSuite,
     evaluation_dataset_digest,
     select_evaluation_cases,
 )
@@ -258,6 +260,10 @@ def test_runner_orders_cases_invokes_service_and_persists_safe_results(
         "case_type": None,
         "security_only": False,
     }
+    assert run.summary["evaluation_suite"]["selected_case_ids"] == [
+        case.id for case in evaluation_set.cases
+    ]
+    assert run.summary["evaluation_suite"]["selected_count"] == 2
     assert len(results) == 2
     persisted = repr([run.summary, *[item.metrics for item in results]])
     assert "secret-row" not in persisted
@@ -325,6 +331,44 @@ def test_runner_preserves_filtered_measurement_identity_after_finalization(
         "case_type": None,
         "security_only": False,
     }
+    assert run.summary["evaluation_suite"]["selected_case_ids"] == [
+        "itops-easy-002"
+    ]
+
+
+def test_runner_persists_exact_v2_canary_identity_and_membership(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory = _sqlite_session_factory()
+    with session_factory() as db:
+        seed_database(db, profile_name="small", reset=True)
+        db.commit()
+    runner = EvaluationRunner(
+        session_factory,
+        dataset_loader=load_it_operations_evaluation_v2_set,
+        query_service_factory=lambda _pack: _FakeQueryService(),
+    )
+    monkeypatch.setattr(runner, "_verify_prerequisites", lambda _cases: None)
+    monkeypatch.setattr(
+        "app.evaluation.runner.resolve_evaluation_identity",
+        lambda _db, case: _identity(case.requesting_role),
+    )
+    monkeypatch.setattr(
+        "app.evaluation.runner.execute_evaluation_baseline",
+        lambda *_args, **_kwargs: _Baseline(({"id": "secret-row"},)),
+    )
+
+    summary = runner.run(suite=EvaluationSuite.CANARY)
+
+    assert summary.selected_count == len(CANARY_CASE_IDS) == 10
+    assert summary.evaluation_suite["selected_case_ids"] == list(CANARY_CASE_IDS)
+    assert summary.evaluation_suite["selected_count"] == 10
+    assert summary.evaluation_suite["id"] == "it_operations_v2_stability_canary"
+    assert len(str(summary.evaluation_suite["digest"])) == 64
+    with session_factory() as db:
+        run = db.scalar(select(EvaluationRun))
+    assert run is not None
+    assert run.summary["evaluation_suite"] == summary.evaluation_suite
 
 
 def test_fatal_baseline_failure_marks_run_terminal(

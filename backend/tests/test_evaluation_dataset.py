@@ -19,7 +19,16 @@ from app.evaluation.loader import (
     load_it_operations_evaluation_set,
     load_it_operations_evaluation_v2_set,
 )
-from app.evaluation.selection import evaluation_dataset_digest
+from app.evaluation.selection import (
+    CANARY_CASE_IDS,
+    CANARY_COVERAGE,
+    CanaryCoverage,
+    EvaluationFilters,
+    EvaluationSelectionError,
+    EvaluationSuite,
+    evaluation_dataset_digest,
+    select_evaluation_suite,
+)
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 
 
@@ -123,6 +132,58 @@ def test_reviewed_v2_dataset_is_complete_answerable_and_digest_frozen() -> None:
         if case.expected_outcome is ExpectedOutcome.SUCCESS:
             assert contract.answerability is EvaluationAnswerability.ANSWERABLE
             assert contract.semantic_source is not EvaluationSemanticSource.NOT_APPLICABLE
+
+
+def test_v2_canary_is_bounded_complete_and_deterministic() -> None:
+    evaluation_set = load_it_operations_evaluation_v2_set()
+
+    first = select_evaluation_suite(evaluation_set, EvaluationSuite.CANARY)
+    second = select_evaluation_suite(evaluation_set, EvaluationSuite.CANARY)
+
+    assert 8 <= len(CANARY_CASE_IDS) <= 12
+    assert len(CANARY_CASE_IDS) == len(set(CANARY_CASE_IDS)) == 10
+    assert tuple(case.id for case in first.cases) == CANARY_CASE_IDS
+    assert first == second
+    assert len(first.suite_digest) == 64
+    assert set(CANARY_CASE_IDS) <= set(evaluation_set.cases_by_id)
+    assert set(CANARY_COVERAGE) == set(CanaryCoverage)
+    assert all(
+        set(case_ids) <= set(CANARY_CASE_IDS)
+        for case_ids in CANARY_COVERAGE.values()
+    )
+
+
+def test_v2_full_suite_selects_40_and_filtered_run_remains_distinct() -> None:
+    evaluation_set = load_it_operations_evaluation_v2_set()
+
+    full = select_evaluation_suite(evaluation_set, EvaluationSuite.FULL)
+    filtered = select_evaluation_suite(
+        evaluation_set,
+        EvaluationSuite.FULL,
+        EvaluationFilters(case_id="itops-hard-004"),
+    )
+
+    assert len(full.cases) == 40
+    assert len(filtered.cases) == 1
+    assert filtered.cases[0].id == "itops-hard-004"
+    assert filtered.suite_digest == full.suite_digest
+    assert filtered.as_safe_dict()["selected_case_ids"] == ["itops-hard-004"]
+
+
+def test_canary_rejects_filters_and_non_v2_dataset() -> None:
+    v2 = load_it_operations_evaluation_v2_set()
+
+    with pytest.raises(EvaluationSelectionError, match="cannot be combined"):
+        select_evaluation_suite(
+            v2,
+            EvaluationSuite.CANARY,
+            EvaluationFilters(security_only=True),
+        )
+    with pytest.raises(EvaluationSelectionError, match="frozen Evaluation V2"):
+        select_evaluation_suite(
+            load_it_operations_evaluation_set(),
+            EvaluationSuite.CANARY,
+        )
 
 
 def test_reviewed_v2_non_execution_cases_are_explicitly_classified() -> None:

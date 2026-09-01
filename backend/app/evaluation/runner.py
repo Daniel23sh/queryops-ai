@@ -46,8 +46,10 @@ from app.evaluation.scoring import (
 )
 from app.evaluation.selection import (
     EvaluationFilters,
+    EvaluationSuite,
+    EvaluationSuiteSelection,
     evaluation_dataset_digest,
-    select_evaluation_cases,
+    select_evaluation_suite,
 )
 from app.models.product import (
     DataResource,
@@ -158,6 +160,7 @@ class EvaluationRunSummary:
     planner_metrics: dict[str, int | float | None] = field(default_factory=dict)
     semantic_catalog: dict[str, str] = field(default_factory=dict)
     evaluation_environment: dict[str, str | int] = field(default_factory=dict)
+    evaluation_suite: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -231,10 +234,17 @@ class EvaluationRunner:
     def run(
         self,
         filters: EvaluationFilters | None = None,
+        *,
+        suite: EvaluationSuite = EvaluationSuite.FULL,
     ) -> EvaluationRunSummary:
         selected_filters = filters or EvaluationFilters()
         evaluation_set = self._dataset_loader()
-        cases = select_evaluation_cases(evaluation_set, selected_filters)
+        suite_selection = select_evaluation_suite(
+            evaluation_set,
+            suite,
+            selected_filters,
+        )
+        cases = suite_selection.cases
         domain_pack = self._domain_pack_loader()
         digest = evaluation_dataset_digest(evaluation_set)
         catalog_identity = self._verify_catalog_identity(
@@ -256,6 +266,7 @@ class EvaluationRunner:
             digest,
             cases,
             selected_filters,
+            suite_selection,
             catalog_identity,
             self._environment_identity(),
         )
@@ -351,6 +362,7 @@ class EvaluationRunner:
             cases,
             completed,
             self._provider_descriptor,
+            suite_selection,
             catalog_identity,
             self._environment_identity(),
             status=status,
@@ -426,6 +438,7 @@ class EvaluationRunner:
         digest: str,
         cases: Sequence[EvaluationCase],
         filters: EvaluationFilters,
+        suite_selection: EvaluationSuiteSelection,
         catalog_identity: dict[str, str],
         environment_identity: dict[str, str | int],
     ) -> UUID:
@@ -442,6 +455,7 @@ class EvaluationRunner:
                 "dataset_version": evaluation_set.version,
                 "dataset_digest": digest,
                 "selected_count": len(cases),
+                "evaluation_suite": suite_selection.as_safe_dict(),
                 "filters": filters.as_safe_dict(),
                 "semantic_catalog": catalog_identity,
                 "evaluation_environment": environment_identity,
@@ -1103,6 +1117,7 @@ def _build_summary(
     selected: Sequence[EvaluationCase],
     completed: Sequence[_CompletedCase],
     descriptor: ProviderDescriptor,
+    suite_selection: EvaluationSuiteSelection,
     catalog_identity: dict[str, str],
     environment_identity: dict[str, str | int],
     *,
@@ -1171,6 +1186,7 @@ def _build_summary(
         planner_metrics=_aggregate_planner_metrics(completed),
         semantic_catalog=dict(catalog_identity),
         evaluation_environment=dict(environment_identity),
+        evaluation_suite=suite_selection.as_safe_dict(),
     )
 
 
@@ -1238,6 +1254,7 @@ def _summary_for_persistence(
         "dataset_version": summary.dataset_version,
         "dataset_digest": summary.dataset_digest,
         "filters": filters.as_safe_dict(),
+        "evaluation_suite": summary.evaluation_suite,
         "selected_count": summary.selected_count,
         "completed_count": summary.completed_count,
         "passed_count": summary.passed_count,
