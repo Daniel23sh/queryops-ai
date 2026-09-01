@@ -9,7 +9,7 @@ Policy: `queryops-v1-readiness-v1`
 - PR9 merge: PR #44, `49a43fa`
 - PR10 merge: PR #45, `ec0c812`
 - PR11 branch: `feature/m9-evaluation-v2-stability-release-gate`
-- PR11 implementation commit: not yet frozen
+- PR11 verified runtime checkpoint: `a12e4549c3cfe738ffffda70885dc1af92e26b09`
 - Dataset: `it_operations_v2`, version `2`
 - Dataset digest: `913f8232a795ff59dd2a4ffc5b657bf69239c16182f257fd2850b68d9003de9b`
 - Historical V1 digest: `1e7b12fbf35de4d2c52937a762f3960df444eb3303ee7061a0e4506819c22bc4`
@@ -38,16 +38,21 @@ The live procedure is three matching executions of the fixed 10-case V2 canary f
 
 ## Deterministic evidence
 
-PR11's staged network-free implementation checks through the Evaluation workspace passed:
+PR11's network-free implementation and final branch-wide deterministic checks passed:
 
 - V2 contracts and dataset loader checks: passed
 - planner observation, Required Intent adherence, semantic scoring, and failure-stage checks: passed
 - deterministic canary selection and digest checks: passed
 - three-run stability and fail-closed mismatch/malformed/oscillation checks: passed
 - V2 readiness, candidate matching, deterministic-gate, and planner-integrity checks: passed
-- frontend Evaluation readiness projection: 274 Vitest tests, ESLint, both TypeScript checks, and production build passed
+- backend without PostgreSQL: 1,278 passed, 156 expected PostgreSQL-only skips
+- isolated PostgreSQL 16 backend: 1,414 passed, zero skips, plus the exact 20-case M8 release suite passed separately with zero skips
+- migrations: fresh upgrade through `0010_disable_inactive_user`, `alembic current`, and `alembic check` passed
+- frontend: 274 Vitest tests, ESLint, both TypeScript checks, and production build passed
+- Playwright: 12 general Chromium flows and two isolated M8 primary/negative flows passed
+- Ruff, Pyright with zero errors/warnings, compileall, and `git diff --check`: passed
 
-The final branch-wide backend, disposable-PostgreSQL, migration, security/RLS, and browser regression checkpoint is still to be recorded on the frozen PR11 candidate. The earlier PR7 full deterministic evidence remains historical baseline evidence and is not presented as proof of this changed runtime.
+The isolated PostgreSQL container and temporary application processes were removed after verification. These results are deterministic implementation evidence only; they do not substitute for live-provider or manual-QA evidence.
 
 ## Manual QA
 
@@ -58,7 +63,7 @@ The complete manual QA checklist has not been completed on a frozen PR11 candida
 | Requirement | State |
 | --- | --- |
 | PR11 focused deterministic implementation gates | passed |
-| Final branch-wide deterministic regression | pending |
+| Final branch-wide deterministic regression | passed |
 | Evaluation V2 framework | implemented |
 | Three-run canary evidence | missing |
 | Full qualifying V2 run | missing |
@@ -69,6 +74,6 @@ The complete manual QA checklist has not been completed on a frozen PR11 candida
 
 `incomplete`
 
-PR11 implementation is not yet frozen and live release evidence is pending. Milestone 9 and QueryOps AI V1 must not be marked complete until all deterministic gates pass on the immutable candidate, three matching canary runs are stable, a matching complete V2 full run passes every threshold with no renderer or conformance defects, and the full manual QA checklist passes on that unchanged candidate.
+PR11 implementation is complete and its local deterministic release gates passed; live release evidence is pending. Milestone 9 and QueryOps AI V1 must not be marked complete until CI passes on the immutable candidate, three matching canary runs are stable, a matching complete V2 full run passes every threshold with no renderer or conformance defects, and the full manual QA checklist passes on that unchanged candidate.
 
 This report contains no prompts, SQL, expected or actual rows, provider payloads, secrets, raw errors, database URLs, or evaluator baselines.
