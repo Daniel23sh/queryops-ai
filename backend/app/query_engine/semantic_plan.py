@@ -174,6 +174,7 @@ class ValidatedSemanticPlan:
             "effective_concept_ids": list(self.effective_concept_ids),
             "composition_rule_ids": list(self.plan.composition_rule_ids),
             "metric_id": self.plan.metric_id,
+            "distinct": self.plan.distinct,
             "relationship_ids": [
                 item.relationship_id for item in self.plan.relationships
             ],
@@ -184,7 +185,20 @@ class ValidatedSemanticPlan:
                 }
                 for item in self.plan.relationships
             ],
+            "output_fields": [
+                item.model_dump(mode="json") for item in self.plan.output_fields
+            ],
             "aggregation_ids": [item.id for item in self.plan.aggregations],
+            "aggregations": [
+                item.model_dump(mode="json") for item in self.plan.aggregations
+            ],
+            "group_by": [
+                item.model_dump(mode="json") for item in self.plan.group_by
+            ],
+            "having": [item.model_dump(mode="json") for item in self.plan.having],
+            "order_by": [
+                item.model_dump(mode="json") for item in self.plan.order_by
+            ],
         }
 
 

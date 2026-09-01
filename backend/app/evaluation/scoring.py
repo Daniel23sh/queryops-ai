@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import re
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -32,6 +33,24 @@ SAFE_FAILURE_REASONS = frozenset(
         "invalid_numeric_value",
     }
 )
+SAFE_SEMANTIC_FAILURE_REASONS = frozenset(
+    {
+        "required_concept_missing",
+        "required_metric_mismatch",
+        "required_rule_missing",
+        "result_grain_mismatch",
+        "required_output_missing",
+        "aggregation_mismatch",
+        "group_by_mismatch",
+        "having_mismatch",
+        "ordering_mismatch",
+    }
+)
+_SAFE_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
+_MAX_PLAN_ITEMS = 64
+_FieldKey = tuple[str, str]
+_AggregationKey = tuple[str, _FieldKey | None, bool]
+_OrderKey = tuple[str, _FieldKey | _AggregationKey, str]
 
 
 @dataclass(frozen=True)
@@ -58,6 +77,384 @@ class EvaluationScore:
             "actual_row_count": self.actual_row_count,
             "failure_reasons": list(self.failure_reasons),
         }
+
+
+@dataclass(frozen=True)
+class EvaluationSemanticScore:
+    evaluated: bool
+    passed: bool | None
+    concepts_correct: bool | None
+    metric_correct: bool | None
+    rules_correct: bool | None
+    grain_correct: bool | None
+    outputs_correct: bool | None
+    aggregations_correct: bool | None
+    group_by_correct: bool | None
+    having_correct: bool | None
+    ordering_correct: bool | None
+    failure_reasons: tuple[str, ...]
+
+    def as_safe_metrics(self) -> dict[str, Any]:
+        return {
+            "evaluated": self.evaluated,
+            "passed": self.passed,
+            "concepts_correct": self.concepts_correct,
+            "metric_correct": self.metric_correct,
+            "rules_correct": self.rules_correct,
+            "grain_correct": self.grain_correct,
+            "outputs_correct": self.outputs_correct,
+            "aggregations_correct": self.aggregations_correct,
+            "group_by_correct": self.group_by_correct,
+            "having_correct": self.having_correct,
+            "ordering_correct": self.ordering_correct,
+            "failure_reasons": list(self.failure_reasons),
+        }
+
+
+@dataclass(frozen=True)
+class _PlanContractObservation:
+    effective_concept_ids: frozenset[str]
+    composition_rule_ids: frozenset[str]
+    metric_id: str | None
+    output_fields: frozenset[_FieldKey]
+    aggregations_by_id: Mapping[str, _AggregationKey]
+    group_by: frozenset[_FieldKey]
+    having: frozenset[tuple[_AggregationKey, str, Decimal]]
+    ordering: tuple[_OrderKey, ...]
+
+
+def score_evaluation_semantic_contract(
+    case: EvaluationCase,
+    plan_observation: Mapping[str, Any] | None,
+) -> EvaluationSemanticScore:
+    """Score only V2 binding semantics from a validated bounded plan observation."""
+    contract = case.semantic_contract
+    if contract is None or case.expected_outcome is not ExpectedOutcome.SUCCESS:
+        return _semantic_not_evaluated()
+    plan = _parse_plan_contract_observation(plan_observation)
+    if plan is None:
+        return _semantic_not_evaluated()
+
+    required_concepts = set(contract.required_concept_ids)
+    concepts_correct = required_concepts <= plan.effective_concept_ids
+    metric_correct = (
+        contract.required_metric_id is None
+        or contract.required_metric_id == plan.metric_id
+    )
+    rules_correct = set(contract.required_composition_rule_ids) <= (
+        plan.composition_rule_ids
+    )
+    expected_outputs = {
+        (item.entity_id, item.column) for item in contract.output_fields
+    }
+    outputs_correct = expected_outputs <= plan.output_fields
+    expected_group_by = {
+        (item.entity_id, item.column) for item in contract.group_by
+    }
+    group_by_correct = (
+        expected_group_by == plan.group_by if expected_group_by else True
+    )
+    expected_grain = {
+        (item.entity_id, item.column) for item in contract.grain_fields
+    }
+    if expected_group_by:
+        grain_correct = expected_grain == plan.group_by
+    elif expected_grain:
+        grain_correct = (
+            not plan.aggregations_by_id
+            and not plan.group_by
+            and expected_grain <= plan.output_fields
+        )
+    else:
+        grain_correct = True
+
+    expected_aggregations = {
+        item.id: (
+            item.function,
+            (
+                (item.field.entity_id, item.field.column)
+                if item.field is not None
+                else None
+            ),
+            item.distinct,
+        )
+        for item in contract.aggregations
+    }
+    actual_aggregation_keys = set(plan.aggregations_by_id.values())
+    aggregations_correct = set(expected_aggregations.values()) <= (
+        actual_aggregation_keys
+    )
+
+    expected_having = {
+        (
+            expected_aggregations[item.aggregation_id],
+            item.operator,
+            item.value,
+        )
+        for item in contract.having
+    }
+    having_correct = expected_having <= plan.having
+    expected_ordering = tuple(
+        _expected_order_key(item, expected_aggregations)
+        for item in contract.ordering
+    )
+    ordering_correct = plan.ordering[: len(expected_ordering)] == expected_ordering
+
+    components = (
+        ("required_concept_missing", concepts_correct),
+        ("required_metric_mismatch", metric_correct),
+        ("required_rule_missing", rules_correct),
+        ("result_grain_mismatch", grain_correct),
+        ("required_output_missing", outputs_correct),
+        ("aggregation_mismatch", aggregations_correct),
+        ("group_by_mismatch", group_by_correct),
+        ("having_mismatch", having_correct),
+        ("ordering_mismatch", ordering_correct),
+    )
+    failures = tuple(reason for reason, passed in components if not passed)
+    assert set(failures) <= SAFE_SEMANTIC_FAILURE_REASONS
+    return EvaluationSemanticScore(
+        evaluated=True,
+        passed=not failures,
+        concepts_correct=concepts_correct,
+        metric_correct=metric_correct,
+        rules_correct=rules_correct,
+        grain_correct=grain_correct,
+        outputs_correct=outputs_correct,
+        aggregations_correct=aggregations_correct,
+        group_by_correct=group_by_correct,
+        having_correct=having_correct,
+        ordering_correct=ordering_correct,
+        failure_reasons=failures,
+    )
+
+
+def _semantic_not_evaluated() -> EvaluationSemanticScore:
+    return EvaluationSemanticScore(
+        evaluated=False,
+        passed=None,
+        concepts_correct=None,
+        metric_correct=None,
+        rules_correct=None,
+        grain_correct=None,
+        outputs_correct=None,
+        aggregations_correct=None,
+        group_by_correct=None,
+        having_correct=None,
+        ordering_correct=None,
+        failure_reasons=(),
+    )
+
+
+def _expected_order_key(
+    item: Any,
+    aggregations: Mapping[str, _AggregationKey],
+) -> _OrderKey:
+    if item.target_kind == "field":
+        assert item.field is not None
+        return (
+            "field",
+            (item.field.entity_id, item.field.column),
+            item.direction,
+        )
+    assert item.aggregation_id is not None
+    return (
+        "aggregation",
+        aggregations[item.aggregation_id],
+        item.direction,
+    )
+
+
+def _parse_plan_contract_observation(
+    value: Mapping[str, Any] | None,
+) -> _PlanContractObservation | None:
+    if not isinstance(value, Mapping):
+        return None
+    effective_concepts = _safe_identifier_set(value.get("effective_concept_ids"))
+    rules = _safe_identifier_set(value.get("composition_rule_ids"))
+    metric_id = value.get("metric_id")
+    output_fields = _safe_field_set(value.get("output_fields"))
+    group_by = _safe_field_set(value.get("group_by"))
+    if (
+        effective_concepts is None
+        or rules is None
+        or output_fields is None
+        or group_by is None
+        or (
+            metric_id is not None
+            and (
+                not isinstance(metric_id, str)
+                or _SAFE_IDENTIFIER.fullmatch(metric_id) is None
+            )
+        )
+    ):
+        return None
+    aggregations = _safe_aggregations(value.get("aggregations"))
+    if aggregations is None:
+        return None
+    having = _safe_having(value.get("having"), aggregations)
+    ordering = _safe_ordering(value.get("order_by"), aggregations)
+    if having is None or ordering is None:
+        return None
+    return _PlanContractObservation(
+        effective_concept_ids=effective_concepts,
+        composition_rule_ids=rules,
+        metric_id=metric_id,
+        output_fields=output_fields,
+        aggregations_by_id=aggregations,
+        group_by=group_by,
+        having=having,
+        ordering=ordering,
+    )
+
+
+def _safe_identifier_set(value: Any) -> frozenset[str] | None:
+    if not isinstance(value, list) or len(value) > _MAX_PLAN_ITEMS:
+        return None
+    if any(
+        not isinstance(item, str) or _SAFE_IDENTIFIER.fullmatch(item) is None
+        for item in value
+    ):
+        return None
+    if len(value) != len(set(value)):
+        return None
+    return frozenset(value)
+
+
+def _safe_field(value: Any) -> _FieldKey | None:
+    if not isinstance(value, Mapping) or set(value) != {"entity_id", "column"}:
+        return None
+    entity_id = value.get("entity_id")
+    column = value.get("column")
+    if (
+        not isinstance(entity_id, str)
+        or _SAFE_IDENTIFIER.fullmatch(entity_id) is None
+        or not isinstance(column, str)
+        or _SAFE_IDENTIFIER.fullmatch(column) is None
+    ):
+        return None
+    return entity_id, column
+
+
+def _safe_field_set(value: Any) -> frozenset[_FieldKey] | None:
+    if not isinstance(value, list) or len(value) > _MAX_PLAN_ITEMS:
+        return None
+    fields = tuple(_safe_field(item) for item in value)
+    if any(item is None for item in fields):
+        return None
+    safe_fields = tuple(item for item in fields if item is not None)
+    if len(safe_fields) != len(set(safe_fields)):
+        return None
+    return frozenset(safe_fields)
+
+
+def _safe_aggregations(value: Any) -> dict[str, _AggregationKey] | None:
+    if not isinstance(value, list) or len(value) > _MAX_PLAN_ITEMS:
+        return None
+    aggregations: dict[str, _AggregationKey] = {}
+    for item in value:
+        if not isinstance(item, Mapping) or set(item) != {
+            "id",
+            "function",
+            "field",
+            "distinct",
+        }:
+            return None
+        aggregation_id = item.get("id")
+        function = item.get("function")
+        distinct = item.get("distinct")
+        target = None if item.get("field") is None else _safe_field(item.get("field"))
+        if (
+            not isinstance(aggregation_id, str)
+            or _SAFE_IDENTIFIER.fullmatch(aggregation_id) is None
+            or aggregation_id in aggregations
+            or function not in {"count", "sum"}
+            or not isinstance(distinct, bool)
+            or (item.get("field") is not None and target is None)
+            or (function == "sum" and target is None)
+        ):
+            return None
+        aggregations[aggregation_id] = (function, target, distinct)
+    return aggregations
+
+
+def _safe_having(
+    value: Any,
+    aggregations: Mapping[str, _AggregationKey],
+) -> frozenset[tuple[_AggregationKey, str, Decimal]] | None:
+    if not isinstance(value, list) or len(value) > _MAX_PLAN_ITEMS:
+        return None
+    safe: set[tuple[_AggregationKey, str, Decimal]] = set()
+    operators = {
+        "equals",
+        "greater_than",
+        "greater_than_or_equal",
+        "less_than",
+        "less_than_or_equal",
+    }
+    for item in value:
+        if not isinstance(item, Mapping) or set(item) != {
+            "aggregation_id",
+            "operator",
+            "value",
+        }:
+            return None
+        aggregation_id = item.get("aggregation_id")
+        operator = item.get("operator")
+        raw_number = item.get("value")
+        if (
+            not isinstance(aggregation_id, str)
+            or aggregation_id not in aggregations
+            or operator not in operators
+            or isinstance(raw_number, bool)
+            or not isinstance(raw_number, (int, float))
+        ):
+            return None
+        number = Decimal(str(raw_number))
+        if not number.is_finite():
+            return None
+        safe.add((aggregations[aggregation_id], str(operator), number))
+    return frozenset(safe)
+
+
+def _safe_ordering(
+    value: Any,
+    aggregations: Mapping[str, _AggregationKey],
+) -> tuple[_OrderKey, ...] | None:
+    if not isinstance(value, list) or len(value) > _MAX_PLAN_ITEMS:
+        return None
+    ordering: list[_OrderKey] = []
+    for item in value:
+        if not isinstance(item, Mapping) or set(item) != {
+            "target_kind",
+            "field",
+            "aggregation_id",
+            "direction",
+        }:
+            return None
+        target_kind = item.get("target_kind")
+        direction = item.get("direction")
+        if direction not in {"asc", "desc"}:
+            return None
+        if target_kind == "field":
+            target = _safe_field(item.get("field"))
+            if target is None or item.get("aggregation_id") is not None:
+                return None
+            ordering.append(("field", target, str(direction)))
+        elif target_kind == "aggregation":
+            aggregation_id = item.get("aggregation_id")
+            if (
+                item.get("field") is not None
+                or not isinstance(aggregation_id, str)
+                or aggregation_id not in aggregations
+            ):
+                return None
+            ordering.append(
+                ("aggregation", aggregations[aggregation_id], str(direction))
+            )
+        else:
+            return None
+    return tuple(ordering)
 
 
 def score_evaluation_case(

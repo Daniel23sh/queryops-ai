@@ -57,6 +57,9 @@ class SafeEvaluationErrorCode(str, Enum):
     PROVIDER_TIMEOUT = "provider_timeout"
     PROVIDER_UNAVAILABLE = "provider_unavailable"
     PROVIDER_RESPONSE_INVALID = "provider_response_invalid"
+    SEMANTIC_CONFORMANCE_FAILED = "semantic_conformance_failed"
+    SEMANTIC_SQL_RENDER_FAILED = "semantic_sql_render_failed"
+    VALIDATION_FAILED = "validation_failed"
 
 
 class SecurityBehavior(str, Enum):

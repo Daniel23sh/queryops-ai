@@ -71,6 +71,9 @@ SAFE_ERROR_CODES = frozenset(
         "provider_timeout",
         "provider_unavailable",
         "provider_response_invalid",
+        "semantic_conformance_failed",
+        "semantic_sql_render_failed",
+        "validation_failed",
     }
 )
 

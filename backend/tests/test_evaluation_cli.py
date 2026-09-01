@@ -25,6 +25,8 @@ def test_cli_defaults_to_full_selection_and_reports_low_score_safely(capsys) -> 
     assert "Provider: mock (mock-queryops-v1)" in output.out
     assert "Semantic catalog: it_operations_semantic_catalog v3" in output.out
     assert "selected=40 completed=40 passed=6 failed=34" in output.out
+    assert "Semantic planning: generated=30 validated=27" in output.out
+    assert "renderer_defects=1 conformance_defects=2" in output.out
     assert "itops-security-003" in output.out
     assert "UPDATE directory_users" not in output.out
     assert output.err == ""
@@ -296,6 +298,20 @@ def _summary(
             "cached_input_tokens": 0,
             "output_tokens": 0,
             "total_tokens": 0,
+        },
+        planner_metrics={
+            "eligible_case_count": 30,
+            "generated_plan_count": 30,
+            "validated_plan_count": 27,
+            "semantic_plan_validation_pass_rate": 0.9,
+            "required_intent_evaluated_count": 28,
+            "required_intent_passed_count": 27,
+            "required_intent_adherence_rate": 0.964286,
+            "renderer_defect_count": 1,
+            "conformance_defect_count": 2,
+            "semantic_contract_evaluated_count": 27,
+            "semantic_contract_passed_count": 25,
+            "semantic_contract_pass_rate": 0.925926,
         },
         semantic_catalog={
             "catalog_id": "it_operations_semantic_catalog",

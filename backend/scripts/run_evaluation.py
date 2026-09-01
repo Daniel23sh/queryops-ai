@@ -169,6 +169,20 @@ def _print_summary(summary: EvaluationRunSummary) -> None:
         f"succeeded={summary.query_execution_succeeded_count} "
         f"failed={summary.query_execution_failed_count}"
     )
+    planner = summary.planner_metrics
+    print(
+        "Semantic planning: "
+        f"generated={int(planner.get('generated_plan_count', 0) or 0)} "
+        f"validated={int(planner.get('validated_plan_count', 0) or 0)} "
+        "validation_rate="
+        f"{_format_optional_rate(planner.get('semantic_plan_validation_pass_rate'))} "
+        "required_intent_rate="
+        f"{_format_optional_rate(planner.get('required_intent_adherence_rate'))} "
+        f"renderer_defects={int(planner.get('renderer_defect_count', 0) or 0)} "
+        f"conformance_defects={int(planner.get('conformance_defect_count', 0) or 0)} "
+        "contract_rate="
+        f"{_format_optional_rate(planner.get('semantic_contract_pass_rate'))}"
+    )
     usage = summary.provider_usage
     print(
         "Provider usage: "
@@ -202,6 +216,10 @@ def _print_breakdown(
             f"  {name}: completed={metrics['completed']} "
             f"passed={metrics['passed']} score={float(metrics['score']):.3f}"
         )
+
+
+def _format_optional_rate(value: int | float | None) -> str:
+    return "not_measured" if value is None else f"{float(value):.3f}"
 
 
 def _runner_for_settings(

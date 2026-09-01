@@ -210,6 +210,51 @@ def test_analyst_technical_projection_is_safe_and_sql_permission_gates_resources
     assert technical["referenced_tables"] is None
 
 
+@pytest.mark.parametrize(
+    "error_code",
+    [
+        "validation_failed",
+        "semantic_sql_render_failed",
+        "semantic_conformance_failed",
+    ],
+)
+def test_current_plan_pipeline_errors_have_bounded_technical_projections(
+    client: TestClient,
+    db_session: Session,
+    error_code: str,
+) -> None:
+    run = _create_run(db_session, case_ids={"itops-easy-005"})
+    result = db_session.scalar(
+        select(EvaluationResult).where(EvaluationResult.evaluation_run_id == run.id)
+    )
+    assert result is not None
+    result.status = "failed"
+    result.score = 0.5
+    result.actual_output = {
+        "outcome": "execution_failed",
+        "referenced_tables": ["directory_users"],
+        "execution_succeeded": False,
+        "error_code": error_code,
+    }
+    result.metrics = {
+        **result.metrics,
+        "score": 0.5,
+        "passed": False,
+        "execution_correct": False,
+        "result_correct": False,
+        "failure_reasons": ["execution_state_mismatch"],
+        "query_execution_attempted": False,
+    }
+    db_session.commit()
+
+    _login(client, "demo.admin@queryops.local")
+    response = client.get(f"/api/v1/evaluation/queries?run_id={run.id}")
+
+    assert response.status_code == 200
+    technical = response.json()["data"]["items"][0]["technical"]
+    assert technical["error_code"] == error_code
+
+
 def test_protected_resource_name_is_not_returned_as_sql_adjacent_metadata(
     client: TestClient,
     complete_run: EvaluationRun,

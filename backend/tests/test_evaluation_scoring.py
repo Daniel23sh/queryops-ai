@@ -11,9 +11,15 @@ from app.evaluation.contracts import (
     ExpectedOutcome,
     ProvenanceAuthorizationEvidence,
 )
-from app.evaluation.loader import load_it_operations_evaluation_set
+from app.evaluation.loader import (
+    load_it_operations_evaluation_set,
+    load_it_operations_evaluation_v2_set,
+)
 from app.evaluation.provenance import build_evaluation_comparison_provenance
-from app.evaluation.scoring import score_evaluation_case
+from app.evaluation.scoring import (
+    score_evaluation_case,
+    score_evaluation_semantic_contract,
+)
 
 
 def _successful_case():
@@ -697,3 +703,162 @@ def test_score_diagnostics_never_include_raw_rows() -> None:
         "actual_row_count",
         "failure_reasons",
     }
+
+
+def _plan_observation(**overrides):
+    observation = {
+        "effective_concept_ids": [],
+        "composition_rule_ids": [],
+        "metric_id": None,
+        "output_fields": [],
+        "aggregations": [],
+        "group_by": [],
+        "having": [],
+        "order_by": [],
+    }
+    observation.update(overrides)
+    return observation
+
+
+def test_v2_semantic_contract_accepts_equivalent_non_binding_plan_choices() -> None:
+    case = load_it_operations_evaluation_v2_set().cases_by_id["itops-hard-004"]
+    observation = _plan_observation(
+        effective_concept_ids=[
+            "failed_login",
+            "failed_login_within_30_days",
+            "privileged_group",
+        ],
+        output_fields=[
+            {"entity_id": "login_events", "column": "user_id"},
+            {"entity_id": "directory_users", "column": "email"},
+        ],
+        aggregations=[
+            {
+                "id": "provider_chosen_id",
+                "function": "count",
+                "field": {"entity_id": "login_events", "column": "id"},
+                "distinct": True,
+            }
+        ],
+        group_by=[{"entity_id": "login_events", "column": "user_id"}],
+        having=[
+            {
+                "aggregation_id": "provider_chosen_id",
+                "operator": "greater_than",
+                "value": 5,
+            }
+        ],
+        relationship_ids=["irrelevant_to_contract_score"],
+    )
+
+    score = score_evaluation_semantic_contract(case, observation)
+
+    assert score.evaluated is True
+    assert score.passed is True
+    assert score.failure_reasons == ()
+
+
+def test_v2_semantic_contract_rejects_missing_binding_semantics() -> None:
+    case = load_it_operations_evaluation_v2_set().cases_by_id["itops-hard-004"]
+    observation = _plan_observation(
+        effective_concept_ids=["failed_login_within_30_days"],
+        output_fields=[{"entity_id": "login_events", "column": "user_id"}],
+        aggregations=[
+            {
+                "id": "count_id",
+                "function": "count",
+                "field": None,
+                "distinct": False,
+            }
+        ],
+        group_by=[{"entity_id": "login_events", "column": "user_id"}],
+        having=[
+            {
+                "aggregation_id": "count_id",
+                "operator": "greater_than",
+                "value": 4,
+            }
+        ],
+    )
+
+    score = score_evaluation_semantic_contract(case, observation)
+
+    assert score.passed is False
+    assert set(score.failure_reasons) == {
+        "required_concept_missing",
+        "aggregation_mismatch",
+        "having_mismatch",
+    }
+
+
+def test_v2_semantic_contract_matches_ordering_by_aggregation_identity() -> None:
+    case = load_it_operations_evaluation_v2_set().cases_by_id["itops-hard-006"]
+    observation = _plan_observation(
+        effective_concept_ids=[
+            "active_license_assignment",
+            "non_exception_license_assignment",
+            "unused_license_assignment",
+        ],
+        output_fields=[{"entity_id": "licenses", "column": "product_name"}],
+        aggregations=[
+            {
+                "id": "count_alias",
+                "function": "count",
+                "field": None,
+                "distinct": False,
+            },
+            {
+                "id": "savings_alias",
+                "function": "sum",
+                "field": {"entity_id": "licenses", "column": "monthly_cost_usd"},
+                "distinct": False,
+            },
+        ],
+        group_by=[{"entity_id": "licenses", "column": "product_name"}],
+        order_by=[
+            {
+                "target_kind": "aggregation",
+                "field": None,
+                "aggregation_id": "savings_alias",
+                "direction": "desc",
+            },
+            {
+                "target_kind": "field",
+                "field": {"entity_id": "licenses", "column": "product_name"},
+                "aggregation_id": None,
+                "direction": "asc",
+            },
+        ],
+    )
+
+    score = score_evaluation_semantic_contract(case, observation)
+
+    assert score.passed is True
+    assert score.ordering_correct is True
+
+
+def test_v2_metric_contract_requires_the_canonical_metric() -> None:
+    case = load_it_operations_evaluation_v2_set().cases_by_id["itops-easy-005"]
+
+    correct = score_evaluation_semantic_contract(
+        case,
+        _plan_observation(metric_id="active_human_users"),
+    )
+    wrong = score_evaluation_semantic_contract(case, _plan_observation())
+
+    assert correct.passed is True
+    assert wrong.passed is False
+    assert wrong.failure_reasons == ("required_metric_mismatch",)
+
+
+def test_semantic_contract_score_fails_closed_without_safe_plan_shape() -> None:
+    case = load_it_operations_evaluation_v2_set().cases_by_id["itops-hard-004"]
+
+    score = score_evaluation_semantic_contract(
+        case,
+        {"effective_concept_ids": ["unsafe identifier with spaces"]},
+    )
+
+    assert score.evaluated is False
+    assert score.passed is None
+    assert "unsafe identifier with spaces" not in json.dumps(score.as_safe_metrics())

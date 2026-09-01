@@ -63,6 +63,21 @@ SEMANTIC_SQL_RENDER_FAILURE_CODE = "semantic_sql_render_failed"
 TEMPLATE_NOT_FOUND_MESSAGE = "Query template was not found."
 TEMPLATE_PARAMETER_MESSAGE = "Query template parameters are not supported safely."
 UNSAFE_REQUEST_MESSAGE = "The request is not allowed for safe read-only querying."
+REQUIRED_INTENT_FAILURE_CODES = frozenset(
+    {
+        "mandatory_entity_missing",
+        "mandatory_rule_missing",
+        "mandatory_metric_ambiguous",
+        "mandatory_metric_missing",
+        "mandatory_concept_missing",
+        "required_output_missing",
+        "grounded_aggregation_mismatch",
+        "grounded_group_by_mismatch",
+        "grounded_having_mismatch",
+        "grounded_distinct_mismatch",
+        "result_grain_mismatch",
+    }
+)
 
 
 class SQLExecutorCallable(Protocol):
@@ -476,6 +491,11 @@ class QueryEngineService:
             plan_validation: dict[str, Any] = {
                 "status": "failed",
                 "reason_code": exc.reason,
+                "required_intent_status": (
+                    "failed"
+                    if exc.reason in REQUIRED_INTENT_FAILURE_CODES
+                    else "not_evaluated"
+                ),
             }
             observation_key = _PLAN_VALIDATION_OBSERVATION_KEYS.get(exc.reason)
             if observation_key is not None and exc.safe_observation is not None:
@@ -501,6 +521,7 @@ class QueryEngineService:
             "semantic_plan_validation": {
                 "status": "passed",
                 "reason_code": None,
+                "required_intent_status": "passed",
             },
         }
         try:
@@ -523,6 +544,13 @@ class QueryEngineService:
                 safe_error=QUERY_RESULT_FAILURE_MESSAGE,
                 failure_code=SEMANTIC_SQL_RENDER_FAILURE_CODE,
             )
+        metadata = {
+            **metadata,
+            "semantic_sql_render": {
+                "status": "passed",
+                "reason_code": None,
+            },
+        }
         return _GeneratedQueryResult(
             generated_sql=rendered_sql,
             provider_name=plan_result.provider_name,
@@ -705,6 +733,7 @@ def _base_metadata(
     if isinstance(plan_validation, dict):
         status = plan_validation.get("status")
         reason_code = plan_validation.get("reason_code")
+        required_intent_status = plan_validation.get("required_intent_status")
         if status in {"passed", "failed"} and (
             reason_code is None
             or (
@@ -715,6 +744,12 @@ def _base_metadata(
             metadata["semantic_plan_validation"] = {
                 "status": status,
                 "reason_code": reason_code,
+                "required_intent_status": (
+                    required_intent_status
+                    if required_intent_status
+                    in {"passed", "failed", "not_evaluated"}
+                    else "not_evaluated"
+                ),
             }
             if isinstance(reason_code, str):
                 observation_key = _PLAN_VALIDATION_OBSERVATION_KEYS.get(reason_code)
@@ -730,12 +765,17 @@ def _base_metadata(
         status = render_status.get("status")
         reason_code = render_status.get("reason_code")
         if (
-            status == "failed"
-            and isinstance(reason_code, str)
-            and re.fullmatch(r"[a-z][a-z0-9_]{0,127}", reason_code)
+            status in {"passed", "failed"}
+            and (
+                reason_code is None
+                or (
+                    isinstance(reason_code, str)
+                    and re.fullmatch(r"[a-z][a-z0-9_]{0,127}", reason_code)
+                )
+            )
         ):
             metadata["semantic_sql_render"] = {
-                "status": "failed",
+                "status": status,
                 "reason_code": reason_code,
             }
     metadata["repair_attempted"] = False
