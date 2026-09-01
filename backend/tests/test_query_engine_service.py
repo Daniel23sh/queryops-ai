@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
-from collections.abc import Generator
+from collections.abc import Generator, Mapping
 from typing import Any
 
 import pytest
@@ -15,7 +15,7 @@ from app.auth.access_context import UserAccessContext, build_user_access_context
 from app.db.base import Base
 from app.domains.it_operations.seed import seed_database
 from app.models.product import AppUser, QueryRun
-from app.query_engine.llm_provider import SQLGenerationOutcome, SQLGenerationResult
+from app.query_engine.llm_provider import PlanGenerationOutcome, PlanGenerationResult
 from app.query_engine.result_formatter import format_query_result
 from app.query_engine.semantic_conformance import (
     SemanticConformanceReason,
@@ -36,6 +36,7 @@ from app.query_engine.service import (
     _safe_field_mismatch_observation,
 )
 from app.query_engine.sql_executor import SQLExecutionResult
+from app.query_engine.sql_renderer import SemanticSQLRenderError
 from app.query_engine.sql_validator import SQLValidationResult, validate_sql
 
 
@@ -151,7 +152,9 @@ def test_mock_grouped_count_free_text_matches_grounded_result_intent(
     assert result.status == "succeeded"
     assert query_run.status == "succeeded"
     assert query_run.generated_sql is not None
-    assert query_run.generated_sql.startswith("SELECT priority, COUNT(*)")
+    assert query_run.generated_sql.startswith(
+        "SELECT support_tickets.priority, COUNT(*) AS row_count"
+    )
     assert query_run.query_metadata["semantic_plan_validation"] == {
         "status": "passed",
         "reason_code": None,
@@ -184,7 +187,7 @@ def test_mock_free_text_template_query_applies_default_parameters(
     assert query_run.query_metadata["template_id"] == "inactive_users_by_department"
     assert query_run.generated_sql is not None
     assert ":inactive_days" not in query_run.generated_sql
-    assert "90 * INTERVAL '1 day'" in query_run.generated_sql
+    assert "CURRENT_TIMESTAMP - INTERVAL '90 days'" in query_run.generated_sql
     assert query_run.executed_sql == executor.seen_sql[0]
     assert ":inactive_days" not in query_run.executed_sql
 
@@ -308,12 +311,12 @@ def test_generated_and_executed_sql_follow_security_storage_expectations(
 
     query_run = only_query_run(db_session)
     assert query_run.generated_sql is not None
-    assert "ORDER BY hostname" in query_run.generated_sql
+    assert "ORDER BY devices.hostname ASC" in query_run.generated_sql
     assert query_run.executed_sql == f"{query_run.generated_sql} LIMIT 25"
     assert executor.seen_sql == [query_run.executed_sql]
 
 
-def test_valid_sql_path_does_not_attempt_self_correction(
+def test_valid_plan_is_rendered_once_without_self_correction(
     db_session: Session,
 ) -> None:
     executor = FakeExecutor()
@@ -339,93 +342,23 @@ def test_valid_sql_path_does_not_attempt_self_correction(
 
     query_run = only_query_run(db_session)
     assert result.status == "succeeded"
-    assert validator.seen_sql == [
-        "SELECT id, hostname FROM devices "
-        "WHERE compliance_status = 'non_compliant' "
-        "OR antivirus_status IN ('outdated', 'missing') "
-        "OR encryption_enabled = false "
-        "ORDER BY hostname LIMIT 25"
-    ]
+    assert len(validator.seen_sql) == 1
+    assert validator.seen_sql[0] == query_run.generated_sql
+    assert validator.seen_sql[0].startswith("SELECT devices.hostname, devices.id")
     assert "self_correction" not in query_run.query_metadata
-    assert executor.seen_sql == [
-        "SELECT id, hostname FROM devices "
-        "WHERE compliance_status = 'non_compliant' "
-        "OR antivirus_status IN ('outdated', 'missing') "
-        "OR encryption_enabled = false "
-        "ORDER BY hostname LIMIT 25"
-    ]
+    assert executor.seen_sql == [validator.seen_sql[0]]
 
 
-def test_select_star_validation_failure_triggers_one_correction_attempt_and_executes(
+def test_free_query_renderer_output_that_fails_safety_is_not_corrected(
     db_session: Session,
 ) -> None:
     executor = FakeExecutor()
     validator = RecordingValidator()
     service = QueryEngineService(
-        provider=StaticSQLProvider(
-            "SELECT * FROM devices WHERE compliance_status = 'non_compliant' "
-            "OR antivirus_status IN ('outdated', 'missing') "
-            "OR encryption_enabled = false ORDER BY hostname"
-        ),
+        provider=StaticSQLProvider("SELECT id FROM devices"),
         executor=executor,
         validator=validator,
-    )
-    user = user_by_email(db_session, "demo.analyst@queryops.local")
-
-    result = service.run(
-        db_session,
-        user,
-        QueryEngineRequest(question="Show non-compliant devices in my department."),
-    )
-
-    query_run = only_query_run(db_session)
-    assert result.status == "succeeded"
-    assert len(validator.seen_sql) == 2
-    assert validator.seen_sql[0].startswith("SELECT * FROM devices WHERE ")
-    assert validator.seen_sql[1].startswith("SELECT ")
-    assert " FROM devices WHERE " in validator.seen_sql[1]
-    assert "*" not in validator.seen_sql[1]
-    assert query_run.generated_sql.startswith("SELECT * FROM devices WHERE ")
-    assert query_run.executed_sql == executor.seen_sql[0]
-    assert "*" not in query_run.executed_sql
-    assert query_run.query_metadata["self_correction"] == {
-        "attempted": True,
-        "succeeded": True,
-        "original_error_code": "select_star_not_allowed",
-    }
-
-
-def test_correction_failure_returns_safe_failure_metadata(
-    db_session: Session,
-) -> None:
-    executor = FakeExecutor()
-    validator = SequenceValidator(
-        [
-            SQLValidationResult(
-                valid=False,
-                sanitized_sql=None,
-                referenced_tables=[],
-                error_code="select_star_not_allowed",
-                public_error="SQL is not allowed for safe read-only querying.",
-            ),
-            SQLValidationResult(
-                valid=False,
-                sanitized_sql=None,
-                referenced_tables=[],
-                error_code="table_not_allowed",
-                reason="internal table detail",
-                public_error="SQL is not allowed for safe read-only querying.",
-            ),
-        ]
-    )
-    service = QueryEngineService(
-        provider=StaticSQLProvider(
-            "SELECT * FROM devices WHERE compliance_status = 'non_compliant' "
-            "OR antivirus_status IN ('outdated', 'missing') "
-            "OR encryption_enabled = false ORDER BY hostname"
-        ),
-        executor=executor,
-        validator=validator,
+        semantic_sql_renderer=lambda _plan, _pack: "SELECT * FROM devices",
     )
     user = user_by_email(db_session, "demo.analyst@queryops.local")
 
@@ -438,17 +371,47 @@ def test_correction_failure_returns_safe_failure_metadata(
     query_run = only_query_run(db_session)
     assert result.status == "failed"
     assert result.error_code == "validation_failed"
-    assert query_run.error_message == "SQL is not allowed for safe read-only querying."
+    assert validator.seen_sql == ["SELECT * FROM devices"]
+    assert query_run.generated_sql == "SELECT * FROM devices"
+    assert query_run.executed_sql is None
+    assert "self_correction" not in query_run.query_metadata
+    assert executor.seen_sql == []
+
+
+def test_renderer_failure_skips_sql_validation_and_execution(
+    db_session: Session,
+) -> None:
+    executor = FakeExecutor()
+    validator = RecordingValidator()
+
+    def fail_render(_plan: Any, _pack: Any) -> str:
+        raise SemanticSQLRenderError("left_join_orientation_unsupported")
+
+    service = QueryEngineService(
+        provider=StaticSQLProvider("SELECT id FROM devices"),
+        executor=executor,
+        validator=validator,
+        semantic_sql_renderer=fail_render,
+    )
+    user = user_by_email(db_session, "demo.analyst@queryops.local")
+
+    result = service.run(
+        db_session,
+        user,
+        QueryEngineRequest(question="Show non-compliant devices in my department."),
+    )
+
+    query_run = only_query_run(db_session)
+    assert result.status == "failed"
+    assert result.error_code == "semantic_sql_render_failed"
+    assert query_run.generated_sql is None
     assert query_run.executed_sql is None
     assert executor.seen_sql == []
-    assert len(validator.seen_sql) == 2
-    assert query_run.query_metadata["self_correction"] == {
-        "attempted": True,
-        "succeeded": False,
-        "original_error_code": "select_star_not_allowed",
-        "final_error_code": "table_not_allowed",
+    assert validator.seen_sql == []
+    assert query_run.query_metadata["semantic_sql_render"] == {
+        "status": "failed",
+        "reason_code": "left_join_orientation_unsupported",
     }
-    assert "internal table detail" not in str(query_run.query_metadata)
 
 
 def _privileged_grouped_count_plan(
@@ -502,27 +465,14 @@ def _privileged_grouped_count_plan(
     )
 
 
-@pytest.mark.parametrize(
-    ("sql", "expected_error_code"),
-    [
-        (
-            "SELECT id FROM devices; DROP TABLE devices",
-            "multiple_statements",
-        ),
-        ("UPDATE devices SET hostname = 'bad'", "prohibited_statement"),
-        ("SELECT id FROM devices -- leak", "comments_not_allowed"),
-        ("SELECT id, event_type FROM it_audit_events", "forbidden_table"),
-    ],
-)
-def test_unsafe_validation_failures_are_not_corrected_or_executed(
+def test_provider_sql_like_attribute_cannot_influence_free_query_execution(
     db_session: Session,
-    sql: str,
-    expected_error_code: str,
 ) -> None:
     executor = FakeExecutor()
     validator = RecordingValidator()
+    provider = StaticSQLProvider("SELECT id FROM devices; DROP TABLE devices")
     service = QueryEngineService(
-        provider=StaticSQLProvider(sql),
+        provider=provider,
         executor=executor,
         validator=validator,
     )
@@ -531,15 +481,16 @@ def test_unsafe_validation_failures_are_not_corrected_or_executed(
     result = service.run(
         db_session,
         user,
-        QueryEngineRequest(question="Show devices, then try unsafe SQL."),
+        QueryEngineRequest(question="Show devices."),
     )
 
     query_run = only_query_run(db_session)
-    assert result.status == "failed"
-    assert query_run.query_metadata["validation"]["error_code"] == expected_error_code
+    assert result.status == "succeeded"
+    assert query_run.generated_sql == validator.seen_sql[0]
+    assert "DROP" not in query_run.generated_sql
+    assert ";" not in query_run.generated_sql
     assert "self_correction" not in query_run.query_metadata
-    assert validator.seen_sql == [sql]
-    assert executor.seen_sql == []
+    assert executor.seen_sql == [query_run.executed_sql]
 
 
 def test_request_metadata_persists_safe_clarification_link_only(
@@ -567,13 +518,14 @@ def test_request_metadata_persists_safe_clarification_link_only(
     assert "unsafe_internal_detail" not in query_run.query_metadata
 
 
-def test_service_never_executes_unsupported_provider_output(
+def test_provider_clarification_never_renders_or_executes(
     db_session: Session,
 ) -> None:
     executor = FakeExecutor()
     service = QueryEngineService(
         provider=UnsupportedSqlProvider(),
         executor=executor,
+        semantic_sql_renderer=_unexpected_renderer,
     )
     user = user_by_email(db_session, "demo.manager@queryops.local")
 
@@ -584,9 +536,9 @@ def test_service_never_executes_unsupported_provider_output(
     )
 
     query_run = only_query_run(db_session)
-    assert result.status == "failed"
-    assert result.clarification_required is False
-    assert result.error_code == "provider_response_invalid"
+    assert result.status == "clarification_required"
+    assert result.clarification_required is True
+    assert result.error_code == "unsupported_question"
     assert query_run.generated_sql is None
     assert query_run.executed_sql is None
     assert executor.seen_sql == []
@@ -601,6 +553,7 @@ def test_unsafe_request_is_persisted_safely_without_validation_or_execution(
         provider=UnsafeRequestProvider(),
         executor=executor,
         validator=validator,
+        semantic_sql_renderer=_unexpected_renderer,
     )
     user = user_by_email(db_session, "demo.analyst@queryops.local")
 
@@ -639,6 +592,7 @@ def test_mandatory_metric_cannot_be_downgraded_before_sql_validation(
         executor=executor,
         validator=validator,
         conformance_checker=conformance,
+        semantic_sql_renderer=_unexpected_renderer,
     )
     user = user_by_email(db_session, "demo.analyst@queryops.local")
 
@@ -871,9 +825,12 @@ def test_sql_safety_failure_never_invokes_conformance(
     conformance = RecordingConformanceChecker()
     executor = FakeExecutor()
     service = QueryEngineService(
-        provider=StaticSQLProvider("UPDATE devices SET hostname = 'bad'"),
+        provider=StaticSQLProvider("SELECT id FROM devices"),
         executor=executor,
         conformance_checker=conformance,
+        semantic_sql_renderer=lambda _plan, _pack: (
+            "UPDATE devices SET hostname = 'bad'"
+        ),
     )
     user = user_by_email(db_session, "demo.admin@queryops.local")
 
@@ -952,10 +909,15 @@ def test_conformance_receives_candidate_and_exact_executed_sanitized_sql(
     assert result.status == "succeeded"
     assert len(conformance.calls) == 1
     call = conformance.calls[0]
-    assert call["candidate_sql"] == candidate
+    query_run = only_query_run(db_session)
+    assert call["candidate_sql"] == query_run.generated_sql
+    assert call["candidate_sql"] == (
+        "SELECT devices.hostname, devices.id FROM devices "
+        "ORDER BY devices.hostname ASC"
+    )
     safety_result = call["safety_result"]
     assert isinstance(safety_result, SQLValidationResult)
-    assert safety_result.sanitized_sql == f"{candidate} LIMIT 100"
+    assert safety_result.sanitized_sql == f"{call['candidate_sql']} LIMIT 100"
     assert executor.seen_sql == [safety_result.sanitized_sql]
 
 
@@ -1009,7 +971,11 @@ def test_template_request_bypasses_selected_real_provider(
 ) -> None:
     executor = FakeExecutor()
     provider = RecordingMeasuredProvider()
-    service = QueryEngineService(provider=provider, executor=executor)
+    service = QueryEngineService(
+        provider=provider,
+        executor=executor,
+        semantic_sql_renderer=_unexpected_renderer,
+    )
     user = user_by_email(db_session, "demo.manager@queryops.local")
 
     result = service.run(
@@ -1059,6 +1025,10 @@ def test_result_formatter_is_deterministic() -> None:
     assert first.warnings == ["alpha", "beta"]
 
 
+def _unexpected_renderer(_plan: Any, _domain_pack: Any) -> str:
+    raise AssertionError("Semantic SQL renderer must not be called")
+
+
 class FakeExecutor:
     def __init__(self, result: SQLExecutionResult | None = None) -> None:
         self.result = result or SQLExecutionResult(
@@ -1090,18 +1060,17 @@ class UnsupportedSqlProvider:
     provider_name = "unsupported-test-provider"
     model_name = "unsupported-test-model"
 
-    def generate_sql(
+    def generate_plan(
         self,
         question: str,
-        _schema_context: dict[str, Any],
-        _user_context: dict[str, Any],
-        _options: dict[str, Any],
-    ) -> SQLGenerationResult:
-        return SQLGenerationResult(
-            generated_sql="DROP TABLE directory_users",
+        _schema_context: Mapping[str, Any],
+        _user_context: Mapping[str, Any],
+        _options: Mapping[str, Any],
+    ) -> PlanGenerationResult:
+        return PlanGenerationResult(
             provider_name=self.provider_name,
             model_name=self.model_name,
-            outcome=SQLGenerationOutcome.CLARIFICATION,
+            outcome=PlanGenerationOutcome.CLARIFICATION,
             generation_metadata={"source": "test"},
             unsupported_reason="unsupported_question",
             safe_error="I could not map that question to a supported query.",
@@ -1115,19 +1084,18 @@ class StaticSQLProvider:
     def __init__(self, generated_sql: str) -> None:
         self.generated_sql = generated_sql
 
-    def generate_sql(
+    def generate_plan(
         self,
         question: str,
-        schema_context: dict[str, Any],
-        _user_context: dict[str, Any],
-        _options: dict[str, Any],
-    ) -> SQLGenerationResult:
-        return SQLGenerationResult(
-            generated_sql=self.generated_sql,
+        schema_context: Mapping[str, Any],
+        _user_context: Mapping[str, Any],
+        _options: Mapping[str, Any],
+    ) -> PlanGenerationResult:
+        return PlanGenerationResult(
             provider_name=self.provider_name,
             model_name=self.model_name,
             generation_metadata={"source": "self_correction_test"},
-            semantic_plan=_device_plan(schema_context, self.generated_sql, question),
+            semantic_plan=_device_plan(dict(schema_context), self.generated_sql, question),
         )
 
 
@@ -1135,19 +1103,18 @@ class UnsafeRequestProvider:
     provider_name = "openai"
     model_name = "gpt-5.6-luna"
 
-    def generate_sql(
+    def generate_plan(
         self,
         _question: str,
-        _schema_context: dict[str, Any],
-        _user_context: dict[str, Any],
-        options: dict[str, Any],
-    ) -> SQLGenerationResult:
+        _schema_context: Mapping[str, Any],
+        _user_context: Mapping[str, Any],
+        options: Mapping[str, Any],
+    ) -> PlanGenerationResult:
         semantic_catalog = options["semantic_catalog"]
-        return SQLGenerationResult(
-            generated_sql=None,
+        return PlanGenerationResult(
             provider_name=self.provider_name,
             model_name=self.model_name,
-            outcome=SQLGenerationOutcome.UNSAFE_REQUEST,
+            outcome=PlanGenerationOutcome.UNSAFE_REQUEST,
             generation_metadata={
                 "referenced_tables": ["directory_users"],
                 "semantic_catalog": semantic_catalog.as_observation(),
@@ -1168,22 +1135,18 @@ class RecordingMeasuredProvider:
         self.user_context: dict[str, Any] = {}
         self.semantic_catalog: Any = None
 
-    def generate_sql(
+    def generate_plan(
         self,
         _question: str,
-        schema_context: dict[str, Any],
-        user_context: dict[str, Any],
-        options: dict[str, Any],
-    ) -> SQLGenerationResult:
+        schema_context: Mapping[str, Any],
+        user_context: Mapping[str, Any],
+        options: Mapping[str, Any],
+    ) -> PlanGenerationResult:
         self.calls += 1
-        self.schema_context = schema_context
-        self.user_context = user_context
+        self.schema_context = dict(schema_context)
+        self.user_context = dict(user_context)
         self.semantic_catalog = options.get("semantic_catalog")
-        return SQLGenerationResult(
-            generated_sql=(
-                "SELECT id, os FROM devices "
-                "ORDER BY os, id LIMIT 25"
-            ),
+        return PlanGenerationResult(
             provider_name=self.provider_name,
             model_name=self.model_name,
             generation_metadata={
@@ -1215,19 +1178,15 @@ class WeakActiveUsersProvider:
     def __init__(self) -> None:
         self.calls = 0
 
-    def generate_sql(
+    def generate_plan(
         self,
         _question: str,
-        _schema_context: dict[str, Any],
-        _user_context: dict[str, Any],
-        _options: dict[str, Any],
-    ) -> SQLGenerationResult:
+        _schema_context: Mapping[str, Any],
+        _user_context: Mapping[str, Any],
+        _options: Mapping[str, Any],
+    ) -> PlanGenerationResult:
         self.calls += 1
-        return SQLGenerationResult(
-            generated_sql=(
-                "SELECT COUNT(*) FROM directory_users "
-                "WHERE account_status = 'active'"
-            ),
+        return PlanGenerationResult(
             provider_name=self.provider_name,
             model_name=self.model_name,
             semantic_plan=SemanticPlan(
@@ -1259,15 +1218,14 @@ class WrongGroundedAggregationProvider:
     provider_name = "grounded-mismatch-test-provider"
     model_name = "grounded-mismatch-test-model"
 
-    def generate_sql(
+    def generate_plan(
         self,
         _question: str,
-        _schema_context: dict[str, Any],
-        _user_context: dict[str, Any],
-        _options: dict[str, Any],
-    ) -> SQLGenerationResult:
-        return SQLGenerationResult(
-            generated_sql="SELECT sanitized candidate",
+        _schema_context: Mapping[str, Any],
+        _user_context: Mapping[str, Any],
+        _options: Mapping[str, Any],
+    ) -> PlanGenerationResult:
+        return PlanGenerationResult(
             provider_name=self.provider_name,
             model_name=self.model_name,
             semantic_plan=SemanticPlan(
@@ -1321,15 +1279,14 @@ class WrongGroundedHavingProvider:
     provider_name = "grounded-having-mismatch-test-provider"
     model_name = "grounded-having-mismatch-test-model"
 
-    def generate_sql(
+    def generate_plan(
         self,
         _question: str,
-        _schema_context: dict[str, Any],
-        _user_context: dict[str, Any],
-        _options: dict[str, Any],
-    ) -> SQLGenerationResult:
-        return SQLGenerationResult(
-            generated_sql="SELECT provider SQL must not persist",
+        _schema_context: Mapping[str, Any],
+        _user_context: Mapping[str, Any],
+        _options: Mapping[str, Any],
+    ) -> PlanGenerationResult:
+        return PlanGenerationResult(
             provider_name=self.provider_name,
             model_name=self.model_name,
             semantic_plan=SemanticPlan(
@@ -1377,15 +1334,14 @@ class StaticPlanProvider:
     def __init__(self, plan: SemanticPlan) -> None:
         self.plan = plan
 
-    def generate_sql(
+    def generate_plan(
         self,
         _question: str,
-        _schema_context: dict[str, Any],
-        _user_context: dict[str, Any],
-        _options: dict[str, Any],
-    ) -> SQLGenerationResult:
-        return SQLGenerationResult(
-            generated_sql="SELECT provider content must not persist",
+        _schema_context: Mapping[str, Any],
+        _user_context: Mapping[str, Any],
+        _options: Mapping[str, Any],
+    ) -> PlanGenerationResult:
+        return PlanGenerationResult(
             provider_name=self.provider_name,
             model_name=self.model_name,
             semantic_plan=self.plan,

@@ -86,7 +86,7 @@ def test_readiness_cli_json_is_fixed_bounded_and_sanitized(monkeypatch, capsys) 
 
 def test_readiness_cli_never_calls_provider_and_safe_fails(monkeypatch, capsys) -> None:
     monkeypatch.setattr(
-        "app.query_engine.openai_provider.OpenAIProvider.generate_sql",
+        "app.query_engine.openai_provider.OpenAIProvider.generate_plan",
         lambda *_args, **_kwargs: pytest.fail("readiness must not call OpenAI"),
     )
     monkeypatch.setattr(check_v1_readiness, "SessionLocal", lambda: nullcontext(object()))

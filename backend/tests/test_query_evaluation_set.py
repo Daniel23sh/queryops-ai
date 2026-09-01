@@ -16,7 +16,6 @@ from app.models.product import AppUser
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.mock_llm_provider import MockLLMProvider
 from app.query_engine.schema_context import build_schema_context
-from app.query_engine.sql_validator import validate_sql
 
 
 @dataclass(frozen=True)
@@ -61,7 +60,7 @@ EVALUATION_CASES = (
 
 
 @pytest.mark.parametrize("case", EVALUATION_CASES)
-def test_mock_evaluation_question_maps_to_expected_template_and_valid_sql(
+def test_mock_evaluation_question_maps_to_expected_template_and_plan(
     db_session: Session,
     case: EvaluationCase,
 ) -> None:
@@ -70,20 +69,17 @@ def test_mock_evaluation_question_maps_to_expected_template_and_valid_sql(
     schema_context = build_schema_context(db_session, access_context)
     provider = MockLLMProvider(load_it_operations_domain_pack())
 
-    result = provider.generate_sql(
+    result = provider.generate_plan(
         case.question,
         schema_context,
         {"role": access_context.role, "scope_type": access_context.default_scope.type},
         {},
     )
-    validation = validate_sql(result.generated_sql or "", schema_context)
-
     assert result.clarification_required is False
-    assert result.generated_sql is not None
+    assert result.semantic_plan is not None
     assert result.generation_metadata["template_id"] == case.template_id
     assert set(result.generation_metadata["referenced_tables"]) == case.expected_tables
-    assert validation.valid is True
-    assert set(validation.referenced_tables) == case.expected_tables
+    assert set(result.semantic_plan.entity_ids) == case.expected_tables
 
 
 def test_mock_evaluation_set_generation_is_deterministic(
@@ -95,11 +91,11 @@ def test_mock_evaluation_set_generation_is_deterministic(
     provider = MockLLMProvider(load_it_operations_domain_pack())
 
     first = [
-        provider.generate_sql(case.question, schema_context, {"role": "analyst"}, {})
+        provider.generate_plan(case.question, schema_context, {"role": "analyst"}, {})
         for case in EVALUATION_CASES
     ]
     second = [
-        provider.generate_sql(case.question, schema_context, {"role": "analyst"}, {})
+        provider.generate_plan(case.question, schema_context, {"role": "analyst"}, {})
         for case in EVALUATION_CASES
     ]
 
@@ -126,14 +122,14 @@ def test_mock_evaluation_unsafe_prompts_fail_safely(
     schema_context = build_schema_context(db_session, access_context)
     provider = MockLLMProvider(load_it_operations_domain_pack())
 
-    result = provider.generate_sql(
+    result = provider.generate_plan(
         unsafe_question,
         schema_context,
         {"role": access_context.role, "scope_type": access_context.default_scope.type},
         {},
     )
 
-    assert result.generated_sql is None
+    assert result.semantic_plan is None
     assert result.clarification_required is True
     assert result.unsupported_reason == "unsupported_question"
     assert result.safe_error == "I could not map that question to a supported query."

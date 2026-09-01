@@ -7,17 +7,16 @@ from typing import Any
 from app.query_engine.llm_provider import (
     LLMProvider,
     LLMProviderFailure,
-    SQLGenerationOutcome,
+    PlanGenerationOutcome,
 )
 from app.query_engine.semantic_plan import SemanticPlan, ValidatedSemanticPlan
 
 
 @dataclass(frozen=True)
-class SQLGeneratorResult:
-    generated_sql: str | None
+class PlanGeneratorResult:
     provider_name: str
     model_name: str
-    outcome: SQLGenerationOutcome = SQLGenerationOutcome.SQL
+    outcome: PlanGenerationOutcome = PlanGenerationOutcome.PLAN
     generation_metadata: dict[str, Any] = field(default_factory=dict)
     semantic_plan: SemanticPlan | None = None
     validated_semantic_plan: ValidatedSemanticPlan | None = None
@@ -26,11 +25,11 @@ class SQLGeneratorResult:
 
     @property
     def clarification_required(self) -> bool:
-        return self.outcome is SQLGenerationOutcome.CLARIFICATION
+        return self.outcome is PlanGenerationOutcome.CLARIFICATION
 
     @property
     def unsafe_request(self) -> bool:
-        return self.outcome is SQLGenerationOutcome.UNSAFE_REQUEST
+        return self.outcome is PlanGenerationOutcome.UNSAFE_REQUEST
 
     @property
     def generation_failed(self) -> bool:
@@ -40,20 +39,20 @@ class SQLGeneratorResult:
         )
 
 
-class SQLGenerator:
+class PlanGenerator:
     def __init__(self, provider: LLMProvider) -> None:
         self.provider = provider
 
-    def generate_sql(
+    def generate_plan(
         self,
         question: str,
         schema_context: Mapping[str, Any],
         user_context: Mapping[str, Any],
         options: Mapping[str, Any] | None = None,
-    ) -> SQLGeneratorResult:
+    ) -> PlanGeneratorResult:
         request_options = options or {}
         try:
-            provider_result = self.provider.generate_sql(
+            provider_result = self.provider.generate_plan(
                 question,
                 schema_context,
                 user_context,
@@ -62,48 +61,44 @@ class SQLGenerator:
         except Exception as exc:
             return self._provider_error_result(exc)
 
-        generated_sql = _normalize_sql(provider_result.generated_sql)
-        if not _provider_result_is_consistent(provider_result, generated_sql):
+        if not _provider_result_is_consistent(provider_result):
             return self._provider_error_result(
                 LLMProviderFailure("provider_response_invalid")
             )
 
-        if provider_result.outcome is SQLGenerationOutcome.CLARIFICATION:
-            return SQLGeneratorResult(
-                generated_sql=generated_sql,
+        if provider_result.outcome is PlanGenerationOutcome.CLARIFICATION:
+            return PlanGeneratorResult(
                 provider_name=provider_result.provider_name,
                 model_name=provider_result.model_name,
-                outcome=SQLGenerationOutcome.CLARIFICATION,
+                outcome=PlanGenerationOutcome.CLARIFICATION,
                 generation_metadata=dict(provider_result.generation_metadata),
                 semantic_plan=None,
                 unsupported_reason=provider_result.unsupported_reason,
                 safe_error=provider_result.safe_error,
             )
 
-        if provider_result.outcome is SQLGenerationOutcome.UNSAFE_REQUEST:
-            return SQLGeneratorResult(
-                generated_sql=None,
+        if provider_result.outcome is PlanGenerationOutcome.UNSAFE_REQUEST:
+            return PlanGeneratorResult(
                 provider_name=provider_result.provider_name,
                 model_name=provider_result.model_name,
-                outcome=SQLGenerationOutcome.UNSAFE_REQUEST,
+                outcome=PlanGenerationOutcome.UNSAFE_REQUEST,
                 generation_metadata=dict(provider_result.generation_metadata),
                 semantic_plan=None,
                 unsupported_reason="unsafe_request",
                 safe_error=provider_result.safe_error,
             )
 
-        return SQLGeneratorResult(
-            generated_sql=generated_sql,
+        return PlanGeneratorResult(
             provider_name=provider_result.provider_name,
             model_name=provider_result.model_name,
-            outcome=SQLGenerationOutcome.SQL,
+            outcome=PlanGenerationOutcome.PLAN,
             generation_metadata=dict(provider_result.generation_metadata),
             semantic_plan=provider_result.semantic_plan,
             unsupported_reason=None,
             safe_error=None,
         )
 
-    def _provider_error_result(self, exc: Exception) -> SQLGeneratorResult:
+    def _provider_error_result(self, exc: Exception) -> PlanGeneratorResult:
         if isinstance(exc, LLMProviderFailure):
             metadata = {
                 "provider_failure_code": exc.code,
@@ -113,47 +108,32 @@ class SQLGenerator:
         else:
             metadata = {"provider_failure_code": "provider_unavailable"}
             unsupported_reason = "provider_error"
-        return SQLGeneratorResult(
-            generated_sql=None,
+        return PlanGeneratorResult(
             provider_name=self.provider.provider_name,
             model_name=self.provider.model_name,
-            outcome=SQLGenerationOutcome.CLARIFICATION,
+            outcome=PlanGenerationOutcome.CLARIFICATION,
             generation_metadata=metadata,
             unsupported_reason=unsupported_reason,
-            safe_error="SQL generation is unavailable.",
+            safe_error="Semantic planning is unavailable.",
         )
 
 
-def _normalize_sql(generated_sql: str | None) -> str | None:
-    if generated_sql is None:
-        return None
-
-    normalized = generated_sql.strip()
-    if normalized.endswith(";"):
-        normalized = normalized[:-1].strip()
-    return normalized or None
-
-
-def _provider_result_is_consistent(
-    result: Any,
-    normalized_sql: str | None,
-) -> bool:
-    if result.outcome is SQLGenerationOutcome.SQL:
+def _provider_result_is_consistent(result: Any) -> bool:
+    if result.outcome is PlanGenerationOutcome.PLAN:
         return (
-            normalized_sql is not None
+            isinstance(result.semantic_plan, SemanticPlan)
             and result.unsupported_reason is None
-            and isinstance(result.semantic_plan, SemanticPlan)
+            and result.safe_error is None
         )
-    if result.outcome is SQLGenerationOutcome.CLARIFICATION:
+    if result.outcome is PlanGenerationOutcome.CLARIFICATION:
         return (
-            normalized_sql is None
-            and result.unsupported_reason is not None
-            and result.semantic_plan is None
+            result.semantic_plan is None
+            and isinstance(result.unsupported_reason, str)
+            and bool(result.unsupported_reason)
         )
-    if result.outcome is SQLGenerationOutcome.UNSAFE_REQUEST:
+    if result.outcome is PlanGenerationOutcome.UNSAFE_REQUEST:
         return (
-            normalized_sql is None
+            result.semantic_plan is None
             and result.unsupported_reason == "unsafe_request"
-            and result.semantic_plan is None
         )
     return False

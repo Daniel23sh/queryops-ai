@@ -13,7 +13,7 @@ from app.auth.access_context import UserAccessContext
 from app.db.base import Base
 from app.domains.it_operations.seed import seed_database
 from app.models.product import AppUser, QueryRun
-from app.query_engine.llm_provider import SQLGenerationResult
+from app.query_engine.llm_provider import PlanGenerationResult
 from app.query_engine.semantic_plan import (
     SemanticFieldRef,
     SemanticOrderIntent,
@@ -27,12 +27,15 @@ from app.query_engine.sql_validator import SQLValidationResult
 PUBLIC_SQL_ERROR = "SQL is not allowed for safe read-only querying."
 
 
-def test_provider_product_table_sql_is_validated_before_execution(
+def test_renderer_product_table_sql_is_validated_before_execution(
     db_session: Session,
 ) -> None:
     executor = RecordingExecutor()
     service = QueryEngineService(
-        provider=StaticSQLProvider("SELECT id, email FROM app_users LIMIT 10"),
+        provider=StaticPlanProvider("SELECT id, email FROM app_users LIMIT 10"),
+        semantic_sql_renderer=StaticSQLRenderer(
+            "SELECT id, email FROM app_users LIMIT 10"
+        ),
         executor=executor,
     )
     user = user_by_email(db_session, "demo.admin@queryops.local")
@@ -55,12 +58,15 @@ def test_provider_product_table_sql_is_validated_before_execution(
     assert executor.calls == []
 
 
-def test_semicolon_chained_provider_output_never_reaches_executor(
+def test_semicolon_chained_renderer_output_never_reaches_executor(
     db_session: Session,
 ) -> None:
     executor = RecordingExecutor()
     service = QueryEngineService(
-        provider=StaticSQLProvider(
+        provider=StaticPlanProvider(
+            "SELECT email FROM directory_users; DROP TABLE directory_users"
+        ),
+        semantic_sql_renderer=StaticSQLRenderer(
             "SELECT email FROM directory_users; DROP TABLE directory_users"
         ),
         executor=executor,
@@ -133,7 +139,10 @@ def test_execution_failure_metadata_stays_sanitized_in_query_run(
         )
     )
     service = QueryEngineService(
-        provider=StaticSQLProvider(
+        provider=StaticPlanProvider(
+            "SELECT id, hostname FROM devices ORDER BY hostname LIMIT 5"
+        ),
+        semantic_sql_renderer=StaticSQLRenderer(
             "SELECT id, hostname FROM devices ORDER BY hostname LIMIT 5"
         ),
         executor=executor,
@@ -188,31 +197,38 @@ def test_service_with_mock_provider_requires_no_real_llm_configuration(
     assert executor.calls
 
 
-class StaticSQLProvider:
+class StaticPlanProvider:
     provider_name = "static-security-test-provider"
     model_name = "static-security-test-model"
 
-    def __init__(self, generated_sql: str) -> None:
-        self.generated_sql = generated_sql
+    def __init__(self, renderer_sql: str) -> None:
+        self.renderer_sql = renderer_sql
 
-    def generate_sql(
+    def generate_plan(
         self,
         question: str,
         schema_context: Mapping[str, Any],
         _user_context: Mapping[str, Any],
         _options: Mapping[str, Any],
-    ) -> SQLGenerationResult:
-        return SQLGenerationResult(
-            generated_sql=self.generated_sql,
+    ) -> PlanGenerationResult:
+        return PlanGenerationResult(
             provider_name=self.provider_name,
             model_name=self.model_name,
             generation_metadata={"source": "security_regression_test"},
             semantic_plan=_security_test_plan(
                 question=question,
                 schema_context=schema_context,
-                sql=self.generated_sql,
+                sql=self.renderer_sql,
             ),
         )
+
+
+class StaticSQLRenderer:
+    def __init__(self, sql: str) -> None:
+        self.sql = sql
+
+    def __call__(self, *_args: Any) -> str:
+        return self.sql
 
 
 def _security_test_plan(

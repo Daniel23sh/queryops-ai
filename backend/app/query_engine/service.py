@@ -16,10 +16,11 @@ from app.query_engine.domain_pack import DomainPack
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.llm_provider import (
     LLMProvider,
-    SQLGenerationOutcome,
+    PlanGenerationOutcome,
     sanitize_provider_measurement,
 )
 from app.query_engine.mock_llm_provider import MockLLMProvider
+from app.query_engine.plan_generator import PlanGenerator, PlanGeneratorResult
 from app.query_engine.result_formatter import (
     QUERY_RESULT_CLARIFICATION_MESSAGE,
     QUERY_RESULT_FAILURE_MESSAGE,
@@ -48,13 +49,17 @@ from app.query_engine.sql_executor import (
     SQLExecutionResult,
     execute_validated_sql,
 )
-from app.query_engine.sql_generator import SQLGenerator, SQLGeneratorResult
+from app.query_engine.sql_renderer import (
+    SemanticSQLRenderError,
+    render_validated_semantic_plan,
+)
 from app.query_engine.sql_validator import SQLValidationResult, validate_sql
 from app.query_engine.template_sql import render_template_sql
 
 
 VALIDATION_FAILURE_CODE = "validation_failed"
 SEMANTIC_CONFORMANCE_FAILURE_CODE = "semantic_conformance_failed"
+SEMANTIC_SQL_RENDER_FAILURE_CODE = "semantic_sql_render_failed"
 TEMPLATE_NOT_FOUND_MESSAGE = "Query template was not found."
 TEMPLATE_PARAMETER_MESSAGE = "Query template parameters are not supported safely."
 UNSAFE_REQUEST_MESSAGE = "The request is not allowed for safe read-only querying."
@@ -75,6 +80,7 @@ class SQLExecutorCallable(Protocol):
 
 ValidatorCallable = Callable[[str, dict[str, Any]], SQLValidationResult]
 DomainPackLoaderCallable = Callable[[], DomainPack]
+SemanticSQLRendererCallable = Callable[[ValidatedSemanticPlan, DomainPack], str]
 
 
 class SemanticConformanceCallable(Protocol):
@@ -98,6 +104,31 @@ class QueryEngineRequest:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class _GeneratedQueryResult:
+    generated_sql: str | None
+    provider_name: str
+    model_name: str
+    outcome: PlanGenerationOutcome = PlanGenerationOutcome.PLAN
+    generation_metadata: dict[str, Any] = field(default_factory=dict)
+    validated_semantic_plan: ValidatedSemanticPlan | None = None
+    unsupported_reason: str | None = None
+    safe_error: str | None = None
+    failure_code: str | None = None
+
+    @property
+    def clarification_required(self) -> bool:
+        return self.outcome is PlanGenerationOutcome.CLARIFICATION
+
+    @property
+    def unsafe_request(self) -> bool:
+        return self.outcome is PlanGenerationOutcome.UNSAFE_REQUEST
+
+    @property
+    def generation_failed(self) -> bool:
+        return self.failure_code is not None
+
+
 class QueryEngineService:
     def __init__(
         self,
@@ -107,12 +138,14 @@ class QueryEngineService:
         validator: ValidatorCallable = validate_sql,
         domain_pack_loader: DomainPackLoaderCallable = load_it_operations_domain_pack,
         conformance_checker: SemanticConformanceCallable = check_semantic_conformance,
+        semantic_sql_renderer: SemanticSQLRendererCallable = render_validated_semantic_plan,
     ) -> None:
         self._provider = provider
         self._executor = executor
         self._validator = validator
         self._domain_pack_loader = domain_pack_loader
         self._conformance_checker = conformance_checker
+        self._semantic_sql_renderer = semantic_sql_renderer
 
     def run(
         self,
@@ -243,10 +276,14 @@ class QueryEngineService:
             "validation": _validation_summary(validation_result),
         }
         if not validation_result.valid or validation_result.sanitized_sql is None:
-            corrected_sql = _deterministic_sql_correction(
-                generation_result.generated_sql,
-                validation_result,
-                schema_context,
+            corrected_sql = (
+                _deterministic_sql_correction(
+                    generation_result.generated_sql,
+                    validation_result,
+                    schema_context,
+                )
+                if request.template_id is not None
+                else None
             )
             if corrected_sql is not None:
                 corrected_validation_result = self._validator(
@@ -390,12 +427,12 @@ class QueryEngineService:
         domain_pack: DomainPack,
         schema_context: dict[str, Any],
         access_context: UserAccessContext,
-    ) -> SQLGeneratorResult:
+    ) -> _GeneratedQueryResult:
         if request.template_id is not None:
             return _template_generation_result(domain_pack, request.template_id)
 
         provider = self._provider or MockLLMProvider(domain_pack)
-        generator = SQLGenerator(provider)
+        generator = PlanGenerator(provider)
         user_context = _user_generation_context(access_context)
         semantic_projection = build_semantic_catalog_projection(
             domain_pack.semantic_catalog,
@@ -403,16 +440,16 @@ class QueryEngineService:
             schema_context,
             user_context,
         )
-        generation_result = generator.generate_sql(
+        plan_result = generator.generate_plan(
             request.question,
             schema_context,
             user_context,
             {"semantic_catalog": semantic_projection},
         )
-        generation_result = replace(
-            generation_result,
+        plan_result = replace(
+            plan_result,
             generation_metadata={
-                **generation_result.generation_metadata,
+                **plan_result.generation_metadata,
                 "semantic_catalog": semantic_projection.as_observation(),
                 "semantic_grounding": {
                     "status": "selected" if semantic_projection.entities else "no_anchor",
@@ -422,13 +459,13 @@ class QueryEngineService:
             },
         )
         if (
-            generation_result.outcome is not SQLGenerationOutcome.SQL
-            or generation_result.semantic_plan is None
+            plan_result.outcome is not PlanGenerationOutcome.PLAN
+            or plan_result.semantic_plan is None
         ):
-            return generation_result
+            return _generated_query_result_from_plan(plan_result)
         try:
             validated_plan = validate_semantic_plan(
-                generation_result.semantic_plan,
+                plan_result.semantic_plan,
                 domain_pack=domain_pack,
                 projection=semantic_projection,
                 schema_context=schema_context,
@@ -443,31 +480,56 @@ class QueryEngineService:
             observation_key = _PLAN_VALIDATION_OBSERVATION_KEYS.get(exc.reason)
             if observation_key is not None and exc.safe_observation is not None:
                 plan_validation[observation_key] = exc.safe_observation
-            return replace(
-                generation_result,
+            return _GeneratedQueryResult(
                 generated_sql=None,
-                outcome=SQLGenerationOutcome.CLARIFICATION,
+                provider_name=plan_result.provider_name,
+                model_name=plan_result.model_name,
+                outcome=PlanGenerationOutcome.CLARIFICATION,
                 generation_metadata={
-                    **generation_result.generation_metadata,
+                    **plan_result.generation_metadata,
                     "provider_failure_code": "provider_response_invalid",
                     "provider_failure_fatal": False,
                     "semantic_plan_validation": plan_validation,
                 },
-                semantic_plan=None,
                 validated_semantic_plan=None,
                 unsupported_reason="provider_response_invalid",
-                safe_error="SQL generation is unavailable.",
+                safe_error="Semantic planning is unavailable.",
+                failure_code="provider_response_invalid",
             )
-        return replace(
-            generation_result,
-            validated_semantic_plan=validated_plan,
-            generation_metadata={
-                **generation_result.generation_metadata,
-                "semantic_plan_validation": {
-                    "status": "passed",
-                    "reason_code": None,
-                },
+        metadata = {
+            **plan_result.generation_metadata,
+            "semantic_plan_validation": {
+                "status": "passed",
+                "reason_code": None,
             },
+        }
+        try:
+            rendered_sql = self._semantic_sql_renderer(validated_plan, domain_pack)
+        except SemanticSQLRenderError as exc:
+            return _GeneratedQueryResult(
+                generated_sql=None,
+                provider_name=plan_result.provider_name,
+                model_name=plan_result.model_name,
+                outcome=PlanGenerationOutcome.CLARIFICATION,
+                generation_metadata={
+                    **metadata,
+                    "semantic_sql_render": {
+                        "status": "failed",
+                        "reason_code": exc.reason,
+                    },
+                },
+                validated_semantic_plan=validated_plan,
+                unsupported_reason=SEMANTIC_SQL_RENDER_FAILURE_CODE,
+                safe_error=QUERY_RESULT_FAILURE_MESSAGE,
+                failure_code=SEMANTIC_SQL_RENDER_FAILURE_CODE,
+            )
+        return _GeneratedQueryResult(
+            generated_sql=rendered_sql,
+            provider_name=plan_result.provider_name,
+            model_name=plan_result.model_name,
+            outcome=PlanGenerationOutcome.PLAN,
+            generation_metadata=metadata,
+            validated_semantic_plan=validated_plan,
         )
 
     def _persist_query_run(
@@ -506,17 +568,36 @@ class QueryEngineService:
         return query_run
 
 
+def _generated_query_result_from_plan(
+    result: PlanGeneratorResult,
+) -> _GeneratedQueryResult:
+    failure_code = (
+        result.unsupported_reason if result.generation_failed else None
+    )
+    return _GeneratedQueryResult(
+        generated_sql=None,
+        provider_name=result.provider_name,
+        model_name=result.model_name,
+        outcome=result.outcome,
+        generation_metadata=dict(result.generation_metadata),
+        validated_semantic_plan=None,
+        unsupported_reason=result.unsupported_reason,
+        safe_error=result.safe_error,
+        failure_code=failure_code,
+    )
+
+
 def _template_generation_result(
     domain_pack: DomainPack,
     template_id: str,
-) -> SQLGeneratorResult:
+) -> _GeneratedQueryResult:
     template = domain_pack.templates_by_id.get(template_id)
     if template is None or template.sql is None:
-        return SQLGeneratorResult(
+        return _GeneratedQueryResult(
             generated_sql=None,
             provider_name="domain_pack_template",
             model_name="template-sql",
-            outcome=SQLGenerationOutcome.CLARIFICATION,
+            outcome=PlanGenerationOutcome.CLARIFICATION,
             generation_metadata={"template_id": template_id},
             unsupported_reason="template_not_found",
             safe_error=TEMPLATE_NOT_FOUND_MESSAGE,
@@ -524,11 +605,11 @@ def _template_generation_result(
 
     rendered_sql = render_template_sql(template)
     if rendered_sql is None:
-        return SQLGeneratorResult(
+        return _GeneratedQueryResult(
             generated_sql=None,
             provider_name="domain_pack_template",
             model_name="template-sql",
-            outcome=SQLGenerationOutcome.CLARIFICATION,
+            outcome=PlanGenerationOutcome.CLARIFICATION,
             generation_metadata={
                 "template_id": template_id,
                 "referenced_tables": list(template.referenced_tables),
@@ -537,11 +618,11 @@ def _template_generation_result(
             safe_error=TEMPLATE_PARAMETER_MESSAGE,
         )
 
-    return SQLGeneratorResult(
+    return _GeneratedQueryResult(
         generated_sql=rendered_sql,
         provider_name="domain_pack_template",
         model_name="template-sql",
-        outcome=SQLGenerationOutcome.SQL,
+        outcome=PlanGenerationOutcome.PLAN,
         generation_metadata={
             "template_id": template.id,
             "source": "domain_pack_template",
@@ -582,7 +663,7 @@ def _user_generation_context(access_context: UserAccessContext) -> dict[str, Any
 def _base_metadata(
     request: QueryEngineRequest,
     access_context: UserAccessContext,
-    generation_result: SQLGeneratorResult,
+    generation_result: _GeneratedQueryResult,
 ) -> dict[str, Any]:
     generation_metadata = generation_result.generation_metadata
     referenced_tables = generation_metadata.get("referenced_tables", [])
@@ -644,6 +725,19 @@ def _base_metadata(
                         metadata["semantic_plan_validation"][
                             observation_key
                         ] = observation
+    render_status = generation_metadata.get("semantic_sql_render")
+    if isinstance(render_status, dict):
+        status = render_status.get("status")
+        reason_code = render_status.get("reason_code")
+        if (
+            status == "failed"
+            and isinstance(reason_code, str)
+            and re.fullmatch(r"[a-z][a-z0-9_]{0,127}", reason_code)
+        ):
+            metadata["semantic_sql_render"] = {
+                "status": "failed",
+                "reason_code": reason_code,
+            }
     metadata["repair_attempted"] = False
     failure_code = generation_metadata.get("provider_failure_code")
     if isinstance(failure_code, str) and failure_code in {

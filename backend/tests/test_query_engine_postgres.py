@@ -18,7 +18,7 @@ from app.db.base import Base
 from app.domains.it_operations.models import Device, SupportTicket
 from app.domains.it_operations.seed import seed_database
 from app.models.product import AppUser, QueryRun
-from app.query_engine.llm_provider import SQLGenerationResult
+from app.query_engine.llm_provider import PlanGenerationResult
 from app.query_engine.semantic_plan import SemanticFieldRef, SemanticPlan
 from app.query_engine.service import QueryEngineRequest, QueryEngineService
 
@@ -84,6 +84,11 @@ def test_analyst_scoped_free_text_query_works_for_assigned_it_scope(
     assert result.row_count == expected_count
     assert result.row_count > 0
     assert query_run.status == "succeeded"
+    assert query_run.generated_sql is not None
+    assert "FROM devices" in query_run.generated_sql
+    assert query_run.executed_sql is not None
+    assert "FROM devices" in query_run.executed_sql
+    assert "LIMIT" in query_run.executed_sql
     assert query_run.query_metadata["provider"] == "mock"
     assert query_run.query_metadata["template_id"] == "non_compliant_devices_by_department"
     assert query_run.query_metadata["scope_type"] == "department"
@@ -123,7 +128,10 @@ def test_non_queryable_resource_is_denied_through_service(
     with Session(postgres_engine) as session:
         admin = user_by_email(session, "demo.admin@queryops.local")
 
-        result = QueryEngineService(provider=AuditSqlProvider()).run(
+        result = QueryEngineService(
+            provider=AuditPlanProvider(),
+            semantic_sql_renderer=AuditSQLRenderer(),
+        ).run(
             session,
             admin,
             QueryEngineRequest(
@@ -211,19 +219,18 @@ def latest_query_run(session: Session, user: AppUser) -> QueryRun:
     return query_run
 
 
-class AuditSqlProvider:
+class AuditPlanProvider:
     provider_name = "audit-test-provider"
     model_name = "audit-test-model"
 
-    def generate_sql(
+    def generate_plan(
         self,
         _question: str,
         _schema_context: dict[str, Any],
         _user_context: dict[str, Any],
         _options: dict[str, Any],
-    ) -> SQLGenerationResult:
-        return SQLGenerationResult(
-            generated_sql="SELECT id, event_type FROM it_audit_events",
+    ) -> PlanGenerationResult:
+        return PlanGenerationResult(
             provider_name=self.provider_name,
             model_name=self.model_name,
             generation_metadata={"referenced_tables": ["it_audit_events"]},
@@ -245,6 +252,11 @@ class AuditSqlProvider:
                 limit=None,
             ),
         )
+
+
+class AuditSQLRenderer:
+    def __call__(self, *_args: Any) -> str:
+        return "SELECT id, event_type FROM it_audit_events"
 
 
 @pytest.fixture(scope="session")
