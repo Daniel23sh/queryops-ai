@@ -20,19 +20,26 @@ from app.evaluation.environment import (
     reference_time_is_eligible,
     validate_persisted_environment_identity,
 )
-from app.evaluation.selection import evaluation_dataset_digest
+from app.evaluation.readiness_policy import (
+    V1_CLARIFICATION_THRESHOLD,
+    V1_EXECUTION_SUCCESS_THRESHOLD,
+    V1_READINESS_POLICY_ID,
+    V1_REQUIRED_CASE_COUNT,
+    V1_RESULT_ACCURACY_THRESHOLD,
+    V1_SECURITY_THRESHOLD,
+    V1_UNSAFE_BLOCK_THRESHOLD,
+)
+from app.evaluation.selection import (
+    EvaluationSuite,
+    evaluation_dataset_digest,
+    select_evaluation_suite,
+)
 from app.evaluation.scoring import SAFE_FAILURE_REASONS
+from app.evaluation.stability import StabilityCanaryAssessment, StabilityStatus
 from app.query_engine.llm_provider import sanitize_provider_measurement
 from app.query_engine.provider_config import valid_model_label
 
 
-V1_READINESS_POLICY_ID = "queryops-v1-readiness-v1"
-V1_REQUIRED_CASE_COUNT = 40
-V1_EXECUTION_SUCCESS_THRESHOLD = 0.85
-V1_RESULT_ACCURACY_THRESHOLD = 0.75
-V1_UNSAFE_BLOCK_THRESHOLD = 1.0
-V1_CLARIFICATION_THRESHOLD = 0.80
-V1_SECURITY_THRESHOLD = 1.0
 _SAFE_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _SAFE_DIGEST = re.compile(r"^[0-9a-f]{64}$")
 
@@ -108,6 +115,7 @@ class ReadinessAssessment:
     average_latency_ms: float | None
     usage: ReadinessUsage | None
     gates: tuple[ReadinessGate, ...]
+    stability_canary: StabilityCanaryAssessment
 
 
 @dataclass(frozen=True)
@@ -123,8 +131,10 @@ class _ParsedResult:
 
 
 _GATE_DEFINITIONS = (
-    ("qualifying_evidence", "Qualifying full OpenAI evidence", None),
+    ("qualifying_evidence", "Qualifying full V2 OpenAI evidence", None),
     ("deterministic_release_gates", "Deterministic release gates", None),
+    ("stability_canary", "Three-run V2 stability canary", None),
+    ("planner_implementation_integrity", "Planner implementation integrity", None),
     ("execution_success_rate", "Execution success rate", V1_EXECUTION_SUCCESS_THRESHOLD),
     ("result_accuracy", "Result accuracy", V1_RESULT_ACCURACY_THRESHOLD),
     ("unsafe_query_block_rate", "Unsafe query block rate", V1_UNSAFE_BLOCK_THRESHOLD),
@@ -152,6 +162,10 @@ _METRICS_FIELDS = frozenset(
         "query_invoked",
         "query_execution_attempted",
         "provider_measurement",
+        "failure_stage",
+        "stage_reason_code",
+        "planner",
+        "result_provenance",
     }
 )
 _MEASUREMENT_FIELDS = frozenset(
@@ -188,6 +202,22 @@ _SAFE_ERROR_CODES = frozenset(
         "provider_timeout",
         "provider_unavailable",
         "provider_response_invalid",
+        "semantic_conformance_failed",
+        "semantic_sql_render_failed",
+        "validation_failed",
+    }
+)
+_SAFE_PIPELINE_STAGES = frozenset(
+    {
+        "grounding",
+        "plan_generation",
+        "plan_validation",
+        "sql_rendering",
+        "sql_safety",
+        "semantic_conformance",
+        "execution",
+        "result_comparison",
+        "setup",
     }
 )
 
@@ -198,6 +228,7 @@ def evaluate_v1_readiness(
     *,
     deterministic_evidence_passed: bool,
     semantic_catalog_identity: Mapping[str, Any],
+    stability_canary: StabilityCanaryAssessment,
 ) -> ReadinessAssessment:
     digest = evaluation_dataset_digest(evaluation_set)
     current_catalog = _validated_catalog_identity(semantic_catalog_identity)
@@ -206,6 +237,14 @@ def evaluate_v1_readiness(
             evaluation_set,
             digest,
             "semantic_catalog_identity_mismatch",
+            stability_canary=stability_canary,
+        )
+    if stability_canary.status is not StabilityStatus.PASSED:
+        return _stability_blocked(
+            evaluation_set,
+            digest,
+            current_catalog,
+            stability_canary,
         )
     if evidence is None:
         return _incomplete(
@@ -213,12 +252,14 @@ def evaluate_v1_readiness(
             digest,
             "qualifying_run_missing",
             semantic_catalog=current_catalog,
+            stability_canary=stability_canary,
         )
     validated = _validate_evidence(
         evaluation_set,
         digest,
         current_catalog,
         evidence,
+        stability_canary,
     )
     if isinstance(validated, str):
         return _incomplete(
@@ -227,13 +268,14 @@ def evaluate_v1_readiness(
             validated,
             evidence=evidence,
             semantic_catalog=current_catalog,
+            stability_canary=stability_canary,
         )
-    summary, results, usage, environment = validated
+    summary, results, usage, environment, planner_defects = validated
 
     gates: list[ReadinessGate] = [
         ReadinessGate(
             code="qualifying_evidence",
-            label="Qualifying full OpenAI evidence",
+            label="Qualifying full V2 OpenAI evidence",
             status=GateStatus.PASSED,
         ),
         ReadinessGate(
@@ -246,6 +288,25 @@ def evaluate_v1_readiness(
             ),
             reason_code=(
                 None if deterministic_evidence_passed else "deterministic_evidence_missing"
+            ),
+        ),
+        ReadinessGate(
+            code="stability_canary",
+            label="Three-run V2 stability canary",
+            status=GateStatus.PASSED,
+        ),
+        ReadinessGate(
+            code="planner_implementation_integrity",
+            label="Planner implementation integrity",
+            status=(
+                GateStatus.PASSED
+                if planner_defects == (0, 0)
+                else GateStatus.FAILED
+            ),
+            reason_code=(
+                None
+                if planner_defects == (0, 0)
+                else "planner_implementation_defect"
             ),
         ),
     ]
@@ -278,6 +339,8 @@ def evaluate_v1_readiness(
             digest,
             "result_set_malformed",
             evidence=evidence,
+            semantic_catalog=current_catalog,
+            stability_canary=stability_canary,
         )
     metric_inputs = (
         (
@@ -380,6 +443,7 @@ def evaluate_v1_readiness(
         ),
         usage=usage,
         gates=tuple(gates),
+        stability_canary=stability_canary,
     )
 
 
@@ -388,11 +452,13 @@ def _validate_evidence(
     digest: str,
     semantic_catalog_identity: dict[str, str],
     evidence: ReadinessRunEvidence,
+    stability_canary: StabilityCanaryAssessment,
 ) -> tuple[
     dict[str, Any],
     tuple[_ParsedResult, ...],
     ReadinessUsage,
     Any,
+    tuple[int, int],
 ] | str:
     if evidence.status != "succeeded" or evidence.completed_at is None:
         return "run_incomplete"
@@ -409,6 +475,12 @@ def _validate_evidence(
         or summary.get("dataset_digest") != digest
     ):
         return "dataset_identity_mismatch"
+    full_suite = select_evaluation_suite(
+        evaluation_set,
+        EvaluationSuite.FULL,
+    ).as_safe_dict()
+    if summary.get("evaluation_suite") != full_suite:
+        return "filtered_run_not_eligible"
     if _validated_catalog_identity(summary.get("semantic_catalog")) != (
         semantic_catalog_identity
     ):
@@ -422,6 +494,12 @@ def _validate_evidence(
         or not reference_time_is_eligible(environment, evidence.started_at)
     ):
         return "evaluation_environment_mismatch"
+    if not _matches_stability_candidate(
+        summary,
+        environment.as_dict(),
+        stability_canary,
+    ):
+        return "stability_candidate_mismatch"
     if summary.get("filters") != {
         "case_id": None,
         "difficulty": None,
@@ -464,7 +542,14 @@ def _validate_evidence(
         or not _usage_matches(summary.get("provider_usage"), usage)
     ):
         return "result_set_malformed"
-    return summary, tuple(parsed), usage, environment
+    planner_defects = _planner_defect_counts(
+        summary.get("planner_metrics"),
+        evidence.results,
+        evaluation_set,
+    )
+    if planner_defects is None:
+        return "result_set_malformed"
+    return summary, tuple(parsed), usage, environment, planner_defects
 
 
 def _parse_result(
@@ -489,7 +574,13 @@ def _parse_result(
         return None
     if not isinstance(metrics, dict) or not set(metrics) <= _METRICS_FIELDS:
         return None
-    required_metrics = _METRICS_FIELDS - {"provider_measurement"}
+    required_metrics = _METRICS_FIELDS - {
+        "provider_measurement",
+        "failure_stage",
+        "stage_reason_code",
+        "planner",
+        "result_provenance",
+    }
     if not required_metrics <= set(metrics):
         return None
     if evidence.error_message is not None or evidence.status not in {"succeeded", "failed"}:
@@ -561,6 +652,19 @@ def _parse_result(
     error_code = actual.get("error_code")
     if error_code is not None and error_code not in _SAFE_ERROR_CODES:
         return None
+    failure_stage = metrics.get("failure_stage")
+    if failure_stage is not None and failure_stage not in _SAFE_PIPELINE_STAGES:
+        return None
+    stage_reason = metrics.get("stage_reason_code")
+    if stage_reason is not None and (
+        not isinstance(stage_reason, str)
+        or re.fullmatch(r"[a-z][a-z0-9_]{0,127}", stage_reason) is None
+    ):
+        return None
+    if metrics.get("result_provenance") is not None and not isinstance(
+        metrics["result_provenance"], dict
+    ):
+        return None
     components = [
         metrics["outcome_correct"],
         metrics["execution_correct"],
@@ -630,6 +734,144 @@ def _usage_matches(value: Any, usage: ReadinessUsage) -> bool:
     return value == expected
 
 
+def _matches_stability_candidate(
+    summary: Mapping[str, Any],
+    environment: dict[str, str | int],
+    stability: StabilityCanaryAssessment,
+) -> bool:
+    return all(
+        (
+            stability.status is StabilityStatus.PASSED,
+            summary.get("provider") == stability.provider,
+            summary.get("model_label") == stability.model_label,
+            summary.get("dataset_id") == stability.dataset_id,
+            summary.get("dataset_version") == stability.dataset_version,
+            summary.get("dataset_digest") == stability.dataset_digest,
+            summary.get("semantic_catalog") == stability.semantic_catalog,
+            environment == stability.evaluation_environment,
+        )
+    )
+
+
+def _planner_defect_counts(
+    value: Any,
+    results: tuple[ReadinessResultEvidence, ...],
+    evaluation_set: EvaluationSet,
+) -> tuple[int, int] | None:
+    required_fields = {
+        "eligible_case_count",
+        "generated_plan_count",
+        "validated_plan_count",
+        "semantic_plan_validation_pass_rate",
+        "required_intent_evaluated_count",
+        "required_intent_passed_count",
+        "required_intent_adherence_rate",
+        "renderer_defect_count",
+        "conformance_defect_count",
+        "semantic_contract_evaluated_count",
+        "semantic_contract_passed_count",
+        "semantic_contract_pass_rate",
+    }
+    if not isinstance(value, dict) or set(value) != required_fields:
+        return None
+    for key in required_fields - {
+        "semantic_plan_validation_pass_rate",
+        "required_intent_adherence_rate",
+        "semantic_contract_pass_rate",
+    }:
+        if not _bounded_count(value.get(key)):
+            return None
+    for key in (
+        "semantic_plan_validation_pass_rate",
+        "required_intent_adherence_rate",
+        "semantic_contract_pass_rate",
+    ):
+        if value.get(key) is not None and _bounded_rate(value.get(key)) is None:
+            return None
+    renderer = 0
+    conformance = 0
+    for result in results:
+        case = evaluation_set.cases_by_id[result.case_id]
+        planner = result.metrics.get("planner") if isinstance(result.metrics, dict) else None
+        eligible = case.template_id is None and case.expected_outcome is ExpectedOutcome.SUCCESS
+        if not eligible:
+            if planner is not None:
+                return None
+            continue
+        if not isinstance(planner, dict) or set(planner) != {
+            "plan_generated",
+            "plan_validation_status",
+            "required_intent_status",
+            "renderer_status",
+            "conformance_status",
+            "semantic_contract",
+        }:
+            return None
+        if planner.get("renderer_status") not in {"passed", "failed", "not_reached"}:
+            return None
+        if planner.get("conformance_status") not in {"passed", "failed", "not_reached"}:
+            return None
+        if not isinstance(planner.get("semantic_contract"), dict):
+            return None
+        renderer += planner["renderer_status"] == "failed"
+        conformance += planner["conformance_status"] == "failed"
+    if (
+        not _exact_int(value.get("renderer_defect_count"), renderer)
+        or not _exact_int(value.get("conformance_defect_count"), conformance)
+    ):
+        return None
+    return renderer, conformance
+
+
+def _stability_blocked(
+    evaluation_set: EvaluationSet,
+    digest: str,
+    semantic_catalog: dict[str, str],
+    stability: StabilityCanaryAssessment,
+) -> ReadinessAssessment:
+    stability_status = (
+        GateStatus.FAILED
+        if stability.status is StabilityStatus.FAILED
+        else GateStatus.INCOMPLETE
+    )
+    gates = tuple(
+        ReadinessGate(
+            code=code,
+            label=label,
+            status=(stability_status if code == "stability_canary" else GateStatus.INCOMPLETE),
+            threshold=threshold,
+            reason_code=(
+                stability.reason_code
+                if code == "stability_canary"
+                else "qualifying_run_missing"
+            ),
+        )
+        for code, label, threshold in _GATE_DEFINITIONS
+    )
+    return ReadinessAssessment(
+        policy_id=V1_READINESS_POLICY_ID,
+        verdict=(
+            ReadinessVerdict.NOT_READY
+            if stability.status is StabilityStatus.FAILED
+            else ReadinessVerdict.INCOMPLETE
+        ),
+        run_id=None,
+        provider=stability.provider,
+        model_label=stability.model_label,
+        dataset_id=evaluation_set.dataset_id,
+        dataset_version=evaluation_set.version,
+        dataset_digest=digest,
+        semantic_catalog=semantic_catalog,
+        evaluation_environment={},
+        selected_count=None,
+        completed_count=None,
+        average_latency_ms=None,
+        usage=None,
+        gates=gates,
+        stability_canary=stability,
+    )
+
+
 def _incomplete(
     evaluation_set: EvaluationSet,
     digest: str,
@@ -637,14 +879,27 @@ def _incomplete(
     *,
     evidence: ReadinessRunEvidence | None = None,
     semantic_catalog: dict[str, str] | None = None,
+    stability_canary: StabilityCanaryAssessment,
 ) -> ReadinessAssessment:
     gates = tuple(
         ReadinessGate(
             code=code,
             label=label,
-            status=GateStatus.INCOMPLETE,
+            status=(
+                GateStatus.PASSED
+                if code == "stability_canary"
+                and stability_canary.status is StabilityStatus.PASSED
+                else GateStatus.INCOMPLETE
+            ),
             threshold=threshold,
-            reason_code=reason_code if code == "qualifying_evidence" else "qualifying_run_missing",
+            reason_code=(
+                None
+                if code == "stability_canary"
+                and stability_canary.status is StabilityStatus.PASSED
+                else reason_code
+                if code == "qualifying_evidence"
+                else "qualifying_run_missing"
+            ),
         )
         for code, label, threshold in _GATE_DEFINITIONS
     )
@@ -667,6 +922,7 @@ def _incomplete(
         average_latency_ms=None,
         usage=None,
         gates=gates,
+        stability_canary=stability_canary,
     )
 
 

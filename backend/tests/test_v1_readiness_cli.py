@@ -13,6 +13,7 @@ from app.evaluation.readiness import (
     ReadinessUsage,
     ReadinessVerdict,
 )
+from app.evaluation.stability import StabilityCanaryAssessment, StabilityStatus
 from scripts import check_v1_readiness
 
 
@@ -60,6 +61,7 @@ def test_readiness_cli_json_is_fixed_bounded_and_sanitized(monkeypatch, capsys) 
         "evaluation_environment",
         "counts",
         "average_latency_ms",
+        "stability_canary",
         "usage",
         "gates",
     }
@@ -132,8 +134,8 @@ def _assessment(verdict: ReadinessVerdict) -> ReadinessAssessment:
         run_id=run_id,
         provider="openai",
         model_label="gpt-5.6-terra",
-        dataset_id="it_operations_v1",
-        dataset_version="1",
+        dataset_id="it_operations_v2",
+        dataset_version="2",
         dataset_digest="a" * 64,
         semantic_catalog={
             "catalog_id": "it_operations_semantic_catalog",
@@ -173,5 +175,36 @@ def _assessment(verdict: ReadinessVerdict) -> ReadinessAssessment:
                 actual=0.75 if verdict is not ReadinessVerdict.INCOMPLETE else None,
                 reason_code=reason,
             ),
+        ),
+        stability_canary=StabilityCanaryAssessment(
+            status=StabilityStatus.PASSED,
+            reason_code=None,
+            run_ids=(uuid4(), uuid4(), uuid4()),
+            source_git_sha="a" * 40,
+            provider="openai",
+            model_label="gpt-5.6-terra",
+            dataset_id="it_operations_v2",
+            dataset_version="2",
+            dataset_digest="a" * 64,
+            semantic_catalog={
+                "catalog_id": "it_operations_semantic_catalog",
+                "catalog_version": "3",
+                "catalog_hash": "b" * 64,
+            },
+            evaluation_environment={
+                "manifest_version": "queryops-evaluation-environment-v1",
+                "seed_version": "it-operations-seed-v1",
+                "seed_profile": "medium",
+                "seed": 42,
+                "reference_time": "2026-08-24T12:00:00Z",
+                "source_git_sha": "a" * 40,
+                "alembic_revision": "0010_disable_inactive_user",
+                "postgres_version": "16.9",
+                "database_fingerprint": "c" * 64,
+                "dependency_manifest_hash": "d" * 64,
+            },
+            suite_id="it_operations_v2_stability_canary",
+            suite_version="1",
+            suite_digest="e" * 64,
         ),
     )

@@ -22,7 +22,7 @@ from app.evaluation.environment import (
     reference_time_is_eligible,
     validate_persisted_environment_identity,
 )
-from app.evaluation.readiness import (
+from app.evaluation.readiness_policy import (
     V1_CLARIFICATION_THRESHOLD,
     V1_EXECUTION_SUCCESS_THRESHOLD,
     V1_RESULT_ACCURACY_THRESHOLD,
@@ -154,6 +154,14 @@ class StabilityCanaryAssessment:
     source_git_sha: str | None
     provider: str | None
     model_label: str | None
+    dataset_id: str | None
+    dataset_version: str | None
+    dataset_digest: str | None
+    semantic_catalog: dict[str, str]
+    evaluation_environment: dict[str, str | int]
+    suite_id: str | None
+    suite_version: str | None
+    suite_digest: str | None
 
 
 @dataclass(frozen=True)
@@ -788,6 +796,22 @@ def _assessment(
         source_git_sha=identity.source_git_sha if identity else None,
         provider=identity.provider if identity else None,
         model_label=identity.model_label if identity else None,
+        dataset_id=identity.dataset_id if identity else None,
+        dataset_version=identity.dataset_version if identity else None,
+        dataset_digest=identity.dataset_digest if identity else None,
+        semantic_catalog=(
+            {
+                "catalog_id": identity.catalog_id,
+                "catalog_version": identity.catalog_version,
+                "catalog_hash": identity.catalog_hash,
+            }
+            if identity
+            else {}
+        ),
+        evaluation_environment=dict(identity.environment) if identity else {},
+        suite_id=identity.suite_id if identity else None,
+        suite_version=identity.suite_version if identity else None,
+        suite_digest=identity.suite_digest if identity else None,
     )
 
 
