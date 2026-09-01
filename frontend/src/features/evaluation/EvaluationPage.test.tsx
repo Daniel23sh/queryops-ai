@@ -32,6 +32,7 @@ describe("Evaluation workspace", () => {
     renderAppAt("/evaluation");
 
     expect(await screen.findByRole("heading", { name: heading })).toBeInTheDocument();
+    expect(screen.getByText(/3\/3 runs|0\/3 runs/)).toBeInTheDocument();
     expect(screen.getByText(/Provider identity identifies evidence; it never proves readiness/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /start|run|rerun/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: /provider|model|key/i })).not.toBeInTheDocument();

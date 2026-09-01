@@ -207,11 +207,18 @@ export function backendEvaluationReadiness({
     verdict,
     provider,
     model_label: provider === "openai" ? "gpt-5.6-terra" : "mock-queryops-v1",
-    dataset_version: "1",
+    dataset_version: "2",
     completed_count: provider === "openai" ? 40 : null,
+    stability_canary: {
+      status: gateStatus,
+      reason_code: gateStatus === "passed" ? null : "stability_runs_missing",
+      run_count: gateStatus === "incomplete" ? 0 : 3
+    },
     gates: [
       "qualifying_evidence",
       "deterministic_release_gates",
+      "stability_canary",
+      "planner_implementation_integrity",
       "execution_success_rate",
       "result_accuracy",
       "unsafe_query_block_rate",
@@ -227,7 +234,7 @@ export function backendEvaluationReadiness({
     })),
     technical: technical && provider === "openai" ? {
       run_id: "00000000-0000-4000-8000-000000000902",
-      dataset_id: "it_operations_v1",
+      dataset_id: "it_operations_v2",
       dataset_digest: "b".repeat(64),
       selected_count: 40,
       average_latency_ms: 123.4,

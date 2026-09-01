@@ -15,6 +15,8 @@ const gateLabels: Record<ReadinessGateStatus, string> = {
 const gateCodes = [
   "qualifying_evidence",
   "deterministic_release_gates",
+  "stability_canary",
+  "planner_implementation_integrity",
   "execution_success_rate",
   "result_accuracy",
   "unsafe_query_block_rate",
@@ -49,12 +51,13 @@ export function EvaluationReadinessPanel({
         <span className="rounded-full border border-app-border px-3 py-1 text-sm font-bold text-app-text">Status: {verdictLabels[verdict]}</span>
       </div>
       <p className="m-0 max-w-4xl text-sm leading-6 text-app-subtle">
-        Readiness combines a qualifying real-provider measurement with deterministic security, PostgreSQL, action, export, frontend, and E2E gates. Provider identity identifies evidence; it never proves readiness.
+        Readiness combines three matching V2 canary runs, a full V2 real-provider measurement, and deterministic security, PostgreSQL, action, export, frontend, and E2E gates. Provider identity identifies evidence; it never proves readiness.
       </p>
-      <dl className="m-0 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
+      <dl className="m-0 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-5">
         <Detail label="Policy" value={data.policy_id} />
         <Detail label="Evidence" value={evidenceIsOpenAI && data.model_label ? `OpenAI · ${data.model_label}` : "No qualifying OpenAI evidence"} />
         <Detail label="Dataset version" value={data.dataset_version} />
+        <Detail label="Stability canary" value={`${gateLabels[data.stability_canary.status]} · ${data.stability_canary.run_count}/3 runs`} />
         <Detail label="Measurement" value={data.completed_count === null ? "Incomplete" : `${data.completed_count}/40 completed`} />
       </dl>
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="V1 readiness gates">
@@ -93,6 +96,14 @@ function isSafeReadiness(data: EvaluationReadiness): boolean {
     !isVerdict(data.verdict) ||
     (data.provider !== null && data.provider !== "openai") ||
     !Array.isArray(data.gates) ||
+    !isGateStatus(data.stability_canary?.status) ||
+    !Number.isInteger(data.stability_canary?.run_count) ||
+    data.stability_canary.run_count < 0 ||
+    data.stability_canary.run_count > 3 ||
+    (data.stability_canary.reason_code !== null && (
+      typeof data.stability_canary.reason_code !== "string" ||
+      !/^[a-z][a-z0-9_]{0,127}$/.test(data.stability_canary.reason_code)
+    )) ||
     data.gates.length !== gateCodes.length ||
     !data.gates.every((gate, index) =>
       gate.code === gateCodes[index] &&
@@ -106,19 +117,26 @@ function isSafeReadiness(data: EvaluationReadiness): boolean {
     return false;
   }
   if (data.provider === null) {
-    return data.verdict === "incomplete" && data.model_label === null && data.completed_count === null;
+    return data.verdict === "incomplete" && data.model_label === null && data.completed_count === null && data.stability_canary.status === "incomplete";
   }
   if (
     typeof data.model_label !== "string" ||
-    data.model_label.length === 0 ||
-    data.completed_count !== 40
+    data.model_label.length === 0
   ) {
     return false;
   }
   const statuses = data.gates.map((gate) => gate.status);
-  if (data.verdict === "ready") return statuses.every((status) => status === "passed");
+  if (data.verdict === "ready") {
+    return data.completed_count === 40 &&
+      data.stability_canary.status === "passed" &&
+      data.stability_canary.run_count === 3 &&
+      statuses.every((status) => status === "passed");
+  }
   if (data.verdict === "not_ready") {
-    return statuses.includes("failed") && !statuses.includes("incomplete");
+    return statuses.includes("failed") && (
+      (data.completed_count === 40) ||
+      (data.completed_count === null && data.stability_canary.status === "failed")
+    );
   }
   return statuses.includes("incomplete");
 }
