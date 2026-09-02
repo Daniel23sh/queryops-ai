@@ -569,6 +569,42 @@ def test_active_human_catalog_and_metric_planning_rules_are_preserved() -> None:
     assert "sql renderer implements the metric definition" in instructions
 
 
+def test_composition_rule_guidance_separates_representation_from_narrowing() -> None:
+    client = FakeClient(
+        {
+            "outcome": "plan",
+            "semantic_plan": DEVICE_PLAN,
+            "clarification_reason": None,
+        }
+    )
+
+    provider_for(client).generate_plan(QUESTION, SCHEMA_CONTEXT, USER_CONTEXT, {})
+
+    assert len(client.responses.calls) == 1
+    instructions = " ".join(client.responses.calls[0]["instructions"].lower().split())
+    assert "represent each selected composition rule by its id in composition_rule_ids" in instructions
+    assert (
+        "selecting that id represents the rule's full semantics: the backend will "
+        "combine all_of_concept_ids conjunctively and or_concept_ids with or semantics"
+    ) in instructions
+    assert (
+        "do not copy a rule's or branches into top-level concept_ids merely to represent the rule"
+    ) in instructions
+    assert "top-level concept_ids are additional conjunctive constraints (and)" in instructions
+    assert (
+        "include an or branch as a top-level concept only when the user's request "
+        "independently requires narrowing beyond the composition rule"
+    ) in instructions
+    assert "keep the rule selected so all its branches remain represented" in instructions
+    assert (
+        "r = a or b or c, a base request for r uses composition_rule_ids=[r], concept_ids=[]"
+    ) in instructions
+    assert (
+        "an independently requested narrowing to b uses composition_rule_ids=[r], concept_ids=[b]"
+    ) in instructions
+    assert "represent every listed branch" not in instructions
+
+
 def test_unexpected_sql_field_is_rejected_by_structured_output_schema() -> None:
     provider = provider_for(
         FakeClient(
