@@ -90,6 +90,7 @@ If sources materially conflict and the conflict cannot be resolved from the repo
 - Keep `PROJECT_PLAN.md` concise and limited to current/next work; move completed narratives and evidence to `docs/history/development-history.md`.
 - Update `README.md` only when supported behavior, setup, environment variables, repository structure, or verification commands change.
 - Update tracked security, evaluation, QA, or API documents when their contracts or evidence change; do not duplicate their full content in instruction files.
+- Choose validation depth using `docs/development/validation-model.md`; escalate based on affected boundaries, blast radius, and irreversibility. Release gates remain authoritative for release validation.
 - Add focused regression coverage for behavior changes, especially authorization, RLS, SQL safety, actions, evaluation, migrations, and disclosure boundaries.
 - Use PostgreSQL-backed tests for behavior that depends on roles, grants, RLS, locking, concurrency, or database semantics. SQLite-only evidence is insufficient for those contracts.
 - Before finishing, review the diff, run validation proportional to the change, verify Markdown references when documentation changes, and confirm ignored planning files are neither tracked nor staged.
