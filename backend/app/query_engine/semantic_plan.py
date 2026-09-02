@@ -288,12 +288,25 @@ def validate_semantic_plan(
             raise SemanticPlanValidationError("metric_shape_unsupported")
 
     rules_by_id = {rule.id: rule for rule in catalog.composition_rules}
+    # Only unconditional deterministic requirements can justify selecting every
+    # OR alternative as a top-level conjunction. OR branches are not themselves
+    # mandatory conjuncts, even though they appear in the candidate projection.
+    mandatory_conjuncts = set(mandatory["concept_ids"])
+    for metric_id in mandatory_metric_ids:
+        mandatory_conjuncts.update(catalog.metrics_by_id[metric_id].required_concept_ids)
+    for rule_id in mandatory["rule_ids"]:
+        mandatory_conjuncts.update(rules_by_id[rule_id].all_of_concept_ids)
+    mandatory_conjuncts = set(expand_semantic_concept_ids(catalog, mandatory_conjuncts))
+    explicit_concept_ids = set(plan.concept_ids)
     rule_all_of: set[str] = set()
     rule_or_groups: list[tuple[str, ...]] = []
     for rule_id in plan.composition_rule_ids:
         rule = rules_by_id[rule_id]
         rule_all_of.update(rule.all_of_concept_ids)
         if rule.or_concept_ids:
+            branches = set(rule.or_concept_ids)
+            if branches <= explicit_concept_ids and not branches <= mandatory_conjuncts:
+                raise SemanticPlanValidationError("composition_rule_overconstraint")
             rule_or_groups.append(tuple(sorted(rule.or_concept_ids)))
         conjunctive_concept_ids.update(rule.all_of_concept_ids)
 
