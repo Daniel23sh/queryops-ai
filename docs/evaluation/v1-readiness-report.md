@@ -45,10 +45,10 @@ PR11's network-free implementation and final branch-wide deterministic checks pa
 - deterministic canary selection and digest checks: passed
 - three-run stability and fail-closed mismatch/malformed/oscillation checks: passed
 - V2 readiness, candidate matching, deterministic-gate, and planner-integrity checks: passed
-- backend without PostgreSQL: 1,278 passed, 156 expected PostgreSQL-only skips
-- isolated PostgreSQL 16 backend: 1,414 passed, zero skips, plus the exact 20-case M8 release suite passed separately with zero skips
+- backend without PostgreSQL: 1,283 passed, 156 expected PostgreSQL-only skips
+- isolated PostgreSQL 16 backend: 1,419 passed, zero skips, plus the exact 20-case M8 release suite passed separately with zero skips
 - migrations: fresh upgrade through `0010_disable_inactive_user`, `alembic current`, and `alembic check` passed
-- frontend: 274 Vitest tests, ESLint, both TypeScript checks, and production build passed
+- frontend: 280 Vitest tests, ESLint, both TypeScript checks, and production build passed
 - Playwright: 12 general Chromium flows and two isolated M8 primary/negative flows passed
 - Ruff, Pyright with zero errors/warnings, compileall, and `git diff --check`: passed
 
@@ -56,7 +56,7 @@ The isolated PostgreSQL container and temporary application processes were remov
 
 ## Manual QA
 
-The complete manual QA checklist has not been completed on a frozen PR11 candidate. Automated tests and live evaluation metrics cannot substitute for this requirement.
+The complete manual QA checklist has not been completed on a frozen PR11 candidate. It is a separate final release-completion requirement on the same unchanged candidate; automated readiness can become `ready` without satisfying manual QA, but Milestone 9 and QueryOps AI V1 still cannot be marked complete until manual QA passes.
 
 ## Current release state
 
@@ -68,12 +68,14 @@ The complete manual QA checklist has not been completed on a frozen PR11 candida
 | Three-run canary evidence | missing |
 | Full qualifying V2 run | missing |
 | Complete manual QA | missing |
-| V1 readiness | `incomplete` |
+| Automated V1 readiness | `incomplete` |
 
 ## Verdict
 
 `incomplete`
 
-PR11 implementation is complete and its local deterministic release gates passed; live release evidence is pending. Milestone 9 and QueryOps AI V1 must not be marked complete until CI passes on the immutable candidate, three matching canary runs are stable, a matching complete V2 full run passes every threshold with no renderer or conformance defects, and the full manual QA checklist passes on that unchanged candidate.
+PR11 implementation is complete and its local deterministic release gates passed; live release evidence is pending. Automated readiness remains `incomplete` until three matching canary runs are stable and a matching complete V2 full run passes every threshold, deterministic gate, and planner-integrity check with no renderer or conformance defects. Even after automated readiness becomes `ready`, Milestone 9 and QueryOps AI V1 must not be marked complete until the full manual QA checklist passes on that same unchanged candidate.
+
+The authoritative release order is: finish PR11, pass branch CI, merge, pass final `main` CI, freeze that exact `main` SHA, create a fresh V2 environment manifest, obtain exact model/run authorization, run canary ×3, require stability, run the matching full V2 suite, require automated readiness `ready`, complete manual QA on the unchanged candidate, and only then mark the release complete.
 
 This report contains no prompts, SQL, expected or actual rows, provider payloads, secrets, raw errors, database URLs, or evaluator baselines.

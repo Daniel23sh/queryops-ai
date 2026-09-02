@@ -85,7 +85,8 @@ All 40 V2 cases received a manual answerability and baseline-semantics review. H
 - `itops-medium-004`, `itops-medium-015`, `itops-hard-004`, `itops-hard-006`, `itops-hard-008`, and `itops-hard-009` replace hidden “recent”, “spike”, “reclaim opportunity”, and “most” semantics with exact windows, thresholds, measures, and ranking.
 - `itops-medium-009` makes the distinct device grain explicit.
 - `itops-hard-002` replaces the undefined “active device ownership” meaning with assigned devices.
-- `itops-hard-010` replaces undefined “highest concentration” with two explicit ranked counts.
+- `itops-hard-007` requires both the inactive-human concept and the existing policy-review OR composition.
+- `itops-hard-010` ranks only departments that have both requested populations, using two explicit counts representable by existing inner joins and WHERE predicates.
 
 ### Catalog-defined meanings
 
@@ -167,13 +168,13 @@ The stability gate deterministically selects the latest complete identity group 
 
 Every run must pass applicable thresholds, all security cases, persisted-shape validation, provider-measurement validation, and contain zero renderer or conformance defects. For each case, actual outcome, pass result, score, semantic-contract result, and failure stage must be stable across all three runs.
 
-Zero, one, or two eligible runs are `incomplete`. Malformed or mismatched selected evidence fails closed. Outcome, result, semantic-contract, or failure-stage oscillation fails the stability gate. A failed canary cannot authorize a full release run.
+Zero, one, or two eligible runs are `incomplete`, and their valid matching run IDs are retained so the workspace can show 0/3, 1/3, or 2/3 without combining candidate identities. Malformed or mismatched evidence remains fail-closed. Outcome, result, semantic-contract, or failure-stage oscillation fails the stability gate. A failed canary cannot authorize a full release run.
 
 ## Readiness before and after PR11
 
 Before PR11, readiness accepted one current unfiltered 40-case V1 OpenAI run plus deterministic gates and the existing quality thresholds.
 
-After PR11, readiness requires:
+After PR11, automated readiness requires:
 
 1. a passed three-run V2 stability canary;
 2. one complete unfiltered 40-case V2 OpenAI run;
@@ -181,8 +182,9 @@ After PR11, readiness requires:
 4. the unchanged quality thresholds;
 5. passed deterministic release gates;
 6. planner implementation integrity;
-7. zero renderer and semantic-conformance defects;
-8. complete manual QA on the same immutable candidate.
+7. zero renderer and semantic-conformance defects.
+
+Automated readiness `ready` is necessary but does not complete the release. Milestone 9 and QueryOps AI V1 release completion separately require the complete manual QA checklist to pass on the same unchanged immutable candidate.
 
 The readiness policy ID and thresholds remain unchanged:
 
@@ -227,12 +229,12 @@ The only Query Engine changes are allowlisted evaluation instrumentation: safe S
 
 | Gate | Result |
 | --- | --- |
-| Backend without PostgreSQL | 1,278 passed; 156 expected PostgreSQL-only skips |
-| Isolated PostgreSQL 16 backend | 1,414 passed; zero skips |
+| Backend without PostgreSQL | 1,283 passed; 156 expected PostgreSQL-only skips |
+| Isolated PostgreSQL 16 backend | 1,419 passed; zero skips |
 | Exact M8 release security suite | 20 passed; zero skips |
 | Fresh migrations | Upgrade through `0010_disable_inactive_user` passed |
 | Alembic current/check | Passed; no new upgrade operations |
-| Frontend Vitest | 274 passed |
+| Frontend Vitest | 280 passed |
 | General Playwright | 12 passed |
 | M8 primary/negative Playwright | 2 passed |
 | Ruff | Passed |
@@ -254,22 +256,20 @@ CodeRabbit CLI `0.7.5` was installed but reported `not_authenticated`. Its brows
 
 ## Current release status and remaining work
 
-Current implementation status:
-
-```text
-READY FOR PUSH + CI
-```
-
 It is not yet correct to claim `M9 COMPLETE` or `V1 READY`. The remaining release-evidence work is:
 
-1. run GitHub deterministic CI on the pushed final branch HEAD;
-2. freeze the release candidate and fresh evaluation environment;
-3. obtain explicit authorization for the exact OpenAI model and maximum billable runs;
-4. run the fixed canary exactly three times;
-5. require the stability assessment to pass;
-6. run one matching full 40-case V2 evaluation;
-7. require every readiness threshold and deterministic gate to pass;
-8. complete the full role-based manual QA checklist on the unchanged candidate;
-9. merge PR11 and finalize documentation against actual evidence.
+1. finish and review all PR11 fixes;
+2. pass deterministic CI on the PR11 branch;
+3. merge PR11;
+4. pass deterministic CI on final `main`;
+5. freeze that exact `main` SHA;
+6. create a fresh deterministic Evaluation V2 environment manifest for that SHA;
+7. obtain explicit authorization for the exact OpenAI model and maximum billable runs;
+8. run the fixed V2 canary exactly three times;
+9. require the stability assessment to pass;
+10. run one matching full 40-case V2 evaluation;
+11. require automated readiness to be `ready`;
+12. complete the full role-based manual QA checklist on the same unchanged candidate;
+13. only then mark Milestone 9 and QueryOps AI V1 release complete.
 
-No live OpenAI call or complete manual QA was performed during implementation. V1 readiness therefore remains `incomplete`.
+No live OpenAI call or complete manual QA was performed during implementation. Automated readiness currently remains `incomplete`, and release completion remains open.

@@ -220,7 +220,7 @@ Some backend security and RLS tests require PostgreSQL and intentionally skip wi
 
 The core Query Engine, Ask Data workspace, dashboard and export flows, scope-aware authorization, PostgreSQL RLS, two governed IT Operations actions, approvals, audit views, notifications, and evaluation/readiness infrastructure are implemented.
 
-The project remains under active V1 hardening. Text-to-SQL architecture and evaluation work continue, demo authentication is the only usable auth mode, actions execute synchronously, notifications are database-only, and the implemented action catalog is intentionally limited to two IT Operations workflows. Final manual QA and qualifying live-provider evidence have not been completed, so V1 readiness remains **incomplete** and the repository should not be treated as production-ready.
+The project remains under active V1 hardening. Text-to-SQL architecture and evaluation work continue, demo authentication is the only usable auth mode, actions execute synchronously, notifications are database-only, and the implemented action catalog is intentionally limited to two IT Operations workflows. Qualifying live-provider evidence has not been completed, so automated V1 readiness remains **incomplete**. Final manual QA is a separate release-completion requirement and is also open; the repository should not be treated as production-ready.
 
 ## Maintainer
 

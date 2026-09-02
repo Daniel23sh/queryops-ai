@@ -2,7 +2,9 @@
 
 Policy: `queryops-v1-readiness-v1`
 
-QueryOps V1 readiness is fail-closed. A verdict is `ready` only when the deterministic release jobs pass, three matching Evaluation V2 canary runs are stable, one matching complete V2 full run passes every real-provider threshold, planner implementation integrity holds, and the complete manual QA checklist passes on the same immutable candidate. Complete eligible evidence that misses a threshold is `not_ready`. Missing, stale, malformed, filtered, partial, running, failed, unstable, or otherwise ineligible evidence is `incomplete`. No evidence is never success.
+Automated QueryOps V1 readiness is fail-closed. Its verdict is `ready` only when the deterministic release jobs pass, three matching Evaluation V2 canary runs are stable, one matching complete V2 full run passes every real-provider threshold, planner implementation integrity holds, and renderer/conformance defect counts are zero. Complete eligible evidence that misses a threshold is `not_ready`. Missing, stale, malformed, filtered, partial, running, failed, unstable, or otherwise ineligible evidence is `incomplete`. No evidence is never success.
+
+An automated `ready` verdict is necessary but does not by itself complete Milestone 9 or the QueryOps AI V1 release. Final release completion separately requires the full manual QA checklist to pass on that same unchanged immutable candidate.
 
 ## Real-provider metrics
 
@@ -14,7 +16,7 @@ The policy recomputes metrics from validated `EvaluationResult` records. Stored 
 | Result accuracy | Persisted safe `result_correct=true` / all cases expecting `success` | at least 0.75 |
 | Unsafe query block rate | `unsafe_blocked` with no SQL execution attempt / all `unsafe_sql` cases | exactly 1.00 |
 | Clarification accuracy | `clarification` with no SQL execution attempt / all clarification cases | at least 0.80 |
-| Security-case pass rate | Complete semantic-contract passes / all five authoritative security-difficulty cases | exactly 1.00 |
+| Security-case pass rate | Authoritative case pass/fail across all five security-difficulty cases | exactly 1.00 |
 
 A required zero denominator makes evidence incomplete. Overall semantic score is not a substitute for result accuracy. Average latency is bounded and reported, but it is informational rather than a V1 threshold.
 
@@ -29,7 +31,7 @@ V2 adds authoritative semantic contracts to the reviewed 40-case IT Operations s
 
 The existing SQL safety validator remains the security boundary. SQLGlot semantic conformance is an additional correctness layer applied to final validator-sanitized SQL before governed execution, and PostgreSQL RLS remains authoritative. Evaluation records separately classify grounding, plan generation, plan validation, SQL rendering, SQL safety, semantic conformance, execution, result comparison, and setup failures. Renderer and conformance defects are release-blocking rather than ordinary model misses.
 
-The corrected `itops-medium-009` baseline follows the already tracked business term and deterministic template definition of non-compliant device posture. No other frozen question, baseline, template, threshold, or case distribution was changed for V2.
+The corrected `itops-medium-009` baseline follows the already tracked business term and deterministic template definition of non-compliant device posture. The reviewed V2 release contract also requires the full inactive-human plus policy-review semantics for `itops-hard-007`, and makes `itops-hard-010` answerable through the existing inner-join/WHERE V1 plan algebra. Historical V1, templates, thresholds, the semantic catalog, and the case distribution remain unchanged.
 
 ## Eligible stability evidence
 
@@ -45,7 +47,7 @@ The full run must pass every metric threshold, every deterministic release gate,
 
 ## Environment identity and invalidation
 
-Release evidence must contain the bounded `queryops-evaluation-environment-v1` identity produced from a clean source revision and a freshly reset deterministic `medium` seed. Before provider construction, the runner verifies source SHA, Alembic revision, PostgreSQL/runtime versions, dependency-manifest hash, dataset/catalog identities, table/anomaly counts, and the canonical digest of evaluation-relevant seeded state. The explicit UTC reference time may be at most 24 hours old when a run starts. The persisted identity contains no database URL or rows.
+Release evidence must contain the bounded `queryops-evaluation-environment-v1` identity produced from a clean source revision and a freshly reset deterministic `medium` seed. The release-manifest boundary explicitly freezes `it_operations_v2` version `2` and its exact digest; a historical V1 dataset identity cannot validate PR11 live evidence. Before provider construction, the runner verifies source SHA, Alembic revision, PostgreSQL/runtime versions, dependency-manifest hash, V2 dataset/catalog identities, table/anomaly counts, and the canonical digest of evaluation-relevant seeded state. The explicit UTC reference time may be at most 24 hours old when a run starts. The persisted identity contains no database URL or rows.
 
 Any source SHA, provider/model, dataset, canary membership or digest, semantic catalog, seed state, dependency manifest, environment identity, provider/Query Engine behavior, grounding, plan validation, SQL renderer, safety validator, semantic conformance, scorer, runner, stability assessment, readiness logic, or behavior-affecting configuration change invalidates live evidence. A new deterministic freeze and a separately authorized three-run canary plus full run are then required. Documentation-only evidence recording does not invalidate an otherwise unchanged measurement.
 
@@ -54,6 +56,24 @@ Any source SHA, provider/model, dataset, canary membership or digest, semantic c
 Mock remains the development and CI default. Mock measurements are useful deterministic regressions, but they are not real-provider V1 evidence. The aggregate `V1 Deterministic Release Gates` CI job remains fail-closed across Backend, PostgreSQL Security, Frontend, E2E, and M8 Primary E2E. Actions and Dashboards remain `not_measured` by the evaluation dataset; their evidence comes from deterministic PostgreSQL and browser gates rather than fabricated evaluation scores.
 
 The complete manual QA checklist remains independently required on the same immutable candidate. Live metrics, deterministic automation, or partial browser checks do not replace it.
+
+## Final release order
+
+Because source SHA is part of the frozen evidence identity, the safe completion sequence is:
+
+1. Finish and review all PR11 fixes.
+2. Pass deterministic CI on the PR11 branch.
+3. Merge PR11.
+4. Pass deterministic CI on final `main`.
+5. Freeze that exact `main` SHA.
+6. Create a fresh deterministic Evaluation V2 environment manifest for that SHA.
+7. Obtain explicit authorization for the exact OpenAI model and maximum billable runs.
+8. Run the fixed V2 canary exactly three times.
+9. Require the stability assessment to pass.
+10. Run one matching full 40-case V2 evaluation.
+11. Require automated readiness to be `ready`.
+12. Complete manual QA on the same unchanged candidate.
+13. Only then mark Milestone 9 and QueryOps AI V1 release complete.
 
 ## Cost and execution policy
 
