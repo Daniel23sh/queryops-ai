@@ -14,8 +14,9 @@ QueryOps AI gives business and technical users a shared workflow for governed da
 Request
   ├── free-text question
   │     → authorized schema and semantic grounding
-  │     → provider-generated SemanticPlan + candidate SQL
-  │     → Required Intent, plan, SQL-safety, and conformance checks
+  │     → provider-generated SemanticPlan only
+  │     → Required Intent and SemanticPlan validation
+  │     → deterministic backend SQL rendering, safety, and conformance checks
   └── approved template
         → deterministic provider-free SQL
               │
@@ -32,12 +33,12 @@ Eligible result
   → audit and notification records
 ```
 
-Approved query templates bypass the LLM provider. Free-text queries use the current provider contract, which returns both a structured `SemanticPlan` and candidate SQL in one call. Deterministic grounding separates result semantics into:
+Approved query templates bypass the LLM provider. Free-text queries use the current plan-only provider contract, which returns a structured `SemanticPlan` in one call. After validating that plan, the backend renders SQL deterministically. Deterministic grounding separates result semantics into:
 
 - **Required Intent** — high-confidence requirements that are validated fail-closed.
 - **Suggested Intent** — non-binding planner guidance that cannot independently reject an otherwise valid plan.
 
-The candidate SQL remains untrusted and must pass every downstream control before execution.
+The backend-rendered SQL remains untrusted and must pass every downstream control before execution.
 
 ## Key Capabilities
 
@@ -58,7 +59,7 @@ Authorization is enforced by the backend and database; frontend capability check
 - `UserAccessContext` combines effective permissions with assigned department or global scopes.
 - PostgreSQL RLS restricts operational reads and writes using transaction-local viewer context.
 - The LLM sees an allowlisted projection of authorized schema and business semantics—not database rows, user identities, scope keys, credentials, evaluation baselines, or action targets.
-- Generated SQL is accepted only as a candidate. The backend enforces read-only syntax, allowed resources, limits, semantic-plan consistency, and SQL semantic conformance before execution.
+- Backend-rendered SQL is accepted only after the backend enforces read-only syntax, allowed resources, limits, semantic-plan consistency, and SQL semantic conformance.
 - Query execution uses a restricted non-owner, read-only PostgreSQL role.
 - The LLM never mutates operational data. Actions use explicit selectors, deterministic previews, current-state revalidation, policy checks, approval rules, a narrowly privileged action role, and atomic audit/notification writes.
 - Sensitive response fields, including SQL and evaluation diagnostics, are projected according to effective permissions.
@@ -176,7 +177,7 @@ OPENAI_MODEL=gpt-5.6-terra
 
 Setting `OPENAI_API_KEY` alone does not activate OpenAI. Real-provider requests can incur API charges; keep secrets out of tracked files and use MockLLM for routine development and tests.
 
-The OpenAI provider currently returns a structured `SemanticPlan` and candidate SQL in one request. QueryOps validates both and makes no repair or fallback provider call.
+The OpenAI provider returns only a structured `SemanticPlan` in one request. QueryOps validates the plan, renders SQL deterministically in the backend, and makes no repair or fallback provider call.
 
 ## Testing
 
@@ -219,7 +220,7 @@ Some backend security and RLS tests require PostgreSQL and intentionally skip wi
 
 The core Query Engine, Ask Data workspace, dashboard and export flows, scope-aware authorization, PostgreSQL RLS, two governed IT Operations actions, approvals, audit views, notifications, and evaluation/readiness infrastructure are implemented.
 
-The project remains under active V1 hardening. Text-to-SQL architecture and evaluation work continue, demo authentication is the only usable auth mode, actions execute synchronously, notifications are database-only, and the implemented action catalog is intentionally limited to two IT Operations workflows. Final manual QA and qualifying live-provider evidence have not been completed, so V1 readiness remains **incomplete** and the repository should not be treated as production-ready.
+The project remains under active V1 hardening. Text-to-SQL architecture and evaluation work continue, demo authentication is the only usable auth mode, actions execute synchronously, notifications are database-only, and the implemented action catalog is intentionally limited to two IT Operations workflows. Qualifying live-provider evidence has not been completed, so automated V1 readiness remains **incomplete**. Final manual QA is a separate release-completion requirement and is also open; the repository should not be treated as production-ready.
 
 ## Maintainer
 

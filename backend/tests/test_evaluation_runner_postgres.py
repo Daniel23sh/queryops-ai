@@ -16,7 +16,10 @@ from app.db.session import get_db
 from app.evaluation.baseline import execute_evaluation_baseline
 from app.evaluation.context import resolve_evaluation_identity
 from app.evaluation.contracts import ActualOutcome, RequestingRole
-from app.evaluation.loader import load_it_operations_evaluation_set
+from app.evaluation.loader import (
+    load_it_operations_evaluation_set,
+    load_it_operations_evaluation_v2_set,
+)
 from app.evaluation.runner import EvaluationRunner
 from app.evaluation.scoring import score_evaluation_case
 from app.models.product import EvaluationResult, EvaluationRun
@@ -30,7 +33,10 @@ def test_complete_mock_evaluation_persists_exact_safe_measurement(
 ) -> None:
     factory = sessionmaker(postgres_engine, expire_on_commit=False)
 
-    summary = EvaluationRunner(factory).run()
+    summary = EvaluationRunner(
+        factory,
+        dataset_loader=load_it_operations_evaluation_v2_set,
+    ).run()
 
     assert summary.status == "succeeded"
     assert summary.selected_count == 40

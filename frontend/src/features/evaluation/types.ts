@@ -52,7 +52,10 @@ export type EvaluationErrorCode =
   | "provider_authentication_failed"
   | "provider_timeout"
   | "provider_unavailable"
-  | "provider_response_invalid";
+  | "provider_response_invalid"
+  | "semantic_conformance_failed"
+  | "semantic_sql_render_failed"
+  | "validation_failed";
 
 export type EvaluationProvider = "mock" | "openai";
 
@@ -75,6 +78,11 @@ export type EvaluationReadiness = {
   model_label: string | null;
   dataset_version: string;
   completed_count: number | null;
+  stability_canary: {
+    status: ReadinessGateStatus;
+    reason_code: string | null;
+    run_count: number;
+  };
   gates: ReadinessGate[];
   technical: {
     run_id: string;

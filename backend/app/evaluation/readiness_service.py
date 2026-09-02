@@ -5,13 +5,19 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.evaluation.loader import load_it_operations_evaluation_set
+from app.evaluation.loader import load_it_operations_evaluation_v2_set
 from app.evaluation.read_service import VisibilityMode, resolve_evaluation_visibility
 from app.evaluation.readiness import (
     ReadinessAssessment,
     ReadinessResultEvidence,
     ReadinessRunEvidence,
     evaluate_v1_readiness,
+)
+from app.evaluation.stability import (
+    StabilityCanaryAssessment,
+    StabilityResultEvidence,
+    StabilityRunEvidence,
+    evaluate_stability_canary,
 )
 from app.models.product import AppUser, EvaluationResult, EvaluationRun, RunStatus
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
@@ -21,6 +27,7 @@ from app.schemas.evaluation import (
     ReadinessGateView,
     ReadinessTechnicalView,
     ReadinessUsageView,
+    StabilityCanaryView,
 )
 
 
@@ -31,31 +38,35 @@ _V1_DETERMINISTIC_RELEASE_EVIDENCE_PASSED = True
 
 
 def assessment_for_run(db: Session, run_id: UUID) -> ReadinessAssessment:
-    evaluation_set = load_it_operations_evaluation_set()
+    evaluation_set = load_it_operations_evaluation_v2_set()
     catalog_identity = semantic_catalog_identity(
         load_it_operations_domain_pack().semantic_catalog
     )
     run = db.get(EvaluationRun, run_id)
+    stability = latest_stability_assessment(db)
     if run is None:
         return evaluate_v1_readiness(
             evaluation_set,
             None,
             deterministic_evidence_passed=_V1_DETERMINISTIC_RELEASE_EVIDENCE_PASSED,
             semantic_catalog_identity=catalog_identity,
+            stability_canary=stability,
         )
     return evaluate_v1_readiness(
         evaluation_set,
         _evidence(db, run),
         deterministic_evidence_passed=_V1_DETERMINISTIC_RELEASE_EVIDENCE_PASSED,
         semantic_catalog_identity=catalog_identity,
+        stability_canary=stability,
     )
 
 
 def latest_readiness_assessment(db: Session) -> ReadinessAssessment:
-    evaluation_set = load_it_operations_evaluation_set()
+    evaluation_set = load_it_operations_evaluation_v2_set()
     catalog_identity = semantic_catalog_identity(
         load_it_operations_domain_pack().semantic_catalog
     )
+    stability = latest_stability_assessment(db)
     candidates = db.scalars(
         select(EvaluationRun)
         .where(
@@ -81,6 +92,7 @@ def latest_readiness_assessment(db: Session) -> ReadinessAssessment:
             _evidence(db, run),
             deterministic_evidence_passed=_V1_DETERMINISTIC_RELEASE_EVIDENCE_PASSED,
             semantic_catalog_identity=catalog_identity,
+            stability_canary=stability,
         )
         if assessment.gates[0].status.value == "passed":
             return assessment
@@ -88,6 +100,33 @@ def latest_readiness_assessment(db: Session) -> ReadinessAssessment:
         evaluation_set,
         None,
         deterministic_evidence_passed=_V1_DETERMINISTIC_RELEASE_EVIDENCE_PASSED,
+        semantic_catalog_identity=catalog_identity,
+        stability_canary=stability,
+    )
+
+
+def latest_stability_assessment(db: Session) -> StabilityCanaryAssessment:
+    evaluation_set = load_it_operations_evaluation_v2_set()
+    catalog_identity = semantic_catalog_identity(
+        load_it_operations_domain_pack().semantic_catalog
+    )
+    candidates = db.scalars(
+        select(EvaluationRun)
+        .where(
+            EvaluationRun.status == RunStatus.SUCCEEDED.value,
+            EvaluationRun.completed_at.is_not(None),
+            EvaluationRun.summary["provider"].as_string() == "openai",
+            EvaluationRun.summary["dataset_id"].as_string()
+            == evaluation_set.dataset_id,
+            EvaluationRun.summary["dataset_version"].as_string()
+            == evaluation_set.version,
+        )
+        .order_by(EvaluationRun.completed_at.desc(), EvaluationRun.id.desc())
+        .limit(100)
+    ).all()
+    return evaluate_stability_canary(
+        evaluation_set,
+        tuple(_stability_evidence(db, run) for run in candidates),
         semantic_catalog_identity=catalog_identity,
     )
 
@@ -139,6 +178,11 @@ def readiness_for_viewer(
             "model_label": assessment.model_label,
             "dataset_version": assessment.dataset_version,
             "completed_count": assessment.completed_count,
+            "stability_canary": StabilityCanaryView(
+                status=assessment.stability_canary.status.value,
+                reason_code=assessment.stability_canary.reason_code,
+                run_count=len(assessment.stability_canary.run_ids),
+            ),
             "gates": gates,
             "technical": technical,
         }
@@ -168,5 +212,28 @@ def _evidence(db: Session, run: EvaluationRun) -> ReadinessRunEvidence:
                 error_message=row.error_message,
             )
             for row in rows
+        ),
+    )
+
+
+def _stability_evidence(db: Session, run: EvaluationRun) -> StabilityRunEvidence:
+    evidence = _evidence(db, run)
+    return StabilityRunEvidence(
+        run_id=evidence.run_id,
+        status=evidence.status,
+        started_at=evidence.started_at,
+        completed_at=evidence.completed_at,
+        summary=evidence.summary,
+        results=tuple(
+            StabilityResultEvidence(
+                case_id=result.case_id,
+                status=result.status,
+                score=result.score,
+                expected_output=result.expected_output,
+                actual_output=result.actual_output,
+                metrics=result.metrics,
+                error_message=result.error_message,
+            )
+            for result in evidence.results
         ),
     )

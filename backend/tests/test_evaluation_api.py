@@ -15,8 +15,12 @@ from app.db.base import Base
 from app.db.session import get_db
 from app.domains.it_operations.seed import seed_database
 from app.evaluation.contracts import ExpectedOutcome
-from app.evaluation.loader import load_it_operations_evaluation_set
-from app.evaluation.selection import evaluation_dataset_digest
+from app.evaluation.loader import load_it_operations_evaluation_v2_set
+from app.evaluation.selection import (
+    EvaluationSuite,
+    evaluation_dataset_digest,
+    select_evaluation_suite,
+)
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.semantic_catalog import semantic_catalog_identity
 from app.main import app
@@ -143,7 +147,7 @@ def test_scoped_roles_receive_only_visible_recomputed_totals(
     client: TestClient,
     complete_run: EvaluationRun,
 ) -> None:
-    evaluation_set = load_it_operations_evaluation_set()
+    evaluation_set = load_it_operations_evaluation_v2_set()
 
     _login(client, "demo.manager@queryops.local")
     manager = client.get("/api/v1/evaluation/overview").json()["data"]["metrics"]
@@ -208,6 +212,51 @@ def test_analyst_technical_projection_is_safe_and_sql_permission_gates_resources
     technical = response.json()["data"]["items"][0]["technical"]
     assert technical is not None
     assert technical["referenced_tables"] is None
+
+
+@pytest.mark.parametrize(
+    "error_code",
+    [
+        "validation_failed",
+        "semantic_sql_render_failed",
+        "semantic_conformance_failed",
+    ],
+)
+def test_current_plan_pipeline_errors_have_bounded_technical_projections(
+    client: TestClient,
+    db_session: Session,
+    error_code: str,
+) -> None:
+    run = _create_run(db_session, case_ids={"itops-easy-005"})
+    result = db_session.scalar(
+        select(EvaluationResult).where(EvaluationResult.evaluation_run_id == run.id)
+    )
+    assert result is not None
+    result.status = "failed"
+    result.score = 0.5
+    result.actual_output = {
+        "outcome": "execution_failed",
+        "referenced_tables": ["directory_users"],
+        "execution_succeeded": False,
+        "error_code": error_code,
+    }
+    result.metrics = {
+        **result.metrics,
+        "score": 0.5,
+        "passed": False,
+        "execution_correct": False,
+        "result_correct": False,
+        "failure_reasons": ["execution_state_mismatch"],
+        "query_execution_attempted": False,
+    }
+    db_session.commit()
+
+    _login(client, "demo.admin@queryops.local")
+    response = client.get(f"/api/v1/evaluation/queries?run_id={run.id}")
+
+    assert response.status_code == 200
+    technical = response.json()["data"]["items"][0]["technical"]
+    assert technical["error_code"] == error_code
 
 
 def test_protected_resource_name_is_not_returned_as_sql_adjacent_metadata(
@@ -376,9 +425,8 @@ def test_readiness_selects_latest_qualifying_openai_and_ignores_newer_ineligible
     client: TestClient,
     db_session: Session,
 ) -> None:
-    qualifying = _create_run(
+    qualifying = _create_release_evidence(
         db_session,
-        provider="openai",
         completed_at=datetime.now(UTC) - timedelta(hours=2),
     )
     _create_run(db_session, provider="mock", completed_at=datetime.now(UTC))
@@ -414,9 +462,8 @@ def test_readiness_ignores_newer_stale_semantic_catalog_evidence(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    qualifying = _create_run(
+    qualifying = _create_release_evidence(
         db_session,
-        provider="openai",
         completed_at=datetime.now(UTC) - timedelta(hours=1),
     )
     stale = _create_run(
@@ -444,9 +491,8 @@ def test_readiness_ignores_newer_invalid_environment_evidence(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    qualifying = _create_run(
+    qualifying = _create_release_evidence(
         db_session,
-        provider="openai",
         completed_at=datetime.now(UTC) - timedelta(hours=1),
     )
     invalid = _create_run(
@@ -474,7 +520,7 @@ def test_readiness_role_projections_remain_bounded(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    _create_run(db_session, provider="openai")
+    _create_release_evidence(db_session)
     _login(client, "demo.manager@queryops.local")
     manager = client.get("/api/v1/evaluation/readiness").json()["data"]
     assert manager["technical"] is None
@@ -484,7 +530,7 @@ def test_readiness_role_projections_remain_bounded(
     _login(client, "demo.analyst@queryops.local")
     analyst = client.get("/api/v1/evaluation/readiness").json()["data"]
     assert analyst["technical"]["run_id"]
-    assert analyst["technical"]["dataset_id"] == "it_operations_v1"
+    assert analyst["technical"]["dataset_id"] == "it_operations_v2"
     assert analyst["technical"]["selected_count"] is None
     assert analyst["technical"]["average_latency_ms"] is None
     assert analyst["technical"]["usage"] is None
@@ -928,6 +974,43 @@ def test_openapi_documents_exactly_the_six_read_only_routes(client: TestClient) 
     )
 
 
+def _create_release_evidence(
+    db: Session,
+    *,
+    completed_at: datetime | None = None,
+) -> EvaluationRun:
+    full_completion = completed_at or datetime.now(UTC)
+    reference_time = full_completion - timedelta(hours=4)
+    environment: dict[str, str | int] = {
+        "manifest_version": "queryops-evaluation-environment-v1",
+        "seed_version": "it-operations-seed-v1",
+        "seed_profile": "medium",
+        "seed": 42,
+        "reference_time": reference_time.replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
+        "source_git_sha": "a" * 40,
+        "alembic_revision": "0010_disable_inactive_user",
+        "postgres_version": "16.9",
+        "database_fingerprint": "b" * 64,
+        "dependency_manifest_hash": "c" * 64,
+    }
+    for hours_before in (3, 2, 1):
+        _create_run(
+            db,
+            provider="openai",
+            completed_at=full_completion - timedelta(hours=hours_before),
+            suite=EvaluationSuite.CANARY,
+            environment_identity=environment,
+        )
+    return _create_run(
+        db,
+        provider="openai",
+        completed_at=full_completion,
+        environment_identity=environment,
+    )
+
+
 def _create_run(
     db: Session,
     *,
@@ -936,23 +1019,50 @@ def _create_run(
     completed_at: datetime | None = None,
     provider: str = "mock",
     model_label: str | None = None,
+    suite: EvaluationSuite = EvaluationSuite.FULL,
+    environment_identity: dict[str, str | int] | None = None,
 ) -> EvaluationRun:
-    evaluation_set = load_it_operations_evaluation_set()
-    selected = tuple(
-        case for case in evaluation_set.cases if case_ids is None or case.id in case_ids
+    evaluation_set = load_it_operations_evaluation_v2_set()
+    suite_selection = select_evaluation_suite(evaluation_set, suite)
+    selected = (
+        suite_selection.cases
+        if case_ids is None
+        else tuple(case for case in evaluation_set.cases if case.id in case_ids)
     )
     now = datetime.now(UTC)
+    terminal_time = (
+        now
+        if completed_at is None and status == RunStatus.SUCCEEDED.value
+        else completed_at
+    )
+    started_at = (terminal_time or now) - timedelta(seconds=1)
+    persisted_suite = suite_selection.as_safe_dict()
+    persisted_suite = {
+        **persisted_suite,
+        "selected_case_ids": [case.id for case in selected],
+        "selected_count": len(selected),
+    }
+    environment = environment_identity or {
+        "manifest_version": "queryops-evaluation-environment-v1",
+        "seed_version": "it-operations-seed-v1",
+        "seed_profile": "medium",
+        "seed": 42,
+        "reference_time": started_at.replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
+        "source_git_sha": "a" * 40,
+        "alembic_revision": "0010_disable_inactive_user",
+        "postgres_version": "16.9",
+        "database_fingerprint": "b" * 64,
+        "dependency_manifest_hash": "c" * 64,
+    }
     run = EvaluationRun(
         requested_by_user_id=None,
         name=f"{evaluation_set.dataset_id}:{provider}",
         run_type="manual_evaluation",
         status=status,
-        started_at=now - timedelta(seconds=1),
-        completed_at=(
-            now
-            if completed_at is None and status == RunStatus.SUCCEEDED.value
-            else completed_at
-        ),
+        started_at=started_at,
+        completed_at=terminal_time,
         summary={
             "provider": provider,
             "model_label": model_label
@@ -960,24 +1070,11 @@ def _create_run(
             "dataset_id": evaluation_set.dataset_id,
             "dataset_version": evaluation_set.version,
             "dataset_digest": evaluation_dataset_digest(evaluation_set),
+            "evaluation_suite": persisted_suite,
             "semantic_catalog": semantic_catalog_identity(
                 load_it_operations_domain_pack().semantic_catalog
             ),
-            "evaluation_environment": {
-                "manifest_version": "queryops-evaluation-environment-v1",
-                "seed_version": "it-operations-seed-v1",
-                "seed_profile": "medium",
-                "seed": 42,
-                "reference_time": (now - timedelta(seconds=1))
-                .replace(microsecond=0)
-                .isoformat()
-                .replace("+00:00", "Z"),
-                "source_git_sha": "a" * 40,
-                "alembic_revision": "0010_disable_inactive_user",
-                "postgres_version": "16.9",
-                "database_fingerprint": "b" * 64,
-                "dependency_manifest_hash": "c" * 64,
-            },
+            "evaluation_environment": environment,
             "selected_count": len(selected),
             "completed_count": len(selected),
             "filters": {
@@ -996,6 +1093,7 @@ def _create_run(
                 "output_tokens": len(selected) if provider == "openai" else 0,
                 "total_tokens": 2 * len(selected) if provider == "openai" else 0,
             },
+            "planner_metrics": _planner_summary(selected),
             "failure_code": None,
             "raw_prompt": LEAK_SENTINELS[2],
         },
@@ -1055,6 +1153,11 @@ def _create_run(
                         if provider == "openai"
                         else {}
                     ),
+                    **(
+                        {"planner": _passing_planner()}
+                        if case.template_id is None and success
+                        else {}
+                    ),
                 },
                 error_message=None,
             )
@@ -1062,6 +1165,52 @@ def _create_run(
     db.commit()
     db.refresh(run)
     return run
+
+
+def _passing_planner() -> dict[str, object]:
+    return {
+        "plan_generated": True,
+        "plan_validation_status": "passed",
+        "required_intent_status": "passed",
+        "renderer_status": "passed",
+        "conformance_status": "passed",
+        "semantic_contract": {
+            "evaluated": True,
+            "passed": True,
+            "concepts_correct": True,
+            "metric_correct": True,
+            "rules_correct": True,
+            "grain_correct": True,
+            "outputs_correct": True,
+            "aggregations_correct": True,
+            "group_by_correct": True,
+            "having_correct": True,
+            "ordering_correct": True,
+            "failure_reasons": [],
+        },
+    }
+
+
+def _planner_summary(cases) -> dict[str, int | float | None]:
+    eligible = sum(
+        case.template_id is None and case.expected_outcome is ExpectedOutcome.SUCCESS
+        for case in cases
+    )
+    rate = 1.0 if eligible else None
+    return {
+        "eligible_case_count": eligible,
+        "generated_plan_count": eligible,
+        "validated_plan_count": eligible,
+        "semantic_plan_validation_pass_rate": rate,
+        "required_intent_evaluated_count": eligible,
+        "required_intent_passed_count": eligible,
+        "required_intent_adherence_rate": rate,
+        "renderer_defect_count": 0,
+        "conformance_defect_count": 0,
+        "semantic_contract_evaluated_count": eligible,
+        "semantic_contract_passed_count": eligible,
+        "semantic_contract_pass_rate": rate,
+    }
 
 
 def _expected_error_code(outcome: ExpectedOutcome) -> str:

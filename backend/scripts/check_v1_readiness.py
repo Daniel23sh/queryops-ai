@@ -65,6 +65,11 @@ def _payload(assessment: ReadinessAssessment) -> dict[str, Any]:
             "completed": assessment.completed_count,
         },
         "average_latency_ms": assessment.average_latency_ms,
+        "stability_canary": {
+            "status": assessment.stability_canary.status.value,
+            "reason_code": assessment.stability_canary.reason_code,
+            "run_count": len(assessment.stability_canary.run_ids),
+        },
         "usage": (
             {
                 "call_count": usage.call_count,
@@ -125,6 +130,16 @@ def _print_text(payload: dict[str, Any]) -> None:
     print(
         "Cases: "
         f"selected={counts['selected']} completed={counts['completed']}"
+    )
+    stability = payload["stability_canary"]
+    print(
+        "Stability canary: "
+        f"{stability['status']} runs={stability['run_count']}"
+        + (
+            f" reason={stability['reason_code']}"
+            if stability["reason_code"]
+            else ""
+        )
     )
     for gate in payload["gates"]:
         detail = ""

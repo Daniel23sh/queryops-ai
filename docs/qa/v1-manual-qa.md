@@ -1,6 +1,6 @@
 # QueryOps V1 Manual QA
 
-Use the unchanged runtime revision and freshly migrated, manifest-verified disposable PostgreSQL database used for the authoritative live evaluation. Record date and Asia/Jerusalem timezone, tester identity, whether QA was human or Codex-assisted, runtime commit, safe manifest/database fingerprint, browser/version, desktop viewport, 390×844 mobile viewport, themes, and only safe controlled failure codes. Do not paste SQL, rows, prompts, provider payloads, keys, raw errors, or database URLs into the report.
+Use the unchanged runtime revision and freshly migrated, manifest-verified disposable PostgreSQL database used for the three matching Evaluation V2 canary runs and the qualifying full 40-case V2 run. Record date and Asia/Jerusalem timezone, tester identity, whether QA was human or Codex-assisted, runtime commit, safe manifest/database fingerprint, browser/version, desktop viewport, 390×844 mobile viewport, themes, and only safe controlled failure codes. Do not paste SQL, rows, prompts, provider payloads, keys, raw errors, or database URLs into the report.
 
 Current result: **not performed**. This keeps V1 readiness `incomplete`.
 
@@ -50,6 +50,8 @@ Current result: **not performed**. This keeps V1 readiness `incomplete`.
 - [ ] Confirm Manager sees only business-safe Evaluation and readiness fields.
 - [ ] Confirm Analyst sees only the existing assigned-scope technical projection.
 - [ ] Confirm Admin sees bounded global readiness gate values and safe usage totals.
+- [ ] Confirm readiness shows the three-run canary status and count without exposing run history or arbitrary identifiers.
+- [ ] Confirm a full V2 run cannot produce `ready` unless it matches the stable canary candidate and all 40 cases are complete.
 - [ ] Confirm Ready, Not ready, and Incomplete include text labels and are not color-only.
 - [ ] Confirm provider/model identity is not presented as a pass badge.
 - [ ] Confirm Actions and Dashboards remain `not_measured` in the 40-case evaluation and point to deterministic release evidence.

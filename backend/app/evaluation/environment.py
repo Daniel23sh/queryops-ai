@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.db.base import Base
 from app.domains.it_operations.seed import SeedSummary, expected_seed_table_counts
-from app.evaluation.loader import load_it_operations_evaluation_set
+from app.evaluation.loader import load_it_operations_evaluation_v2_set
 from app.evaluation.selection import evaluation_dataset_digest
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.semantic_catalog import semantic_catalog_identity
@@ -114,7 +114,7 @@ def build_evaluation_environment_manifest(
     if _SAFE_SHA.fullmatch(source_sha) is None:
         raise EvaluationEnvironmentError("evaluation_source_revision_invalid")
 
-    evaluation_set = load_it_operations_evaluation_set()
+    evaluation_set = load_it_operations_evaluation_v2_set()
     catalog = load_it_operations_domain_pack().semantic_catalog
     database_digest, table_counts = evaluation_database_fingerprint(db)
     identity = EvaluationEnvironmentIdentity(
@@ -206,7 +206,7 @@ def validate_evaluation_environment_manifest(
     if not _valid_counts(database.get("anomaly_counts")):
         raise EvaluationEnvironmentError("evaluation_environment_invalid")
 
-    evaluation_set = load_it_operations_evaluation_set()
+    evaluation_set = load_it_operations_evaluation_v2_set()
     expected_dataset = {
         "id": evaluation_set.dataset_id,
         "version": evaluation_set.version,

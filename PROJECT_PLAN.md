@@ -30,7 +30,9 @@ Current PR scope:
 
 `M9 PR6 — V1 Quality Gates, Readiness & Completion` is complete and merged through PR #41. Its final feature commit is `ee681da738466031478d982d53d1b3d0ef40b75f`; the verified merge/current-main commit is `c6691a204ccbb9eb007e2e0c6fe419c346745b13`. The Backend, PostgreSQL Security, Frontend, E2E, M8 Primary E2E, and V1 Deterministic Release Gates GitHub checks passed.
 
-`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` remains active. `M9 PR7 — V1 Live Validation, Manual QA, and Release Completion` is the explicitly activated evidence-focused follow-up. Mock remains the development and CI default. No live OpenAI measurement has been accepted as V1 release evidence, and the full manual QA checklist has not been completed; Milestone 9 and V1 remain incomplete until deterministic release gates, manual QA, and one qualifying full OpenAI measurement all pass.
+`M9 PR7 — V1 Live Validation, Manual QA, and Release Completion` is complete and merged through PR #42. `M9 PR8 — Provider Contract Required/Suggested Intent` is complete and merged through PR #43 at `216cea5`. `M9 PR9 — Minimal Semantic Grounding Graph` is complete and merged through PR #44 at `49a43fa`. `M9 PR10 — Plan-Only Provider & Deterministic SQL Renderer` is complete and merged through PR #45 at verified `main` commit `ec0c812ee6b651eb936a24f8e91c346baa9837d8`.
+
+`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` remains active. `M9 PR11 — Evaluation V2 & Stability Release Gate` is the current and final planned M9 implementation PR. Mock remains the development and CI default. No qualifying three-run V2 canary, full V2 OpenAI measurement, or complete manual QA has been accepted as V1 release evidence; Milestone 9 and V1 remain incomplete until all deterministic gates, stable canary evidence, the matching full run, and manual QA pass on one immutable candidate.
 
 Milestone 0 foundation work, Milestone 1 database and IT Operations seed work, Milestone 2 auth/users/roles/permissions work, Milestone 2.5 Access Context Foundation, Post-Milestone 2.5 hardening, Milestone 3 RLS & Security Foundation, Milestone 4 Query Engine Backend, and Milestone 5 Ask Data UI/frontend redesign are complete.
 
@@ -456,7 +458,7 @@ The latest PR status is:
 
 `Milestone 8 — Actions, Approvals & Audit` is complete and merged through PR #35 at verified `main` commit `408190f1cdf5710ed80a83065d65fd9cd01c4f87`.
 
-`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` is active. M9 PR1 is complete through PR #36. M9 PR2 is complete through PR #37. M9 PR3 is complete through PR #38 at verified `main` commit `fd1b8cccba3190714233976daa334364c4b4b080`. M9 PR4 is complete through PR #39 at verified `main` commit `f8990b78e86de1d24a51783270e95fc05a07beca`. M9 PR5 is complete through PR #40 at verified `main` commit `695be1358ea2fcd67fc2cd25c66e2281986dd99f`. M9 PR6 is complete through PR #41 at verified `main` commit `c6691a204ccbb9eb007e2e0c6fe419c346745b13`, with all required deterministic GitHub checks passed. M9 PR7 is active as the release-validation follow-up; readiness remains incomplete, Mock remains the CI default, and no live OpenAI run has yet been accepted as V1 release evidence.
+`Milestone 9 — Evaluation, Quality Measurement & V1 Readiness` is active. M9 PR1 through PR7 are complete through PR #42. M9 PR8 is complete through PR #43 at `216cea5`; M9 PR9 is complete through PR #44 at `49a43fa`; and M9 PR10 is complete through PR #45 at verified `main` commit `ec0c812ee6b651eb936a24f8e91c346baa9837d8`. M9 PR11 is the current and final planned implementation PR. Readiness remains incomplete, Mock remains the CI default, and no qualifying three-run V2 canary, full V2 OpenAI run, or complete manual QA has been accepted as V1 release evidence.
 
 ## 15. Milestone 6 Implementation Plan
 
@@ -1619,10 +1621,58 @@ feature/m9-v1-release-validation-completion
 
 Goal: complete the remaining release evidence on the exact PR6 baseline without beginning a new feature phase. PR7 must prepare and verify a disposable PostgreSQL environment, correct the provider-backed smoke procedure, pause for explicit billable authorization, run only authorized live evidence, complete the full manual QA checklist on the same final revision, and record an honest `ready`, `not_ready`, or `incomplete` verdict.
 
-Status: active; the PR7 implementation candidate is prepared for commit/freeze, but Milestone 9 and QueryOps AI V1 remain `incomplete` until one eligible unfiltered 40/40 OpenAI run passes every `queryops-v1-readiness-v1` gate and the full manual QA checklist passes. Any missing, partial, filtered, stale, malformed, inaccessible, or unfinished evidence remains `incomplete`.
+Status: complete and merged through PR #42 at `54c0c2f`. PR7 did not complete Milestone 9 or QueryOps AI V1 because no eligible live OpenAI run or complete manual QA evidence was accepted.
 
-PR7 now includes semantic catalog v3, the canonical `active_human_users` metric, primitive/composed directory-user concepts, deterministic mandatory/optional semantic grounding, one-call structured `SemanticPlan` plus SQL generation, and SQLGlot semantic conformance after the existing SQL safety validator over final sanitized SQL. There is no repair or second provider call; evaluation records classify failures by generation, SQL safety, semantic conformance, execution, and scoring stage. PostgreSQL RLS remains authoritative. Safe catalog/environment provenance, explicit current-reference deterministic release seeding, filtered-run evidence preservation, and narrow one-cell aggregate alias normalization are retained.
+Historically, PR7 included semantic catalog v3, the canonical `active_human_users` metric, primitive/composed directory-user concepts, deterministic mandatory/optional semantic grounding, one-call structured `SemanticPlan` plus SQL generation, and SQLGlot semantic conformance after the existing SQL safety validator over final sanitized SQL. PR10 superseded that provider contract with plan-only output and deterministic backend SQL rendering. PR7 had no repair or second provider call; evaluation records classified failures by generation, SQL safety, semantic conformance, execution, and scoring stage. PostgreSQL RLS remained authoritative. Safe catalog/environment provenance, explicit current-reference deterministic release seeding, filtered-run evidence preservation, and narrow one-cell aggregate alias normalization are retained.
 
-The current dataset identity is `it_operations_v1` version `1`, digest `1e7b12fbf35de4d2c52937a762f3960df444eb3303ee7061a0e4506819c22bc4`; the current catalog identity is `it_operations_semantic_catalog` version `3`, hash `918df0c63288b7ed7ce700f8442c82bc1ffa3f51e1f4eaa63fd66012af82adb4`. The `itops-medium-009` baseline correction is objectively justified by the already tracked “non-compliant device” business term and deterministic template, both of which define the posture as `compliance_status = 'non_compliant' OR antivirus_status IN ('outdated', 'missing') OR encryption_enabled = false`; no score result was used to justify it. Questions, distribution, templates, readiness thresholds/policy ID, authorization, RLS/action boundaries, and browser execution surfaces remain unchanged.
+The PR7 dataset identity was `it_operations_v1` version `1`, digest `1e7b12fbf35de4d2c52937a762f3960df444eb3303ee7061a0e4506819c22bc4`; its catalog identity was `it_operations_semantic_catalog` version `3`, hash `918df0c63288b7ed7ce700f8442c82bc1ffa3f51e1f4eaa63fd66012af82adb4`. The `itops-medium-009` baseline correction is objectively justified by the already tracked “non-compliant device” business term and deterministic template, both of which define the posture as `compliance_status = 'non_compliant' OR antivirus_status IN ('outdated', 'missing') OR encryption_enabled = false`; no score result was used to justify it. Questions, distribution, templates, readiness thresholds/policy ID, authorization, RLS/action boundaries, and browser execution surfaces remain unchanged.
 
 Current deterministic candidate evidence: focused Text-to-SQL 375 passed; default backend 1,100 passed with 156 expected PostgreSQL-only skips; disposable PostgreSQL 1,236 passed with zero failures/skips; exact action-security suite 20 passed; frontend 274 tests plus ESLint, both TypeScript checks, and production build passed; 12 general and two isolated M8 Playwright flows passed; Docker Compose backend/frontend/PostgreSQL were healthy; Alembic remained at `0010_disable_inactive_user` with no diff; Ruff and Pyright passed with zero errors/warnings. Codex Security scan `f7036ba0-9e86-40c4-9e2d-0177908bbc31` completed over all 17 changed runtime/configuration surfaces with zero findings. These are deterministic implementation checks, not live-provider or manual-QA evidence. No OpenAI run or manual QA was performed, so readiness remains `incomplete`.
+
+### M9 PR8 — Provider Contract Required/Suggested Intent
+
+Status: complete and merged through PR #43 at `216cea5`; final feature commit `6664be9`.
+
+PR8 made deterministic Required Intent binding and fail-closed while retaining Suggested Intent as non-binding planner guidance. Suggested Intent cannot independently reject an otherwise valid `SemanticPlan`, and no intent classification may be changed to tune evaluation scores.
+
+### M9 PR9 — Minimal Semantic Grounding Graph
+
+Status: complete and merged through PR #44 at `49a43fa`; final feature commit `1188eef`.
+
+PR9 added deterministic selection of the minimal semantic relationship graph required by selected component nodes. PR11 must not expand alternate paths, change graph ranking, or alter relationship selection for evaluation outcomes.
+
+### M9 PR10 — Plan-Only Provider & Deterministic SQL Renderer
+
+Status: complete and merged through PR #45 at verified `main` commit `ec0c812ee6b651eb936a24f8e91c346baa9837d8`; final feature commit `28bc120`.
+
+PR10 changed free-query generation to a plan-only provider contract. The provider returns one structured `SemanticPlan`; the backend validates it and renders SQL deterministically before the existing SQL safety, semantic conformance, governed execution, restricted runtime role, and PostgreSQL RLS boundaries. There is no provider SQL, repair call, second provider call, fallback, or renderer bypass.
+
+### M9 PR11 — Evaluation V2 & Stability Release Gate
+
+Branch:
+
+```text
+feature/m9-evaluation-v2-stability-release-gate
+```
+
+Goal: make evaluation and V1 readiness authoritative for the post-PR10 plan-only runtime without redesigning PR8 Required/Suggested Intent, PR9 semantic grounding, or PR10 deterministic SQL rendering.
+
+In scope:
+
+- immutable historical V1 plus a reviewed 40-case `it_operations_v2` dataset with explicit semantic contracts and the same 10/15/10/5 difficulty distribution
+- planner-output, Required Intent adherence, semantic-result, renderer/conformance defect, and bounded failure-stage measurement
+- one fixed 10-case V2 canary with versioned membership and digest
+- a fail-closed three-run stability assessment requiring exact candidate identity and stable per-case outcomes, semantic observations, and failure stages
+- one matching unfiltered full 40-case V2 release run, existing release thresholds, deterministic gate evidence, and planner implementation integrity
+- minimal safe readiness API/workspace projection plus aligned release documentation
+- full deterministic backend, PostgreSQL, action-security, frontend, browser, migration, typing, lint, compile, and diff verification
+
+Guardrails:
+
+- Preserve PR8 Required/Suggested Intent, PR9 graph selection, PR10 plan-only provider and deterministic renderer, SQL safety, semantic conformance, authorization, `queryops_query_runtime`, PostgreSQL RLS, and all M8 action boundaries.
+- Keep V1 immutable. Do not change frozen cases, questions, baselines, templates, thresholds, prompts, canary membership, grounding, or runtime behavior to improve observed scores.
+- Mock remains the development and CI default. No live OpenAI call occurs without explicit authorization for the exact model and maximum billable runs.
+- A full run is authorized only after three matching canary runs pass stability. Mismatched, malformed, filtered, partial, stale, unstable, or pre-V2 evidence fails closed.
+- Do not add provider SQL, repair, a second provider call, fallback, browser execution/settings/history, background infrastructure, migration/schema/permission/RLS/runtime-role changes, or post-M9 product scope.
+
+Status: implementation complete; live release evidence pending. Evaluation V2, failure-stage measurement, the fixed free-query OR canary, V2-bound environment manifest, three-run stability assessment with visible 0/3 through 3/3 progress, V2 readiness integration, safe frontend projection, documentation, and final diff review are complete. The final local deterministic gates passed: 1,284 default backend tests with 156 expected PostgreSQL-only skips; 1,420 isolated-PostgreSQL tests with zero skips plus the exact 20-case M8 suite; fresh migration/current/no-diff checks; 280 frontend tests; ESLint; both TypeScript checks; production build; 12 general and two isolated M8 Playwright flows; Ruff; zero-error/warning Pyright; compileall; and `git diff --check`. No live OpenAI run or complete manual QA has been performed; automated readiness, Milestone 9, and QueryOps AI V1 remain `incomplete`.

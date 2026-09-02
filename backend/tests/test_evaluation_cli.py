@@ -10,6 +10,7 @@ from app.evaluation.runner import (
     EvaluationRunnerError,
 )
 from app.evaluation.selection import EvaluationSelectionError
+from app.evaluation.selection import EvaluationSuite
 from scripts.run_evaluation import run_cli
 
 
@@ -22,9 +23,12 @@ def test_cli_defaults_to_full_selection_and_reports_low_score_safely(capsys) -> 
     assert exit_code == 0
     assert fake.filters.case_id is None
     assert fake.filters.difficulty is None
+    assert fake.suite is EvaluationSuite.FULL
     assert "Provider: mock (mock-queryops-v1)" in output.out
     assert "Semantic catalog: it_operations_semantic_catalog v3" in output.out
     assert "selected=40 completed=40 passed=6 failed=34" in output.out
+    assert "Semantic planning: generated=30 validated=27" in output.out
+    assert "renderer_defects=1 conformance_defects=2" in output.out
     assert "itops-security-003" in output.out
     assert "UPDATE directory_users" not in output.out
     assert output.err == ""
@@ -61,9 +65,26 @@ def test_cli_parses_single_and_group_filters(capsys) -> None:
     capsys.readouterr()
 
 
+def test_cli_canary_selects_the_exact_curated_suite(capsys) -> None:
+    fake = _FakeRunner(_summary(selected=10, completed=10))
+
+    assert (
+        run_cli(
+            ["--suite", "canary"],
+            runner_factory=lambda _settings, _environment: fake,
+        )
+        == 0
+    )
+
+    assert fake.suite is EvaluationSuite.CANARY
+    assert fake.filters.case_id is None
+    capsys.readouterr()
+
+
 def test_cli_fatal_failure_is_nonzero_and_hides_raw_exception(capsys) -> None:
     class FatalRunner:
-        def run(self, _filters):
+        def run(self, _filters, *, suite):
+            assert suite is EvaluationSuite.FULL
             raise EvaluationRunnerError(
                 "database_unavailable",
                 "Evaluation database prerequisites could not be verified safely.",
@@ -84,7 +105,8 @@ def test_cli_fatal_failure_is_nonzero_and_hides_raw_exception(capsys) -> None:
 
 def test_cli_invalid_selection_fails_clearly(capsys) -> None:
     class InvalidSelectionRunner:
-        def run(self, _filters):
+        def run(self, _filters, *, suite):
+            assert suite is EvaluationSuite.FULL
             raise EvaluationSelectionError(
                 "Unknown evaluation case id: itops-easy-999"
             )
@@ -239,9 +261,11 @@ class _FakeRunner:
     def __init__(self, summary: EvaluationRunSummary) -> None:
         self.summary = summary
         self.filters = None
+        self.suite = None
 
-    def run(self, filters):
+    def run(self, filters, *, suite):
         self.filters = filters
+        self.suite = suite
         return self.summary
 
 
@@ -296,6 +320,20 @@ def _summary(
             "cached_input_tokens": 0,
             "output_tokens": 0,
             "total_tokens": 0,
+        },
+        planner_metrics={
+            "eligible_case_count": 30,
+            "generated_plan_count": 30,
+            "validated_plan_count": 27,
+            "semantic_plan_validation_pass_rate": 0.9,
+            "required_intent_evaluated_count": 28,
+            "required_intent_passed_count": 27,
+            "required_intent_adherence_rate": 0.964286,
+            "renderer_defect_count": 1,
+            "conformance_defect_count": 2,
+            "semantic_contract_evaluated_count": 27,
+            "semantic_contract_passed_count": 25,
+            "semantic_contract_pass_rate": 0.925926,
         },
         semantic_catalog={
             "catalog_id": "it_operations_semantic_catalog",

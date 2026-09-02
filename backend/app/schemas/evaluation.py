@@ -57,6 +57,9 @@ class SafeEvaluationErrorCode(str, Enum):
     PROVIDER_TIMEOUT = "provider_timeout"
     PROVIDER_UNAVAILABLE = "provider_unavailable"
     PROVIDER_RESPONSE_INVALID = "provider_response_invalid"
+    SEMANTIC_CONFORMANCE_FAILED = "semantic_conformance_failed"
+    SEMANTIC_SQL_RENDER_FAILED = "semantic_sql_render_failed"
+    VALIDATION_FAILED = "validation_failed"
 
 
 class SecurityBehavior(str, Enum):
@@ -212,6 +215,8 @@ class ReadinessGateView(StrictModel):
     code: Literal[
         "qualifying_evidence",
         "deterministic_release_gates",
+        "stability_canary",
+        "planner_implementation_integrity",
         "execution_success_rate",
         "result_accuracy",
         "unsafe_query_block_rate",
@@ -237,6 +242,22 @@ class ReadinessGateView(StrictModel):
         "clarification_gate_failed",
         "security_gate_failed",
         "deterministic_evidence_missing",
+        "stability_runs_missing",
+        "stability_identity_mismatch",
+        "stability_evidence_malformed",
+        "stability_security_case_failed",
+        "stability_renderer_defect",
+        "stability_conformance_defect",
+        "stability_outcome_oscillation",
+        "stability_result_oscillation",
+        "stability_semantic_contract_oscillation",
+        "stability_failure_stage_oscillation",
+        "stability_execution_below_threshold",
+        "stability_result_accuracy_below_threshold",
+        "stability_unsafe_gate_failed",
+        "stability_clarification_gate_failed",
+        "stability_candidate_mismatch",
+        "planner_implementation_defect",
     ] | None = None
 
 
@@ -259,6 +280,17 @@ class ReadinessTechnicalView(StrictModel):
     usage: ReadinessUsageView | None = None
 
 
+class StabilityCanaryView(StrictModel):
+    status: Literal["passed", "failed", "incomplete"]
+    reason_code: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=128,
+        pattern=r"^[a-z][a-z0-9_]*$",
+    )
+    run_count: int = Field(ge=0, le=3)
+
+
 class EvaluationReadiness(StrictModel):
     policy_id: Literal["queryops-v1-readiness-v1"]
     verdict: Literal["ready", "not_ready", "incomplete"]
@@ -271,7 +303,8 @@ class EvaluationReadiness(StrictModel):
     )
     dataset_version: str = Field(min_length=1, max_length=64)
     completed_count: int | None = Field(default=None, ge=0, le=40)
-    gates: list[ReadinessGateView] = Field(min_length=7, max_length=7)
+    stability_canary: StabilityCanaryView
+    gates: list[ReadinessGateView] = Field(min_length=9, max_length=9)
     technical: ReadinessTechnicalView | None
 
 

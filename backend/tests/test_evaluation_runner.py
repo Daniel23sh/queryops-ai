@@ -17,15 +17,20 @@ from app.evaluation.baseline import (
 from app.evaluation.context import resolve_evaluation_identity
 from app.evaluation.environment import EvaluationEnvironmentIdentity
 from app.evaluation.contracts import EvaluationSet, RequestingRole
-from app.evaluation.loader import load_it_operations_evaluation_set
+from app.evaluation.loader import (
+    load_it_operations_evaluation_set,
+    load_it_operations_evaluation_v2_set,
+)
 from app.evaluation.runner import (
     EvaluationRunner,
     EvaluationRunnerError,
     _classify_query_result,
 )
 from app.evaluation.selection import (
+    CANARY_CASE_IDS,
     EvaluationFilters,
     EvaluationSelectionError,
+    EvaluationSuite,
     evaluation_dataset_digest,
     select_evaluation_cases,
 )
@@ -83,6 +88,17 @@ def test_runner_rejects_mismatched_semantic_catalog_before_persistence() -> None
     assert exc_info.value.code == "evaluation_catalog_mismatch"
     with session_factory() as db:
         assert db.scalar(select(EvaluationRun)) is None
+
+
+def test_runner_accepts_reviewed_v2_with_the_frozen_v1_seed_catalog() -> None:
+    runner = EvaluationRunner(_sqlite_session_factory())
+    evaluation_set = load_it_operations_evaluation_v2_set()
+    pack = load_it_operations_domain_pack()
+
+    identity = runner._verify_catalog_identity(evaluation_set, pack)
+
+    assert identity["catalog_id"] == "it_operations_semantic_catalog"
+    assert identity["catalog_version"] == "3"
 
 
 def test_openai_runner_requires_environment_before_service_or_persistence() -> None:
@@ -244,6 +260,10 @@ def test_runner_orders_cases_invokes_service_and_persists_safe_results(
         "case_type": None,
         "security_only": False,
     }
+    assert run.summary["evaluation_suite"]["selected_case_ids"] == [
+        case.id for case in evaluation_set.cases
+    ]
+    assert run.summary["evaluation_suite"]["selected_count"] == 2
     assert len(results) == 2
     persisted = repr([run.summary, *[item.metrics for item in results]])
     assert "secret-row" not in persisted
@@ -311,6 +331,44 @@ def test_runner_preserves_filtered_measurement_identity_after_finalization(
         "case_type": None,
         "security_only": False,
     }
+    assert run.summary["evaluation_suite"]["selected_case_ids"] == [
+        "itops-easy-002"
+    ]
+
+
+def test_runner_persists_exact_v2_canary_identity_and_membership(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory = _sqlite_session_factory()
+    with session_factory() as db:
+        seed_database(db, profile_name="small", reset=True)
+        db.commit()
+    runner = EvaluationRunner(
+        session_factory,
+        dataset_loader=load_it_operations_evaluation_v2_set,
+        query_service_factory=lambda _pack: _FakeQueryService(),
+    )
+    monkeypatch.setattr(runner, "_verify_prerequisites", lambda _cases: None)
+    monkeypatch.setattr(
+        "app.evaluation.runner.resolve_evaluation_identity",
+        lambda _db, case: _identity(case.requesting_role),
+    )
+    monkeypatch.setattr(
+        "app.evaluation.runner.execute_evaluation_baseline",
+        lambda *_args, **_kwargs: _Baseline(({"id": "secret-row"},)),
+    )
+
+    summary = runner.run(suite=EvaluationSuite.CANARY)
+
+    assert summary.selected_count == len(CANARY_CASE_IDS) == 10
+    assert summary.evaluation_suite["selected_case_ids"] == list(CANARY_CASE_IDS)
+    assert summary.evaluation_suite["selected_count"] == 10
+    assert summary.evaluation_suite["id"] == "it_operations_v2_stability_canary"
+    assert len(str(summary.evaluation_suite["digest"])) == 64
+    with session_factory() as db:
+        run = db.scalar(select(EvaluationRun))
+    assert run is not None
+    assert run.summary["evaluation_suite"] == summary.evaluation_suite
 
 
 def test_fatal_baseline_failure_marks_run_terminal(
@@ -350,11 +408,12 @@ def test_fatal_baseline_failure_marks_run_terminal(
 
     with session_factory() as db:
         run = db.scalar(select(EvaluationRun))
-        result_count = len(db.scalars(select(EvaluationResult)).all())
+        results = db.scalars(select(EvaluationResult)).all()
     assert error.value.code == "baseline_database_error"
     assert run is not None and run.status == "failed"
     assert run.completed_at is not None
-    assert result_count == 1
+    assert len(results) == 1
+    assert results[0].metrics["failure_stage"] == "setup"
 
 
 def test_runner_maps_validator_rejection_to_unsafe_block(
@@ -507,7 +566,162 @@ def test_semantic_conformance_failure_is_attributed_without_execution() -> None:
     assert classified.query_execution_attempted is False
     assert classified.failure_stage == "semantic_conformance"
     assert classified.stage_reason_code == "semantic_predicate_missing"
+    assert classified.conformance_status == "failed"
     assert classified.actual_rows == ()
+
+
+def test_invalid_plan_and_renderer_defect_use_current_pipeline_stages() -> None:
+    generation_failure = _classify_query_result(
+        QueryEngineServiceResult(
+            status="failed",
+            query_run_id=None,
+            error_code="provider_response_invalid",
+            metadata={
+                "provider_failure_code": "provider_response_invalid",
+            },
+        )
+    )
+    invalid_plan = _classify_query_result(
+        QueryEngineServiceResult(
+            status="failed",
+            query_run_id=None,
+            error_code="provider_response_invalid",
+            metadata={
+                "provider_failure_code": "provider_response_invalid",
+                "semantic_plan_validation": {
+                    "status": "failed",
+                    "reason_code": "mandatory_metric_missing",
+                    "required_intent_status": "failed",
+                },
+            },
+        )
+    )
+    renderer_defect = _classify_query_result(
+        QueryEngineServiceResult(
+            status="failed",
+            query_run_id=None,
+            error_code="semantic_sql_render_failed",
+            metadata={
+                "semantic_plan_validation": {
+                    "status": "passed",
+                    "reason_code": None,
+                    "required_intent_status": "passed",
+                },
+                "semantic_sql_render": {
+                    "status": "failed",
+                    "reason_code": "unsupported_plan_shape",
+                },
+            },
+        )
+    )
+
+    assert generation_failure.failure_stage == "plan_generation"
+    assert invalid_plan.failure_stage == "plan_validation"
+    assert invalid_plan.plan_validation_status == "failed"
+    assert invalid_plan.required_intent_status == "failed"
+    assert renderer_defect.failure_stage == "sql_rendering"
+    assert renderer_defect.renderer_status == "failed"
+    assert renderer_defect.query_execution_attempted is False
+
+
+def test_runner_persists_bounded_planner_metrics_and_semantic_score(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session_factory = _sqlite_session_factory()
+    case = load_it_operations_evaluation_v2_set().cases_by_id["itops-easy-005"]
+    evaluation_set = EvaluationSet(
+        dataset_id="it_operations_v2",
+        domain_id="it_operations",
+        version="2",
+        cases=(case,),
+    )
+
+    class PlannerSuccessService:
+        def run(self, _db, _user, _request):
+            return QueryEngineServiceResult(
+                status="succeeded",
+                query_run_id=None,
+                rows=[{"active_user_count": 7}],
+                row_count=1,
+                metadata={
+                    "provider": "mock",
+                    "model": "mock-queryops-v1",
+                    "referenced_tables": ["directory_users"],
+                    "execution": {"status": "succeeded"},
+                    "semantic_plan_validation": {
+                        "status": "passed",
+                        "reason_code": None,
+                        "required_intent_status": "passed",
+                    },
+                    "semantic_sql_render": {
+                        "status": "passed",
+                        "reason_code": None,
+                    },
+                    "semantic_conformance": {
+                        "status": "passed",
+                        "reason_code": None,
+                    },
+                    "semantic_plan": {
+                        "effective_concept_ids": [
+                            "active_directory_account",
+                            "active_employee",
+                            "active_human_directory_user",
+                            "human_directory_user",
+                        ],
+                        "composition_rule_ids": [],
+                        "metric_id": "active_human_users",
+                        "output_fields": [],
+                        "aggregations": [],
+                        "group_by": [],
+                        "having": [],
+                        "order_by": [],
+                        "raw_provider_payload": "must-not-persist",
+                    },
+                    "semantic_grounding": {
+                        "suggested_result_intent": "must-not-persist",
+                    },
+                },
+            )
+
+    runner = EvaluationRunner(
+        session_factory,
+        dataset_loader=lambda: evaluation_set,
+        query_service_factory=lambda _pack: PlannerSuccessService(),
+    )
+    monkeypatch.setattr(runner, "_verify_prerequisites", lambda _cases: None)
+    monkeypatch.setattr(
+        "app.evaluation.runner.resolve_evaluation_identity",
+        lambda _db, selected_case: _identity(selected_case.requesting_role),
+    )
+    monkeypatch.setattr(
+        "app.evaluation.runner.execute_evaluation_baseline",
+        lambda *_args, **_kwargs: _Baseline(({"active_user_count": 7},)),
+    )
+
+    summary = runner.run()
+
+    assert summary.planner_metrics == {
+        "eligible_case_count": 1,
+        "generated_plan_count": 1,
+        "validated_plan_count": 1,
+        "semantic_plan_validation_pass_rate": 1.0,
+        "required_intent_evaluated_count": 1,
+        "required_intent_passed_count": 1,
+        "required_intent_adherence_rate": 1.0,
+        "renderer_defect_count": 0,
+        "conformance_defect_count": 0,
+        "semantic_contract_evaluated_count": 1,
+        "semantic_contract_passed_count": 1,
+        "semantic_contract_pass_rate": 1.0,
+    }
+    with session_factory() as db:
+        persisted = db.scalar(select(EvaluationResult))
+        run = db.scalar(select(EvaluationRun))
+    assert persisted is not None
+    assert persisted.metrics["planner"]["semantic_contract"]["passed"] is True
+    assert run is not None
+    assert run.summary["planner_metrics"] == summary.planner_metrics
+    assert "must-not-persist" not in repr((persisted.metrics, run.summary))
 
 
 def test_runner_persists_only_controlled_conformance_stage_metadata(

@@ -21,7 +21,7 @@ from app.evaluation.contracts import (
     RequestingRole,
     ScopeMode,
 )
-from app.evaluation.loader import load_it_operations_evaluation_set
+from app.evaluation.loader import load_it_operations_evaluation_v2_set
 from app.evaluation.scoring import SAFE_FAILURE_REASONS
 from app.evaluation.selection import evaluation_dataset_digest
 from app.models.product import (
@@ -71,6 +71,9 @@ SAFE_ERROR_CODES = frozenset(
         "provider_timeout",
         "provider_unavailable",
         "provider_response_invalid",
+        "semantic_conformance_failed",
+        "semantic_sql_render_failed",
+        "validation_failed",
     }
 )
 
@@ -187,7 +190,7 @@ class EvaluationReadService:
     def __init__(self, db: Session, current_user: AppUser) -> None:
         self._db = db
         self._visibility = resolve_evaluation_visibility(db, current_user)
-        self._evaluation_set = load_it_operations_evaluation_set()
+        self._evaluation_set = load_it_operations_evaluation_v2_set()
         self._dataset_digest = evaluation_dataset_digest(self._evaluation_set)
         self._actor_scopes = _load_actor_scopes(db)
         domain_pack = load_it_operations_domain_pack()

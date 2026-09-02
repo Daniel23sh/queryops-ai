@@ -38,11 +38,18 @@ from app.evaluation.provenance import (
     EvaluationProvenanceError,
     extract_evaluation_query_provenance,
 )
-from app.evaluation.scoring import EvaluationScore, score_evaluation_case
+from app.evaluation.scoring import (
+    EvaluationScore,
+    EvaluationSemanticScore,
+    score_evaluation_case,
+    score_evaluation_semantic_contract,
+)
 from app.evaluation.selection import (
     EvaluationFilters,
+    EvaluationSuite,
+    EvaluationSuiteSelection,
     evaluation_dataset_digest,
-    select_evaluation_cases,
+    select_evaluation_suite,
 )
 from app.models.product import (
     DataResource,
@@ -77,20 +84,27 @@ SAFE_ACTUAL_ERROR_CODES = frozenset(
         "provider_unavailable",
         "provider_response_invalid",
         "semantic_conformance_failed",
+        "semantic_sql_render_failed",
         "validation_failed",
     }
 )
 SAFE_PIPELINE_STAGES = frozenset(
     {
         "grounding",
+        "plan_generation",
         "plan_validation",
-        "sql_generation",
+        "sql_rendering",
         "sql_safety",
         "semantic_conformance",
         "execution",
         "result_comparison",
+        "setup",
     }
 )
+EVALUATION_CATALOG_DATASET_IDS = {
+    "it_operations_v1": "it_operations_v1",
+    "it_operations_v2": "it_operations_v1",
+}
 
 
 class EvaluationRunnerError(RuntimeError):
@@ -143,8 +157,10 @@ class EvaluationRunSummary:
     by_case_type: dict[str, dict[str, int | float]]
     cases: tuple[EvaluationCaseSummary, ...]
     provider_usage: dict[str, int | float] = field(default_factory=dict)
+    planner_metrics: dict[str, int | float | None] = field(default_factory=dict)
     semantic_catalog: dict[str, str] = field(default_factory=dict)
     evaluation_environment: dict[str, str | int] = field(default_factory=dict)
+    evaluation_suite: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -161,6 +177,11 @@ class _CaseExecution:
     stage_reason_code: str | None = None
     provider_measurement: dict[str, Any] | None = None
     provider_failure_fatal: bool = False
+    plan_validation_status: str | None = None
+    required_intent_status: str | None = None
+    renderer_status: str | None = None
+    conformance_status: str | None = None
+    semantic_plan_observation: Mapping[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -168,6 +189,7 @@ class _CompletedCase:
     case: EvaluationCase
     execution: _CaseExecution
     score: EvaluationScore
+    semantic_score: EvaluationSemanticScore
     duration_ms: float
     provenance: EvaluationComparisonProvenance | None = None
 
@@ -212,10 +234,17 @@ class EvaluationRunner:
     def run(
         self,
         filters: EvaluationFilters | None = None,
+        *,
+        suite: EvaluationSuite = EvaluationSuite.FULL,
     ) -> EvaluationRunSummary:
         selected_filters = filters or EvaluationFilters()
         evaluation_set = self._dataset_loader()
-        cases = select_evaluation_cases(evaluation_set, selected_filters)
+        suite_selection = select_evaluation_suite(
+            evaluation_set,
+            suite,
+            selected_filters,
+        )
+        cases = suite_selection.cases
         domain_pack = self._domain_pack_loader()
         digest = evaluation_dataset_digest(evaluation_set)
         catalog_identity = self._verify_catalog_identity(
@@ -237,6 +266,7 @@ class EvaluationRunner:
             digest,
             cases,
             selected_filters,
+            suite_selection,
             catalog_identity,
             self._environment_identity(),
         )
@@ -299,10 +329,19 @@ class EvaluationRunner:
                     execution_succeeded=False,
                 )
 
+            semantic_score = score_evaluation_semantic_contract(
+                case,
+                (
+                    execution.semantic_plan_observation
+                    if execution.plan_validation_status == "passed"
+                    else None
+                ),
+            )
             completed_case = _CompletedCase(
                 case=case,
                 execution=execution,
                 score=score,
+                semantic_score=semantic_score,
                 duration_ms=(perf_counter() - started_at) * 1000,
                 provenance=provenance,
             )
@@ -323,6 +362,7 @@ class EvaluationRunner:
             cases,
             completed,
             self._provider_descriptor,
+            suite_selection,
             catalog_identity,
             self._environment_identity(),
             status=status,
@@ -338,9 +378,13 @@ class EvaluationRunner:
         domain_pack: DomainPack,
     ) -> dict[str, str]:
         catalog = domain_pack.semantic_catalog
+        expected_catalog_dataset_id = EVALUATION_CATALOG_DATASET_IDS.get(
+            evaluation_set.dataset_id
+        )
         if (
             catalog.domain_id != evaluation_set.domain_id
-            or catalog.dataset_id != evaluation_set.dataset_id
+            or expected_catalog_dataset_id is None
+            or catalog.dataset_id != expected_catalog_dataset_id
         ):
             raise EvaluationRunnerError(
                 "evaluation_catalog_mismatch",
@@ -394,6 +438,7 @@ class EvaluationRunner:
         digest: str,
         cases: Sequence[EvaluationCase],
         filters: EvaluationFilters,
+        suite_selection: EvaluationSuiteSelection,
         catalog_identity: dict[str, str],
         environment_identity: dict[str, str | int],
     ) -> UUID:
@@ -410,6 +455,7 @@ class EvaluationRunner:
                 "dataset_version": evaluation_set.version,
                 "dataset_digest": digest,
                 "selected_count": len(cases),
+                "evaluation_suite": suite_selection.as_safe_dict(),
                 "filters": filters.as_safe_dict(),
                 "semantic_catalog": catalog_identity,
                 "evaluation_environment": environment_identity,
@@ -535,6 +581,9 @@ class EvaluationRunner:
             metrics["provider_measurement"] = dict(
                 completed.execution.provider_measurement
             )
+        planner_metrics = _planner_case_metrics(completed)
+        if planner_metrics is not None:
+            metrics["planner"] = planner_metrics
         if completed.provenance is not None:
             metrics["result_provenance"] = completed.provenance.as_safe_dict()
         result = EvaluationResult(
@@ -718,6 +767,7 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
         result.metadata.get("provider_measurement")
     )
     provider_failure_code = result.metadata.get("provider_failure_code")
+    planner = _planner_execution_fields(result.metadata)
     if provider_failure_code in {
         "provider_authentication_failed",
         "provider_timeout",
@@ -735,7 +785,7 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
             failure_stage = "grounding"
             stage_reason_code = _safe_stage_reason(grounding.get("reason_code"))
         else:
-            failure_stage = "sql_generation"
+            failure_stage = "plan_generation"
             stage_reason_code = provider_failure_code
         return _CaseExecution(
             actual_outcome=ActualOutcome.INTERNAL_ERROR,
@@ -752,6 +802,7 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
             provider_failure_fatal=(
                 result.metadata.get("provider_failure_fatal") is True
             ),
+            **planner,
         )
     if result.status == "succeeded":
         return _CaseExecution(
@@ -764,6 +815,7 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
             actual_referenced_tables=referenced_tables,
             error_code=None,
             provider_measurement=provider_measurement,
+            **planner,
         )
     if (
         result.error_code == "unsafe_sql_blocked"
@@ -783,6 +835,7 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
             failure_stage="sql_safety",
             stage_reason_code="unsafe_request",
             provider_measurement=provider_measurement,
+            **planner,
         )
     if result.clarification_required:
         return _CaseExecution(
@@ -799,6 +852,7 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
                 result.metadata.get("unsupported_reason")
             ),
             provider_measurement=provider_measurement,
+            **planner,
         )
     validation = result.metadata.get("validation")
     validation_code = validation.get("error_code") if isinstance(validation, dict) else None
@@ -815,6 +869,7 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
             failure_stage="sql_safety",
             stage_reason_code=validation_code,
             provider_measurement=provider_measurement,
+            **planner,
         )
     conformance = result.metadata.get("semantic_conformance")
     if (
@@ -835,13 +890,21 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
             failure_stage="semantic_conformance",
             stage_reason_code=_safe_stage_reason(conformance.get("reason_code")),
             provider_measurement=provider_measurement,
+            **planner,
         )
+    render = result.metadata.get("semantic_sql_render")
     failure_stage = (
-        "execution"
+        "sql_rendering"
+        if (
+            result.error_code == "semantic_sql_render_failed"
+            and isinstance(render, dict)
+            and render.get("status") == "failed"
+        )
+        else "execution"
         if isinstance(result.metadata.get("execution"), dict)
         else "sql_safety"
         if isinstance(validation, dict)
-        else "sql_generation"
+        else "plan_generation"
     )
     return _CaseExecution(
         actual_outcome=ActualOutcome.EXECUTION_FAILED,
@@ -862,10 +925,54 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
             if failure_stage == "sql_safety"
             else "execution_failed"
             if failure_stage == "execution"
-            else None
+            else _safe_stage_reason(render.get("reason_code"))
+            if failure_stage == "sql_rendering" and isinstance(render, dict)
+            else _safe_stage_reason(result.error_code)
         ),
         provider_measurement=provider_measurement,
+        **planner,
     )
+
+
+def _planner_execution_fields(metadata: Mapping[str, Any]) -> dict[str, Any]:
+    validation = metadata.get("semantic_plan_validation")
+    plan_validation_status = (
+        validation.get("status")
+        if isinstance(validation, Mapping)
+        and validation.get("status") in {"passed", "failed"}
+        else None
+    )
+    required_intent_status = (
+        validation.get("required_intent_status")
+        if isinstance(validation, Mapping)
+        and validation.get("required_intent_status")
+        in {"passed", "failed", "not_evaluated"}
+        else None
+    )
+    renderer = metadata.get("semantic_sql_render")
+    renderer_status = (
+        renderer.get("status")
+        if isinstance(renderer, Mapping)
+        and renderer.get("status") in {"passed", "failed"}
+        else None
+    )
+    conformance = metadata.get("semantic_conformance")
+    conformance_status = (
+        conformance.get("status")
+        if isinstance(conformance, Mapping)
+        and conformance.get("status") in {"passed", "failed"}
+        else None
+    )
+    plan_observation = metadata.get("semantic_plan")
+    return {
+        "plan_validation_status": plan_validation_status,
+        "required_intent_status": required_intent_status,
+        "renderer_status": renderer_status,
+        "conformance_status": conformance_status,
+        "semantic_plan_observation": (
+            plan_observation if isinstance(plan_observation, Mapping) else None
+        ),
+    }
 
 
 def _denied_execution(referenced_tables: Sequence[str]) -> _CaseExecution:
@@ -892,6 +999,8 @@ def _internal_failure(error_code: str) -> _CaseExecution:
         actual_rows=(),
         actual_referenced_tables=(),
         error_code=safe_code,
+        failure_stage="setup",
+        stage_reason_code=safe_code,
     )
 
 
@@ -905,7 +1014,7 @@ def _provider_identity_failure() -> _CaseExecution:
         actual_rows=(),
         actual_referenced_tables=(),
         error_code="provider_response_invalid",
-        failure_stage="sql_generation",
+        failure_stage="plan_generation",
         stage_reason_code="provider_response_invalid",
         provider_failure_fatal=True,
     )
@@ -921,6 +1030,86 @@ def _safe_stage_reason(value: Any) -> str | None:
     return value
 
 
+def _planner_case_metrics(completed: _CompletedCase) -> dict[str, Any] | None:
+    if (
+        completed.case.template_id is not None
+        or completed.case.expected_outcome is not ExpectedOutcome.SUCCESS
+    ):
+        return None
+    execution = completed.execution
+    return {
+        "plan_generated": execution.plan_validation_status in {"passed", "failed"},
+        "plan_validation_status": execution.plan_validation_status or "not_reached",
+        "required_intent_status": execution.required_intent_status or "not_reached",
+        "renderer_status": execution.renderer_status or "not_reached",
+        "conformance_status": execution.conformance_status or "not_reached",
+        "semantic_contract": completed.semantic_score.as_safe_metrics(),
+    }
+
+
+def _aggregate_planner_metrics(
+    completed: Sequence[_CompletedCase],
+) -> dict[str, int | float | None]:
+    eligible = [
+        item
+        for item in completed
+        if item.case.template_id is None
+        and item.case.expected_outcome is ExpectedOutcome.SUCCESS
+    ]
+    generated = [
+        item
+        for item in eligible
+        if item.execution.plan_validation_status in {"passed", "failed"}
+    ]
+    validated = [
+        item
+        for item in generated
+        if item.execution.plan_validation_status == "passed"
+    ]
+    required_evaluated = [
+        item
+        for item in generated
+        if item.execution.required_intent_status in {"passed", "failed"}
+    ]
+    required_passed = [
+        item
+        for item in required_evaluated
+        if item.execution.required_intent_status == "passed"
+    ]
+    semantic_evaluated = [item for item in eligible if item.semantic_score.evaluated]
+    semantic_passed = [
+        item for item in semantic_evaluated if item.semantic_score.passed is True
+    ]
+    return {
+        "eligible_case_count": len(eligible),
+        "generated_plan_count": len(generated),
+        "validated_plan_count": len(validated),
+        "semantic_plan_validation_pass_rate": (
+            round(len(validated) / len(generated), 6) if generated else None
+        ),
+        "required_intent_evaluated_count": len(required_evaluated),
+        "required_intent_passed_count": len(required_passed),
+        "required_intent_adherence_rate": (
+            round(len(required_passed) / len(required_evaluated), 6)
+            if required_evaluated
+            else None
+        ),
+        "renderer_defect_count": sum(
+            item.execution.renderer_status == "failed" for item in validated
+        ),
+        "conformance_defect_count": sum(
+            item.execution.conformance_status == "failed" for item in validated
+        ),
+        "semantic_contract_evaluated_count": len(semantic_evaluated),
+        "semantic_contract_passed_count": len(semantic_passed),
+        "semantic_contract_pass_rate": (
+            round(len(semantic_passed) / len(semantic_evaluated), 6)
+            if semantic_evaluated
+            else None
+        ),
+    }
+
+
 def _build_summary(
     run_id: UUID,
     evaluation_set: EvaluationSet,
@@ -928,6 +1117,7 @@ def _build_summary(
     selected: Sequence[EvaluationCase],
     completed: Sequence[_CompletedCase],
     descriptor: ProviderDescriptor,
+    suite_selection: EvaluationSuiteSelection,
     catalog_identity: dict[str, str],
     environment_identity: dict[str, str | int],
     *,
@@ -993,8 +1183,10 @@ def _build_summary(
             for item in completed
         ),
         provider_usage=_aggregate_provider_usage(completed),
+        planner_metrics=_aggregate_planner_metrics(completed),
         semantic_catalog=dict(catalog_identity),
         evaluation_environment=dict(environment_identity),
+        evaluation_suite=suite_selection.as_safe_dict(),
     )
 
 
@@ -1062,6 +1254,7 @@ def _summary_for_persistence(
         "dataset_version": summary.dataset_version,
         "dataset_digest": summary.dataset_digest,
         "filters": filters.as_safe_dict(),
+        "evaluation_suite": summary.evaluation_suite,
         "selected_count": summary.selected_count,
         "completed_count": summary.completed_count,
         "passed_count": summary.passed_count,
@@ -1075,6 +1268,7 @@ def _summary_for_persistence(
         "by_category": summary.by_category,
         "by_case_type": summary.by_case_type,
         "provider_usage": summary.provider_usage,
+        "planner_metrics": summary.planner_metrics,
         "semantic_catalog": summary.semantic_catalog,
         "evaluation_environment": summary.evaluation_environment,
         "failure_code": fatal_error.code if fatal_error else None,

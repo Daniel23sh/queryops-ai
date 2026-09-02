@@ -6,7 +6,10 @@ import pytest
 
 from app.query_engine.domain_pack import DomainPack
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
-from app.query_engine.semantic_catalog import SemanticPredicateOperator
+from app.query_engine.semantic_catalog import (
+    SemanticPredicateOperator,
+    build_semantic_catalog_projection,
+)
 from app.query_engine.semantic_conformance import check_semantic_conformance
 from app.query_engine.semantic_plan import (
     EntitySemanticPredicate,
@@ -18,6 +21,7 @@ from app.query_engine.semantic_plan import (
     SemanticPlan,
     SemanticRelationshipIntent,
     ValidatedSemanticPlan,
+    validate_semantic_plan,
 )
 from app.query_engine.sql_renderer import (
     SemanticSQLRenderError,
@@ -350,6 +354,158 @@ def test_same_validated_plan_always_renders_identical_sql() -> None:
     )
 
     assert {_render(plan) for _ in range(20)} == {_render(plan)}
+
+
+def test_revised_v2_hard_010_is_representable_by_current_plan_algebra() -> None:
+    plan = _validated(
+        _plan(
+            entity_ids=("departments", "devices", "directory_users"),
+            concept_ids=("inactive_directory_user", "risky_device"),
+            relationships=(
+                _relationship("device_department", "inner"),
+                _relationship("directory_user_department", "inner"),
+            ),
+            output_fields=(
+                _field("departments", "id"),
+                _field("departments", "name"),
+            ),
+            aggregations=(
+                _aggregation(
+                    "risky_device_count",
+                    "count",
+                    _field("devices", "id"),
+                    distinct=True,
+                ),
+                _aggregation(
+                    "inactive_user_count",
+                    "count",
+                    _field("directory_users", "id"),
+                    distinct=True,
+                ),
+            ),
+            group_by=(
+                _field("departments", "id"),
+                _field("departments", "name"),
+            ),
+            order_by=(
+                SemanticOrderIntent(
+                    target_kind="aggregation",
+                    field=None,
+                    aggregation_id="risky_device_count",
+                    direction="desc",
+                ),
+                SemanticOrderIntent(
+                    target_kind="aggregation",
+                    field=None,
+                    aggregation_id="inactive_user_count",
+                    direction="desc",
+                ),
+            ),
+        ),
+        predicates=(
+            _predicate(
+                "devices",
+                "compliance_status",
+                SemanticPredicateOperator.EQUALS,
+                "non_compliant",
+            ),
+            _predicate(
+                "directory_users",
+                "last_login_at",
+                SemanticPredicateOperator.IS_NULL_OR_OLDER_THAN_DAYS,
+                90,
+            ),
+        ),
+    )
+
+    sql = _render(plan)
+    assert "LEFT JOIN" not in sql
+    assert "INNER JOIN devices" in sql
+    assert "INNER JOIN directory_users" in sql
+    assert "WHERE" in sql
+
+    schema_context = _schema_context(DOMAIN_PACK)
+    safety = validate_sql(sql, schema_context)
+    assert safety.valid, safety.reason
+    conformance = check_semantic_conformance(
+        plan=plan,
+        candidate_sql=sql,
+        safety_result=safety,
+        domain_pack=DOMAIN_PACK,
+        schema_context=schema_context,
+    )
+    assert conformance.valid, conformance.reason_code
+
+
+def test_revised_v2_hard_007_validates_renders_and_conforms() -> None:
+    question = (
+        "Count distinct non-compliant devices assigned to inactive human users by "
+        "user ID, ordered by device count descending and then user ID ascending."
+    )
+    plan = _plan(
+        entity_ids=("directory_users", "devices"),
+        concept_ids=("inactive_human_directory_user",),
+        composition_rule_ids=("non_compliant_device_posture",),
+        relationships=(_relationship("device_assignee", "inner"),),
+        output_fields=(_field("directory_users", "id"),),
+        aggregations=(
+            _aggregation(
+                "non_compliant_device_count",
+                "count",
+                _field("devices", "id"),
+                distinct=True,
+            ),
+        ),
+        group_by=(_field("directory_users", "id"),),
+        order_by=(
+            SemanticOrderIntent(
+                target_kind="aggregation",
+                field=None,
+                aggregation_id="non_compliant_device_count",
+                direction="desc",
+            ),
+            SemanticOrderIntent(
+                target_kind="field",
+                field=_field("directory_users", "id"),
+                aggregation_id=None,
+                direction="asc",
+            ),
+        ),
+    )
+    schema_context = _schema_context(DOMAIN_PACK)
+    projection = build_semantic_catalog_projection(
+        DOMAIN_PACK.semantic_catalog,
+        question,
+        schema_context,
+        {
+            "scope_type": "global",
+            "has_global_scope": True,
+            "scope_reference_resolved": True,
+        },
+    )
+    validated = validate_semantic_plan(
+        plan,
+        domain_pack=DOMAIN_PACK,
+        projection=projection,
+        schema_context=schema_context,
+        scope_reference_resolved=True,
+    )
+
+    sql = _render(validated)
+    assert "LEFT JOIN" not in sql
+    assert "FROM devices INNER JOIN directory_users" in sql
+    assert "COUNT(DISTINCT devices.id)" in sql
+
+    safety = validate_sql(sql, schema_context)
+    assert safety.valid, safety.reason
+    conformance = check_semantic_conformance(
+        plan=validated,
+        candidate_sql=sql,
+        safety_result=safety,
+        domain_pack=DOMAIN_PACK,
+        schema_context=schema_context,
+    )
+    assert conformance.valid, conformance.reason_code
 
 
 def test_unsupported_left_join_tree_orientation_fails_closed() -> None:

@@ -13,8 +13,14 @@ from app.evaluation.contracts import (
 from app.evaluation.loader import (
     EvaluationDatasetValidationError,
     load_it_operations_evaluation_set,
+    load_it_operations_evaluation_v2_set,
 )
-from app.evaluation.scoring import EvaluationScore, score_evaluation_case
+from app.evaluation.scoring import (
+    EvaluationScore,
+    EvaluationSemanticScore,
+    score_evaluation_case,
+    score_evaluation_semantic_contract,
+)
 
 __all__ = [
     "CaseType",
@@ -23,10 +29,13 @@ __all__ = [
     "EvaluationDatasetValidationError",
     "EvaluationDifficulty",
     "EvaluationScore",
+    "EvaluationSemanticScore",
     "EvaluationSet",
     "ExpectedOutcome",
     "RequestingRole",
     "ScopeMode",
     "load_it_operations_evaluation_set",
+    "load_it_operations_evaluation_v2_set",
     "score_evaluation_case",
+    "score_evaluation_semantic_contract",
 ]

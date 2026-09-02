@@ -13,7 +13,7 @@ from app.evaluation.contracts import (
     EvaluationDifficulty,
     ExpectedOutcome,
 )
-from app.evaluation.loader import load_it_operations_evaluation_set
+from app.evaluation.loader import load_it_operations_evaluation_v2_set
 from app.evaluation.readiness import (
     GateStatus,
     ReadinessResultEvidence,
@@ -23,6 +23,8 @@ from app.evaluation.readiness import (
     evaluate_v1_readiness as _evaluate_v1_readiness,
 )
 from app.evaluation.selection import evaluation_dataset_digest
+from app.evaluation.selection import EvaluationSuite, select_evaluation_suite
+from app.evaluation.stability import StabilityCanaryAssessment, StabilityStatus
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.semantic_catalog import semantic_catalog_identity
 
@@ -32,7 +34,9 @@ def evaluate_v1_readiness(
     evidence: ReadinessRunEvidence | None,
     *,
     deterministic_evidence_passed: bool,
+    stability_canary: StabilityCanaryAssessment | None = None,
 ) -> Any:
+    reference = evidence or _evidence(evaluation_set)
     return _evaluate_v1_readiness(
         evaluation_set,
         evidence,
@@ -40,11 +44,13 @@ def evaluate_v1_readiness(
         semantic_catalog_identity=semantic_catalog_identity(
             load_it_operations_domain_pack().semantic_catalog
         ),
+        stability_canary=stability_canary
+        or _passing_stability(evaluation_set, reference),
     )
 
 
 def test_complete_openai_evidence_passes_exact_policy() -> None:
-    dataset = load_it_operations_evaluation_set()
+    dataset = load_it_operations_evaluation_v2_set()
     assessment = evaluate_v1_readiness(
         dataset,
         _evidence(),
@@ -56,6 +62,8 @@ def test_complete_openai_evidence_passes_exact_policy() -> None:
     assert [gate.code for gate in assessment.gates] == [
         "qualifying_evidence",
         "deterministic_release_gates",
+        "stability_canary",
+        "planner_implementation_integrity",
         "execution_success_rate",
         "result_accuracy",
         "unsafe_query_block_rate",
@@ -63,9 +71,103 @@ def test_complete_openai_evidence_passes_exact_policy() -> None:
         "security_case_pass_rate",
     ]
     assert all(gate.status is GateStatus.PASSED for gate in assessment.gates)
-    assert assessment.gates[2].actual == 1.0
-    assert assessment.gates[2].threshold == 0.85
+    assert assessment.gates[4].actual == 1.0
+    assert assessment.gates[4].threshold == 0.85
     assert assessment.average_latency_ms == 1.0
+
+
+def test_canary_incomplete_or_failed_blocks_readiness_before_full_evidence() -> None:
+    dataset = load_it_operations_evaluation_v2_set()
+    evidence = _evidence(dataset)
+    for status, verdict in (
+        (StabilityStatus.INCOMPLETE, ReadinessVerdict.INCOMPLETE),
+        (StabilityStatus.FAILED, ReadinessVerdict.NOT_READY),
+    ):
+        stability = replace(
+            _passing_stability(dataset, evidence),
+            status=status,
+            reason_code=(
+                "stability_runs_missing"
+                if status is StabilityStatus.INCOMPLETE
+                else "stability_security_case_failed"
+            ),
+            run_ids=(),
+        )
+
+        assessment = evaluate_v1_readiness(
+            dataset,
+            evidence,
+            deterministic_evidence_passed=True,
+            stability_canary=stability,
+        )
+
+        assert assessment.verdict is verdict
+        gate = next(item for item in assessment.gates if item.code == "stability_canary")
+        assert gate.status.value == status.value
+
+
+def test_full_run_must_match_the_passed_canary_candidate_sha() -> None:
+    dataset = load_it_operations_evaluation_v2_set()
+    evidence = _evidence(dataset)
+    stability = _passing_stability(dataset, evidence)
+    environment = {
+        **evidence.summary["evaluation_environment"],
+        "source_git_sha": "b" * 40,
+    }
+    mismatched = _with_summary(evidence, evaluation_environment=environment)
+
+    assessment = evaluate_v1_readiness(
+        dataset,
+        mismatched,
+        deterministic_evidence_passed=True,
+        stability_canary=stability,
+    )
+
+    assert assessment.verdict is ReadinessVerdict.INCOMPLETE
+    assert assessment.gates[0].reason_code == "stability_candidate_mismatch"
+
+
+def test_full_run_renderer_or_conformance_defect_is_a_release_blocker() -> None:
+    dataset = load_it_operations_evaluation_v2_set()
+    for status_key, aggregate_key in (
+        ("renderer_status", "renderer_defect_count"),
+        ("conformance_status", "conformance_defect_count"),
+    ):
+        evidence = _evidence(dataset)
+        rows = list(evidence.results)
+        index = next(index for index, row in enumerate(rows) if "planner" in row.metrics)
+        row = rows[index]
+        rows[index] = replace(
+            row,
+            metrics={
+                **row.metrics,
+                "planner": {**row.metrics["planner"], status_key: "failed"},
+            },
+        )
+        planner = {
+            **evidence.summary["planner_metrics"],
+            aggregate_key: 1,
+        }
+        mutated = replace(
+            evidence,
+            summary={**evidence.summary, "planner_metrics": planner},
+            results=tuple(rows),
+        )
+
+        assessment = evaluate_v1_readiness(
+            dataset,
+            mutated,
+            deterministic_evidence_passed=True,
+        )
+
+        assert assessment.verdict is ReadinessVerdict.NOT_READY
+        gate = next(
+            item
+            for item in assessment.gates
+            if item.code == "planner_implementation_integrity"
+        )
+        assert gate.status is GateStatus.FAILED
+        assert gate.reason_code == "planner_implementation_defect"
 
 
 def test_smallest_discrete_execution_and_accuracy_boundary_values_pass() -> None:
@@ -74,7 +176,7 @@ def test_smallest_discrete_execution_and_accuracy_boundary_values_pass() -> None
     rows = _fail_success_rows(list(rows), 3, result=True, offset=5)
 
     assessment = evaluate_v1_readiness(
-        load_it_operations_evaluation_set(),
+        load_it_operations_evaluation_v2_set(),
         replace(evidence, results=tuple(rows)),
         deterministic_evidence_passed=True,
     )
@@ -124,7 +226,7 @@ def test_just_below_each_threshold_is_not_ready(metric, mutator, reason) -> None
     evidence = _evidence()
     mutated = replace(evidence, results=mutator(list(evidence.results)))
     assessment = evaluate_v1_readiness(
-        load_it_operations_evaluation_set(),
+        load_it_operations_evaluation_v2_set(),
         mutated,
         deterministic_evidence_passed=True,
     )
@@ -136,12 +238,25 @@ def test_just_below_each_threshold_is_not_ready(metric, mutator, reason) -> None
 
 
 def test_missing_mock_filtered_partial_and_nonterminal_evidence_are_incomplete() -> None:
-    dataset = load_it_operations_evaluation_set()
-    assert evaluate_v1_readiness(
+    dataset = load_it_operations_evaluation_v2_set()
+    missing = evaluate_v1_readiness(
         dataset,
         None,
         deterministic_evidence_passed=True,
-    ).verdict is ReadinessVerdict.INCOMPLETE
+    )
+    assert missing.verdict is ReadinessVerdict.INCOMPLETE
+    assert missing.provider is None
+    assert missing.completed_count is None
+    assert missing.stability_canary.status is StabilityStatus.PASSED
+    assert len(missing.stability_canary.run_ids) == 3
+    assert next(
+        gate for gate in missing.gates if gate.code == "stability_canary"
+    ).status is GateStatus.PASSED
+    assert all(
+        gate.status is GateStatus.INCOMPLETE
+        for gate in missing.gates
+        if gate.code != "stability_canary"
+    )
 
     evidence = _evidence()
     mock = _with_summary(evidence, provider="mock", model_label="mock-queryops-v1")
@@ -186,7 +301,7 @@ def test_missing_mock_filtered_partial_and_nonterminal_evidence_are_incomplete()
 def test_stale_dataset_identity_is_incomplete(identity_key: str) -> None:
     evidence = _with_summary(_evidence(), **{identity_key: "stale"})
     assessment = evaluate_v1_readiness(
-        load_it_operations_evaluation_set(),
+        load_it_operations_evaluation_v2_set(),
         evidence,
         deterministic_evidence_passed=True,
     )
@@ -216,7 +331,7 @@ def test_stale_semantic_catalog_identity_is_incomplete(mutation: str) -> None:
         }
 
     assessment = evaluate_v1_readiness(
-        load_it_operations_evaluation_set(),
+        load_it_operations_evaluation_v2_set(),
         replace(evidence, summary=summary),
         deterministic_evidence_passed=True,
     )
@@ -245,7 +360,7 @@ def test_invalid_evaluation_environment_is_incomplete(mutation: str) -> None:
         }
 
     assessment = evaluate_v1_readiness(
-        load_it_operations_evaluation_set(),
+        load_it_operations_evaluation_v2_set(),
         replace(evidence, summary=summary),
         deterministic_evidence_passed=True,
     )
@@ -267,7 +382,7 @@ def test_missing_duplicate_extra_or_malformed_results_are_incomplete(mutation: s
     else:
         rows[0] = replace(rows[0], metrics={**rows[0].metrics, "passed": "yes"})
     assessment = evaluate_v1_readiness(
-        load_it_operations_evaluation_set(),
+        load_it_operations_evaluation_v2_set(),
         replace(evidence, results=tuple(rows)),
         deterministic_evidence_passed=True,
     )
@@ -301,7 +416,7 @@ def test_invalid_rates_booleans_durations_and_usage_fail_closed(field: str, valu
         metrics["provider_measurement"] = measurement
     rows = (replace(row, score=score, metrics=metrics), *evidence.results[1:])
     assessment = evaluate_v1_readiness(
-        load_it_operations_evaluation_set(),
+        load_it_operations_evaluation_v2_set(),
         replace(evidence, results=tuple(rows)),
         deterministic_evidence_passed=True,
     )
@@ -320,7 +435,7 @@ def test_invalid_rates_booleans_durations_and_usage_fail_closed(field: str, valu
 def test_invalid_run_counts_fail_closed(field: str, value: Any) -> None:
     evidence = _with_summary(_evidence(), **{field: value})
     assessment = evaluate_v1_readiness(
-        load_it_operations_evaluation_set(),
+        load_it_operations_evaluation_v2_set(),
         evidence,
         deterministic_evidence_passed=True,
     )
@@ -329,7 +444,7 @@ def test_invalid_run_counts_fail_closed(field: str, value: Any) -> None:
 
 
 def test_zero_required_metric_denominator_is_incomplete() -> None:
-    dataset = load_it_operations_evaluation_set()
+    dataset = load_it_operations_evaluation_v2_set()
     without_unsafe = replace(
         dataset,
         cases=tuple(
@@ -366,7 +481,7 @@ def test_stored_aggregate_disagreement_cannot_override_recomputed_results() -> N
         security_pass_rate=0.0,
     )
     assert evaluate_v1_readiness(
-        load_it_operations_evaluation_set(),
+        load_it_operations_evaluation_v2_set(),
         evidence,
         deterministic_evidence_passed=True,
     ).verdict is ReadinessVerdict.READY
@@ -381,7 +496,7 @@ def test_provider_model_measurement_mismatch_is_incomplete() -> None:
         "model_label": "gpt-5.6-luna",
     }
     assessment = evaluate_v1_readiness(
-        load_it_operations_evaluation_set(),
+        load_it_operations_evaluation_v2_set(),
         replace(evidence, results=(replace(row, metrics=metrics), *evidence.results[1:])),
         deterministic_evidence_passed=True,
     )
@@ -415,7 +530,7 @@ def test_provider_identity_without_a_live_measurement_is_incomplete() -> None:
     )
 
     assessment = evaluate_v1_readiness(
-        load_it_operations_evaluation_set(),
+        load_it_operations_evaluation_v2_set(),
         evidence,
         deterministic_evidence_passed=True,
     )
@@ -429,7 +544,7 @@ def test_unsafe_and_clarification_execution_attempts_fail_even_with_expected_lab
     rows = _mutate_type(list(evidence.results), CaseType.UNSAFE_SQL, attempted=True)
     rows = list(_mutate_type(list(rows), CaseType.CLARIFICATION, attempted=True))
     assessment = evaluate_v1_readiness(
-        load_it_operations_evaluation_set(),
+        load_it_operations_evaluation_v2_set(),
         replace(evidence, results=tuple(rows)),
         deterministic_evidence_passed=True,
     )
@@ -440,7 +555,7 @@ def test_unsafe_and_clarification_execution_attempts_fail_even_with_expected_lab
 
 def test_deterministic_evidence_is_mandatory_and_no_sensitive_fields_are_projected() -> None:
     assessment = evaluate_v1_readiness(
-        load_it_operations_evaluation_set(),
+        load_it_operations_evaluation_v2_set(),
         _evidence(),
         deterministic_evidence_passed=False,
     )
@@ -452,7 +567,7 @@ def test_deterministic_evidence_is_mandatory_and_no_sensitive_fields_are_project
 
 
 def _evidence(dataset=None) -> ReadinessRunEvidence:
-    dataset = dataset or load_it_operations_evaluation_set()
+    dataset = dataset or load_it_operations_evaluation_v2_set()
     rows = tuple(_result(case) for case in dataset.cases)
     started_at = datetime.now(UTC).replace(microsecond=0)
     usage = {
@@ -475,6 +590,10 @@ def _evidence(dataset=None) -> ReadinessRunEvidence:
             "dataset_id": dataset.dataset_id,
             "dataset_version": dataset.version,
             "dataset_digest": evaluation_dataset_digest(dataset),
+            "evaluation_suite": select_evaluation_suite(
+                dataset,
+                EvaluationSuite.FULL,
+            ).as_safe_dict(),
             "semantic_catalog": semantic_catalog_identity(
                 load_it_operations_domain_pack().semantic_catalog
             ),
@@ -500,6 +619,7 @@ def _evidence(dataset=None) -> ReadinessRunEvidence:
                 "security_only": False,
             },
             "provider_usage": usage,
+            "planner_metrics": _planner_summary(dataset),
             "failure_code": None,
         },
         results=rows,
@@ -509,6 +629,38 @@ def _evidence(dataset=None) -> ReadinessRunEvidence:
 def _result(case) -> ReadinessResultEvidence:
     success = case.expected_outcome is ExpectedOutcome.SUCCESS
     actual_outcome = case.expected_outcome.value
+    metrics = {
+        "score": 1.0,
+        "passed": True,
+        "outcome_correct": True,
+        "execution_correct": True,
+        "tables_correct": True,
+        "result_correct": True if success else None,
+        "expected_row_count": 1 if success else 0,
+        "actual_row_count": 1 if success else 0,
+        "failure_reasons": [],
+        "difficulty": case.difficulty.value,
+        "category": case.category,
+        "case_type": case.case_type.value,
+        "security_sensitive": case.security_sensitive,
+        "duration_ms": 1.0,
+        "missing_row_count": 0,
+        "extra_row_count": 0,
+        "query_invoked": case.case_type is not CaseType.AUTHORIZATION,
+        "query_execution_attempted": success,
+        "provider_measurement": {
+            "provider": "openai",
+            "model_label": "gpt-5.6-terra",
+            "duration_ms": 1.0,
+            "attempt_count": 1,
+            "input_tokens": 1,
+            "cached_input_tokens": 0,
+            "output_tokens": 1,
+            "total_tokens": 2,
+        },
+    }
+    if case.template_id is None and success:
+        metrics["planner"] = _passing_planner()
     return ReadinessResultEvidence(
         case_id=case.id,
         status="succeeded",
@@ -523,37 +675,89 @@ def _result(case) -> ReadinessResultEvidence:
             "execution_succeeded": success,
             "error_code": None,
         },
-        metrics={
-            "score": 1.0,
-            "passed": True,
-            "outcome_correct": True,
-            "execution_correct": True,
-            "tables_correct": True,
-            "result_correct": True if success else None,
-            "expected_row_count": 1 if success else 0,
-            "actual_row_count": 1 if success else 0,
-            "failure_reasons": [],
-            "difficulty": case.difficulty.value,
-            "category": case.category,
-            "case_type": case.case_type.value,
-            "security_sensitive": case.security_sensitive,
-            "duration_ms": 1.0,
-            "missing_row_count": 0,
-            "extra_row_count": 0,
-            "query_invoked": case.case_type is not CaseType.AUTHORIZATION,
-            "query_execution_attempted": success,
-            "provider_measurement": {
-                "provider": "openai",
-                "model_label": "gpt-5.6-terra",
-                "duration_ms": 1.0,
-                "attempt_count": 1,
-                "input_tokens": 1,
-                "cached_input_tokens": 0,
-                "output_tokens": 1,
-                "total_tokens": 2,
-            },
-        },
+        metrics=metrics,
         error_message=None,
+    )
+
+
+def _passing_planner() -> dict[str, Any]:
+    return {
+        "plan_generated": True,
+        "plan_validation_status": "passed",
+        "required_intent_status": "passed",
+        "renderer_status": "passed",
+        "conformance_status": "passed",
+        "semantic_contract": {
+            "evaluated": True,
+            "passed": True,
+            "concepts_correct": True,
+            "metric_correct": True,
+            "rules_correct": True,
+            "grain_correct": True,
+            "outputs_correct": True,
+            "aggregations_correct": True,
+            "group_by_correct": True,
+            "having_correct": True,
+            "ordering_correct": True,
+            "failure_reasons": [],
+        },
+    }
+
+
+def _planner_summary(dataset) -> dict[str, int | float]:
+    eligible = sum(
+        case.template_id is None and case.expected_outcome is ExpectedOutcome.SUCCESS
+        for case in dataset.cases
+    )
+    return {
+        "eligible_case_count": eligible,
+        "generated_plan_count": eligible,
+        "validated_plan_count": eligible,
+        "semantic_plan_validation_pass_rate": 1.0,
+        "required_intent_evaluated_count": eligible,
+        "required_intent_passed_count": eligible,
+        "required_intent_adherence_rate": 1.0,
+        "renderer_defect_count": 0,
+        "conformance_defect_count": 0,
+        "semantic_contract_evaluated_count": eligible,
+        "semantic_contract_passed_count": eligible,
+        "semantic_contract_pass_rate": 1.0,
+    }
+
+
+def _passing_stability(
+    dataset,
+    evidence: ReadinessRunEvidence,
+) -> StabilityCanaryAssessment:
+    summary = evidence.summary
+    fallback_summary = _evidence(load_it_operations_evaluation_v2_set()).summary
+    environment = dict(
+        summary.get(
+            "evaluation_environment",
+            fallback_summary["evaluation_environment"],
+        )
+    )
+    suite = select_evaluation_suite(
+        load_it_operations_evaluation_v2_set(),
+        EvaluationSuite.CANARY,
+    ).as_safe_dict()
+    return StabilityCanaryAssessment(
+        status=StabilityStatus.PASSED,
+        reason_code=None,
+        run_ids=(uuid4(), uuid4(), uuid4()),
+        source_git_sha=str(environment["source_git_sha"]),
+        provider="openai",
+        model_label=str(summary["model_label"]),
+        dataset_id=dataset.dataset_id,
+        dataset_version=dataset.version,
+        dataset_digest=evaluation_dataset_digest(dataset),
+        semantic_catalog=dict(
+            summary.get("semantic_catalog", fallback_summary["semantic_catalog"])
+        ),
+        evaluation_environment=environment,
+        suite_id=str(suite["id"]),
+        suite_version=str(suite["version"]),
+        suite_digest=str(suite["digest"]),
     )
 
 
@@ -569,7 +773,7 @@ def _fail_success_rows(
     result=False,
     offset: int = 0,
 ):
-    dataset = load_it_operations_evaluation_set()
+    dataset = load_it_operations_evaluation_v2_set()
     output = list(rows)
     indexes = [
         index
@@ -617,7 +821,7 @@ def _fail_success_rows(
 
 
 def _mutate_type(rows, case_type: CaseType, *, attempted: bool):
-    dataset = load_it_operations_evaluation_set()
+    dataset = load_it_operations_evaluation_v2_set()
     for index, row in enumerate(rows):
         if dataset.cases_by_id[row.case_id].case_type is case_type:
             rows[index] = replace(
@@ -628,7 +832,7 @@ def _mutate_type(rows, case_type: CaseType, *, attempted: bool):
 
 
 def _fail_security(rows):
-    dataset = load_it_operations_evaluation_set()
+    dataset = load_it_operations_evaluation_v2_set()
     for index, row in enumerate(rows):
         if dataset.cases_by_id[row.case_id].difficulty is EvaluationDifficulty.SECURITY:
             rows[index] = replace(

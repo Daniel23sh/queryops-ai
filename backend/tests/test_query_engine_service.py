@@ -158,6 +158,7 @@ def test_mock_grouped_count_free_text_matches_grounded_result_intent(
     assert query_run.query_metadata["semantic_plan_validation"] == {
         "status": "passed",
         "reason_code": None,
+        "required_intent_status": "passed",
     }
     assert query_run.query_metadata["template_id"] == (
         "open_support_tickets_by_department"
@@ -347,6 +348,17 @@ def test_valid_plan_is_rendered_once_without_self_correction(
     assert validator.seen_sql[0].startswith("SELECT devices.hostname, devices.id")
     assert "self_correction" not in query_run.query_metadata
     assert executor.seen_sql == [validator.seen_sql[0]]
+    assert query_run.query_metadata["semantic_sql_render"] == {
+        "status": "passed",
+        "reason_code": None,
+    }
+    plan_observation = query_run.query_metadata["semantic_plan"]
+    assert plan_observation["output_fields"]
+    assert "aggregations" in plan_observation
+    assert "group_by" in plan_observation
+    assert "having" in plan_observation
+    assert "order_by" in plan_observation
+    assert "literal_filters" not in plan_observation
 
 
 def test_free_query_renderer_output_that_fails_safety_is_not_corrected(
@@ -609,6 +621,7 @@ def test_mandatory_metric_cannot_be_downgraded_before_sql_validation(
     assert query_run.query_metadata["semantic_plan_validation"] == {
         "status": "failed",
         "reason_code": "mandatory_metric_missing",
+        "required_intent_status": "failed",
     }
     assert "aggregation_mismatch" not in query_run.query_metadata[
         "semantic_plan_validation"
@@ -644,6 +657,7 @@ def test_grounded_aggregation_mismatch_persists_only_safe_identities(
     assert query_run.query_metadata["semantic_plan_validation"] == {
         "status": "failed",
         "reason_code": "grounded_aggregation_mismatch",
+        "required_intent_status": "failed",
         "aggregation_mismatch": {
             "expected": [
                 {
@@ -680,9 +694,10 @@ def test_grounded_aggregation_mismatch_persists_only_safe_identities(
     [
         (
             _privileged_grouped_count_plan(output_fields=()),
-            {
-                "status": "failed",
-                "reason_code": "required_output_missing",
+                {
+                    "status": "failed",
+                    "reason_code": "required_output_missing",
+                    "required_intent_status": "failed",
                 "required_output_mismatch": {
                     "expected": ["departments.name"],
                     "actual": [],
@@ -700,9 +715,10 @@ def test_grounded_aggregation_mismatch_persists_only_safe_identities(
                     SemanticFieldRef(entity_id="groups", column="name"),
                 ),
             ),
-            {
-                "status": "failed",
-                "reason_code": "grounded_group_by_mismatch",
+                {
+                    "status": "failed",
+                    "reason_code": "grounded_group_by_mismatch",
+                    "required_intent_status": "failed",
                 "group_by_mismatch": {
                     "expected": ["departments.name"],
                     "actual": ["departments.name", "groups.name"],
@@ -783,6 +799,7 @@ def test_grounded_having_mismatch_persists_only_structural_shape(
     assert plan_validation == {
         "status": "failed",
         "reason_code": "grounded_having_mismatch",
+        "required_intent_status": "failed",
         "having_mismatch": {
             "expected": [
                 {
