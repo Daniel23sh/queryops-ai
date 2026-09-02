@@ -22,7 +22,7 @@ from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.semantic_catalog import semantic_catalog_identity
 
 
-def test_zero_one_and_two_runs_are_incomplete() -> None:
+def test_zero_one_and_two_matching_runs_preserve_valid_progress() -> None:
     dataset = load_it_operations_evaluation_v2_set()
 
     for run_count in range(3):
@@ -32,6 +32,10 @@ def test_zero_one_and_two_runs_are_incomplete() -> None:
         )
         assert assessment.status is StabilityStatus.INCOMPLETE
         assert assessment.reason_code == "stability_runs_missing"
+        assert len(assessment.run_ids) == run_count
+        assert set(assessment.run_ids) == {
+            _run(index=index).run_id for index in range(run_count)
+        }
 
 
 def test_three_matching_passing_runs_form_one_stable_set() -> None:
@@ -72,6 +76,8 @@ def test_mismatched_sha_or_model_does_not_form_a_stability_set() -> None:
 
         assert assessment.status is StabilityStatus.INCOMPLETE
         assert assessment.reason_code == "stability_identity_mismatch"
+        assert len(assessment.run_ids) == 2
+        assert assessment.source_git_sha == "a" * 40
 
 
 def test_mismatched_dataset_and_malformed_results_fail_closed() -> None:
@@ -89,6 +95,26 @@ def test_mismatched_dataset_and_malformed_results_fail_closed() -> None:
 
         assert assessment.status is StabilityStatus.INCOMPLETE
         assert assessment.reason_code == "stability_evidence_malformed"
+        assert len(assessment.run_ids) == 2
+
+
+def test_mixed_partial_identities_report_only_the_best_matching_group() -> None:
+    runs = [
+        _run(index=0),
+        _run(index=1),
+        _with_source_sha(_run(index=2), "b" * 40),
+        _with_source_sha(_run(index=3), "c" * 40),
+    ]
+
+    assessment = _evaluate(
+        load_it_operations_evaluation_v2_set(),
+        tuple(runs),
+    )
+
+    assert assessment.status is StabilityStatus.INCOMPLETE
+    assert assessment.reason_code == "stability_identity_mismatch"
+    assert set(assessment.run_ids) == {runs[0].run_id, runs[1].run_id}
+    assert assessment.source_git_sha == "a" * 40
 
 
 def test_security_renderer_and_conformance_defects_fail_the_set() -> None:

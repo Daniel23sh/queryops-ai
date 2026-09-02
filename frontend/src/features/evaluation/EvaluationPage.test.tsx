@@ -62,6 +62,76 @@ describe("Evaluation workspace", () => {
     expect(screen.queryByText("gpt-5.6-terra")).not.toBeInTheDocument();
   });
 
+  it.each([0, 1, 2])("shows incomplete canary progress at %s/3 runs", async (runCount) => {
+    installApiMock(authenticatedRoutes(demoAnalyst, {
+      "GET /api/v1/evaluation/overview": successResponse(backendEvaluationOverview()),
+      "GET /api/v1/evaluation/readiness": successResponse(backendEvaluationReadiness({
+        verdict: "incomplete",
+        provider: null,
+        stabilityStatus: "incomplete",
+        stabilityRunCount: runCount,
+        completedCount: null
+      }))
+    }));
+    renderAppAt("/evaluation");
+
+    expect(await screen.findByRole("heading", { name: "V1 readiness: Incomplete" })).toBeInTheDocument();
+    expect(screen.getByText(`Incomplete · ${runCount}/3 runs`)).toBeInTheDocument();
+    expect(screen.getByText("No qualifying OpenAI evidence")).toBeInTheDocument();
+  });
+
+  it("shows a passed canary while the matching full run is still missing", async () => {
+    installApiMock(authenticatedRoutes(demoAnalyst, {
+      "GET /api/v1/evaluation/overview": successResponse(backendEvaluationOverview()),
+      "GET /api/v1/evaluation/readiness": successResponse(backendEvaluationReadiness({
+        verdict: "incomplete",
+        provider: null,
+        stabilityStatus: "passed",
+        stabilityRunCount: 3,
+        completedCount: null
+      }))
+    }));
+    renderAppAt("/evaluation");
+
+    expect(await screen.findByRole("heading", { name: "V1 readiness: Incomplete" })).toBeInTheDocument();
+    expect(screen.getByText("Passed · 3/3 runs")).toBeInTheDocument();
+    expect(screen.getByText("No qualifying OpenAI evidence")).toBeInTheDocument();
+    expect(screen.getByText("Incomplete", { selector: "dd" })).toBeInTheDocument();
+  });
+
+  it("shows a failed three-run canary without inferring readiness", async () => {
+    installApiMock(authenticatedRoutes(demoAnalyst, {
+      "GET /api/v1/evaluation/overview": successResponse(backendEvaluationOverview()),
+      "GET /api/v1/evaluation/readiness": successResponse(backendEvaluationReadiness({
+        verdict: "not_ready",
+        provider: "openai",
+        stabilityStatus: "failed",
+        stabilityRunCount: 3,
+        completedCount: null
+      }))
+    }));
+    renderAppAt("/evaluation");
+
+    expect(await screen.findByRole("heading", { name: "V1 readiness: Not ready" })).toBeInTheDocument();
+    expect(screen.getByText("Failed · 3/3 runs")).toBeInTheDocument();
+  });
+
+  it("rejects impossible stability status and run-count combinations", async () => {
+    installApiMock(authenticatedRoutes(demoAnalyst, {
+      "GET /api/v1/evaluation/overview": successResponse(backendEvaluationOverview()),
+      "GET /api/v1/evaluation/readiness": successResponse(backendEvaluationReadiness({
+        verdict: "incomplete",
+        provider: null,
+        stabilityStatus: "passed",
+        stabilityRunCount: 2,
+        completedCount: null
+      }))
+    }));
+    renderAppAt("/evaluation");
+
+    expect(await screen.findByRole("heading", { name: "V1 readiness unavailable" })).toBeInTheDocument();
+  });
+
   it("keeps Manager readiness business-safe", async () => {
     installApiMock(authenticatedRoutes(demoManager, {
       "GET /api/v1/evaluation/overview": successResponse(backendEvaluationOverview()),

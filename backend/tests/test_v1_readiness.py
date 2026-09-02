@@ -239,11 +239,24 @@ def test_just_below_each_threshold_is_not_ready(metric, mutator, reason) -> None
 
 def test_missing_mock_filtered_partial_and_nonterminal_evidence_are_incomplete() -> None:
     dataset = load_it_operations_evaluation_v2_set()
-    assert evaluate_v1_readiness(
+    missing = evaluate_v1_readiness(
         dataset,
         None,
         deterministic_evidence_passed=True,
-    ).verdict is ReadinessVerdict.INCOMPLETE
+    )
+    assert missing.verdict is ReadinessVerdict.INCOMPLETE
+    assert missing.provider is None
+    assert missing.completed_count is None
+    assert missing.stability_canary.status is StabilityStatus.PASSED
+    assert len(missing.stability_canary.run_ids) == 3
+    assert next(
+        gate for gate in missing.gates if gate.code == "stability_canary"
+    ).status is GateStatus.PASSED
+    assert all(
+        gate.status is GateStatus.INCOMPLETE
+        for gate in missing.gates
+        if gate.code != "stability_canary"
+    )
 
     evidence = _evidence()
     mock = _with_summary(evidence, provider="mock", model_label="mock-queryops-v1")

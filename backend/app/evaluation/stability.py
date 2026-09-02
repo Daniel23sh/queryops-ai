@@ -238,6 +238,8 @@ def evaluate_stability_canary(
         )
         if envelope is None:
             malformed = True
+        elif _parse_run(evaluation_set, envelope) is None:
+            malformed = True
         else:
             envelopes.append(envelope)
 
@@ -246,13 +248,14 @@ def evaluate_stability_canary(
         groups[envelope.identity].append(envelope)
     qualifying_groups = [items for items in groups.values() if len(items) >= 3]
     if not qualifying_groups:
+        selected = _best_partial_group(groups)
         if malformed:
             reason = "stability_evidence_malformed"
-        elif len(envelopes) < STABILITY_REQUIRED_RUN_COUNT:
-            reason = "stability_runs_missing"
-        else:
+        elif len(groups) > 1:
             reason = "stability_identity_mismatch"
-        return _assessment(StabilityStatus.INCOMPLETE, reason)
+        else:
+            reason = "stability_runs_missing"
+        return _assessment(StabilityStatus.INCOMPLETE, reason, selected)
 
     selected_group = max(
         qualifying_groups,
@@ -812,6 +815,27 @@ def _assessment(
         suite_id=identity.suite_id if identity else None,
         suite_version=identity.suite_version if identity else None,
         suite_digest=identity.suite_digest if identity else None,
+    )
+
+
+def _best_partial_group(
+    groups: Mapping[_EvidenceIdentity, list[_Envelope]],
+) -> tuple[_Envelope, ...]:
+    if not groups:
+        return ()
+    best = max(
+        groups.values(),
+        key=lambda items: (
+            len(items),
+            max(_run_sort_key(item.evidence) for item in items),
+        ),
+    )
+    return tuple(
+        sorted(
+            best,
+            key=lambda item: _run_sort_key(item.evidence),
+            reverse=True,
+        )[:STABILITY_REQUIRED_RUN_COUNT]
     )
 
 

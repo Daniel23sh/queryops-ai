@@ -116,8 +116,35 @@ function isSafeReadiness(data: EvaluationReadiness): boolean {
   ) {
     return false;
   }
+  const stabilityGate = data.gates[2];
+  if (
+    stabilityGate.status !== data.stability_canary.status ||
+    (data.stability_canary.status === "passed" && (
+      data.stability_canary.run_count !== 3 ||
+      data.stability_canary.reason_code !== null
+    )) ||
+    (data.stability_canary.status === "incomplete" && (
+      data.stability_canary.run_count >= 3 ||
+      data.stability_canary.reason_code === null
+    )) ||
+    (data.stability_canary.status === "failed" && (
+      data.stability_canary.run_count !== 3 ||
+      data.stability_canary.reason_code === null
+    ))
+  ) {
+    return false;
+  }
   if (data.provider === null) {
-    return data.verdict === "incomplete" && data.model_label === null && data.completed_count === null && data.stability_canary.status === "incomplete";
+    return data.verdict === "incomplete" &&
+      data.model_label === null &&
+      data.completed_count === null &&
+      (data.stability_canary.status === "incomplete" ||
+        data.stability_canary.status === "passed") &&
+      data.gates.every((gate) =>
+        gate.code === "stability_canary"
+          ? gate.status === data.stability_canary.status
+          : gate.status === "incomplete"
+      );
   }
   if (
     typeof data.model_label !== "string" ||

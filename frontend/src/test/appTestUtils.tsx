@@ -195,24 +195,35 @@ export function backendEvaluationOverview({
 export function backendEvaluationReadiness({
   verdict = "ready",
   provider = "openai",
-  technical = true
+  technical = true,
+  stabilityStatus,
+  stabilityRunCount,
+  completedCount
 }: {
   verdict?: string;
   provider?: string | null;
   technical?: boolean;
+  stabilityStatus?: "passed" | "failed" | "incomplete";
+  stabilityRunCount?: number;
+  completedCount?: number | null;
 } = {}) {
   const gateStatus = verdict === "ready" ? "passed" : verdict === "not_ready" ? "failed" : "incomplete";
+  const canaryStatus = stabilityStatus ?? gateStatus;
+  const canaryRunCount = stabilityRunCount ?? (canaryStatus === "incomplete" ? 0 : 3);
+  const measuredCount = completedCount === undefined
+    ? (provider === "openai" ? 40 : null)
+    : completedCount;
   return {
     policy_id: "queryops-v1-readiness-v1",
     verdict,
     provider,
-    model_label: provider === "openai" ? "gpt-5.6-terra" : "mock-queryops-v1",
+    model_label: provider === "openai" ? "gpt-5.6-terra" : provider === null ? null : "mock-queryops-v1",
     dataset_version: "2",
-    completed_count: provider === "openai" ? 40 : null,
+    completed_count: measuredCount,
     stability_canary: {
-      status: gateStatus,
-      reason_code: gateStatus === "passed" ? null : "stability_runs_missing",
-      run_count: gateStatus === "incomplete" ? 0 : 3
+      status: canaryStatus,
+      reason_code: canaryStatus === "passed" ? null : canaryStatus === "failed" ? "stability_security_case_failed" : "stability_runs_missing",
+      run_count: canaryRunCount
     },
     gates: [
       "qualifying_evidence",
@@ -224,15 +235,18 @@ export function backendEvaluationReadiness({
       "unsafe_query_block_rate",
       "clarification_accuracy",
       "security_case_pass_rate"
-    ].map((code) => ({
+    ].map((code) => {
+      const status = code === "stability_canary" ? canaryStatus : gateStatus;
+      return {
       code,
       label: code.split("_").map((part) => part[0].toUpperCase() + part.slice(1)).join(" "),
-      status: gateStatus,
+      status,
       threshold: technical ? 0.75 : null,
-      actual: technical ? (gateStatus === "passed" ? 1 : 0.5) : null,
-      reason_code: gateStatus === "passed" ? null : "qualifying_run_missing"
-    })),
-    technical: technical && provider === "openai" ? {
+      actual: technical ? (status === "passed" ? 1 : 0.5) : null,
+      reason_code: status === "passed" ? null : "qualifying_run_missing"
+    };
+    }),
+    technical: technical && provider === "openai" && measuredCount !== null ? {
       run_id: "00000000-0000-4000-8000-000000000902",
       dataset_id: "it_operations_v2",
       dataset_digest: "b".repeat(64),
