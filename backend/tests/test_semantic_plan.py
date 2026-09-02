@@ -129,6 +129,34 @@ def test_single_entity_count_star_uses_its_row_source_entity() -> None:
     assert validated.plan == plan
 
 
+def test_grounded_or_rule_rejects_provider_full_branch_conjunction() -> None:
+    domain_pack, schema_context, projection = _validation_inputs(
+        "How many non-compliant devices are there?"
+    )
+    assert projection.mandatory_evidence() == {
+        "entity_ids": ["devices"],
+        "concept_ids": [],
+        "metric_ids": [],
+        "rule_ids": ["non_compliant_device_posture"],
+    }
+    plan = _plan(
+        entity_ids=("devices",),
+        concept_ids=(
+            "antivirus_attention_device", "non_compliant_device", "unencrypted_device",
+        ),
+        composition_rule_ids=("non_compliant_device_posture",),
+        aggregations=(_count(),),
+    )
+
+    with pytest.raises(SemanticPlanValidationError) as exc_info:
+        validate_semantic_plan(
+            plan, domain_pack=domain_pack, projection=projection,
+            schema_context=schema_context, scope_reference_resolved=True,
+        )
+
+    assert exc_info.value.reason == "composition_rule_overconstraint"
+
+
 def test_count_star_does_not_make_extra_selected_entities_used() -> None:
     plan = _plan(
         entity_ids=("devices", "directory_users"),

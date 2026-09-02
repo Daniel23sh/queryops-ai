@@ -600,6 +600,43 @@ def test_validated_single_entity_count_star_renders_from_intended_entity() -> No
     assert _render(validated) == "SELECT COUNT(*) AS row_count FROM devices"
 
 
+@pytest.mark.parametrize("concept_ids", [(), ("antivirus_attention_device",)])
+def test_validated_posture_rule_preserves_or_and_optional_narrowing(
+    concept_ids: tuple[str, ...],
+) -> None:
+    schema_context = _schema_context(DOMAIN_PACK)
+    projection = build_semantic_catalog_projection(
+        DOMAIN_PACK.semantic_catalog,
+        "How many non-compliant devices are there?",
+        schema_context,
+        {"scope_type": "global", "has_global_scope": True, "scope_reference_resolved": True},
+    )
+    validated = validate_semantic_plan(
+        _plan(
+            entity_ids=("devices",), concept_ids=concept_ids,
+            composition_rule_ids=("non_compliant_device_posture",),
+            aggregations=(_aggregation("row_count", "count"),),
+        ),
+        domain_pack=DOMAIN_PACK, projection=projection,
+        schema_context=schema_context, scope_reference_resolved=True,
+    )
+
+    assert validated.rule_or_concept_groups == ((
+        "antivirus_attention_device", "non_compliant_device", "unencrypted_device",
+    ),)
+    assert {p.column for p in validated.effective_predicates} == (
+        {"antivirus_status"} if concept_ids else set()
+    )
+    sql = _render(validated)
+    safety = validate_sql(sql, schema_context)
+    assert safety.valid, safety.reason
+    conformance = check_semantic_conformance(
+        plan=validated, candidate_sql=sql, safety_result=safety,
+        domain_pack=DOMAIN_PACK, schema_context=schema_context,
+    )
+    assert conformance.valid, conformance.reason_code
+
+
 def test_group_having_order_and_limit_render_from_plan() -> None:
     aggregation = _aggregation(
         "failed_login_count",

@@ -420,6 +420,61 @@ def test_single_entity_count_star_continues_through_query_service(
     }
 
 
+@pytest.mark.parametrize("overconstrained", [False, True])
+def test_or_composition_provider_plan_is_validated_before_execution(
+    db_session: Session, overconstrained: bool,
+) -> None:
+    plan = SemanticPlan(
+        entity_ids=("devices",),
+        concept_ids=(
+            "antivirus_attention_device", "non_compliant_device", "unencrypted_device",
+        ) if overconstrained else (),
+        composition_rule_ids=("non_compliant_device_posture",),
+        metric_id=None, distinct=False, literal_filters=(), relationships=(), output_fields=(),
+        aggregations=(SemanticAggregationIntent(
+            id="row_count", function="count", field=None, distinct=False,
+        ),),
+        group_by=(), having=(), order_by=(), limit=None,
+    )
+    executor = FakeExecutor(SQLExecutionResult(
+        status="succeeded", columns=["row_count"], rows=[{"row_count": 3}],
+        row_count=1, duration_ms=1.0, truncated=False,
+        execution_metadata={}, referenced_tables=["devices"],
+    ))
+    validator = RecordingValidator()
+    service = QueryEngineService(
+        provider=StaticPlanProvider(plan), executor=executor, validator=validator,
+    )
+    user = user_by_email(db_session, "demo.analyst@queryops.local")
+
+    result = service.run(db_session, user, QueryEngineRequest(
+        question="How many non-compliant devices are there?",
+    ))
+
+    query_run = only_query_run(db_session)
+    if overconstrained:
+        assert result.status == "failed"
+        assert result.error_code == "provider_response_invalid"
+        assert query_run.generated_sql is None
+        assert query_run.executed_sql is None
+        assert query_run.query_metadata["semantic_plan_validation"] == {
+            "status": "failed", "reason_code": "composition_rule_overconstraint",
+            "required_intent_status": "not_evaluated",
+        }
+        assert validator.seen_sql == []
+        assert executor.seen_sql == []
+        assert "semantic_sql_render" not in query_run.query_metadata
+    else:
+        assert result.status == "succeeded"
+        assert query_run.query_metadata["semantic_plan_validation"]["status"] == "passed"
+        assert query_run.query_metadata["semantic_sql_render"]["status"] == "passed"
+        assert query_run.query_metadata["semantic_conformance"]["status"] == "passed"
+        assert query_run.generated_sql is not None
+        assert query_run.generated_sql.startswith("SELECT COUNT(*) AS row_count FROM devices")
+        assert validator.seen_sql == [query_run.generated_sql]
+        assert executor.seen_sql == [query_run.executed_sql]
+
+
 def test_free_query_renderer_output_that_fails_safety_is_not_corrected(
     db_session: Session,
 ) -> None:
