@@ -38,7 +38,7 @@ No OpenAI request was made. Mock remains the normal development and CI provider.
 PR11 adds `it_operations_v2` version `2` with digest:
 
 ```text
-913f8232a795ff59dd2a4ffc5b657bf69239c16182f257fd2850b68d9003de9b
+26233d82e82633fe890b1f3e52f7cfd26eb4ce59db66a3c35a8ed1de97fa806b
 ```
 
 The set contains exactly 40 cases:
@@ -134,14 +134,14 @@ SQL-renderer and semantic-conformance failures are tracked as deterministic impl
 The canary is `it_operations_v2_stability_canary` version `1`, digest:
 
 ```text
-a32105296cf0017aa48124470acd95952df72a156b50aa37710762e5f11494cd
+36a6724cac05dffc13e49bc9680e1369344004d9580a83f5f53d775c28e4548b
 ```
 
 Its fixed case membership is:
 
 | Case | Coverage |
 | --- | --- |
-| `itops-easy-002` | OR composition |
+| `itops-hard-007` | Free-query OR composition and multi-table policy-review path |
 | `itops-easy-005` | Canonical metric |
 | `itops-easy-006` | Detail query |
 | `itops-easy-008` | Deterministically compiled literal filtering |

@@ -2210,7 +2210,9 @@
       "semantic_contract": {
         "answerability": "answerable",
         "semantic_source": "catalog",
-        "required_concept_ids": [],
+        "required_concept_ids": [
+          "inactive_human_directory_user"
+        ],
         "required_metric_id": null,
         "required_composition_rule_ids": [
           "disablement_policy_review"
@@ -2386,7 +2388,7 @@
     },
     {
       "id": "itops-hard-010",
-      "question": "Rank departments by non-compliant device count, then by users with no successful login in the last 90 days.",
+      "question": "Rank departments that have both non-compliant devices and users with no successful login in the last 90 days, first by non-compliant device count, then by inactive-user count.",
       "category": "risk",
       "difficulty": "hard",
       "case_type": "free_query",
@@ -2415,7 +2417,7 @@
           "last_login_at"
         ]
       },
-      "baseline_sql": "SELECT d.id, d.name, COUNT(DISTINCT dv.id) AS risky_device_count, COUNT(DISTINCT du.id) AS inactive_user_count FROM departments d LEFT JOIN devices dv ON dv.department_id = d.id AND dv.compliance_status = 'non_compliant' LEFT JOIN directory_users du ON du.department_id = d.id AND (du.last_login_at IS NULL OR du.last_login_at < CURRENT_TIMESTAMP - INTERVAL '90 days') GROUP BY d.id, d.name ORDER BY risky_device_count DESC, inactive_user_count DESC, d.name",
+      "baseline_sql": "SELECT d.id, d.name, COUNT(DISTINCT dv.id) AS risky_device_count, COUNT(DISTINCT du.id) AS inactive_user_count FROM departments d JOIN devices dv ON dv.department_id = d.id JOIN directory_users du ON du.department_id = d.id WHERE dv.compliance_status = 'non_compliant' AND (du.last_login_at IS NULL OR du.last_login_at < CURRENT_TIMESTAMP - INTERVAL '90 days') GROUP BY d.id, d.name ORDER BY risky_device_count DESC, inactive_user_count DESC, d.name",
       "requires_join": true,
       "clarification_expected": false,
       "security_sensitive": true,

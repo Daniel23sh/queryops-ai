@@ -11,10 +11,10 @@ Policy: `queryops-v1-readiness-v1`
 - PR11 branch: `feature/m9-evaluation-v2-stability-release-gate`
 - PR11 verified runtime checkpoint: `a12e4549c3cfe738ffffda70885dc1af92e26b09`
 - Dataset: `it_operations_v2`, version `2`
-- Dataset digest: `913f8232a795ff59dd2a4ffc5b657bf69239c16182f257fd2850b68d9003de9b`
+- Dataset digest: `26233d82e82633fe890b1f3e52f7cfd26eb4ce59db66a3c35a8ed1de97fa806b`
 - Historical V1 digest: `1e7b12fbf35de4d2c52937a762f3960df444eb3303ee7061a0e4506819c22bc4`
 - Canary: `it_operations_v2_stability_canary`, version `1`, 10 cases
-- Canary digest: `a32105296cf0017aa48124470acd95952df72a156b50aa37710762e5f11494cd`
+- Canary digest: `36a6724cac05dffc13e49bc9680e1369344004d9580a83f5f53d775c28e4548b`
 - Semantic catalog: `it_operations_semantic_catalog`, version `3`
 - Semantic catalog hash: `918df0c63288b7ed7ce700f8442c82bc1ffa3f51e1f4eaa63fd66012af82adb4`
 - Evaluation environment: no frozen live-evidence identity

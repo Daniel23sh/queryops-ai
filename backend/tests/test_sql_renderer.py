@@ -352,6 +352,87 @@ def test_same_validated_plan_always_renders_identical_sql() -> None:
     assert {_render(plan) for _ in range(20)} == {_render(plan)}
 
 
+def test_revised_v2_hard_010_is_representable_by_current_plan_algebra() -> None:
+    plan = _validated(
+        _plan(
+            entity_ids=("departments", "devices", "directory_users"),
+            concept_ids=("inactive_directory_user", "risky_device"),
+            relationships=(
+                _relationship("device_department", "inner"),
+                _relationship("directory_user_department", "inner"),
+            ),
+            output_fields=(
+                _field("departments", "id"),
+                _field("departments", "name"),
+            ),
+            aggregations=(
+                _aggregation(
+                    "risky_device_count",
+                    "count",
+                    _field("devices", "id"),
+                    distinct=True,
+                ),
+                _aggregation(
+                    "inactive_user_count",
+                    "count",
+                    _field("directory_users", "id"),
+                    distinct=True,
+                ),
+            ),
+            group_by=(
+                _field("departments", "id"),
+                _field("departments", "name"),
+            ),
+            order_by=(
+                SemanticOrderIntent(
+                    target_kind="aggregation",
+                    field=None,
+                    aggregation_id="risky_device_count",
+                    direction="desc",
+                ),
+                SemanticOrderIntent(
+                    target_kind="aggregation",
+                    field=None,
+                    aggregation_id="inactive_user_count",
+                    direction="desc",
+                ),
+            ),
+        ),
+        predicates=(
+            _predicate(
+                "devices",
+                "compliance_status",
+                SemanticPredicateOperator.EQUALS,
+                "non_compliant",
+            ),
+            _predicate(
+                "directory_users",
+                "last_login_at",
+                SemanticPredicateOperator.IS_NULL_OR_OLDER_THAN_DAYS,
+                90,
+            ),
+        ),
+    )
+
+    sql = _render(plan)
+    assert "LEFT JOIN" not in sql
+    assert "INNER JOIN devices" in sql
+    assert "INNER JOIN directory_users" in sql
+    assert "WHERE" in sql
+
+    schema_context = _schema_context(DOMAIN_PACK)
+    safety = validate_sql(sql, schema_context)
+    assert safety.valid, safety.reason
+    conformance = check_semantic_conformance(
+        plan=plan,
+        candidate_sql=sql,
+        safety_result=safety,
+        domain_pack=DOMAIN_PACK,
+        schema_context=schema_context,
+    )
+    assert conformance.valid, conformance.reason_code
+
+
 def test_unsupported_left_join_tree_orientation_fails_closed() -> None:
     plan = _validated(
         _plan(

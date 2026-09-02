@@ -41,7 +41,8 @@ EXPECTED_TEMPLATE_IDS = {
     "unused_licenses_by_department",
 }
 V1_DATASET_DIGEST = "1e7b12fbf35de4d2c52937a762f3960df444eb3303ee7061a0e4506819c22bc4"
-V2_DATASET_DIGEST = "913f8232a795ff59dd2a4ffc5b657bf69239c16182f257fd2850b68d9003de9b"
+V2_DATASET_DIGEST = "26233d82e82633fe890b1f3e52f7cfd26eb4ce59db66a3c35a8ed1de97fa806b"
+CANARY_DIGEST = "36a6724cac05dffc13e49bc9680e1369344004d9580a83f5f53d775c28e4548b"
 
 
 def _semantic_contract_for_outcome(outcome: str) -> dict[str, object]:
@@ -144,12 +145,18 @@ def test_v2_canary_is_bounded_complete_and_deterministic() -> None:
     assert len(CANARY_CASE_IDS) == len(set(CANARY_CASE_IDS)) == 10
     assert tuple(case.id for case in first.cases) == CANARY_CASE_IDS
     assert first == second
-    assert len(first.suite_digest) == 64
+    assert first.suite_digest == CANARY_DIGEST
     assert set(CANARY_CASE_IDS) <= set(evaluation_set.cases_by_id)
     assert set(CANARY_COVERAGE) == set(CanaryCoverage)
     assert all(
         set(case_ids) <= set(CANARY_CASE_IDS)
         for case_ids in CANARY_COVERAGE.values()
+    )
+    or_case_ids = CANARY_COVERAGE[CanaryCoverage.OR_COMPOSITION]
+    assert or_case_ids == ("itops-hard-007",)
+    assert all(
+        evaluation_set.cases_by_id[case_id].case_type.value == "free_query"
+        for case_id in or_case_ids
     )
 
 
@@ -211,8 +218,8 @@ def test_reviewed_v2_ambiguous_historical_terms_have_authoritative_meaning() -> 
     assert "monthly savings" in cases["itops-hard-006"].question
     assert "more than 60 days" in cases["itops-hard-006"].question
     assert "number of membership additions" in cases["itops-hard-009"].question
-    assert "non-compliant device count" in cases["itops-hard-010"].question
-    assert "then by users" in cases["itops-hard-010"].question
+    assert "both non-compliant devices and users" in cases["itops-hard-010"].question
+    assert "then by inactive-user count" in cases["itops-hard-010"].question
 
     questions = " ".join(case.question.lower() for case in cases.values())
     assert "failed login spike" not in questions
@@ -232,6 +239,21 @@ def test_reviewed_v2_baselines_match_the_reviewed_result_grain() -> None:
     assert "si.software_name" not in cases["itops-medium-009"].baseline_sql
     assert "SELECT DISTINCT d.id FROM devices" in cases["itops-medium-009"].baseline_sql
     assert "JOIN licenses" not in cases["itops-hard-001"].baseline_sql
+    hard_010_sql = cases["itops-hard-010"].baseline_sql
+    assert "LEFT JOIN" not in hard_010_sql
+    assert "JOIN devices" in hard_010_sql
+    assert "JOIN directory_users" in hard_010_sql
+    assert "WHERE dv.compliance_status = 'non_compliant'" in hard_010_sql
+
+
+def test_reviewed_v2_hard_007_requires_inactive_human_and_policy_review() -> None:
+    contract = load_it_operations_evaluation_v2_set().cases_by_id[
+        "itops-hard-007"
+    ].semantic_contract
+
+    assert contract is not None
+    assert contract.required_concept_ids == ("inactive_human_directory_user",)
+    assert contract.required_composition_rule_ids == ("disablement_policy_review",)
 
 
 def test_reviewed_v2_only_requires_question_requested_ordering() -> None:

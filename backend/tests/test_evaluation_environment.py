@@ -1,22 +1,93 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
+import json
 
+import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
+from app.domains.it_operations.seed import SeedSummary, expected_seed_table_counts
+from app.evaluation import environment
 from app.db.base import Base
 from app.domains.it_operations.seed import seed_database
 from app.evaluation.environment import (
     EvaluationEnvironmentIdentity,
+    EvaluationEnvironmentError,
+    build_evaluation_environment_manifest,
     evaluation_database_fingerprint,
     reference_time_is_eligible,
+    validate_evaluation_environment_manifest,
     validate_persisted_environment_identity,
 )
+from app.evaluation.loader import (
+    load_it_operations_evaluation_set,
+    load_it_operations_evaluation_v2_set,
+)
+from app.evaluation.selection import evaluation_dataset_digest
 from app.models.product import Permission, Role, RolePermission
 
 
 REFERENCE_TIME = datetime(2026, 8, 24, 12, 0, tzinfo=UTC)
+
+
+def test_release_environment_manifest_builds_and_validates_exact_v2_identity(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_release_environment(monkeypatch)
+    manifest = build_evaluation_environment_manifest(
+        object(),  # type: ignore[arg-type]
+        _release_seed_summary(),
+        source_git_sha="a" * 40,
+    )
+    evaluation_set = load_it_operations_evaluation_v2_set()
+
+    assert manifest["dataset"] == {
+        "id": "it_operations_v2",
+        "version": "2",
+        "digest": evaluation_dataset_digest(evaluation_set),
+    }
+
+    path = tmp_path / "evaluation-environment.json"
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    identity = validate_evaluation_environment_manifest(
+        object(),  # type: ignore[arg-type]
+        path,
+        now=REFERENCE_TIME,
+        source_git_sha="a" * 40,
+    )
+    assert identity.source_git_sha == "a" * 40
+
+
+def test_release_environment_manifest_rejects_historical_v1_identity(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_release_environment(monkeypatch)
+    manifest = build_evaluation_environment_manifest(
+        object(),  # type: ignore[arg-type]
+        _release_seed_summary(),
+        source_git_sha="a" * 40,
+    )
+    historical = load_it_operations_evaluation_set()
+    manifest["dataset"] = {
+        "id": historical.dataset_id,
+        "version": historical.version,
+        "digest": evaluation_dataset_digest(historical),
+    }
+    path = tmp_path / "evaluation-environment-v1.json"
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(EvaluationEnvironmentError) as exc_info:
+        validate_evaluation_environment_manifest(
+            object(),  # type: ignore[arg-type]
+            path,
+            now=REFERENCE_TIME,
+            source_git_sha="a" * 40,
+        )
+
+    assert exc_info.value.code == "evaluation_dataset_identity_mismatch"
 
 
 def test_evaluation_database_fingerprint_is_deterministic_for_seed_inputs() -> None:
@@ -108,6 +179,33 @@ def _identity() -> EvaluationEnvironmentIdentity:
         database_fingerprint="b" * 64,
         dependency_manifest_hash="c" * 64,
     )
+
+
+def _release_seed_summary() -> SeedSummary:
+    return SeedSummary(
+        profile_name="medium",
+        seed=42,
+        reference_now=REFERENCE_TIME,
+        table_counts=expected_seed_table_counts("medium"),
+        anomaly_counts={"reviewed_fixture": 1},
+    )
+
+
+def _stub_release_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(environment, "_require_release_database", lambda _db: None)
+    monkeypatch.setattr(
+        environment,
+        "evaluation_database_fingerprint",
+        lambda _db: ("b" * 64, {"departments": 6}),
+    )
+    monkeypatch.setattr(
+        environment,
+        "_alembic_revision",
+        lambda _db: "0010_disable_inactive_user",
+    )
+    monkeypatch.setattr(environment, "_postgres_version", lambda _db: "16.9")
+    monkeypatch.setattr(environment, "_dependency_manifest_hash", lambda: "c" * 64)
+    monkeypatch.setattr(environment, "_runtime_versions", lambda: {"runtime": "test"})
 
 
 def _as_utc(value: datetime) -> datetime:
