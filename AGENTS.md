@@ -4,12 +4,13 @@ These instructions contain durable, repository-specific rules. Current status an
 
 ## 1. Source of Truth
 
-Before changing the repository, read:
+Apply `AGENTS.md` to every repository task. Load other sources only when they are relevant:
 
-1. `AGENTS.md` for permanent repository rules.
-2. `PROJECT_PLAN.md` for current status, active scope, blockers, and next approved work.
-3. `README.md` for supported behavior, setup, and verification commands.
-4. Local `docs/planning/` documents, when present, for the detailed product, architecture, security, API, UX, and evaluation specification relevant to the task.
+- Read `PROJECT_PLAN.md` when the task depends on current implementation scope, release state, blockers, or approved next work.
+- Read `README.md` when supported behavior, setup, environment, repository structure, or verification commands are relevant.
+- Read only the relevant local `docs/planning/` documents when detailed product, architecture, security, API, UX, or evaluation specifications are needed.
+
+Trivial or local changes do not require loading unrelated project-state or planning context.
 
 Explicit user instructions control the requested task. `PROJECT_PLAN.md` controls current implementation scope. Local planning documents are authoritative detailed specifications, but their historical milestone/status notes may be stale; verify current state from `main`, tracked release documents, and Git history. History documents are archaeological references, not active scope.
 
