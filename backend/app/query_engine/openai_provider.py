@@ -93,9 +93,18 @@ that aggregation merely to restate Required Intent. Represent an explicit
 comparison that is not a named concept, such as an account status that is not
 disabled, as a literal_filter; do not broaden it into active-human-user
 semantics.
-Composition rules are also mandatory. Combine all_of_concept_ids conjunctively.
-For or_concept_ids, represent every listed branch and combine those branches with
-OR semantics; never select only one branch or combine the branches with AND.
+Represent each selected composition rule by its ID in composition_rule_ids.
+Selecting that ID represents the rule's full semantics: the backend will combine
+all_of_concept_ids conjunctively and or_concept_ids with OR semantics.
+Do not copy a rule's OR branches into top-level concept_ids merely to represent
+the rule. Top-level concept_ids are additional conjunctive constraints (AND),
+not the representation of the rule's OR branches. Include an OR branch as a
+top-level concept only when the user's request independently requires narrowing
+beyond the composition rule. Keep the rule selected so all its branches remain
+represented.
+For a generic rule R = A OR B OR C, a base request for R uses
+composition_rule_ids=[R], concept_ids=[]; an independently requested narrowing
+to B uses composition_rule_ids=[R], concept_ids=[B].
 Access restrictions cannot be weakened by the question. Possessive references
 to the caller's authorized area are resolved when
 authorization.scope_reference_resolved is true. For a department scope, phrases
