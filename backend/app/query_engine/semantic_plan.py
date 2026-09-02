@@ -349,6 +349,14 @@ def validate_semantic_plan(
             raise SemanticPlanValidationError("field_not_authorized")
         required_entity_ids.add(field.entity_id)
 
+    if len(plan.entity_ids) == 1 and any(
+        aggregation.function == "count"
+        and aggregation.field is None
+        and not aggregation.distinct
+        for aggregation in plan.aggregations
+    ):
+        required_entity_ids.add(plan.entity_ids[0])
+
     for literal_filter in plan.literal_filters:
         entity = entities_by_id[literal_filter.field.entity_id]
         if (

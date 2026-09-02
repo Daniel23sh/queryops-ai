@@ -361,6 +361,65 @@ def test_valid_plan_is_rendered_once_without_self_correction(
     assert "literal_filters" not in plan_observation
 
 
+def test_single_entity_count_star_continues_through_query_service(
+    db_session: Session,
+) -> None:
+    plan = SemanticPlan(
+        entity_ids=("devices",),
+        concept_ids=(),
+        composition_rule_ids=(),
+        metric_id=None,
+        distinct=False,
+        literal_filters=(),
+        relationships=(),
+        output_fields=(),
+        aggregations=(
+            SemanticAggregationIntent(
+                id="row_count",
+                function="count",
+                field=None,
+                distinct=False,
+            ),
+        ),
+        group_by=(),
+        having=(),
+        order_by=(),
+        limit=None,
+    )
+    executor = FakeExecutor()
+    validator = RecordingValidator()
+    service = QueryEngineService(
+        provider=StaticPlanProvider(plan),
+        executor=executor,
+        validator=validator,
+    )
+    user = user_by_email(db_session, "demo.analyst@queryops.local")
+
+    result = service.run(
+        db_session,
+        user,
+        QueryEngineRequest(question="How many devices are there?"),
+    )
+
+    query_run = only_query_run(db_session)
+    assert result.status == "succeeded"
+    assert query_run.generated_sql == "SELECT COUNT(*) AS row_count FROM devices"
+    assert validator.seen_sql == [query_run.generated_sql]
+    assert query_run.executed_sql == (
+        "SELECT COUNT(*) AS row_count FROM devices LIMIT 100"
+    )
+    assert executor.seen_sql == [query_run.executed_sql]
+    assert query_run.query_metadata["semantic_plan_validation"] == {
+        "status": "passed",
+        "reason_code": None,
+        "required_intent_status": "passed",
+    }
+    assert query_run.query_metadata["semantic_sql_render"] == {
+        "status": "passed",
+        "reason_code": None,
+    }
+
+
 def test_free_query_renderer_output_that_fails_safety_is_not_corrected(
     db_session: Session,
 ) -> None:

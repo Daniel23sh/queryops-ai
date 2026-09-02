@@ -573,6 +573,33 @@ def test_supported_aggregations_render_exactly(
     assert _render(plan) == f"SELECT {expected} FROM {entity_id}"
 
 
+def test_validated_single_entity_count_star_renders_from_intended_entity() -> None:
+    question = "How many devices are there?"
+    schema_context = _schema_context(DOMAIN_PACK)
+    projection = build_semantic_catalog_projection(
+        DOMAIN_PACK.semantic_catalog,
+        question,
+        schema_context,
+        {
+            "scope_type": "global",
+            "has_global_scope": True,
+            "scope_reference_resolved": True,
+        },
+    )
+    validated = validate_semantic_plan(
+        _plan(
+            entity_ids=("devices",),
+            aggregations=(_aggregation("row_count", "count"),),
+        ),
+        domain_pack=DOMAIN_PACK,
+        projection=projection,
+        schema_context=schema_context,
+        scope_reference_resolved=True,
+    )
+
+    assert _render(validated) == "SELECT COUNT(*) AS row_count FROM devices"
+
+
 def test_group_having_order_and_limit_render_from_plan() -> None:
     aggregation = _aggregation(
         "failed_login_count",

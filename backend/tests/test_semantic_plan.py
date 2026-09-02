@@ -118,6 +118,29 @@ def test_literal_not_disabled_is_not_forced_to_active_users_metric() -> None:
     assert validated.effective_predicates == ()
 
 
+def test_single_entity_count_star_uses_its_row_source_entity() -> None:
+    plan = _plan(
+        entity_ids=("devices",),
+        aggregations=(_count(),),
+    )
+
+    validated = _validate(plan, "How many devices are there?")
+
+    assert validated.plan == plan
+
+
+def test_count_star_does_not_make_extra_selected_entities_used() -> None:
+    plan = _plan(
+        entity_ids=("devices", "directory_users"),
+        aggregations=(_count(),),
+    )
+
+    with pytest.raises(SemanticPlanValidationError) as exc_info:
+        _validate(plan, "How many devices and directory users are there?")
+
+    assert exc_info.value.reason == "relationship_graph_disconnected"
+
+
 @pytest.mark.parametrize(
     ("change", "reason"),
     [
