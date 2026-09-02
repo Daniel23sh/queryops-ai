@@ -11,10 +11,10 @@ Policy: `queryops-v1-readiness-v1`
 - PR11 branch: `feature/m9-evaluation-v2-stability-release-gate`
 - PR11 verified runtime checkpoint: `a12e4549c3cfe738ffffda70885dc1af92e26b09`
 - Dataset: `it_operations_v2`, version `2`
-- Dataset digest: `26233d82e82633fe890b1f3e52f7cfd26eb4ce59db66a3c35a8ed1de97fa806b`
+- Dataset digest: `a2ce20e766ee816a5fef357d8a46ef987ed3ba614f3b273f593bc63ed317e6b0`
 - Historical V1 digest: `1e7b12fbf35de4d2c52937a762f3960df444eb3303ee7061a0e4506819c22bc4`
 - Canary: `it_operations_v2_stability_canary`, version `1`, 10 cases
-- Canary digest: `36a6724cac05dffc13e49bc9680e1369344004d9580a83f5f53d775c28e4548b`
+- Canary digest: `d07a3a67542d68af1828933d4519e1f9e2ece51b38571831b35883a1ff742e32`
 - Semantic catalog: `it_operations_semantic_catalog`, version `3`
 - Semantic catalog hash: `918df0c63288b7ed7ce700f8442c82bc1ffa3f51e1f4eaa63fd66012af82adb4`
 - Evaluation environment: no frozen live-evidence identity
@@ -45,8 +45,8 @@ PR11's network-free implementation and final branch-wide deterministic checks pa
 - deterministic canary selection and digest checks: passed
 - three-run stability and fail-closed mismatch/malformed/oscillation checks: passed
 - V2 readiness, candidate matching, deterministic-gate, and planner-integrity checks: passed
-- backend without PostgreSQL: 1,283 passed, 156 expected PostgreSQL-only skips
-- isolated PostgreSQL 16 backend: 1,419 passed, zero skips, plus the exact 20-case M8 release suite passed separately with zero skips
+- backend without PostgreSQL: 1,284 passed, 156 expected PostgreSQL-only skips
+- isolated PostgreSQL 16 backend: 1,420 passed, zero skips, plus the exact 20-case M8 release suite passed separately with zero skips
 - migrations: fresh upgrade through `0010_disable_inactive_user`, `alembic current`, and `alembic check` passed
 - frontend: 280 Vitest tests, ESLint, both TypeScript checks, and production build passed
 - Playwright: 12 general Chromium flows and two isolated M8 primary/negative flows passed

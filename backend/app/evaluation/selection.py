@@ -46,7 +46,7 @@ class CanaryCoverage(str, Enum):
 V2_DATASET_ID = "it_operations_v2"
 V2_DATASET_VERSION = "2"
 V2_DATASET_DIGEST = (
-    "26233d82e82633fe890b1f3e52f7cfd26eb4ce59db66a3c35a8ed1de97fa806b"
+    "a2ce20e766ee816a5fef357d8a46ef987ed3ba614f3b273f593bc63ed317e6b0"
 )
 CANARY_SUITE_ID = "it_operations_v2_stability_canary"
 CANARY_SUITE_VERSION = "1"
@@ -55,9 +55,9 @@ CANARY_CASE_IDS = (
     "itops-easy-006",
     "itops-easy-008",
     "itops-medium-006",
+    "itops-medium-009",
     "itops-hard-004",
     "itops-hard-006",
-    "itops-hard-007",
     "itops-security-002",
     "itops-security-003",
     "itops-security-005",
@@ -67,7 +67,7 @@ CANARY_COVERAGE = {
     CanaryCoverage.DETAIL_QUERY: ("itops-easy-006",),
     CanaryCoverage.GROUPED_COUNT: ("itops-medium-006",),
     CanaryCoverage.EXPLICIT_HAVING: ("itops-hard-004",),
-    CanaryCoverage.OR_COMPOSITION: ("itops-hard-007",),
+    CanaryCoverage.OR_COMPOSITION: ("itops-medium-009",),
     # disabled_directory_account expands through the deterministic compiler to
     # the exact account_status literal predicate without weakening grounding.
     CanaryCoverage.LITERAL_FILTER: ("itops-easy-008",),

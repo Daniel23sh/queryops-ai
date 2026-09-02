@@ -2162,7 +2162,7 @@
     },
     {
       "id": "itops-hard-007",
-      "question": "Which inactive human users would require policy review before disablement?",
+      "question": "Count distinct non-compliant devices assigned to inactive human users by user ID, ordered by device count descending and then user ID ascending.",
       "category": "risk",
       "difficulty": "hard",
       "case_type": "free_query",
@@ -2172,9 +2172,7 @@
       "expected_outcome": "success",
       "expected_tables": [
         "directory_users",
-        "groups",
-        "security_events",
-        "user_group_memberships"
+        "devices"
       ],
       "expected_columns": {
         "directory_users": [
@@ -2183,21 +2181,15 @@
           "account_status",
           "last_login_at"
         ],
-        "groups": [
+        "devices": [
           "id",
-          "is_privileged"
-        ],
-        "security_events": [
-          "user_id",
-          "severity",
-          "status"
-        ],
-        "user_group_memberships": [
-          "user_id",
-          "group_id"
+          "assigned_user_id",
+          "compliance_status",
+          "antivirus_status",
+          "encryption_enabled"
         ]
       },
-      "baseline_sql": "SELECT DISTINCT du.id FROM directory_users du LEFT JOIN user_group_memberships ugm ON ugm.user_id = du.id LEFT JOIN groups g ON g.id = ugm.group_id LEFT JOIN security_events se ON se.user_id = du.id WHERE du.account_type = 'human' AND du.account_status = 'active' AND (du.last_login_at IS NULL OR du.last_login_at < CURRENT_TIMESTAMP - INTERVAL '90 days') AND (g.is_privileged = true OR (se.severity = 'critical' AND se.status IN ('open', 'investigating'))) ORDER BY du.id",
+      "baseline_sql": "SELECT du.id, COUNT(DISTINCT d.id) AS non_compliant_device_count FROM directory_users du JOIN devices d ON d.assigned_user_id = du.id WHERE du.account_type = 'human' AND du.account_status = 'active' AND (du.last_login_at IS NULL OR du.last_login_at < CURRENT_TIMESTAMP - INTERVAL '90 days') AND (d.compliance_status = 'non_compliant' OR d.antivirus_status IN ('outdated', 'missing') OR d.encryption_enabled = false) GROUP BY du.id ORDER BY non_compliant_device_count DESC, du.id ASC",
       "requires_join": true,
       "clarification_expected": false,
       "security_sensitive": true,
@@ -2215,7 +2207,7 @@
         ],
         "required_metric_id": null,
         "required_composition_rule_ids": [
-          "disablement_policy_review"
+          "non_compliant_device_posture"
         ],
         "grain_fields": [
           {
@@ -2229,10 +2221,41 @@
             "column": "id"
           }
         ],
-        "aggregations": [],
-        "group_by": [],
+        "aggregations": [
+          {
+            "id": "non_compliant_device_count",
+            "function": "count",
+            "field": {
+              "entity_id": "devices",
+              "column": "id"
+            },
+            "distinct": true
+          }
+        ],
+        "group_by": [
+          {
+            "entity_id": "directory_users",
+            "column": "id"
+          }
+        ],
         "having": [],
-        "ordering": []
+        "ordering": [
+          {
+            "target_kind": "aggregation",
+            "field": null,
+            "aggregation_id": "non_compliant_device_count",
+            "direction": "desc"
+          },
+          {
+            "target_kind": "field",
+            "field": {
+              "entity_id": "directory_users",
+              "column": "id"
+            },
+            "aggregation_id": null,
+            "direction": "asc"
+          }
+        ]
       }
     },
     {

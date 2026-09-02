@@ -41,8 +41,8 @@ EXPECTED_TEMPLATE_IDS = {
     "unused_licenses_by_department",
 }
 V1_DATASET_DIGEST = "1e7b12fbf35de4d2c52937a762f3960df444eb3303ee7061a0e4506819c22bc4"
-V2_DATASET_DIGEST = "26233d82e82633fe890b1f3e52f7cfd26eb4ce59db66a3c35a8ed1de97fa806b"
-CANARY_DIGEST = "36a6724cac05dffc13e49bc9680e1369344004d9580a83f5f53d775c28e4548b"
+V2_DATASET_DIGEST = "a2ce20e766ee816a5fef357d8a46ef987ed3ba614f3b273f593bc63ed317e6b0"
+CANARY_DIGEST = "d07a3a67542d68af1828933d4519e1f9e2ece51b38571831b35883a1ff742e32"
 
 
 def _semantic_contract_for_outcome(outcome: str) -> dict[str, object]:
@@ -153,7 +153,7 @@ def test_v2_canary_is_bounded_complete_and_deterministic() -> None:
         for case_ids in CANARY_COVERAGE.values()
     )
     or_case_ids = CANARY_COVERAGE[CanaryCoverage.OR_COMPOSITION]
-    assert or_case_ids == ("itops-hard-007",)
+    assert or_case_ids == ("itops-medium-009",)
     assert all(
         evaluation_set.cases_by_id[case_id].case_type.value == "free_query"
         for case_id in or_case_ids
@@ -246,14 +246,19 @@ def test_reviewed_v2_baselines_match_the_reviewed_result_grain() -> None:
     assert "WHERE dv.compliance_status = 'non_compliant'" in hard_010_sql
 
 
-def test_reviewed_v2_hard_007_requires_inactive_human_and_policy_review() -> None:
-    contract = load_it_operations_evaluation_v2_set().cases_by_id[
-        "itops-hard-007"
-    ].semantic_contract
+def test_reviewed_v2_hard_007_is_inner_join_aggregate_with_device_posture() -> None:
+    case = load_it_operations_evaluation_v2_set().cases_by_id["itops-hard-007"]
+    contract = case.semantic_contract
 
     assert contract is not None
     assert contract.required_concept_ids == ("inactive_human_directory_user",)
-    assert contract.required_composition_rule_ids == ("disablement_policy_review",)
+    assert contract.required_composition_rule_ids == ("non_compliant_device_posture",)
+    assert set(case.expected_tables) == {"directory_users", "devices"}
+    assert "LEFT JOIN" not in case.baseline_sql
+    assert "JOIN devices" in case.baseline_sql
+    assert contract.aggregations[0].id == "non_compliant_device_count"
+    assert contract.aggregations[0].distinct is True
+    assert contract.group_by == contract.grain_fields
 
 
 def test_reviewed_v2_only_requires_question_requested_ordering() -> None:
@@ -266,6 +271,7 @@ def test_reviewed_v2_only_requires_question_requested_ordering() -> None:
 
     assert set(ordered) == {
         "itops-hard-006",
+        "itops-hard-007",
         "itops-hard-009",
         "itops-hard-010",
     }

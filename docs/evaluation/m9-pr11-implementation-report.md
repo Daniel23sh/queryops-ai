@@ -38,7 +38,7 @@ No OpenAI request was made. Mock remains the normal development and CI provider.
 PR11 adds `it_operations_v2` version `2` with digest:
 
 ```text
-26233d82e82633fe890b1f3e52f7cfd26eb4ce59db66a3c35a8ed1de97fa806b
+a2ce20e766ee816a5fef357d8a46ef987ed3ba614f3b273f593bc63ed317e6b0
 ```
 
 The set contains exactly 40 cases:
@@ -85,12 +85,12 @@ All 40 V2 cases received a manual answerability and baseline-semantics review. H
 - `itops-medium-004`, `itops-medium-015`, `itops-hard-004`, `itops-hard-006`, `itops-hard-008`, and `itops-hard-009` replace hidden “recent”, “spike”, “reclaim opportunity”, and “most” semantics with exact windows, thresholds, measures, and ranking.
 - `itops-medium-009` makes the distinct device grain explicit.
 - `itops-hard-002` replaces the undefined “active device ownership” meaning with assigned devices.
-- `itops-hard-007` requires both the inactive-human concept and the existing policy-review OR composition.
+- `itops-hard-007` ranks inactive human users by distinct assigned devices matching the existing non-compliant-device OR composition, using only inner-join, WHERE, grouped aggregation, and ordering semantics supported by the current V1 algebra.
 - `itops-hard-010` ranks only departments that have both requested populations, using two explicit counts representable by existing inner joins and WHERE predicates.
 
 ### Catalog-defined meanings
 
-Existing authoritative catalog concepts are used for non-compliant devices, active human users, active assignments, missing antivirus, disabled accounts, unsupported software, service accounts, unused paid licenses, exception assignments, terminated employees, stale devices, inactive licensed users, high-risk software, and policy review. No concept or grounding path was added merely to preserve a hidden baseline assumption.
+Existing authoritative catalog concepts are used for non-compliant devices, active human users, active assignments, missing antivirus, disabled accounts, unsupported software, service accounts, unused paid licenses, exception assignments, terminated employees, stale devices, inactive licensed users, and high-risk software. No concept or grounding path was added merely to preserve a hidden baseline assumption.
 
 ### Clarification
 
@@ -135,18 +135,18 @@ SQL-renderer and semantic-conformance failures are tracked as deterministic impl
 The canary is `it_operations_v2_stability_canary` version `1`, digest:
 
 ```text
-36a6724cac05dffc13e49bc9680e1369344004d9580a83f5f53d775c28e4548b
+d07a3a67542d68af1828933d4519e1f9e2ece51b38571831b35883a1ff742e32
 ```
 
 Its fixed case membership is:
 
 | Case | Coverage |
 | --- | --- |
-| `itops-hard-007` | Free-query OR composition and multi-table policy-review path |
 | `itops-easy-005` | Canonical metric |
 | `itops-easy-006` | Detail query |
 | `itops-easy-008` | Deterministically compiled literal filtering |
 | `itops-medium-006` | Grouped distinct count and multi-table chain |
+| `itops-medium-009` | Free-query non-compliant-device OR composition |
 | `itops-hard-004` | Explicit HAVING |
 | `itops-hard-006` | Multi-table ranked aggregate |
 | `itops-security-002` | Scoped authorization |
@@ -229,8 +229,8 @@ The only Query Engine changes are allowlisted evaluation instrumentation: safe S
 
 | Gate | Result |
 | --- | --- |
-| Backend without PostgreSQL | 1,283 passed; 156 expected PostgreSQL-only skips |
-| Isolated PostgreSQL 16 backend | 1,419 passed; zero skips |
+| Backend without PostgreSQL | 1,284 passed; 156 expected PostgreSQL-only skips |
+| Isolated PostgreSQL 16 backend | 1,420 passed; zero skips |
 | Exact M8 release security suite | 20 passed; zero skips |
 | Fresh migrations | Upgrade through `0010_disable_inactive_user` passed |
 | Alembic current/check | Passed; no new upgrade operations |

@@ -22,16 +22,16 @@ A required zero denominator makes evidence incomplete. Overall semantic score is
 
 ## Evaluation V2 and the Text-to-SQL contract
 
-- Dataset: `it_operations_v2`, version `2`, digest `26233d82e82633fe890b1f3e52f7cfd26eb4ce59db66a3c35a8ed1de97fa806b`.
+- Dataset: `it_operations_v2`, version `2`, digest `a2ce20e766ee816a5fef357d8a46ef987ed3ba614f3b273f593bc63ed317e6b0`.
 - Historical V1 remains immutable: `it_operations_v1`, version `1`, digest `1e7b12fbf35de4d2c52937a762f3960df444eb3303ee7061a0e4506819c22bc4`.
 - Semantic catalog: `it_operations_semantic_catalog`, version `3`, canonical hash `918df0c63288b7ed7ce700f8442c82bc1ffa3f51e1f4eaa63fd66012af82adb4`.
-- Canary: `it_operations_v2_stability_canary`, version `1`, 10 fixed cases, digest `36a6724cac05dffc13e49bc9680e1369344004d9580a83f5f53d775c28e4548b`.
+- Canary: `it_operations_v2_stability_canary`, version `1`, 10 fixed cases, digest `d07a3a67542d68af1828933d4519e1f9e2ece51b38571831b35883a1ff742e32`.
 
 V2 adds authoritative semantic contracts to the reviewed 40-case IT Operations set while preserving its exact 10 easy, 15 medium, 10 hard, and 5 security distribution. Free queries use deterministic grounding with binding Required Intent and non-binding Suggested Intent. The provider makes one structured call and returns a `SemanticPlan` only. The backend validates the plan and renders SQL deterministically; there is no provider SQL, repair call, second provider call, or fallback.
 
 The existing SQL safety validator remains the security boundary. SQLGlot semantic conformance is an additional correctness layer applied to final validator-sanitized SQL before governed execution, and PostgreSQL RLS remains authoritative. Evaluation records separately classify grounding, plan generation, plan validation, SQL rendering, SQL safety, semantic conformance, execution, result comparison, and setup failures. Renderer and conformance defects are release-blocking rather than ordinary model misses.
 
-The corrected `itops-medium-009` baseline follows the already tracked business term and deterministic template definition of non-compliant device posture. The reviewed V2 release contract also requires the full inactive-human plus policy-review semantics for `itops-hard-007`, and makes `itops-hard-010` answerable through the existing inner-join/WHERE V1 plan algebra. Historical V1, templates, thresholds, the semantic catalog, and the case distribution remain unchanged.
+The corrected `itops-medium-009` baseline follows the already tracked business term and deterministic template definition of non-compliant device posture and supplies the free-query OR-composition canary coverage. The reviewed V2 `itops-hard-007` now combines inactive-human and non-compliant-device semantics through an inner join and grouped distinct count that the current V1 plan algebra can represent; `itops-hard-010` likewise remains within the existing inner-join/WHERE algebra. Historical V1, templates, thresholds, the semantic catalog, and the case distribution remain unchanged.
 
 ## Eligible stability evidence
 
