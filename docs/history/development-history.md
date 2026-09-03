@@ -2,6 +2,62 @@
 
 This document preserves useful implementation history for archaeology. It does not authorize new work and is not a source of current project status. See [`PROJECT_PLAN.md`](../../PROJECT_PLAN.md) for the active objective and [`AGENTS.md`](../../AGENTS.md) for permanent repository rules.
 
+## PR52 Chunk 2 — Local Foundation Checkpoint
+
+On 2026-09-03, the foundation implementation was completed locally on diagnostic
+baseline `9eb094ab14d8ae5ef05e5a0d5a52cb8ce13287af`. It adds query-engine-owned
+structural declarations, separate comparison policy, query-engine adapters, and
+a narrow Evaluation V2 contract adapter. Existing primitives were reused without
+extraction. No execution/scoring integration or Chunk 3 harness was added. See
+[the foundation design](../development/semantic-intent-foundation.md).
+
+Focused validation: 47 new tests passed. Existing semantic-plan/composition,
+grounding, catalog, OpenAI-provider stub, evaluation-scoring/dataset,
+query-evaluation-set, renderer, and semantic-conformance suites: 362 tests passed.
+Ruff passed on all new Python files; explicit Pyright coverage of the four new
+application modules reported zero errors or warnings. Independent V3 review
+identified and verified correction of one named-metric knownness issue: empty
+explicit aggregate declarations remain known empty, with scalar grain, and a
+differential scorer regression covers the boundary. No blocking review findings
+remained. No provider/API calls or PostgreSQL tests were performed; no
+database-dependent behavior was modified. This is local engineering evidence,
+not a merge or release verdict.
+
+## PR52 Chunk 3 — Local Offline Audit Checkpoint
+
+On 2026-09-04, the offline V2 structural-conformance harness produced its first
+deterministic report. It loaded all 40 unchanged V2 cases and the real domain pack,
+built grounding with synthetic scope-only contexts and an in-memory authorized
+schema projection, and compared required and suggested intent separately. The
+machine-readable report and text CLI do not execute SQL, use a database, call a
+provider, persist evaluation records, score cases, or participate in readiness.
+Generated output was written only to `/tmp` during validation and was not added to
+the repository.
+
+The report retained the frozen V2 digest
+`a2ce20e766ee816a5fef357d8a46ef987ed3ba614f3b273f593bc63ed317e6b0`.
+Across all 40 cases it reported 26 compatible, 9 conflict, 5 not applicable,
+and 0 unavailable. Among 35 answerable cases, required coverage was 1 complete,
+9 partial, 24 none, and 1 structurally not applicable; suggested coverage was
+0 complete, 2 partial, 32 none, and 1 not applicable. Among 29 answerable free
+queries, compatibility was 23 compatible and 6 conflict; required coverage was
+1 complete, 6 partial, 21 none, and 1 not applicable. Ordering was unavailable
+from the current grounding model in four free-query contracts.
+
+Validation added 16 harness tests; all 63 PR52 tests passed. The relevant existing
+semantic, provider-stub, evaluation, renderer/conformance, readiness, and stability
+suites passed 410 tests. Ruff passed for all PR52 Python files, and explicit
+Pyright checks on the new application modules and audit script reported zero
+errors or warnings. No PostgreSQL validation was needed because the harness has no
+database behavior. This is diagnostic engineering evidence, not a release verdict
+or authorization to modify grounding or frozen evaluation data.
+
+PR52 finalization recorded the six answerable free-query conflicts and their
+architecture-level mechanism classes in the foundation document. The complete
+backend unit suite passed 1,389 tests with 156 database-dependent tests skipped;
+Ruff and Pyright remained clean. No runtime, prompt, provider, scoring, readiness,
+renderer, semantic-conformance, or frozen V2 asset changed.
+
 ## Milestone Timeline
 
 | Milestone | Outcome | Merge references |
