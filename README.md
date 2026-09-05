@@ -194,6 +194,10 @@ python -m compileall -q app scripts
 pytest
 ```
 
+Offline semantic-ownership migration evidence (no provider or database), from
+`backend/`: `.venv/bin/python -m scripts.audit_semantic_ownership`.
+See the [PR53 experiment boundaries and findings](docs/development/semantic-ownership-migration.md).
+
 Frontend:
 
 ```bash

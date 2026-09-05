@@ -2,6 +2,46 @@
 
 This document preserves useful implementation history for archaeology. It does not authorize new work and is not a source of current project status. See [`PROJECT_PLAN.md`](../../PROJECT_PLAN.md) for the active objective and [`AGENTS.md`](../../AGENTS.md) for permanent repository rules.
 
+## PR53 — Offline Ownership Migration Evidence
+
+On 2026-09-05, Phase 0 verified remote/local main and clean HEAD at
+`4263fc5b29dea9d2ff8367cfefd1eb219cab239d` (PR52 merged). PR53 uses the existing
+validator twice on the same supplied plan, removing only question-derived
+GroundedResultIntent in an offline projection copy. No runtime, provider,
+SemanticPlan, SQL, authorization, V2, or release-policy code changed.
+
+The [migration report](../development/semantic-ownership-migration.md) records
+the authority inventory, 32 independent supplied-plan fixtures / 24 question
+strings / 39 comparisons, and future ownership. Outcomes: 20 accept/accept,
+15 reject/accept, 4 reject/reject. Changed outcomes include 7 false constraints,
+7 useful NL-derived checks, and 1 unresolved coincidental rejection. The report
+explicitly distinguishes PR54 relational proofs from PR56 interpretation duties.
+
+Validation from `backend/` used `PYTHONDONTWRITEBYTECODE=1` and disabled pytest's
+cache provider. PostgreSQL/E2E database opt-in variables were unset:
+
+- `.venv/bin/pytest -p no:cacheprovider tests/test_semantic_ownership.py -q`:
+  **28 passed**.
+- Focused PR53 + PR52 structural adapters/conformance + semantic
+  grounding/plan/composition/catalog + provider stubs/config + renderer/conformance
+  + evaluation dataset/query-set/scoring/stability selection: **488 passed**.
+- `.venv/bin/pytest -p no:cacheprovider tests/test_v1_readiness.py tests/test_v1_readiness_cli.py -q`:
+  **46 passed**.
+- `.venv/bin/pytest -p no:cacheprovider -q`: **1,417 passed, 156 skipped**.
+  This is the default non-PostgreSQL suite, not PostgreSQL or release evidence.
+- `.venv/bin/ruff check app scripts tests/test_semantic_ownership.py`: passed.
+- `.venv/bin/pyright`: zero errors/warnings; explicit Pyright over the three new
+  scripts also reported zero errors/warnings.
+- `git diff --check`, local Markdown target checks, frozen V2 digest, PR52 audit
+  reproducibility, and byte-unchanged runtime/provider/V2/release paths: passed.
+
+A fresh-context independent V3 reviewer inspected the complete implementation
+and report, independently reproduced the 28 tests and report counts, and found
+no actionable issues. No provider calls, database execution, or SQL execution
+were performed. PR54 and runtime ownership migration were not started. PR53
+requires PR review/merge handling; this is engineering evidence, not a release
+or merge verdict.
+
 ## PR52 Chunk 2 — Local Foundation Checkpoint
 
 On 2026-09-03, the foundation implementation was completed locally on diagnostic

@@ -2,7 +2,7 @@
 
 ## 1. Current Status
 
-Main at `9eb094ab14d8ae5ef05e5a0d5a52cb8ce13287af` is the latest pre-PR52 runtime candidate and diagnostic baseline. The failed Canary #1 evidence for that candidate remains diagnostic and non-qualifying. PR52 changes no runtime behavior, but merging it advances the repository SHA; a later release candidate must therefore be explicitly re-frozen before new qualifying evaluation evidence is collected. No provider runs are authorized.
+PR52 is merged on main at `4263fc5b29dea9d2ff8367cfefd1eb219cab239d`. PR53 offline semantic-ownership migration evidence is the current approved work. Production Required Intent, provider behavior, and Evaluation V2 remain unchanged. No provider runs are authorized. A later release candidate must be explicitly re-frozen before qualifying evidence is collected.
 
 Milestones 0–8 are complete. Milestone 9 implementation through PR11 is complete and merged. Evaluation V2, the fixed three-run stability canary, matching full-run readiness rules, bounded readiness projection, and deterministic release gates are implemented.
 
@@ -10,7 +10,7 @@ QueryOps AI V1 is **incomplete**, not production-ready, and not released. No qua
 
 ## 2. Active Objective
 
-PR52 is implemented locally on diagnostic baseline `9eb094ab14d8ae5ef05e5a0d5a52cb8ce13287af` and is in final review. It adds the semantic-intent foundation and offline V2 structural-conformance harness only. Do not wire the foundation or audit into production execution, evaluation scoring, or readiness, and do not tune grounding or frozen V2 assets from the findings.
+Implement and review PR53: an offline authority inventory, independent architecture fixtures, and legacy-versus-proposed structural-binding comparison using the same supplied SemanticPlan. Produce migration gaps for PR54/PR56 without production integration or changing runtime ownership.
 
 V1 release validation remains pending on an explicitly frozen, immutable runtime candidate. The diagnostic baseline above does not establish new qualifying release evidence.
 
@@ -18,10 +18,9 @@ The required order is: freeze the exact candidate SHA; create a fresh manifest-v
 
 ## 3. Approved Scope
 
-- PR52 Chunk 2 foundation only, as described in [the foundation design](docs/development/semantic-intent-foundation.md). Preserve runtime behavior, provider prompts/schemas, Evaluation V2 artifacts and digests, and readiness thresholds. No provider/API calls are authorized for this chunk.
-- PR52 Chunk 3 offline V2 structural-conformance harness: deterministically compare required and suggested grounding with frozen V2 structural contracts, print safe reports to stdout or `/tmp`, and stop after the first audit. No provider, database, SQL-execution, persistence, scoring, readiness, or runtime integration is authorized.
-- PR52 Chunk 4 finalization: document frozen audit findings, complete validation and independent review, and prepare the branch for review without beginning parser or grounding changes.
-- The release-validation steps below remain subject to their existing authorization and evidence gates; they are not part of PR52.
+- PR53 offline inventory, independent fixtures, shadow comparison, tests, and migration report. Reuse PR52 structural diagnostics; preserve runtime/provider code, SemanticPlan, V2 assets/digest, scoring, and readiness.
+- Complete V3 validation and independent review, then commit, push, and open PR53 without merging. No provider, SQL-execution, database, or persistence work is authorized.
+- The release-validation steps below remain subject to their existing authorization and evidence gates; they are not part of PR53.
 - Verify and explicitly freeze the runtime candidate source SHA and deterministic evidence.
 - Create a fresh deterministic medium-seed Evaluation V2 environment manifest for that SHA.
 - After explicit authorization, execute exactly the authorized OpenAI canary runs.
@@ -33,8 +32,8 @@ The required order is: freeze the exact candidate SHA; create a fresh manifest-v
 
 ## 4. Explicit Out of Scope
 
-- New product features, milestones, actions, providers, domain packs, or post-M9 work outside the explicitly approved PR52 foundation.
-- PR52 runtime integration, semantic normalization, parser/grounding fixes, dataset changes, and replacement of grounding heuristics before a later checkpoint approval.
+- New product features, milestones, actions, providers, domain packs, or post-M9 work outside the explicitly approved PR53 offline migration evidence.
+- Runtime structural-ownership changes, semantic normalization, parser/grounding fixes, dataset changes, and production integration. PR54+ remain future work.
 - Evaluation dataset, baseline, template, semantic-contract, prompt, threshold, canary-membership, grounding, graph-ranking, renderer, or runtime tuning in response to observed scores.
 - Provider-generated SQL, repair calls, second provider calls, fallbacks, browser-triggered evaluation, provider/key settings, run history/comparison, or arbitrary run selection.
 - Authorization, permission, scope, PostgreSQL RLS, runtime-role, schema, migration, normal seed, Action Engine, audit, notification, dashboard, or export changes unless a release-blocking defect is independently demonstrated and explicitly kept within the narrow fix allowance above.
@@ -60,11 +59,11 @@ The required order is: freeze the exact candidate SHA; create a fresh manifest-v
 - Stable canary evidence is 0 of 3.
 - No matching complete 40-case V2 OpenAI run exists.
 - Manual QA is not performed.
-- PR52 must stop after finalization before any parser, grounding, dataset, scoring, or runtime change. Billable live validation remains separately unauthorized.
+- Stop after the PR53 checkpoint. PR54 relational validation, PR55 candidate projection, PR56 ownership migration, and optional PR57 measures are future work, not implementation authority in this task.
 
 ## 7. Next Approved Work
 
-Complete review and merge handling for PR52 only. PR53, parser fixes, grounding changes, dataset changes, semantic normalization, and production integration are not approved. After PR52 merges, a later release candidate must be explicitly re-frozen before qualifying evaluation evidence is collected. No provider runs are authorized.
+Complete PR53 offline migration evidence and independent review; open the PR and do not merge automatically. No runtime ownership change or provider run is approved. See [the PR53 migration report](docs/development/semantic-ownership-migration.md) for experiment boundaries and findings.
 
 ## 8. References
 
