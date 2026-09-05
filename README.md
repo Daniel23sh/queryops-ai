@@ -183,6 +183,14 @@ The OpenAI provider returns only a structured `SemanticPlan` in one request. Que
 
 Install dependencies once before running the local quality gates.
 
+Run the standard non-destructive backend and frontend checks from the repository root:
+
+```bash
+./scripts/check
+```
+
+This uses `backend/.venv` directly. The individual commands remain available below for focused validation.
+
 Backend:
 
 ```bash

@@ -1,0 +1,23 @@
+#!/bin/sh
+set -eu
+
+root=$(CDPATH= cd "$(dirname "$0")/.." && pwd)
+
+run() {
+  printf '\n==> %s\n' "$1"
+  shift
+  "$@"
+}
+
+cd "$root/backend"
+run "Backend: Ruff" .venv/bin/ruff check app scripts
+run "Backend: Pyright" .venv/bin/pyright
+run "Backend: Python compilation" .venv/bin/python -m compileall -q app scripts
+run "Backend: pytest" .venv/bin/pytest
+
+cd "$root/frontend"
+run "Frontend: ESLint" npm run lint
+run "Frontend: application TypeScript check" npm run typecheck:app
+run "Frontend: Node/Vite TypeScript check" npm run typecheck:node
+run "Frontend: Vitest" npm test
+run "Frontend: production build" npm run build
