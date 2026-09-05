@@ -2,7 +2,7 @@
 
 ## 1. Current Status
 
-PR #46 (`M9 PR11 — Evaluation V2 & Stability Release Gate`) merged at `757187ace074d83b075ba2550f8dd6a2c50d64a1`, and its branch and final merged-`main` GitHub checks passed: Backend, PostgreSQL Security, Frontend, E2E, M8 Primary E2E, and V1 Deterministic Release Gates. That revision is the current runtime/release candidate unless explicitly superseded. Repository Git HEAD may advance through documentation-only commits without silently replacing the runtime candidate.
+Main at `9eb094ab14d8ae5ef05e5a0d5a52cb8ce13287af` is the latest pre-PR52 runtime candidate and diagnostic baseline. The failed Canary #1 evidence for that candidate remains diagnostic and non-qualifying. PR52 changes no runtime behavior, but merging it advances the repository SHA; a later release candidate must therefore be explicitly re-frozen before new qualifying evaluation evidence is collected. No provider runs are authorized.
 
 Milestones 0–8 are complete. Milestone 9 implementation through PR11 is complete and merged. Evaluation V2, the fixed three-run stability canary, matching full-run readiness rules, bounded readiness projection, and deterministic release gates are implemented.
 
@@ -21,7 +21,7 @@ The required order is: freeze the exact candidate SHA; create a fresh manifest-v
 - PR52 Chunk 2 foundation only, as described in [the foundation design](docs/development/semantic-intent-foundation.md). Preserve runtime behavior, provider prompts/schemas, Evaluation V2 artifacts and digests, and readiness thresholds. No provider/API calls are authorized for this chunk.
 - PR52 Chunk 3 offline V2 structural-conformance harness: deterministically compare required and suggested grounding with frozen V2 structural contracts, print safe reports to stdout or `/tmp`, and stop after the first audit. No provider, database, SQL-execution, persistence, scoring, readiness, or runtime integration is authorized.
 - PR52 Chunk 4 finalization: document frozen audit findings, complete validation and independent review, and prepare the branch for review without beginning parser or grounding changes.
-- The release-validation steps below remain subject to their existing authorization and evidence gates; they are not part of Chunk 2.
+- The release-validation steps below remain subject to their existing authorization and evidence gates; they are not part of PR52.
 - Verify and explicitly freeze the runtime candidate source SHA and deterministic evidence.
 - Create a fresh deterministic medium-seed Evaluation V2 environment manifest for that SHA.
 - After explicit authorization, execute exactly the authorized OpenAI canary runs.
@@ -56,7 +56,7 @@ The required order is: freeze the exact candidate SHA; create a fresh manifest-v
 
 ## 6. Blockers / Open Decisions
 
-- Exact OpenAI API model and maximum billable run count have not been authorized for this candidate.
+- No provider runs are authorized; an exact OpenAI API model and maximum billable run count would require separate approval for a later explicitly frozen candidate.
 - Stable canary evidence is 0 of 3.
 - No matching complete 40-case V2 OpenAI run exists.
 - Manual QA is not performed.
@@ -64,7 +64,7 @@ The required order is: freeze the exact candidate SHA; create a fresh manifest-v
 
 ## 7. Next Approved Work
 
-Complete review and merge handling for PR52 only. PR53, parser fixes, grounding changes, dataset changes, semantic normalization, and production integration are not approved. PR #46 revision `757187ace074d83b075ba2550f8dd6a2c50d64a1` remains the documented runtime candidate unless explicitly superseded; provider calls require separate exact model/run authorization.
+Complete review and merge handling for PR52 only. PR53, parser fixes, grounding changes, dataset changes, semantic normalization, and production integration are not approved. After PR52 merges, a later release candidate must be explicitly re-frozen before qualifying evaluation evidence is collected. No provider runs are authorized.
 
 ## 8. References
 
