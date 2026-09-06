@@ -17,6 +17,10 @@ from sqlalchemy import UniqueConstraint
 
 from app.db.base import Base
 from app.query_engine.domain_pack import DomainPack
+from app.query_engine.relational_semantics import (
+    population_may_multiply,
+    selected_join_order,
+)
 from app.query_engine.result_intent import (
     GroundedAggregationIntent,
     GroundedFieldIdentity,
@@ -401,8 +405,21 @@ def validate_semantic_plan(
         )
     _validate_relationship_graph(plan.entity_ids, plan.relationships, selected_relationships)
 
-    if set(plan.entity_ids) != required_entity_ids:
-        raise SemanticPlanValidationError("unused_entity")
+    join_order = selected_join_order(plan, domain_pack)
+    if join_order is None:
+        raise SemanticPlanValidationError("left_join_orientation_unsupported")
+    if plan.metric_id is not None:
+        metric = catalog.metrics_by_id[plan.metric_id]
+        if metric.aggregation.function != "count":
+            # The catalog has no target field for SUM metrics.
+            raise SemanticPlanValidationError("metric_sum_target_missing")
+        if population_may_multiply(metric.entity_id, plan, domain_pack) or any(
+            added == metric.entity_id and join_type == "left"
+            for _, join_type, added in join_order[1]
+        ):
+            # Named metrics declare an entity population. COUNT(*) cannot
+            # represent that population when duplicated or null-extended.
+            raise SemanticPlanValidationError("metric_population_unsupported")
 
     aggregation_ids = {aggregation.id for aggregation in plan.aggregations}
     if any(item.aggregation_id not in aggregation_ids for item in plan.having):
@@ -419,6 +436,17 @@ def validate_semantic_plan(
             raise SemanticPlanValidationError("group_by_incomplete")
     if plan.group_by and not plan.aggregations:
         raise SemanticPlanValidationError("group_by_without_aggregation")
+    for order in plan.order_by:
+        if order.field is None:
+            continue
+        if plan.aggregations and _field_key(order.field) not in {
+            _field_key(field) for field in plan.group_by
+        }:
+            raise SemanticPlanValidationError("order_field_not_grouped")
+        if plan.distinct and _field_key(order.field) not in {
+            _field_key(field) for field in plan.output_fields
+        }:
+            raise SemanticPlanValidationError("distinct_order_field_not_output")
     if projection.grounded_result_intent is not None:
         # Only the grounded required contract is fail-closed. The sibling
         # suggested_result_intent is deliberately not consumed by validation.
@@ -427,6 +455,23 @@ def validate_semantic_plan(
             projection.grounded_result_intent,
             domain_pack,
         )
+    for aggregation in plan.aggregations:
+        if aggregation.function == "count" and aggregation.field is None:
+            if aggregation.distinct:
+                raise SemanticPlanValidationError("count_distinct_target_missing")
+        if aggregation.function == "sum":
+            assert aggregation.field is not None
+            entity = entities_by_id[aggregation.field.entity_id]
+            column = domain_pack.tables_by_name[entity.table].columns_by_name.get(
+                aggregation.field.column
+            )
+            if column is None or column.data_type not in {"integer", "numeric", "decimal"}:
+                raise SemanticPlanValidationError("sum_target_not_numeric")
+            if aggregation.distinct:
+                raise SemanticPlanValidationError("sum_distinct_unsupported")
+    if set(plan.entity_ids) != required_entity_ids:
+        raise SemanticPlanValidationError("unused_entity")
+
     effective_predicates = tuple(
         sorted(
             (

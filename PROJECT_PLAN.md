@@ -2,7 +2,7 @@
 
 ## 1. Current Status
 
-PR52 is merged on main at `4263fc5b29dea9d2ff8367cfefd1eb219cab239d`. PR53 offline semantic-ownership migration evidence is the current approved work. Production Required Intent, provider behavior, and Evaluation V2 remain unchanged. No provider runs are authorized. A later release candidate must be explicitly re-frozen before qualifying evidence is collected.
+PR52, PR53 offline migration evidence, and PR54 repository validation command are merged. PR55 relational semantic validation is current approved work, based on main `6af16a4eb002b5b1b56619d6fe4b477d799c87bc`. Production NL ownership and Evaluation V2 remain unchanged. No provider runs are authorized. A later release candidate must be explicitly re-frozen before qualifying evidence is collected.
 
 Milestones 0–8 are complete. Milestone 9 implementation through PR11 is complete and merged. Evaluation V2, the fixed three-run stability canary, matching full-run readiness rules, bounded readiness projection, and deterministic release gates are implemented.
 
@@ -10,7 +10,7 @@ QueryOps AI V1 is **incomplete**, not production-ready, and not released. No qua
 
 ## 2. Active Objective
 
-Implement and review PR53: an offline authority inventory, independent architecture fixtures, and legacy-versus-proposed structural-binding comparison using the same supplied SemanticPlan. Produce migration gaps for PR54/PR56 without production integration or changing runtime ownership.
+Implement and review PR55: relational proofs based only on the declared SemanticPlan, catalog/schema facts, and selected graph. Preserve grounding ownership, provider contracts, and PR53 frozen evidence; defer unprovable business grain and population requirements.
 
 V1 release validation remains pending on an explicitly frozen, immutable runtime candidate. The diagnostic baseline above does not establish new qualifying release evidence.
 
@@ -18,9 +18,9 @@ The required order is: freeze the exact candidate SHA; create a fresh manifest-v
 
 ## 3. Approved Scope
 
-- PR53 offline inventory, independent fixtures, shadow comparison, tests, and migration report. Reuse PR52 structural diagnostics; preserve runtime/provider code, SemanticPlan, V2 assets/digest, scoring, and readiness.
-- Complete V3 validation and independent review, then commit, push, and open PR53 without merging. No provider, SQL-execution, database, or persistence work is authorized.
-- The release-validation steps below remain subject to their existing authorization and evidence gates; they are not part of PR53.
+- PR55 aggregate type/renderability checks, selected-graph multiplicity and null-sensitive proofs, focused relational tests, and explicit deferred limitations. Preserve provider-facing SemanticPlan, grounding, graph selection, V2 assets/digest, scoring, and readiness.
+- Complete V3 validation, including explicitly disposable PostgreSQL tests and independent review; commit, push, and open PR55 without merging. No provider runs are authorized.
+- The release-validation steps below remain subject to their existing authorization and evidence gates; they are not part of PR55.
 - Verify and explicitly freeze the runtime candidate source SHA and deterministic evidence.
 - Create a fresh deterministic medium-seed Evaluation V2 environment manifest for that SHA.
 - After explicit authorization, execute exactly the authorized OpenAI canary runs.
@@ -32,8 +32,8 @@ The required order is: freeze the exact candidate SHA; create a fresh manifest-v
 
 ## 4. Explicit Out of Scope
 
-- New product features, milestones, actions, providers, domain packs, or post-M9 work outside the explicitly approved PR53 offline migration evidence.
-- Runtime structural-ownership changes, semantic normalization, parser/grounding fixes, dataset changes, and production integration. PR54+ remain future work.
+- New product features, milestones, actions, providers, domain packs, or post-M9 work outside the explicitly approved PR55 relational validation.
+- Runtime structural-ownership changes, parser/grounding fixes, and dataset changes. PR56 candidate/path completeness and PR57 ownership migration remain future work; PR58 minimal measures/grains is optional.
 - Evaluation dataset, baseline, template, semantic-contract, prompt, threshold, canary-membership, grounding, graph-ranking, renderer, or runtime tuning in response to observed scores.
 - Provider-generated SQL, repair calls, second provider calls, fallbacks, browser-triggered evaluation, provider/key settings, run history/comparison, or arbitrary run selection.
 - Authorization, permission, scope, PostgreSQL RLS, runtime-role, schema, migration, normal seed, Action Engine, audit, notification, dashboard, or export changes unless a release-blocking defect is independently demonstrated and explicitly kept within the narrow fix allowance above.
@@ -59,11 +59,11 @@ The required order is: freeze the exact candidate SHA; create a fresh manifest-v
 - Stable canary evidence is 0 of 3.
 - No matching complete 40-case V2 OpenAI run exists.
 - Manual QA is not performed.
-- Stop after the PR53 checkpoint. PR54 relational validation, PR55 candidate projection, PR56 ownership migration, and optional PR57 measures are future work, not implementation authority in this task.
+- Stop after the PR55 checkpoint. PR56 candidate/path completeness, PR57 ownership migration, and optional PR58 measures/grains are future work.
 
 ## 7. Next Approved Work
 
-Complete PR53 offline migration evidence and independent review; open the PR and do not merge automatically. No runtime ownership change or provider run is approved. See [the PR53 migration report](docs/development/semantic-ownership-migration.md) for experiment boundaries and findings.
+Complete PR55 relational validation and independent review; open the PR and do not merge automatically. No runtime ownership change or provider run is approved. See [PR55 relational guarantees](docs/development/relational-semantic-validation.md) and [the frozen PR53 migration report](docs/development/semantic-ownership-migration.md). PR53's historical future-PR numbers are superseded by the sequence above.
 
 ## 8. References
 
