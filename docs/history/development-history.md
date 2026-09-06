@@ -2,6 +2,42 @@
 
 This document preserves useful implementation history for archaeology. It does not authorize new work and is not a source of current project status. See [`PROJECT_PLAN.md`](../../PROJECT_PLAN.md) for the active objective and [`AGENTS.md`](../../AGENTS.md) for permanent repository rules.
 
+## PR55 — Relational Validation Checkpoint
+
+On 2026-09-06, Phase 0 verified clean HEAD and main ancestry at
+`6af16a4eb002b5b1b56619d6fe4b477d799c87bc` (PR53 and PR54 merged).
+The [relational guarantees and limitations](../development/relational-semantic-validation.md)
+record aggregate types, renderer compatibility, selected-tree metric multiplicity,
+and null-sensitive metric conformance. Ad-hoc business grain remains undeclared;
+English interpretation remains a future PR57 responsibility.
+
+Validation on the PR55 implementation:
+
+- `./scripts/check`: passed; Ruff and configured Pyright clean, Python compilation
+  successful, backend **1,443 passed / 163 environment-gated skips**, frontend
+  **280 passed**, lint/type checks/build passed. Vite reported its existing
+  non-blocking chunk-size warning.
+- Focused plan/composition/catalog/renderer/conformance, PR52/PR53,
+  grounding/provider-stub, V2 dataset/scoring/readiness selection:
+  **508 passed / 7 PostgreSQL skips**.
+- New relational tests with the disposable database: **33 passed**.
+- New relational plus query-engine/query-API, SQL-executor/security, query-runtime
+  role and RLS PostgreSQL selection: **96 passed, zero skips/errors/failures**,
+  verified from JUnit XML. A fresh disposable PostgreSQL 16 container on local
+  port 55435 was necessary: the shared cluster's pre-existing action runtime role
+  correctly blocked its migration guard. Existing roles were not modified to
+  bypass that guard.
+- `git diff --check`, changed-document link checks, frozen PR52/PR53 audit
+  reproduction, and V2 integrity passed. V2 digest remains
+  `a2ce20e766ee816a5fef357d8a46ef987ed3ba614f3b273f593bc63ed317e6b0`.
+- AST comparison confirmed unchanged SemanticPlan/observation definitions and
+  legacy Required Intent/FK-PK enforcement. Provider, grounding, domain catalog,
+  evaluation assets/scoring/readiness and PR53 fixture paths have no diff.
+
+The fresh-context V3 reviewer found no actionable issues and independently ran
+the new non-PostgreSQL cases. No provider calls occurred. This is engineering
+validation evidence, not release qualification or authorization to start PR56.
+
 ## PR53 — Offline Ownership Migration Evidence
 
 On 2026-09-05, Phase 0 verified remote/local main and clean HEAD at

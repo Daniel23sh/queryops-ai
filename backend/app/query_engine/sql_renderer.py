@@ -5,6 +5,7 @@ from math import isfinite
 from typing import Any
 
 from app.query_engine.domain_pack import DomainPack
+from app.query_engine.relational_semantics import selected_join_order
 from app.query_engine.semantic_catalog import SemanticPredicateOperator
 from app.query_engine.semantic_plan import (
     EntitySemanticPredicate,
@@ -112,45 +113,19 @@ def _render_join_tree(
             raise SemanticSQLRenderError("relationship_unavailable")
         selected.append((relationship, intent.join_type))
 
-    for root_entity_id in sorted(plan.entity_ids):
-        available = {root_entity_id}
-        pending = sorted(selected, key=lambda item: item[0].id)
-        rendered: list[str] = []
-        while pending:
-            match_index: int | None = None
-            new_entity_id: str | None = None
-            for index, (relationship, join_type) in enumerate(pending):
-                from_available = relationship.from_entity in available
-                to_available = relationship.to_entity in available
-                if join_type == "left":
-                    if from_available and not to_available:
-                        match_index = index
-                        new_entity_id = relationship.to_entity
-                        break
-                elif join_type == "inner" and from_available != to_available:
-                    match_index = index
-                    new_entity_id = (
-                        relationship.to_entity
-                        if from_available
-                        else relationship.from_entity
-                    )
-                    break
-                elif join_type not in {"inner", "left"}:
-                    raise SemanticSQLRenderError("join_type_unsupported")
-            if match_index is None or new_entity_id is None:
-                break
-            relationship, join_type = pending.pop(match_index)
-            join_keyword = "LEFT JOIN" if join_type == "left" else "INNER JOIN"
-            rendered.append(
-                f"{join_keyword} {entity_tables[new_entity_id]} ON "
-                f"{entity_tables[relationship.from_entity]}.{relationship.from_column} = "
-                f"{entity_tables[relationship.to_entity]}.{relationship.to_column}"
-            )
-            available.add(new_entity_id)
-        if not pending and available == set(plan.entity_ids):
-            return root_entity_id, tuple(rendered)
-
-    raise SemanticSQLRenderError("left_join_orientation_unsupported")
+    if any(join_type not in {"inner", "left"} for _, join_type in selected):
+        raise SemanticSQLRenderError("join_type_unsupported")
+    order = selected_join_order(plan, domain_pack)
+    if order is None:
+        raise SemanticSQLRenderError("left_join_orientation_unsupported")
+    root_entity_id, joins = order
+    return root_entity_id, tuple(
+        f"{'LEFT JOIN' if join_type == 'left' else 'INNER JOIN'} "
+        f"{entity_tables[added]} ON "
+        f"{entity_tables[relationship.from_entity]}.{relationship.from_column} = "
+        f"{entity_tables[relationship.to_entity]}.{relationship.to_column}"
+        for relationship, join_type, added in joins
+    )
 
 
 def _render_select_items(

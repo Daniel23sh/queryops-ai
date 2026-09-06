@@ -10,6 +10,7 @@ from sqlglot.errors import ParseError
 from sqlglot.expressions.core import Expression
 
 from app.query_engine.domain_pack import DomainPack
+from app.query_engine.relational_semantics import field_is_non_null
 from app.query_engine.semantic_plan import (
     EntitySemanticPredicate,
     SemanticAggregationIntent,
@@ -881,11 +882,11 @@ def _check_outputs(
         if aggregate.function != metric.aggregation.function or aggregate.distinct:
             raise _ConformanceFailure(SemanticConformanceReason.AGGREGATION_MISMATCH)
         if aggregate.field is not None:
-            entity = domain_pack.semantic_catalog.entities_by_id[metric.entity_id]
-            column = domain_pack.tables_by_name[entity.table].columns_by_name.get(
-                aggregate.field.column
-            )
-            if aggregate.field.entity_id != metric.entity_id or column is None or column.nullable:
+            if aggregate.field.entity_id != metric.entity_id or not field_is_non_null(
+                SemanticFieldRef(
+                    entity_id=aggregate.field.entity_id, column=aggregate.field.column,
+                ), plan.plan, domain_pack,
+            ):
                 raise _ConformanceFailure(
                     SemanticConformanceReason.AGGREGATION_MISMATCH
                 )
