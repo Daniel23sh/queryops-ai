@@ -87,7 +87,7 @@ INVENTORY = (
     Mechanism("rule_mandate", Authority.NL_INTERPRETATION, Disposition.GUIDANCE_ONLY,
               "semantic_catalog.SemanticCatalogProjection.mandatory_evidence", "Lexical rule mandates retained."),
     Mechanism("path_pruning", Authority.NL_INTERPRETATION, Disposition.GUIDANCE_ONLY,
-              "semantic_grounding._select_minimal_relationship_graph", "Deterministic heuristic restricts candidate paths; retained for PR55 evidence."),
+              "semantic_grounding._select_relationship_candidates", "Authorized anchor-relevant components retain alternate paths; anchors still bound relevance."),
     Mechanism("authorization", Authority.POLICY_AUTHORIZATION_FACT, Disposition.KEEP_BINDING,
               "semantic_plan.validate_semantic_plan", "Authorized fields and resolved-scope literal restrictions preserved; no actor authorization or RLS exercised offline."),
     Mechanism("catalog_meaning", Authority.CATALOG_BUSINESS_FACT, Disposition.KEEP_BINDING,

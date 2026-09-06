@@ -63,11 +63,15 @@ DISTINCT is representable but currently unset; suggested detail defaults false.
 Ordering and limit are not GroundedResultIntent fields. Exact metric matching
 suppresses structural grounding and instead imposes the scalar metric contract.
 
-Lexical entity, concept, metric, rule mandates and heuristic path pruning are
-separate retained influences. Selected catalog definitions, authorized fields,
-scope restrictions, graph legality, Boolean composition, type/reference checks,
-and existing guarded FK/PK normalization are not removed. Runtime roles, RLS,
-SQL safety and conformance are outside this experiment and untouched.
+Lexical entity, concept, metric, and rule mandates remain separate retained
+influences. PR56 replaces single-path pruning with complete authorized
+relationship components containing at least two semantic anchors. Connector
+entities and relationships are candidates only: they do not add mandatory
+evidence or import concepts, metrics, or examples. Selected catalog definitions,
+authorized fields, scope restrictions, graph legality, Boolean composition,
+type/reference checks, and existing guarded FK/PK normalization are not removed.
+Runtime roles, RLS, SQL safety and conformance are outside this experiment and
+untouched.
 
 ## Independent evidence
 
@@ -115,14 +119,14 @@ first-rejection output is not an exhaustive validator trace.
 
 | Evidence | Finding | Future responsibility |
 | --- | --- | --- |
-| `license_count_value` paraphrases | Exact single-count grounding rejects count plus SUM | PR56 interprets full request; PR54 validates numeric types/shared population |
-| `distinct_os`, `subject_*` | COUNT(*) binding rejects distinct-value/entity counts | PR56 chooses subject; PR54 checks declared count/null/multiplicity semantics |
-| `two_dimensions` | Group/output inference conflicts with complete requested dimensions | PR56 interprets dimensions; PR54 checks legal declared grain |
-| `temporal_only` | One age paraphrase invents HAVING >14; another does not | PR56 attaches language correctly; PR54 checks declared predicate phase/types |
-| `ticket_groups_missing`, `device_output_missing` | Legacy catches omitted requested grouping/outputs | PR56 request completeness; no relational proof recovers omitted English |
-| `ticket_total_as_detail` | Legacy catches detail rows replacing a requested total | PR56 chooses structure; PR54 checks declared shape |
-| `aggregate_threshold_missing` | Legacy catches omitted HAVING | PR56 chooses threshold; PR54 checks references/types, not intended value |
-| `user_grain_as_joined_rows` | Legacy catches joined-row count replacing distinct users | PR54 needs declared user grain and fanout proof; PR56 still selects the subject |
+| `license_count_value` paraphrases | Exact single-count grounding rejects count plus SUM | PR57 interprets full request; PR55 validates numeric types/shared population |
+| `distinct_os`, `subject_*` | COUNT(*) binding rejects distinct-value/entity counts | PR57 chooses subject; PR55 checks declared count/null/multiplicity semantics |
+| `two_dimensions` | Group/output inference conflicts with complete requested dimensions | PR57 interprets dimensions; PR55 checks legal declared grain |
+| `temporal_only` | One age paraphrase invents HAVING >14; another does not | PR57 attaches language correctly; PR55 checks declared predicate phase/types |
+| `ticket_groups_missing`, `device_output_missing` | Legacy catches omitted requested grouping/outputs | PR57 request completeness; no relational proof recovers omitted English |
+| `ticket_total_as_detail` | Legacy catches detail rows replacing a requested total | PR57 chooses structure; PR55 checks declared shape |
+| `aggregate_threshold_missing` | Legacy catches omitted HAVING | PR57 chooses threshold; PR55 checks references/types, not intended value |
+| `user_grain_as_joined_rows` | Legacy catches joined-row count replacing distinct users | PR55 proves declared user grain/fanout where facts suffice; PR57 still selects the subject |
 
 The user-grain counterexample is two same-OS devices for one user: two joined rows
 versus one distinct user. This is a relational reasoning example, not a claim that
@@ -136,23 +140,28 @@ group shape, resolved-scope literal, and retained lexical metric mandate.
 
 ## Migration checkpoint
 
-PR54 should prove renderability, aggregate input types, declared grain/fanout,
-compatible aggregation populations, and null-sensitive equivalence. The fixtures
-directly illustrate grain and multiple-aggregate concerns; they do not establish
-a new defect in every one of those categories. SQL compilation and PostgreSQL
-tests belong to the separately approved implementation phase for those proofs.
+PR55 added renderability, aggregate input type, selected-graph multiplicity,
+population, and null-sensitive validation where catalog facts can prove them.
+The fixtures directly illustrate grain and multiple-aggregate concerns; they do
+not establish a new defect in every one of those categories.
 
-PR54 cannot replace every useful lost check. Requested outputs, group completeness,
-threshold attachment/value, and ordering are PR56 interpretation responsibilities.
+PR55 cannot replace every useful lost check. Requested outputs, group completeness,
+threshold attachment/value, and ordering are PR57 interpretation responsibilities.
 Pretending these are relational facts would recreate the competing parser. Keep
-the lost-check evidence visible through PR56; deterministic acceptance alone does
+the lost-check evidence visible through PR57; deterministic acceptance alone does
 not authorize switching runtime ownership or establish model accuracy.
 
-PR55 owns candidate/path completeness. PR56 must align grounding, prompt hierarchy
-and enforcement atomically. No currently generated NL-derived structural
-requirement has an unconditional reason to stay binding. Independently trusted
-structured constraints, if introduced later, would need their own provenance and
-must not be passed through this question-derived ablation.
+PR56 owns candidate/path completeness. It retains every authorized relationship
+in an anchor-relevant connected component rather than choosing a shortest or
+preferred route. Examples are still selected only from direct semantic or lexical
+evidence, optional context trims before relationship candidates, and any complete
+candidate set that cannot fit the 16KB projection fails closed.
+
+PR57 must align grounding, prompt hierarchy and enforcement atomically. No
+currently generated NL-derived structural requirement has an unconditional
+reason to stay binding. Independently trusted structured constraints, if
+introduced later, would need their own provenance and must not be passed through
+this question-derived ablation.
 
 Frozen V2 digest remains
 `a2ce20e766ee816a5fef357d8a46ef987ed3ba614f3b273f593bc63ed317e6b0`.
