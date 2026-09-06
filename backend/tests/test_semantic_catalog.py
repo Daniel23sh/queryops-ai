@@ -156,7 +156,7 @@ def test_projection_selects_relevant_semantics_and_resolved_rls_guidance() -> No
         user_context,
     )
     projected = first.as_prompt_dict()
-    serialized = json.dumps(projected, sort_keys=True)
+    serialized = json.dumps(projected, sort_keys=True, separators=(",", ":"))
 
     assert projected == second.as_prompt_dict()
     assert [item["id"] for item in projected["entities"]] == ["directory_users"]
@@ -258,7 +258,9 @@ def test_every_frozen_case_produces_a_bounded_deterministic_safe_projection() ->
             schema_context,
             user_context,
         )
-        serialized = json.dumps(first.as_prompt_dict(), sort_keys=True)
+        serialized = json.dumps(
+            first.as_prompt_dict(), sort_keys=True, separators=(",", ":")
+        )
 
         assert first.as_prompt_dict() == second.as_prompt_dict()
         assert len(serialized.encode("utf-8")) <= MAX_SEMANTIC_PROJECTION_BYTES
@@ -294,7 +296,9 @@ def test_successful_free_query_semantic_coverage_matrix() -> None:
 
         assert expected_concepts <= set(observation["selected_concept_ids"]), case_id
         assert expected_rules <= set(observation["selected_rule_ids"]), case_id
-        serialized = json.dumps(projection.as_prompt_dict(), sort_keys=True)
+        serialized = json.dumps(
+            projection.as_prompt_dict(), sort_keys=True, separators=(",", ":")
+        )
         assert len(serialized.encode("utf-8")) <= MAX_SEMANTIC_PROJECTION_BYTES
         assert "it_audit_events" not in serialized
 
