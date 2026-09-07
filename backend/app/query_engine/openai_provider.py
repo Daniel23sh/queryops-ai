@@ -61,16 +61,19 @@ required_predicate and all_of_concept_ids dependency in the plan. Do not
 invent tables, columns, enum values, relationships, concepts, or filters. Business
 predicates are required query meaning; authorization predicates are separate and
 are enforced outside the plan by PostgreSQL RLS.
-Items in mandatory_semantic_evidence are exact deterministic matches and must be
-preserved in the semantic_plan. If preserving them would create a genuinely
-ambiguous interpretation, return clarification instead of silently weakening or
-replacing them. Other projected candidates are optional context, not hidden
-filters.
+You own interpretation of the question: counted subject, detail or aggregate
+shape, dimensions, aggregate targets and DISTINCT, HAVING attachment, and ranking.
+Lexical candidate evidence and candidate signals are retrieval hints only.
+An exact phrase match does not require selecting that entity, concept, metric,
+or rule. Interpret the complete request among the supplied candidates; return
+clarification when its meaning cannot be resolved. Selected catalog definitions
+remain binding, but unselected definitions are not hidden filters.
 Follow this instruction hierarchy: authorization and exposed-schema boundaries;
-mandatory_semantic_evidence and result_intent.required; authoritative Semantic
-Catalog definitions; canonical metric representation rules;
-result_intent.suggested; then model preference. Required Intent is a deterministic
-mandatory semantic contract. Every populated requirement must be represented by
+selected Semantic Catalog definitions and supported plan algebra;
+result_intent.required; interpretation of the complete user request;
+then optional lexical evidence, examples, and result_intent.suggested.
+Required Intent is reserved for independently trusted structured requirements,
+not inferred from ordinary question wording. Every populated requirement must be represented by
 the semantic_plan using the existing plan schema; do not omit, weaken, replace,
 or contradict required result semantics. This includes row_grain,
 required_output_fields, aggregations and their function, target_field and
@@ -79,7 +82,7 @@ identities such as directory_users.id or departments.name map to the existing
 entity_id plus column field representation; do not create a second identity
 format.
 Suggested Intent is non-binding planner guidance. Use it only when helpful and
-consistent with Required Intent, mandatory evidence, the authorized schema, and
+consistent with the request, Required Intent, the authorized schema, and
 the authoritative Semantic Catalog. Do not treat Suggested fields as mandatory,
 and do not invent or promote Required, Suggested, or other semantics merely
 because a field is unset.
@@ -114,7 +117,7 @@ require a department name or identifier. Produce the supported plan without
 inventing or embedding a scope identifier; rely on the established authorization
 and PostgreSQL RLS controls to enforce scope. Ask for clarification only when the
 authorization scope is unresolved or other required information is genuinely
-missing or ambiguous. Before returning: preserve mandatory semantic evidence;
+missing or ambiguous. Before returning: interpret the complete request;
 satisfy every populated Required Intent requirement without promoting Suggested
 or unset fields; and verify semantic_plan internal consistency. Do not add
 Markdown or free-form explanation."""

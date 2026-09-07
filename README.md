@@ -43,7 +43,7 @@ The backend-rendered SQL remains untrusted and must pass every downstream contro
 ## Key Capabilities
 
 - **Natural-language and template queries:** Run free-text questions when permitted or use approved, provider-free query templates.
-- **Semantic planning:** Ground questions against a versioned IT Operations Semantic Catalog, mandatory business concepts, canonical metrics, and Required/Suggested result intent.
+- **Semantic planning:** Supply safe candidates from a versioned IT Operations Semantic Catalog; one provider interprets the question as a typed plan. Lexical/structural hints are guidance, while selected business definitions and deterministic relational/security checks remain binding.
 - **Governed execution:** Validate structured plans and read-only SQL, check SQLGlot semantic conformance, and execute only sanitized SQL through a restricted PostgreSQL runtime role.
 - **Scope-aware access:** Apply effective permissions, assigned scopes, role-aware SQL visibility, and PostgreSQL Row-Level Security (RLS).
 - **Dashboards and visualizations:** Save successful query runs as cards, arrange responsive dashboards, refresh under the current viewer's scope, and render supported table, KPI, chart, gauge, and status views.

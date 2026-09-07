@@ -366,10 +366,11 @@ def test_required_and_suggested_intent_remain_in_plan_only_request() -> None:
         }
     ]
     instructions = " ".join(call["instructions"].lower().split())
-    assert "required intent is a deterministic mandatory semantic contract" in instructions
+    assert "required intent is reserved for independently trusted structured requirements" in instructions
     assert "suggested intent is non-binding planner guidance" in instructions
     assert "do not treat suggested fields as mandatory" in instructions
-    assert "preserve mandatory semantic evidence" in instructions
+    assert "lexical candidate evidence and candidate signals are retrieval hints only" in instructions
+    assert "mandatory_semantic_evidence" not in prompt["semantic_catalog"]
     assert "never emit sql" in instructions
     assert "return a catalog-referenced semantic_plan" in instructions
     assert "itops-" not in call["input"]

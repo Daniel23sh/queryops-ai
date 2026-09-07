@@ -1,4 +1,43 @@
-# PR53 — Offline semantic ownership migration evidence
+# Semantic ownership — PR57 cutover and historical PR53 evidence
+
+## PR57 production boundary
+
+Free queries now follow: question → authorized bounded candidates → one provider
+interpretation as SemanticPlan → deterministic validation/compilation/conformance
+→ governed execution. Exact lexical matches protect useful candidate context, not
+plan obligations. Structural phrase hints populate only Suggested Intent and
+cannot veto a plan. Required Intent remains fail-closed but is reserved for a
+future independently trusted structured source; PR57 introduces none.
+
+Authorization, projected fields/candidates, selected catalog definitions and their
+dependencies, OR-collapse protection, supported algebra, PR55 relational proofs,
+unused-entity checks, rendering and SQL conformance remain binding. Only selected
+definition dependencies—not lexical matches—can justify conjunctions that would
+otherwise collapse a selected OR rule. PR56 relationship completeness and the
+16KB deterministic fail-closed projection budget are unchanged. Connector-only
+entities still import no unrelated business semantics or examples.
+
+The provider output schema, SemanticPlan, one-call architecture, runtime roles,
+V2 assets and readiness policy are unchanged. Legal-plan acceptance is not proof
+of correct English interpretation. Live evidence and manual QA remain separately
+required; no provider run is authorized. PR58 is not included.
+
+## Versioned diagnostic reruns
+
+The PR53 evidence below records the original experiment, not current production.
+Its frozen fixtures and reported results are not rewritten. Current CLI output
+is `semantic-ownership-shadow-v2`: historical hint axes and lexical checks around
+the **current** deterministic validator. This preserves the recorded fixed-fixture
+outcomes but is not an exact historical validator: OR decisions and first-rejection
+ordering may differ outside that evidence. Reproduce V1 at its historical source
+revision (for example, post-PR53/PR54 main
+`6af16a4eb002b5b1b56619d6fe4b477d799c87bc`).
+
+PR52 reruns are explicitly `queryops-v2-structural-conformance-v2-legacy-hints`.
+They compare the retained pre-cutover hint axes, not production Required Intent.
+The small [offline adapter](../../backend/app/diagnostics/legacy_semantic_grounding.py)
+shares hint calculation; it neither copies the parser nor installs a runtime
+legacy mode. StructuralResultIntent and its comparisons remain diagnostic-only.
 
 ## Decision and experiment boundary
 
@@ -7,7 +46,7 @@ PR52 is merged. The approved architecture remains one provider call returning
 SemanticPlan, catalog-owned business definitions, deterministic compilation and
 validation, and unchanged authorization/RLS. No new executable IR is needed.
 
-PR53 is an offline diagnostic, not the PR56 architecture in production. It
+PR53 was an offline diagnostic, not the PR57 architecture in production. It
 compares the **same supplied SemanticPlan object** using the existing validator:
 
 - Legacy: the projection produced by current grounding, unchanged.
@@ -165,6 +204,6 @@ this question-derived ablation.
 
 Frozen V2 digest remains
 `a2ce20e766ee816a5fef357d8a46ef987ed3ba614f3b273f593bc63ed317e6b0`.
-The PR52 audit remains unchanged and reproducible; this report neither modifies
+The recorded PR52 evidence remains unchanged; versioned reruns above neither modify
 V2 nor uses its conflict count as a success criterion. Validation/review evidence
 is recorded in [development history](../history/development-history.md).

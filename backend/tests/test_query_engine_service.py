@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import uuid
+from dataclasses import replace
 from collections.abc import Generator, Mapping
 from typing import Any
 
@@ -706,7 +707,7 @@ def test_unsafe_request_is_persisted_safely_without_validation_or_execution(
     assert executor.seen_sql == []
 
 
-def test_mandatory_metric_cannot_be_downgraded_before_sql_validation(
+def test_lexical_metric_match_does_not_veto_provider_interpretation(
     db_session: Session,
 ) -> None:
     executor = FakeExecutor()
@@ -718,7 +719,6 @@ def test_mandatory_metric_cannot_be_downgraded_before_sql_validation(
         executor=executor,
         validator=validator,
         conformance_checker=conformance,
-        semantic_sql_renderer=_unexpected_renderer,
     )
     user = user_by_email(db_session, "demo.analyst@queryops.local")
 
@@ -729,23 +729,49 @@ def test_mandatory_metric_cannot_be_downgraded_before_sql_validation(
     )
 
     query_run = only_query_run(db_session)
-    assert result.status == "failed"
-    assert result.error_code == "provider_response_invalid"
-    assert result.clarification_required is False
-    assert query_run.query_metadata["semantic_plan_validation"] == {
-        "status": "failed",
-        "reason_code": "mandatory_metric_missing",
-        "required_intent_status": "failed",
-    }
+    assert result.status == "succeeded"
+    assert query_run.query_metadata["semantic_plan_validation"]["status"] == "passed"
     assert "aggregation_mismatch" not in query_run.query_metadata[
         "semantic_plan_validation"
     ]
-    assert validator.seen_sql == []
-    assert conformance.calls == []
-    assert executor.seen_sql == []
+    assert len(validator.seen_sql) == 1
+    assert len(conformance.calls) == 1
+    assert len(executor.seen_sql) == 1
     assert provider.calls == 1
 
 
+@pytest.fixture
+def explicit_test_requirement(monkeypatch):
+    # Exercise the reserved Required Intent error projection with an explicit
+    # test injection. This is not a production source of trusted requirements.
+    from app.query_engine import service as service_module
+
+    build = service_module.build_semantic_catalog_projection
+
+    def inject(*args, **kwargs):
+        projection = build(*args, **kwargs)
+        return replace(projection, grounded_result_intent=projection.suggested_result_intent)
+
+    monkeypatch.setattr(service_module, "build_semantic_catalog_projection", inject)
+
+
+@pytest.mark.parametrize("provider_type,question", [
+    (lambda: WrongGroundedAggregationProvider(), "How many privileged users by department?"),
+    (lambda: WrongGroundedHavingProvider(), "Show users with more than 5 failed logins in the last 30 days."),
+])
+def test_free_question_structural_hint_is_not_service_authority(db_session, provider_type, question):
+    executor = FakeExecutor()
+    validator = RecordingValidator()
+    service = QueryEngineService(provider=provider_type(), executor=executor, validator=validator)
+    result = service.run(db_session, user_by_email(db_session, "demo.analyst@queryops.local"),
+                         QueryEngineRequest(question=question))
+    # These alternatives may misinterpret English, but remain legal plans. The
+    # real compiler and conformance checker do not reinstate the phrase parser.
+    assert result.status == "succeeded"
+    assert len(validator.seen_sql) == len(executor.seen_sql) == 1
+
+
+@pytest.mark.usefixtures("explicit_test_requirement")
 def test_grounded_aggregation_mismatch_persists_only_safe_identities(
     db_session: Session,
 ) -> None:
@@ -841,6 +867,7 @@ def test_grounded_aggregation_mismatch_persists_only_safe_identities(
         ),
     ],
 )
+@pytest.mark.usefixtures("explicit_test_requirement")
 def test_result_intent_field_mismatch_persists_only_relevant_canonical_fields(
     db_session: Session,
     plan: SemanticPlan,
@@ -883,6 +910,7 @@ def test_result_intent_field_observation_bound_is_fail_closed() -> None:
     )
 
 
+@pytest.mark.usefixtures("explicit_test_requirement")
 def test_grounded_having_mismatch_persists_only_structural_shape(
     db_session: Session,
 ) -> None:

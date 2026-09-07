@@ -49,6 +49,7 @@ def components(axis):
 
 
 def test_report_is_deterministic_and_json_safe(report):
+    assert report.report_version == "queryops-v2-structural-conformance-v2-legacy-hints"
     first = json.dumps(report.as_safe_dict(), sort_keys=True, separators=(",", ":"))
     second = json.dumps(
         build_v2_structural_conformance_report().as_safe_dict(),

@@ -245,7 +245,6 @@ def validate_semantic_plan(
     projected_metric_ids = {item["id"] for item in projection.metrics}
     projected_rule_ids = {item["id"] for item in projection.composition_rules}
     projected_relationship_ids = {item["id"] for item in projection.relationships}
-    mandatory = projection.mandatory_evidence()
 
     _require_subset(plan.entity_ids, projected_entity_ids, "entity_not_candidate")
     _require_subset(plan.concept_ids, projected_concept_ids, "concept_not_candidate")
@@ -261,15 +260,6 @@ def validate_semantic_plan(
     )
     if plan.metric_id is not None and plan.metric_id not in projected_metric_ids:
         raise SemanticPlanValidationError("metric_not_candidate")
-    if not set(mandatory["entity_ids"]) <= set(plan.entity_ids):
-        raise SemanticPlanValidationError("mandatory_entity_missing")
-    if not set(mandatory["rule_ids"]) <= set(plan.composition_rule_ids):
-        raise SemanticPlanValidationError("mandatory_rule_missing")
-    mandatory_metric_ids = set(mandatory["metric_ids"])
-    if len(mandatory_metric_ids) > 1:
-        raise SemanticPlanValidationError("mandatory_metric_ambiguous")
-    if mandatory_metric_ids and plan.metric_id not in mandatory_metric_ids:
-        raise SemanticPlanValidationError("mandatory_metric_missing")
 
     conjunctive_concept_ids = set(plan.concept_ids)
     metric_aggregation_function: str | None = None
@@ -292,15 +282,18 @@ def validate_semantic_plan(
             raise SemanticPlanValidationError("metric_shape_unsupported")
 
     rules_by_id = {rule.id: rule for rule in catalog.composition_rules}
-    # Only unconditional deterministic requirements can justify selecting every
-    # OR alternative as a top-level conjunction. OR branches are not themselves
-    # mandatory conjuncts, even though they appear in the candidate projection.
-    mandatory_conjuncts = set(mandatory["concept_ids"])
-    for metric_id in mandatory_metric_ids:
-        mandatory_conjuncts.update(catalog.metrics_by_id[metric_id].required_concept_ids)
-    for rule_id in mandatory["rule_ids"]:
-        mandatory_conjuncts.update(rules_by_id[rule_id].all_of_concept_ids)
-    mandatory_conjuncts = set(expand_semantic_concept_ids(catalog, mandatory_conjuncts))
+    # Text matches cannot justify collapsing a selected OR rule into AND.
+    # Unconditional dependencies of independently selected definitions can.
+    definition_conjuncts = {
+        dependency
+        for concept_id in plan.concept_ids
+        for dependency in catalog.concepts_by_id[concept_id].all_of_concept_ids
+    }
+    if plan.metric_id is not None:
+        definition_conjuncts.update(catalog.metrics_by_id[plan.metric_id].required_concept_ids)
+    for rule_id in plan.composition_rule_ids:
+        definition_conjuncts.update(rules_by_id[rule_id].all_of_concept_ids)
+    definition_conjuncts = set(expand_semantic_concept_ids(catalog, definition_conjuncts))
     explicit_concept_ids = set(plan.concept_ids)
     rule_all_of: set[str] = set()
     rule_or_groups: list[tuple[str, ...]] = []
@@ -309,7 +302,7 @@ def validate_semantic_plan(
         rule_all_of.update(rule.all_of_concept_ids)
         if rule.or_concept_ids:
             branches = set(rule.or_concept_ids)
-            if branches <= explicit_concept_ids and not branches <= mandatory_conjuncts:
+            if branches <= explicit_concept_ids and not branches <= definition_conjuncts:
                 raise SemanticPlanValidationError("composition_rule_overconstraint")
             rule_or_groups.append(tuple(sorted(rule.or_concept_ids)))
         conjunctive_concept_ids.update(rule.all_of_concept_ids)
@@ -341,8 +334,6 @@ def validate_semantic_plan(
         projected_concept_ids,
         "concept_dependency_not_candidate",
     )
-    if not set(mandatory["concept_ids"]) <= set(effective_concept_ids):
-        raise SemanticPlanValidationError("mandatory_concept_missing")
 
     entities_by_id = catalog.entities_by_id
     required_entity_ids = {

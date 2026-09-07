@@ -202,7 +202,8 @@ class SemanticCatalogProjection:
     examples: tuple[dict[str, Any], ...]
     candidate_signals: tuple[dict[str, str], ...]
     authoritative_business_terms: tuple[str, ...]
-    # The established grounded intent remains the fail-closed required contract.
+    # Reserved for independently trusted structured requirements. Free-question
+    # grounding never populates this slot; supplied requirements still fail closed.
     grounded_result_intent: GroundedResultIntent | None = None
     # Suggested intent is deterministic planner guidance and is never validated
     # as a requirement.
@@ -222,7 +223,7 @@ class SemanticCatalogProjection:
             ],
             "examples": [dict(example) for example in self.examples],
             "candidate_signals": [dict(signal) for signal in self.candidate_signals],
-            "mandatory_semantic_evidence": self.mandatory_evidence(),
+            "lexical_candidate_evidence": self.lexical_evidence(),
             "result_intent": {
                 "required": (
                     self.grounded_result_intent.as_safe_dict()
@@ -237,7 +238,8 @@ class SemanticCatalogProjection:
             },
         }
 
-    def mandatory_evidence(self) -> dict[str, list[str]]:
+    def lexical_evidence(self) -> dict[str, list[str]]:
+        """High-priority retrieval matches, never obligations on a plan."""
         required = {
             "entity_ids": [],
             "concept_ids": [],
@@ -256,6 +258,10 @@ class SemanticCatalogProjection:
             if key is not None and signal.get("tier") == "exact_reference":
                 required[key].append(signal["id"])
         return {key: sorted(set(values)) for key, values in required.items()}
+
+    def mandatory_evidence(self) -> dict[str, list[str]]:
+        # Preserve safe historical observation shape, not lexical authority.
+        return {key: [] for key in ("entity_ids", "concept_ids", "metric_ids", "rule_ids")}
 
     def as_observation(self) -> dict[str, Any]:
         return {

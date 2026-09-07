@@ -1,4 +1,4 @@
-"""Deterministic offline audit of V2 contracts against current grounding.
+"""Deterministic offline audit of V2 contracts against pre-PR57 hint axes.
 
 This module does not validate plans, invoke providers, execute SQL, persist
 evaluation data, score cases, or participate in readiness decisions.
@@ -25,7 +25,9 @@ from app.evaluation.structural_intent_adapter import (
 )
 from app.query_engine.domain_pack import DomainPack
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
-from app.query_engine.semantic_catalog import build_semantic_catalog_projection
+from app.diagnostics.legacy_semantic_grounding import (
+    build_legacy_projection as build_semantic_catalog_projection,
+)
 from app.query_engine.structural_intent import StructuralResultIntent
 from app.query_engine.structural_intent_adapters import (
     StructuralMappingError,
@@ -38,7 +40,7 @@ from app.query_engine.structural_intent_comparison import (
 )
 
 
-REPORT_VERSION = "queryops-v2-structural-conformance-v1"
+REPORT_VERSION = "queryops-v2-structural-conformance-v2-legacy-hints"
 CURRENT_GROUNDING_UNAVAILABLE_COMPONENTS = frozenset({"ordering"})
 ComponentName = Literal[
     "row_grain",

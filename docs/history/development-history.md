@@ -2,6 +2,42 @@
 
 This document preserves useful implementation history for archaeology. It does not authorize new work and is not a source of current project status. See [`PROJECT_PLAN.md`](../../PROJECT_PLAN.md) for the active objective and [`AGENTS.md`](../../AGENTS.md) for permanent repository rules.
 
+## PR57 — Planner Ownership Implementation Checkpoint
+
+Implemented against main `be218b43b8c7120a043d3113c7562ef5e9293168`.
+Free-question lexical matches now retain candidate context, not plan obligations;
+structural hints are Suggested only. Selected catalog definitions and deterministic
+proofs remain binding. The [ownership document](../development/semantic-ownership-migration.md)
+records the cutover and explicitly versioned diagnostic compatibility.
+
+Offline validation: `./scripts/check` passed with **1,493 backend tests passed /
+163 environment-gated skips**, **280 frontend tests passed**, Ruff/Pyright,
+compilation, lint, both TypeScript checks and build clean. Vite's existing
+non-blocking chunk-size warning remains. PR53 v2 reruns retain 20 accept/accept,
+15 reject/accept and 4 reject/reject cases; PR52 legacy-hint reruns retain six
+free-query conflicts. V2 digest remains
+`a2ce20e766ee816a5fef357d8a46ef987ed3ba614f3b273f593bc63ed317e6b0`.
+Thirty-six independent IT Operations fixture projections fit below 16KB (maximum
+13,894 bytes); synthetic complete-candidate overflow remains fail-closed.
+
+Checkpoint review found diagnostic packaging and ambiguous historical-reproduction
+claims; the adapter now ships under `app.diagnostics` and reruns explicitly use
+current proofs with historical hint axes. Independent regression and fresh-context
+final V3 reviews found no unresolved actionable findings. No database-dependent
+contract changed, no live provider/evaluation run occurred, and this is not
+release qualification or PR58 authorization.
+
+## PR56 — Candidate/path Completeness (merged)
+
+PR56 merged as `be218b43b8c7120a043d3113c7562ef5e9293168`. Grounding now
+retains the complete authorized relationship graph for connected components
+containing at least two semantic anchors, including direct/indirect, equal-length
+and optional alternatives. It no longer selects a preferred connector tree.
+Connector entities remain candidates only and do not import unrelated concepts,
+metrics or examples. Optional context trims first; complete candidates that cannot
+fit the unchanged 16KB budget fail closed. The provider still selects a tree and
+PR55 validates it. Production English ownership was deliberately left for PR57.
+
 ## PR55 — Relational Validation Checkpoint
 
 On 2026-09-06, Phase 0 verified clean HEAD and main ancestry at

@@ -32,6 +32,7 @@ def case(report, name, paraphrase=0):
 
 
 def test_inventory_is_deterministic_and_explicit():
+    assert build_report()["version"] == "semantic-ownership-shadow-v2"
     first = json.dumps(shadow.authority_inventory(), sort_keys=True)
     assert first == json.dumps(shadow.authority_inventory(), sort_keys=True)
     items = {item.id: item for item in shadow.INVENTORY}

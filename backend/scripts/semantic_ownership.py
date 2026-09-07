@@ -1,6 +1,6 @@
 """PR53 offline experiment, not an alternate production validator.
 
-Only current question-derived GroundedResultIntent is ablated. Candidate pruning
+Only historical question-derived GroundedResultIntent is ablated. Candidate pruning
 and lexical business mandates deliberately remain, so acceptance here is neither
 the final architecture nor permission to render or execute a query.
 """
@@ -14,10 +14,12 @@ from typing import Any
 
 from app.query_engine.domain_pack import DomainPack
 from app.query_engine.semantic_catalog import SemanticCatalogProjection
-from app.query_engine.semantic_grounding import build_semantic_grounding_projection
+from app.diagnostics.legacy_semantic_grounding import (
+    build_legacy_projection as build_semantic_grounding_projection,
+    validate_legacy_plan as validate_semantic_plan,
+)
 from app.query_engine.semantic_plan import (
     SemanticPlan, SemanticPlanValidationError, ValidatedSemanticPlan,
-    validate_semantic_plan,
 )
 from app.query_engine.structural_intent_adapters import (
     grounded_to_structural_requirement, validated_plan_to_structural_observation,
