@@ -29,6 +29,17 @@ from app.query_engine.sql_renderer import render_validated_semantic_plan
 BRANCHES = ("alpha", "beta", "gamma")
 
 
+def test_versioned_diagnostic_uses_current_or_proof_not_historical_lexical_exception():
+    from app.diagnostics.legacy_semantic_grounding import validate_legacy_plan
+
+    pack, projection = _inputs(lexical_concepts=BRANCHES)
+    with pytest.raises(SemanticPlanValidationError, match="The semantic plan is invalid") as exc:
+        validate_legacy_plan(_plan(BRANCHES), domain_pack=pack, projection=projection,
+                             schema_context={"allowed_columns": {"records": list(BRANCHES)}},
+                             scope_reference_resolved=False)
+    assert exc.value.reason == "composition_rule_overconstraint"
+
+
 @pytest.mark.parametrize("concept_ids", [(), ("beta",), ("alpha", "beta")])
 def test_or_rule_and_proper_subset_narrowing_preserve_rendered_semantics(
     concept_ids: tuple[str, ...],
@@ -58,7 +69,7 @@ def test_full_or_conjunction_is_rejected_independently_of_order(
     rule = _rule("either", tuple(reversed(BRANCHES)) if reverse_branches else BRANCHES)
     pack, projection = _inputs(rules=(rule,))
 
-    # Candidate definitions and a mandatory OR rule do not require its conjuncts.
+    # Candidate definitions and an available OR rule do not require its conjuncts.
     assert projection.mandatory_evidence()["concept_ids"] == []
     with pytest.raises(SemanticPlanValidationError) as exc_info:
         _validate(_plan(concept_ids), pack, projection)
@@ -97,7 +108,7 @@ def test_multiple_or_rules_are_checked_independently(
 
 def test_mandatory_exception_for_one_rule_does_not_exempt_another() -> None:
     rules = (_rule("first", ("alpha", "beta")), _rule("second", ("gamma", "delta")))
-    pack, projection = _inputs(rules=rules, mandatory_concepts=("alpha", "beta"))
+    pack, projection = _inputs(rules=rules, lexical_concepts=("alpha", "beta"))
     with pytest.raises(SemanticPlanValidationError) as exc_info:
         _validate(
             _plan(("alpha", "beta", "gamma", "delta"), rule_ids=("first", "second")),
@@ -135,20 +146,20 @@ def test_effective_branches_are_not_mistaken_for_explicit_top_level_intent(
     assert {p.column for p in validated.effective_predicates} == set(BRANCHES)
 
 
-@pytest.mark.parametrize("mandatory_concepts", [("beta",), ("alpha", "beta")])
-def test_partial_mandatory_overlap_does_not_authorize_full_conjunction(
-    mandatory_concepts: tuple[str, ...],
+@pytest.mark.parametrize("lexical_concepts", [("beta",), ("alpha", "beta")])
+def test_partial_lexical_overlap_does_not_authorize_full_conjunction(
+    lexical_concepts: tuple[str, ...],
 ) -> None:
-    pack, projection = _inputs(mandatory_concepts=mandatory_concepts)
-    assert _validate(_plan(mandatory_concepts), pack, projection)
+    pack, projection = _inputs(lexical_concepts=lexical_concepts)
+    assert _validate(_plan(lexical_concepts), pack, projection)
     with pytest.raises(SemanticPlanValidationError) as exc_info:
         _validate(_plan(BRANCHES), pack, projection)
     assert exc_info.value.reason == "composition_rule_overconstraint"
 
 
 @pytest.mark.parametrize("source", ["explicit", "dependency", "metric", "all_of_rule"])
-def test_independently_mandatory_conjunction_is_preserved(source: str) -> None:
-    mandatory_concepts = (
+def test_only_selected_definitions_justify_full_conjunction(source: str) -> None:
+    lexical_concepts = (
         BRANCHES
         if source == "explicit"
         else (("bundle",) if source == "dependency" else ())
@@ -158,7 +169,7 @@ def test_independently_mandatory_conjunction_is_preserved(source: str) -> None:
         if source == "all_of_rule"
         else (_rule("either", BRANCHES),)
     )
-    pack, projection = _inputs(rules=rules, mandatory_concepts=mandatory_concepts)
+    pack, projection = _inputs(rules=rules, lexical_concepts=lexical_concepts)
     plan = _plan(
         (*BRANCHES, "bundle") if source == "dependency" else BRANCHES,
         rule_ids=tuple(rule.id for rule in rules),
@@ -173,10 +184,13 @@ def test_independently_mandatory_conjunction_is_preserved(source: str) -> None:
         )
         plan = plan.model_copy(update={"metric_id": "total", "aggregations": ()})
 
+    if source == "explicit":
+        with pytest.raises(SemanticPlanValidationError, match="semantic plan is invalid"):
+            _validate(plan, pack, projection)
+        return
     validated = _validate(plan, pack, projection)
 
-    # Exact deterministic requirements (including unconditional dependencies)
-    # justify the conjunction. Nothing selected by the provider is discarded.
+    # Selected catalog dependencies justify the conjunction, not lexical matches.
     assert set(validated.plan.concept_ids) == set(plan.concept_ids)
     assert {p.column for p in validated.effective_predicates} == set(BRANCHES)
 
@@ -192,7 +206,7 @@ def _all_rule() -> SemanticCompositionRule:
 def _inputs(
     *,
     rules: tuple[SemanticCompositionRule, ...] | None = None,
-    mandatory_concepts: tuple[str, ...] = (),
+    lexical_concepts: tuple[str, ...] = (),
 ) -> tuple[DomainPack, SemanticCatalogProjection]:
     rules = rules if rules is not None else (_rule("either", BRANCHES),)
     names = (*BRANCHES, "delta")
@@ -273,7 +287,7 @@ def _inputs(
         )
         + tuple(
             {"kind": "concept", "id": concept_id, "tier": "exact_reference"}
-            for concept_id in mandatory_concepts
+            for concept_id in lexical_concepts
         ),
     )
     return pack, projection

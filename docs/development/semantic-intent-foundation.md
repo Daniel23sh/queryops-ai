@@ -5,6 +5,12 @@ execution, grounding, prompts, SQL rendering, conformance enforcement, scoring,
 or readiness. Its diagnostic source baseline is
 `9eb094ab14d8ae5ef05e5a0d5a52cb8ce13287af`.
 
+PR57 production grounding no longer creates Required Intent from question text.
+The historical evidence below retains its original meaning. Current offline
+reruns use `queryops-v2-structural-conformance-v2-legacy-hints` and the retained
+pre-cutover hint axes, not production semantic authority. See the
+[ownership boundary and diagnostic versioning](semantic-ownership-migration.md).
+
 ## Representation and ownership
 
 [`StructuralResultIntent`](../../backend/app/query_engine/structural_intent.py)

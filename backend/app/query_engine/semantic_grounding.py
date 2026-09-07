@@ -137,6 +137,21 @@ def build_semantic_grounding_projection(
 ) -> SemanticCatalogProjection:
     """Build a deterministic, bounded candidate set from authorized semantics."""
 
+    projection, _, _ = _build_candidate_context(
+        catalog, question, schema_context, user_context
+    )
+    return projection
+
+
+def _build_candidate_context(
+    catalog: SemanticCatalog,
+    question: str,
+    schema_context: Mapping[str, Any],
+    user_context: Mapping[str, Any],
+) -> tuple[SemanticCatalogProjection, GroundedResultIntent | None, GroundedResultIntent | None]:
+    # The two historical hint axes are returned only for offline diagnostics.
+    # Neither axis is a trusted requirement derived from an ordinary question.
+
     question_tokens = _normalize_tokens(question)
     allowed_tables = _safe_string_set(schema_context.get("allowed_tables"))
     allowed_columns = _safe_allowed_columns(schema_context.get("allowed_columns"))
@@ -239,11 +254,11 @@ def build_semantic_grounding_projection(
             eligible_concepts[concept_id].entity_id,
             set(),
         ).update(spans)
-    mandatory_entity_ids = _specific_entity_match_ids(
+    priority_entity_ids = _specific_entity_match_ids(
         entity_match_spans,
         semantic_match_spans_by_entity,
     ) | semantic_base_entity_ids
-    mandatory_entity_ids.update(
+    priority_entity_ids.update(
         entity_id
         for entity_id in exact_entity_ids
         if _entity_has_independently_requested_attribute(
@@ -254,8 +269,8 @@ def build_semantic_grounding_projection(
             question_tokens=question_tokens,
         )
     )
-    mandatory_entity_ids -= _optional_lookup_entity_ids(
-        mandatory_entity_ids=mandatory_entity_ids,
+    priority_entity_ids -= _optional_lookup_entity_ids(
+        priority_entity_ids=priority_entity_ids,
         semantic_base_entity_ids=semantic_base_entity_ids,
         entity_match_spans=entity_match_spans,
         relationships=eligible_relationships,
@@ -309,11 +324,11 @@ def build_semantic_grounding_projection(
                 anchor_entity_ids.discard(guidance.scope_entity_id)
                 # Possessive scope language (for example, "my department") is
                 # authorization context, not a requested business entity.  Keep
-                # it out of both the candidate projection and mandatory exact
+                # it out of both the candidate projection and priority exact
                 # evidence so the plan cannot be forced to materialize an RLS
                 # scope table or literal scope predicate.
                 exact_entity_ids.discard(guidance.scope_entity_id)
-                mandatory_entity_ids.discard(guidance.scope_entity_id)
+                priority_entity_ids.discard(guidance.scope_entity_id)
 
     value_context_entity_ids = {
         entity_id
@@ -344,7 +359,7 @@ def build_semantic_grounding_projection(
     selected_concept_ids.update(
         expand_semantic_concept_ids(catalog, tuple(selected_concept_ids))
     )
-    mandatory_concept_ids = set(
+    priority_concept_ids = set(
         expand_semantic_concept_ids(
             catalog,
             tuple(
@@ -372,9 +387,9 @@ def build_semantic_grounding_projection(
     dependency_definition_concept_ids = (
         selected_concept_ids - retained_intent_concept_ids
     )
-    mandatory_concept_ids &= retained_intent_concept_ids
+    priority_concept_ids &= retained_intent_concept_ids
     required_concept_definition_ids = set(
-        expand_semantic_concept_ids(catalog, tuple(mandatory_concept_ids))
+        expand_semantic_concept_ids(catalog, tuple(priority_concept_ids))
     )
     anchor_entity_ids.update(
         eligible_concepts[concept_id].entity_id for concept_id in selected_concept_ids
@@ -454,7 +469,7 @@ def build_semantic_grounding_projection(
 
     candidate_signals = _candidate_signals(
         exact_entity_ids=exact_entity_ids,
-        mandatory_entity_ids=mandatory_entity_ids,
+        priority_entity_ids=priority_entity_ids,
         description_entity_ids=description_entity_ids,
         value_context_entity_ids=value_context_entity_ids,
         exact_concept_ids=exact_concept_ids,
@@ -516,20 +531,20 @@ def build_semantic_grounding_projection(
                 }
             )
         ),
-        grounded_result_intent=grounded_result_intent,
-        suggested_result_intent=suggested_result_intent,
+        grounded_result_intent=None,
+        suggested_result_intent=grounded_result_intent or suggested_result_intent,
     )
     projection = _fit_projection(
         projection,
         required_concept_definition_ids=required_concept_definition_ids,
-        mandatory_metric_ids=set(exact_metric_ids),
+        priority_metric_ids=set(exact_metric_ids),
     )
     _validate_projection_concept_dependency_closure(projection)
     if _projection_size(projection) > MAX_SEMANTIC_PROJECTION_BYTES:
         raise DomainPackValidationError(
             "Semantic catalog projection exceeds the safe prompt size limit"
         )
-    return projection
+    return projection, grounded_result_intent, suggested_result_intent
 
 
 def _concept_is_authorized(
@@ -679,7 +694,7 @@ def _project_relationship(relationship: SemanticRelationship) -> dict[str, Any]:
 def _candidate_signals(
     *,
     exact_entity_ids: set[str],
-    mandatory_entity_ids: set[str],
+    priority_entity_ids: set[str],
     description_entity_ids: set[str],
     value_context_entity_ids: set[str],
     exact_concept_ids: set[str],
@@ -703,15 +718,15 @@ def _candidate_signals(
         )
     for item_id in exact_rule_ids:
         signals[("composition_rule", item_id)] = "exact_reference"
-    for item_id in exact_entity_ids | mandatory_entity_ids:
+    for item_id in exact_entity_ids | priority_entity_ids:
         signals[("entity", item_id)] = (
             "exact_reference"
-            if item_id in mandatory_entity_ids
+            if item_id in priority_entity_ids
             else "lexical_context"
         )
-    for item_id in description_entity_ids - exact_entity_ids - mandatory_entity_ids:
+    for item_id in description_entity_ids - exact_entity_ids - priority_entity_ids:
         signals[("entity", item_id)] = "description_context"
-    for item_id in value_context_entity_ids - exact_entity_ids - mandatory_entity_ids:
+    for item_id in value_context_entity_ids - exact_entity_ids - priority_entity_ids:
         signals[("entity", item_id)] = "value_context"
     return tuple(
         {"kind": kind, "id": item_id, "tier": tier}
@@ -839,7 +854,7 @@ def _fit_projection(
     projection: SemanticCatalogProjection,
     *,
     required_concept_definition_ids: set[str],
-    mandatory_metric_ids: set[str],
+    priority_metric_ids: set[str],
 ) -> SemanticCatalogProjection:
     examples = list(projection.examples)
     while examples and _projection_size(projection) > MAX_SEMANTIC_PROJECTION_BYTES:
@@ -855,7 +870,7 @@ def _fit_projection(
         | {
             metric["entity_id"]
             for metric in projection.metrics
-            if metric["id"] not in mandatory_metric_ids
+            if metric["id"] not in priority_metric_ids
         },
         reverse=True,
     )
@@ -874,7 +889,7 @@ def _fit_projection(
             for metric in projection.metrics
             if (
                 metric["entity_id"] != entity_id
-                or metric["id"] in mandatory_metric_ids
+                or metric["id"] in priority_metric_ids
             )
             and set(metric["required_concept_ids"]) <= retained_concept_ids
         )
@@ -1607,8 +1622,8 @@ def _specific_entity_match_ids(
     entity_match_spans: Mapping[str, set[tuple[int, int]]],
     semantic_match_spans_by_entity: Mapping[str, set[tuple[int, int]]],
 ) -> set[str]:
-    """Keep an entity mandatory when at least one exact mention is not subsumed."""
-    mandatory: set[str] = set()
+    """Keep an entity high-priority when at least one exact mention is not subsumed."""
+    priority: set[str] = set()
     for entity_id, spans in entity_match_spans.items():
         competing_spans = {
             span
@@ -1626,8 +1641,8 @@ def _specific_entity_match_ids(
             not any(_strictly_contains(candidate, span) for candidate in competing_spans)
             for span in spans
         ):
-            mandatory.add(entity_id)
-    return mandatory
+            priority.add(entity_id)
+    return priority
 
 
 def _strictly_contains(outer: tuple[int, int], inner: tuple[int, int]) -> bool:
@@ -1640,7 +1655,7 @@ def _strictly_contains(outer: tuple[int, int], inner: tuple[int, int]) -> bool:
 
 def _optional_lookup_entity_ids(
     *,
-    mandatory_entity_ids: set[str],
+    priority_entity_ids: set[str],
     semantic_base_entity_ids: set[str],
     entity_match_spans: Mapping[str, set[tuple[int, int]]],
     relationships: tuple[SemanticRelationship, ...],
@@ -1648,9 +1663,9 @@ def _optional_lookup_entity_ids(
     allowed_columns: Mapping[str, frozenset[str]],
     question_tokens: tuple[str, ...],
 ) -> set[str]:
-    """Demote only generic lookup mentions backed by a mandatory fact identity."""
+    """Demote only generic lookup mentions backed by a high-priority fact identity."""
     optional: set[str] = set()
-    for entity_id in mandatory_entity_ids - semantic_base_entity_ids:
+    for entity_id in priority_entity_ids - semantic_base_entity_ids:
         spans = entity_match_spans.get(entity_id, set())
         if not spans or any(end - start > 1 for start, end in spans):
             continue

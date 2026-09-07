@@ -51,7 +51,7 @@ def test_valid_simple_plan_preserves_order_priority() -> None:
     assert validated.effective_predicates == ()
 
 
-def test_canonical_metric_is_mandatory_for_exact_active_users_reference() -> None:
+def test_canonical_metric_is_optional_but_selected_definition_is_binding() -> None:
     plan = _plan(entity_ids=("directory_users",), metric_id="active_human_users")
     validated = _validate(plan, "How many active users are there?")
 
@@ -69,12 +69,7 @@ def test_canonical_metric_is_mandatory_for_exact_active_users_reference() -> Non
         concept_ids=("active_directory_account",),
         aggregations=(_count(),),
     )
-    with pytest.raises(
-        SemanticPlanValidationError,
-        match="semantic plan is invalid",
-    ) as exc_info:
-        _validate(weaker, "How many active users are there?")
-    assert exc_info.value.reason == "mandatory_metric_missing"
+    assert _validate(weaker, "How many active users are there?").plan == weaker
 
 
 def test_v1_canonical_metric_rejects_grouped_or_ranked_shapes() -> None:
@@ -133,7 +128,7 @@ def test_grounded_or_rule_rejects_provider_full_branch_conjunction() -> None:
     domain_pack, schema_context, projection = _validation_inputs(
         "How many non-compliant devices are there?"
     )
-    assert projection.mandatory_evidence() == {
+    assert projection.lexical_evidence() == {
         "entity_ids": ["devices"],
         "concept_ids": [],
         "metric_ids": [],
@@ -473,7 +468,7 @@ def test_grounded_required_output_and_group_grain_fail_closed() -> None:
     question = "How many privileged users by department?"
 
     with pytest.raises(SemanticPlanValidationError) as exc_info:
-        _validate(base, question)
+        _validate_required(base, question)
     assert exc_info.value.reason == "required_output_missing"
     assert exc_info.value.safe_observation == {
         "expected": ["departments.name"],
@@ -493,7 +488,7 @@ def test_grounded_required_output_and_group_grain_fail_closed() -> None:
         }
     )
     with pytest.raises(SemanticPlanValidationError) as exc_info:
-        _validate(extra_group, question)
+        _validate_required(extra_group, question)
     assert exc_info.value.reason == "grounded_group_by_mismatch"
     assert exc_info.value.safe_observation == {
         "expected": ["departments.name"],
@@ -541,7 +536,7 @@ def test_grounded_aggregation_target_and_distinctness_fail_closed(
     )
 
     with pytest.raises(SemanticPlanValidationError) as exc_info:
-        _validate(plan, "How many privileged users by department?")
+        _validate_required(plan, "How many privileged users by department?")
     assert exc_info.value.reason == "grounded_aggregation_mismatch"
 
 
@@ -555,7 +550,7 @@ def test_grounded_distinct_count_accepts_direct_fk_identity_equivalence() -> Non
         )
     )
 
-    assert _validate(plan, "How many privileged users by department?")
+    assert _validate_required(plan, "How many privileged users by department?")
 
 
 def test_grounded_distinct_count_refuses_count_star() -> None:
@@ -569,12 +564,12 @@ def test_grounded_distinct_count_refuses_count_star() -> None:
     )
 
     with pytest.raises(SemanticPlanValidationError) as exc_info:
-        _validate(plan, "How many privileged users by department?")
+        _validate_required(plan, "How many privileged users by department?")
     assert exc_info.value.reason == "grounded_aggregation_mismatch"
 
 
 def test_grounded_distinct_count_equivalence_is_symmetric() -> None:
-    domain_pack, schema_context, projection = _validation_inputs(
+    domain_pack, schema_context, projection = _required_validation_inputs(
         "How many privileged users by department?"
     )
     assert projection.grounded_result_intent is not None
@@ -623,7 +618,7 @@ def test_grounded_distinct_count_refuses_nullable_fk(
     monkeypatch.setattr(source_column, "nullable", True)
 
     with pytest.raises(SemanticPlanValidationError) as exc_info:
-        _validate(
+        _validate_required(
             _medium_006_fk_count_plan(),
             "How many privileged users by department?",
         )
@@ -663,7 +658,7 @@ def test_grounded_distinct_count_refuses_unproven_relationship_shape(
     changed_pack = replace(domain_pack, semantic_catalog=catalog)
 
     with pytest.raises(SemanticPlanValidationError) as exc_info:
-        _validate(
+        _validate_required(
             _medium_006_fk_count_plan(),
             "How many privileged users by department?",
             domain_pack=changed_pack,
@@ -682,7 +677,7 @@ def test_grounded_distinct_count_refuses_left_or_missing_direct_relationship() -
         }
     )
     with pytest.raises(SemanticPlanValidationError) as exc_info:
-        _validate(left_join, "How many privileged users by department?")
+        _validate_required(left_join, "How many privileged users by department?")
     assert exc_info.value.reason == "grounded_aggregation_mismatch"
 
     indirect_only = _medium_006_fk_count_plan().model_copy(
@@ -695,7 +690,7 @@ def test_grounded_distinct_count_refuses_left_or_missing_direct_relationship() -
         }
     )
     with pytest.raises(SemanticPlanValidationError) as exc_info:
-        _validate(indirect_only, "How many privileged users by department?")
+        _validate_required(indirect_only, "How many privileged users by department?")
     assert exc_info.value.reason == "grounded_aggregation_mismatch"
 
 
@@ -709,7 +704,7 @@ def test_grounded_distinct_count_refuses_different_function_and_grouping() -> No
         )
     )
     with pytest.raises(SemanticPlanValidationError) as exc_info:
-        _validate(wrong_function, "How many privileged users by department?")
+        _validate_required(wrong_function, "How many privileged users by department?")
     assert exc_info.value.reason == "grounded_aggregation_mismatch"
 
     wrong_group = _medium_006_fk_count_plan().model_copy(
@@ -725,7 +720,7 @@ def test_grounded_distinct_count_refuses_different_function_and_grouping() -> No
         }
     )
     with pytest.raises(SemanticPlanValidationError) as exc_info:
-        _validate(wrong_group, "How many privileged users by department?")
+        _validate_required(wrong_group, "How many privileged users by department?")
     assert exc_info.value.reason == "grounded_aggregation_mismatch"
 
 
@@ -743,7 +738,7 @@ def test_grounded_distinct_count_refuses_different_having_semantics() -> None:
     )
 
     with pytest.raises(SemanticPlanValidationError) as exc_info:
-        _validate(plan, "How many privileged users by department?")
+        _validate_required(plan, "How many privileged users by department?")
     assert exc_info.value.reason == "grounded_aggregation_mismatch"
 
 
@@ -758,7 +753,7 @@ def test_grounded_aggregation_mismatch_exposes_only_safe_identity() -> None:
     )
 
     with pytest.raises(SemanticPlanValidationError) as exc_info:
-        _validate(wrong, "How many privileged users by department?")
+        _validate_required(wrong, "How many privileged users by department?")
 
     assert exc_info.value.safe_observation == {
         "expected": [
@@ -803,7 +798,7 @@ def test_grounded_explicit_having_mismatch_fails_closed() -> None:
     )
 
     with pytest.raises(SemanticPlanValidationError) as exc_info:
-        _validate(
+        _validate_required(
             plan,
             "Show users with more than five failed logins in the last 30 days.",
         )
@@ -845,7 +840,7 @@ def test_grounded_explicit_having_mismatch_fails_closed() -> None:
             )
         }
     )
-    assert _validate(
+    assert _validate_required(
         correct,
         "Show users with more than five failed logins in the last 30 days.",
     )
@@ -1026,6 +1021,23 @@ def _validate(
         projection=projection,
         schema_context=schema_context,
         scope_reference_resolved=scope_reference_resolved,
+    )
+
+
+def _required_validation_inputs(question, **kwargs):
+    # Explicit test injection exercises the reserved trusted slot. Production
+    # free-question grounding never promotes hints into this slot.
+    pack, schema, projection = _validation_inputs(question, **kwargs)
+    return pack, schema, replace(
+        projection, grounded_result_intent=projection.suggested_result_intent
+    )
+
+
+def _validate_required(plan, question, **kwargs):
+    pack, schema, projection = _required_validation_inputs(question, **kwargs)
+    return validate_semantic_plan(
+        plan, domain_pack=pack, projection=projection, schema_context=schema,
+        scope_reference_resolved=True,
     )
 
 

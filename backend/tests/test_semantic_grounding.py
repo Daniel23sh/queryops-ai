@@ -49,9 +49,9 @@ def test_directory_paraphrases_receive_bounded_identity_candidates(
     assert _size(projection) <= MAX_SEMANTIC_PROJECTION_BYTES
 
 
-def test_exact_metric_is_mandatory_but_negated_literal_is_not() -> None:
+def test_exact_metric_is_priority_but_negated_literal_is_not() -> None:
     exact = _projection("How many active users are there?")
-    assert exact.mandatory_evidence() == {
+    assert exact.lexical_evidence() == {
         "entity_ids": ["directory_users"],
         "concept_ids": [],
         "metric_ids": ["active_human_users"],
@@ -61,7 +61,7 @@ def test_exact_metric_is_mandatory_but_negated_literal_is_not() -> None:
     assert exact.suggested_result_intent is None
 
     literal = _projection("How many users are not disabled?")
-    assert literal.mandatory_evidence() == {
+    assert literal.lexical_evidence() == {
         "entity_ids": ["directory_users"],
         "concept_ids": [],
         "metric_ids": [],
@@ -71,7 +71,7 @@ def test_exact_metric_is_mandatory_but_negated_literal_is_not() -> None:
 
 
 @pytest.mark.parametrize("scope_type", ["department", "global"])
-def test_exact_rule_is_mandatory_and_scope_language_is_not_business_entity(
+def test_exact_rule_is_priority_and_scope_language_is_not_business_entity(
     scope_type: str,
 ) -> None:
     projection = _projection(
@@ -79,7 +79,7 @@ def test_exact_rule_is_mandatory_and_scope_language_is_not_business_entity(
         scope_type=scope_type,
     )
 
-    assert projection.mandatory_evidence() == {
+    assert projection.lexical_evidence() == {
         "entity_ids": ["devices"],
         "concept_ids": [],
         "metric_ids": [],
@@ -90,26 +90,26 @@ def test_exact_rule_is_mandatory_and_scope_language_is_not_business_entity(
     assert "department-id" not in serialized
 
 
-def test_resolved_possessive_scope_does_not_make_department_mandatory() -> None:
+def test_resolved_possessive_scope_does_not_make_department_priority() -> None:
     projection = _projection(
         "Show unused paid licenses in my department.",
         scope_type="global",
     )
 
-    assert projection.mandatory_evidence() == {
+    assert projection.lexical_evidence() == {
         "entity_ids": ["license_assignments"],
         "concept_ids": ["unused_license_assignment"],
         "metric_ids": [],
         "rule_ids": [],
     }
-    assert "departments" not in projection.mandatory_evidence()["entity_ids"]
+    assert "departments" not in projection.lexical_evidence()["entity_ids"]
     assert "licenses" in projection.as_observation()["selected_entity_ids"]
 
 
 def test_specific_license_assignment_phrase_keeps_license_lookup_optional() -> None:
     projection = _projection("Show active license assignments.")
 
-    assert projection.mandatory_evidence()["entity_ids"] == [
+    assert projection.lexical_evidence()["entity_ids"] == [
         "license_assignments"
     ]
     assert {"license_assignments", "licenses"} <= set(
@@ -129,13 +129,13 @@ def test_specific_license_assignment_phrase_keeps_license_lookup_optional() -> N
         "Show license assignments with vendor and monthly cost.",
     ],
 )
-def test_explicit_license_product_attributes_keep_lookup_mandatory(
+def test_explicit_license_product_attributes_keep_lookup_priority(
     question: str,
 ) -> None:
     projection = _projection(question)
 
     assert {"license_assignments", "licenses"} <= set(
-        projection.mandatory_evidence()["entity_ids"]
+        projection.lexical_evidence()["entity_ids"]
     )
 
 
@@ -144,12 +144,12 @@ def test_fact_identity_keeps_generic_user_lookup_optional() -> None:
         "Show users with more than five failed logins in the last 30 days."
     )
 
-    assert projection.mandatory_evidence()["entity_ids"] == ["login_events"]
+    assert projection.lexical_evidence()["entity_ids"] == ["login_events"]
     assert "directory_users" in projection.as_observation()["selected_entity_ids"]
 
 
 @pytest.mark.parametrize("attribute", ["full name", "email"])
-def test_user_display_attribute_keeps_directory_lookup_mandatory(
+def test_user_display_attribute_keeps_directory_lookup_priority(
     attribute: str,
 ) -> None:
     projection = _projection(
@@ -157,25 +157,25 @@ def test_user_display_attribute_keeps_directory_lookup_mandatory(
     )
 
     assert {"directory_users", "login_events"} <= set(
-        projection.mandatory_evidence()["entity_ids"]
+        projection.lexical_evidence()["entity_ids"]
     )
 
 
-def test_non_overlapping_specific_entity_mentions_remain_mandatory() -> None:
+def test_non_overlapping_specific_entity_mentions_remain_priority() -> None:
     projection = _projection("Show license assignments and license products.")
 
     assert {"license_assignments", "licenses"} <= set(
-        projection.mandatory_evidence()["entity_ids"]
+        projection.lexical_evidence()["entity_ids"]
     )
 
 
-def test_exact_concept_base_entity_remains_mandatory() -> None:
+def test_exact_concept_base_entity_remains_priority() -> None:
     projection = _projection("Show high-confidence unused licenses.")
 
     assert "high_confidence_unused_license_assignment" in (
-        projection.mandatory_evidence()["concept_ids"]
+        projection.lexical_evidence()["concept_ids"]
     )
-    assert projection.mandatory_evidence()["entity_ids"] == [
+    assert projection.lexical_evidence()["entity_ids"] == [
         "license_assignments"
     ]
 
@@ -195,7 +195,7 @@ def test_medium_011_retains_complete_composed_concept_definition() -> None:
         "terminated_employee",
         "terminated_employee_with_active_account",
     } <= concept_ids
-    assert projection.mandatory_evidence()["concept_ids"] == [
+    assert projection.lexical_evidence()["concept_ids"] == [
         "terminated_employee_with_active_account"
     ]
     _assert_no_dangling_concept_dependencies(projection)
@@ -236,7 +236,7 @@ def test_composed_concept_dependency_closure_is_recursive() -> None:
         for concept in catalog.concepts
         if concept.id in expected_closure
     ]
-    assert projection.mandatory_evidence()["concept_ids"] == [
+    assert projection.lexical_evidence()["concept_ids"] == [
         "terminated_employee_with_active_account"
     ]
     _assert_no_dangling_concept_dependencies(projection)
@@ -269,7 +269,7 @@ def test_supersedence_still_removes_unneeded_independent_concept() -> None:
 
 def test_explicit_quantity_by_department_builds_grouped_count_intent() -> None:
     projection = _projection("How many privileged users by department?")
-    intent = projection.grounded_result_intent
+    intent = projection.suggested_result_intent
 
     assert intent is not None
     assert intent.row_grain is not None
@@ -296,7 +296,7 @@ def test_resolved_scope_reference_is_not_the_grouped_count_subject() -> None:
         "How many open support tickets exist in my department by priority?",
         scope_type="department",
     )
-    intent = projection.grounded_result_intent
+    intent = projection.suggested_result_intent
 
     assert intent is not None
     assert _field_keys(intent.group_by) == {("support_tickets", "priority")}
@@ -311,7 +311,7 @@ def test_resolved_scope_reference_is_not_the_grouped_count_subject() -> None:
         )
         for item in intent.aggregations
     ] == [("count", None, False)]
-    assert projection.mandatory_evidence()["entity_ids"] == ["support_tickets"]
+    assert projection.lexical_evidence()["entity_ids"] == ["support_tickets"]
 
 
 def test_grouping_without_quantity_or_bridge_does_not_invent_result_shape() -> None:
@@ -325,7 +325,7 @@ def test_explicit_failed_login_threshold_builds_grouped_having_intent() -> None:
     projection = _projection(
         "Show failed logins per user with more than 5."
     )
-    intent = projection.grounded_result_intent
+    intent = projection.suggested_result_intent
 
     assert intent is not None
     assert _field_keys(intent.group_by) == {("login_events", "user_id")}
@@ -348,7 +348,7 @@ def test_explicit_failed_login_threshold_builds_grouped_having_intent() -> None:
 
 def test_vague_login_spike_does_not_invent_numeric_having() -> None:
     projection = _projection("Which users have a failed login spike?")
-    intent = projection.grounded_result_intent
+    intent = projection.suggested_result_intent
 
     assert intent is None or intent.having == ()
 
@@ -409,7 +409,7 @@ def test_explicit_output_attributes_resolve_to_canonical_fields() -> None:
     projection = _projection(
         "Show user id and assignment id for active mandatory licenses."
     )
-    intent = projection.grounded_result_intent
+    intent = projection.suggested_result_intent
 
     assert intent is not None
     assert _field_keys(intent.required_output_fields) == {
@@ -422,9 +422,10 @@ def test_explicit_output_remains_required_with_ambiguous_grouping() -> None:
     projection = _projection(
         "Show users in privileged groups by department name."
     )
-    required = projection.grounded_result_intent
+    required = projection.suggested_result_intent
     suggested = projection.suggested_result_intent
 
+    assert projection.grounded_result_intent is None
     assert required is not None
     assert _field_keys(required.required_output_fields) == {
         ("departments", "name")
@@ -433,7 +434,7 @@ def test_explicit_output_remains_required_with_ambiguous_grouping() -> None:
     assert required.group_by == ()
     assert required.aggregations == ()
     assert suggested is not None
-    assert _field_keys(suggested.group_by) == {("departments", "name")}
+    assert suggested.group_by == ()
 
 
 def test_structural_result_intent_cases_keep_required_suggested_boundary() -> None:
@@ -443,7 +444,7 @@ def test_structural_result_intent_cases_keep_required_suggested_boundary() -> No
         ambiguous_case.question,
         scope_type=ambiguous_case.required_scope_type or "none",
     )
-    assert ambiguous.mandatory_evidence() == {
+    assert ambiguous.lexical_evidence() == {
         "entity_ids": ["groups", "user_group_memberships"],
         "concept_ids": ["privileged_group"],
         "metric_ids": [],
@@ -477,11 +478,11 @@ def test_structural_result_intent_cases_keep_required_suggested_boundary() -> No
         threshold_case.question,
         scope_type=threshold_case.required_scope_type or "none",
     )
-    assert threshold.grounded_result_intent is not None
-    assert _field_keys(threshold.grounded_result_intent.group_by) == {
+    assert threshold.suggested_result_intent is not None
+    assert _field_keys(threshold.suggested_result_intent.group_by) == {
         ("login_events", "user_id")
     }
-    threshold_aggregation = threshold.grounded_result_intent.aggregations[0]
+    threshold_aggregation = threshold.suggested_result_intent.aggregations[0]
     assert threshold_aggregation.target_field is not None
     assert (
         threshold_aggregation.function,
@@ -491,9 +492,9 @@ def test_structural_result_intent_cases_keep_required_suggested_boundary() -> No
     ) == ("count", "login_events", "id", False)
     assert tuple(
         (item.operator, item.value)
-        for item in threshold.grounded_result_intent.having
+        for item in threshold.suggested_result_intent.having
     ) == (("greater_than", 5),)
-    assert threshold.suggested_result_intent is None
+    assert threshold.grounded_result_intent is None
 
     detail_case = cases["itops-medium-014"]
     detail = _projection(
@@ -566,15 +567,15 @@ def test_result_intent_query_engine_modules_do_not_import_evaluation() -> None:
 def test_specific_overlap_does_not_suppress_unrelated_entity() -> None:
     projection = _projection("Show license assignments and open support tickets.")
 
-    mandatory = projection.mandatory_evidence()
+    priority = projection.lexical_evidence()
     assert {"license_assignments", "support_tickets"} <= set(
-        mandatory["entity_ids"]
+        priority["entity_ids"]
     )
-    assert "licenses" not in mandatory["entity_ids"]
+    assert "licenses" not in priority["entity_ids"]
 
 
 @pytest.mark.parametrize(
-    ("case_id", "mandatory_entity_ids", "optional_entity_ids"),
+    ("case_id", "priority_entity_ids", "optional_entity_ids"),
     [
         ("itops-medium-010", {"license_assignments"}, {"licenses"}),
         ("itops-easy-006", {"license_assignments"}, {"licenses"}),
@@ -598,7 +599,7 @@ def test_specific_overlap_does_not_suppress_unrelated_entity() -> None:
 )
 def test_frozen_over_grounding_cases_keep_lookup_entities_optional(
     case_id: str,
-    mandatory_entity_ids: set[str],
+    priority_entity_ids: set[str],
     optional_entity_ids: set[str],
 ) -> None:
     case = load_it_operations_evaluation_set().cases_by_id[case_id]
@@ -607,14 +608,14 @@ def test_frozen_over_grounding_cases_keep_lookup_entities_optional(
         scope_type=case.required_scope_type or "none",
     )
 
-    assert set(projection.mandatory_evidence()["entity_ids"]) == (
-        mandatory_entity_ids
+    assert set(projection.lexical_evidence()["entity_ids"]) == (
+        priority_entity_ids
     )
     assert optional_entity_ids <= set(
         projection.as_observation()["selected_entity_ids"]
     )
     assert not (
-        optional_entity_ids & set(projection.mandatory_evidence()["entity_ids"])
+        optional_entity_ids & set(projection.lexical_evidence()["entity_ids"])
     )
 
 
@@ -624,12 +625,12 @@ def test_non_compliant_status_is_narrower_than_device_posture() -> None:
     )
     posture = _projection("Show non-compliant devices with outdated software.")
 
-    assert status_only.mandatory_evidence()["concept_ids"] == [
+    assert status_only.lexical_evidence()["concept_ids"] == [
         "non_compliant_device",
         "outdated_software_install",
     ]
-    assert status_only.mandatory_evidence()["rule_ids"] == []
-    assert posture.mandatory_evidence()["rule_ids"] == [
+    assert status_only.lexical_evidence()["rule_ids"] == []
+    assert posture.lexical_evidence()["rule_ids"] == [
         "non_compliant_device_posture"
     ]
 
@@ -851,7 +852,7 @@ def test_intermediate_path_entities_do_not_import_unrelated_semantics() -> None:
     assert not (path_only_entities & metric_entities)
     assert not (
         path_only_entities
-        & set(projection.mandatory_evidence()["entity_ids"])
+        & set(projection.lexical_evidence()["entity_ids"])
     )
 
 
@@ -925,7 +926,7 @@ def test_examples_require_direct_evidence_not_broad_entity_context() -> None:
     assert broad.as_observation()["selected_example_ids"] == []
 
 
-def test_projection_trimming_preserves_mandatory_metric_semantics() -> None:
+def test_projection_trimming_preserves_priority_metric_semantics() -> None:
     pack = load_it_operations_domain_pack()
     concepts = tuple(
         replace(concept, description="x" * 20_000)
@@ -942,14 +943,14 @@ def test_projection_trimming_preserves_mandatory_metric_semantics() -> None:
         _user_context("global"),
     )
 
-    assert projection.mandatory_evidence()["metric_ids"] == ["active_human_users"]
+    assert projection.lexical_evidence()["metric_ids"] == ["active_human_users"]
     assert "disabled_directory_account" not in {
         concept["id"] for concept in projection.concepts
     }
     assert _size(projection) <= MAX_SEMANTIC_PROJECTION_BYTES
 
 
-def test_mandatory_projection_overflow_fails_closed() -> None:
+def test_priority_projection_overflow_fails_closed() -> None:
     pack = load_it_operations_domain_pack()
     metrics = tuple(
         replace(metric, description="x" * 20_000)

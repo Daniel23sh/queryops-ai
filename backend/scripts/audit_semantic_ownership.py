@@ -24,8 +24,8 @@ def build_report() -> dict[str, Any]:
                 fixture, question, pack, offline_schema(pack), context,
             )})
     return {
-        "version": "semantic-ownership-shadow-v1",
-        "scope": "Remove only question-derived grounded_result_intent; retain lexical mandates and candidate graph. Validation acceptance is not execution or answer correctness.",
+        "version": "semantic-ownership-shadow-v2",
+        "scope": "Historical hint axes and lexical checks with current deterministic validation, not production grounding or exact historical rejection ordering. Ablate only grounded_result_intent. Acceptance is not execution or answer correctness.",
         "inventory": authority_inventory(),
         "cases": cases,
     }

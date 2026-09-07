@@ -2,7 +2,7 @@
 
 ## 1. Current Status
 
-PR52, PR53 offline migration evidence, PR54 repository validation command, and PR55 relational semantic validation are merged. PR56 candidate/path completeness is current approved work, based on main `8de46b958dc21876c8f4645d7bba675bc7d5ed49`. Production NL structural ownership and Evaluation V2 remain unchanged. No provider runs are authorized. A later release candidate must be explicitly re-frozen before qualifying evidence is collected.
+PR52–PR56 are merged, including relational validation and candidate/path completeness. PR57 semantic-ownership cutover is the current implementation checkpoint, based on verified main `be218b43b8c7120a043d3113c7562ef5e9293168`. Free-question interpretation moves to the planner; Evaluation V2 remains unchanged. No provider runs are authorized. A later release candidate must be explicitly re-frozen before qualifying evidence is collected.
 
 Milestones 0–8 are complete. Milestone 9 implementation through PR11 is complete and merged. Evaluation V2, the fixed three-run stability canary, matching full-run readiness rules, bounded readiness projection, and deterministic release gates are implemented.
 
@@ -10,7 +10,7 @@ QueryOps AI V1 is **incomplete**, not production-ready, and not released. No qua
 
 ## 2. Active Objective
 
-Implement and review PR56: expose complete authorized relationship candidates for anchor-relevant graph components without choosing one semantic path before provider interpretation. Preserve Required Intent, provider and SemanticPlan contracts, PR55 selected-plan validation, and PR53 frozen evidence.
+Implement and review PR57: make question-derived lexical and structural heuristics candidate retrieval/guidance only. The provider interprets natural language as the existing SemanticPlan; selected catalog definitions, authorization, relational proofs, compilation and conformance remain deterministic. Preserve PR55/PR56 and explicitly version diagnostic reruns without rewriting historical evidence.
 
 V1 release validation remains pending on an explicitly frozen, immutable runtime candidate.
 
@@ -18,9 +18,9 @@ The required order is: freeze the exact candidate SHA; create a fresh manifest-v
 
 ## 3. Approved Scope
 
-- PR56 authorized candidate/path completeness, deterministic 16KB budget enforcement, focused grounding/provider regressions, and explicit preservation of candidate-only connector semantics.
-- Complete V3 validation and independent review; commit, push, and open PR56 without merging. PostgreSQL is not required unless database-dependent behavior changes. No provider runs are authorized.
-- The release-validation steps below remain subject to their existing authorization and evidence gates; they are not part of PR56.
+- PR57 atomic grounding/prompt/validation cutover, independent paraphrase and contrast regressions, and diagnostic compatibility. Required Intent remains fail-closed but is not populated from free-question wording.
+- Complete V3 validation and independent review; commit, push, and open PR57 without merging. PostgreSQL is not required unless database-dependent behavior changes. No provider runs are authorized.
+- The release-validation steps below remain subject to their existing authorization and evidence gates; they are not part of PR57.
 - Verify and explicitly freeze the runtime candidate source SHA and deterministic evidence.
 - Create a fresh deterministic medium-seed Evaluation V2 environment manifest for that SHA.
 - After explicit authorization, execute exactly the authorized OpenAI canary runs.
@@ -32,8 +32,8 @@ The required order is: freeze the exact candidate SHA; create a fresh manifest-v
 
 ## 4. Explicit Out of Scope
 
-- New product features, milestones, actions, providers, domain packs, or post-M9 work outside the explicitly approved PR56 candidate/path completeness.
-- Runtime structural-ownership changes and dataset changes. PR57 semantic ownership migration remains next; PR58 minimal measures/grains is optional.
+- New product features, milestones, actions, providers, domain packs, or post-M9 work outside the explicitly approved PR57 cutover.
+- Dataset changes and PR58 measures/grains, which remains optional future work.
 - Evaluation dataset, baseline, template, semantic-contract, prompt, threshold, canary-membership, grounding, graph-ranking, renderer, or runtime tuning in response to observed scores.
 - Provider-generated SQL, repair calls, second provider calls, fallbacks, browser-triggered evaluation, provider/key settings, run history/comparison, or arbitrary run selection.
 - Authorization, permission, scope, PostgreSQL RLS, runtime-role, schema, migration, normal seed, Action Engine, audit, notification, dashboard, or export changes unless a release-blocking defect is independently demonstrated and explicitly kept within the narrow fix allowance above.
@@ -43,7 +43,7 @@ The required order is: freeze the exact candidate SHA; create a fresh manifest-v
 ## 5. Constraints / Invariants
 
 - Historical `it_operations_v1` remains immutable. Release evidence uses `it_operations_v2` version 2 and its tracked digest.
-- PR8 binding Required Intent/non-binding Suggested Intent and PR10 plan-only provider plus deterministic backend SQL rendering remain unchanged. PR56 changes only authorized relationship candidate completeness; the provider still selects the executable relationship tree.
+- Required Intent retains binding semantics for a future independently trusted structured source; no such source is introduced. Free questions populate only non-binding guidance. PR10 plan-only provider/renderer ownership and PR56 candidate completeness remain intact; the provider selects the executable relationship tree.
 - SQL safety, semantic conformance, effective-permission/resource authorization, `queryops_query_runtime`, transaction-local access context, and PostgreSQL RLS remain authoritative.
 - Mock remains the development and CI default. A real OpenAI call requires explicit authorization for the exact API model and maximum billable run count.
 - Repository HEAD and the runtime candidate are distinct identities. Documentation-only commits may advance `main`; qualifying evidence remains bound to the explicitly frozen runtime source SHA.
@@ -59,11 +59,11 @@ The required order is: freeze the exact candidate SHA; create a fresh manifest-v
 - Stable canary evidence is 0 of 3.
 - No matching complete 40-case V2 OpenAI run exists.
 - Manual QA is not performed.
-- Stop after the PR56 checkpoint. PR57 semantic ownership migration remains next; PR58 measures/grains remains optional.
+- Stop after opening PR57. PR58 measures/grains remains optional and is not authorized here.
 
 ## 7. Next Approved Work
 
-Complete PR56 candidate/path completeness and independent review; open the PR and do not merge automatically. No production NL structural-ownership change or provider run is approved. PR57 semantic ownership migration remains the next approved implementation after this checkpoint; PR58 measures/grains remains optional. See [PR55 relational guarantees](docs/development/relational-semantic-validation.md) and [the frozen PR53 migration report](docs/development/semantic-ownership-migration.md).
+Complete PR57 semantic-ownership cutover and independent review; open the PR and do not merge automatically. No provider run is approved. PR58 measures/grains remains optional. See [PR55 relational guarantees](docs/development/relational-semantic-validation.md) and [ownership and historical PR53 evidence](docs/development/semantic-ownership-migration.md).
 
 ## 8. References
 
