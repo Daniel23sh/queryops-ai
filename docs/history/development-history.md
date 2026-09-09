@@ -1,5 +1,39 @@
 # QueryOps AI — Development History
 
+## Evaluation V2 semantic correctness correction
+
+Based on audited `75568dc5f6cef5f541eac1b357e8809828133547`, with no initial
+source drift. Corrected only medium-006, hard-004 and hard-006 plus evaluator
+comparison logic. [Correction details and identity transition](../evaluation/v2-semantic-corrections.md)
+record the proof boundaries and preserved semantics. V2 ID/version and canary
+membership remain fixed; dataset/canary digests changed deterministically.
+
+Verification completed:
+
+- 166 targeted evaluation/provenance/structural/conformance tests passed,
+  including 21 new synthetic semantic-correction regressions.
+- 10 PostgreSQL evaluation tests passed, including six new baseline/representation
+  cases. Nonempty fixtures verify distinct counts across two memberships, the
+  five/six threshold boundary, time window and failed-event filter.
+- `./scripts/check`: 1,514 backend tests passed; 169 environment-gated skips;
+  280 frontend tests passed; Ruff, Pyright, compilation, ESLint, both TypeScript
+  checks and production build passed. Existing non-blocking Vite chunk warning
+  remains.
+- Full isolated PostgreSQL backend suite: **1,683 passed, zero failures/errors/skips**,
+  including existing security, RLS, action and conformance coverage.
+- Alembic upgrade/current/check passed at `0010_disable_inactive_user`; no model
+  or schema changes detected. The newly created disposable PostgreSQL 16 container
+  was used exclusively; existing databases were untouched.
+- Final fresh-context independent review found no remaining actionable defects.
+  Review caught and resolved numeric-tolerance and explicit-output preservation
+  issues before completion. Author diff review and Markdown-link checks passed.
+- Historical V1 is byte-identical; medium-009 is unchanged; ignored planning
+  documents are neither tracked nor staged.
+
+No live provider calls, live canary, or qualifying release claim. Prior evidence
+is non-qualifying after this source/dataset change. A separate freeze, authorization
+and complete evidence sequence remain necessary.
+
 This document preserves useful implementation history for archaeology. It does not authorize new work and is not a source of current project status. See [`PROJECT_PLAN.md`](../../PROJECT_PLAN.md) for the active objective and [`AGENTS.md`](../../AGENTS.md) for permanent repository rules.
 
 ## PR57 — Planner Ownership Implementation Checkpoint

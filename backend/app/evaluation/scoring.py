@@ -4,14 +4,16 @@ import math
 import re
 import uuid
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
+from itertools import groupby
 from typing import Any
 
 from app.evaluation.contracts import (
     ActualOutcome,
     CanonicalExpressionIdentity,
+    CanonicalFieldIdentity,
     ComparisonMode,
     EvaluationCase,
     EvaluationComparisonProvenance,
@@ -20,6 +22,7 @@ from app.evaluation.contracts import (
     ExpectedOutcome,
     ProvenanceAuthorizationEvidence,
 )
+from app.evaluation.identity import IdentityProof, observation_identity_proof
 
 
 SAFE_FAILURE_REASONS = frozenset(
@@ -135,6 +138,8 @@ def score_evaluation_semantic_contract(
     if plan is None:
         return _semantic_not_evaluated()
 
+    proof = observation_identity_proof(plan_observation or {})
+
     required_concepts = set(contract.required_concept_ids)
     concepts_correct = required_concepts <= plan.effective_concept_ids
     metric_correct = (
@@ -147,18 +152,22 @@ def score_evaluation_semantic_contract(
     expected_outputs = {
         (item.entity_id, item.column) for item in contract.output_fields
     }
-    outputs_correct = expected_outputs <= plan.output_fields
-    expected_group_by = {
-        (item.entity_id, item.column) for item in contract.group_by
+    outputs_correct = {proof.field(f) for f in expected_outputs} <= {
+        proof.field(f) for f in plan.output_fields
     }
+    expected_group_by = {(item.entity_id, item.column) for item in contract.group_by}
     group_by_correct = (
-        expected_group_by == plan.group_by if expected_group_by else True
+        proof.grain(expected_group_by) == proof.grain(plan.group_by)
+        if expected_group_by
+        else True
     )
-    expected_grain = {
-        (item.entity_id, item.column) for item in contract.grain_fields
-    }
+    expected_grain = {(item.entity_id, item.column) for item in contract.grain_fields}
     if expected_group_by:
-        grain_correct = expected_grain == plan.group_by
+        grain_correct = proof.grain(expected_grain) == proof.grain(
+            plan.group_by
+        ) and proof.grain(plan.output_fields & plan.group_by) == proof.grain(
+            expected_grain
+        )
     elif expected_grain:
         grain_correct = (
             not plan.aggregations_by_id
@@ -195,8 +204,7 @@ def score_evaluation_semantic_contract(
     }
     having_correct = expected_having <= plan.having
     expected_ordering = tuple(
-        _expected_order_key(item, expected_aggregations)
-        for item in contract.ordering
+        _expected_order_key(item, expected_aggregations) for item in contract.ordering
     )
     ordering_correct = plan.ordering[: len(expected_ordering)] == expected_ordering
 
@@ -562,10 +570,39 @@ def _compare_normalized_rows(
 ) -> tuple[bool, str | None]:
     tolerance = case.numeric_tolerance
     if case.comparison_mode is ComparisonMode.ORDERED_ROWS:
-        matches = all(
-            _rows_equal(expected_row, actual_row, tolerance)
-            for expected_row, actual_row in zip(expected, actual, strict=True)
-        )
+        if (
+            case.semantic_contract is not None
+            and case.semantic_contract.ordering
+            and expected
+        ):
+            keys = _ranking_keys(case, expected[0])
+            if keys is None:
+                return False, "result_semantics_mismatch"
+
+            def rank(row: dict[Any, Any]) -> tuple:
+                return tuple(row.get(key) for key in keys)
+
+            directions = tuple(
+                item.direction for item in case.semantic_contract.ordering
+            )
+            matches = all(
+                _rank_precedes(rank(a), rank(b), directions)
+                for a, b in zip(actual, actual[1:])
+            )
+            offset = 0
+            for _, rows in groupby(expected, rank):
+                tied = list(rows)
+                matches = matches and _unordered_rows_equal(
+                    tied,
+                    actual[offset : offset + len(tied)],
+                    tolerance,
+                )
+                offset += len(tied)
+        else:
+            matches = all(
+                _rows_equal(expected_row, actual_row, tolerance)
+                for expected_row, actual_row in zip(expected, actual, strict=True)
+            )
     elif case.comparison_mode in {
         ComparisonMode.UNORDERED_ROWS,
         ComparisonMode.GROUPED_ROWS,
@@ -575,6 +612,65 @@ def _compare_normalized_rows(
     else:
         matches = True
     return (True, None) if matches else (False, "result_semantics_mismatch")
+
+
+def _rank_precedes(left: tuple, right: tuple, directions: tuple[str, ...]) -> bool:
+    for a, b, direction in zip(left, right, directions, strict=True):
+        if a == b:
+            continue
+        if a is None or b is None:
+            return (a is None) if direction == "desc" else (b is None)
+        try:
+            return a > b if direction == "desc" else a < b
+        except TypeError:
+            return False
+    return True
+
+
+def _ranking_keys(case: EvaluationCase, row: Mapping[Any, Any]) -> tuple | None:
+    """Resolve only the contract's business ordering, never baseline tie-breaks."""
+    contract = case.semantic_contract
+    assert contract is not None
+    aggregates = {item.id: item for item in contract.aggregations}
+    result = []
+    for item in contract.ordering:
+        candidates = []
+        for key in row:
+            if isinstance(key, CanonicalExpressionIdentity):
+                if item.target_kind == "field":
+                    match = (
+                        item.field is not None
+                        and key.field
+                        == CanonicalFieldIdentity(
+                            item.field.entity_id,
+                            item.field.column,
+                        )
+                    )
+                else:
+                    assert item.aggregation_id is not None
+                    aggregate = aggregates[item.aggregation_id]
+                    target = (
+                        CanonicalFieldIdentity(
+                            aggregate.field.entity_id, aggregate.field.column
+                        )
+                        if aggregate.field
+                        else None
+                    )
+                    match = key.aggregation is not None and (
+                        key.aggregation.function,
+                        key.aggregation.target_field,
+                        key.aggregation.distinct,
+                    ) == (aggregate.function, target, aggregate.distinct)
+            else:
+                match = key == (
+                    item.field.column if item.field else item.aggregation_id
+                )
+            if match:
+                candidates.append(key)
+        if len(candidates) != 1:
+            return None
+        result.append(candidates[0])
+    return tuple(result)
 
 
 class _ProvenanceComparisonFailure(ValueError):
@@ -597,6 +693,12 @@ def _canonicalize_rows(
     _require_unique_provenance(actual_provenance)
     _require_rows_match_provenance(expected_rows, expected_provenance)
     _require_rows_match_provenance(actual_rows, actual_provenance)
+    if case.semantic_contract is not None and all(
+        _has_validated_provenance(item)
+        for item in (expected_provenance, actual_provenance)
+    ):
+        expected_provenance = _normalize_provenance(expected_provenance)
+        actual_provenance = _normalize_provenance(actual_provenance)
     if case.comparison_mode is ComparisonMode.STABLE_KEYS:
         return _canonicalize_stable_keys(
             case,
@@ -619,6 +721,66 @@ def _canonicalize_rows(
         actual_rows,
         expected_provenance,
         actual_provenance,
+    )
+
+
+def _provenance_proof(value: EvaluationQueryProvenance) -> IdentityProof:
+    return IdentityProof(
+        tuple(
+            ((left.table, left.column), (right.table, right.column))
+            for left, right in value.inner_key_equalities
+        )
+    )
+
+
+def _normalize_provenance(
+    value: EvaluationQueryProvenance,
+) -> EvaluationQueryProvenance:
+    proof = _provenance_proof(value)
+    grouping = tuple(
+        CanonicalFieldIdentity(*field)
+        for field in sorted(
+            proof.grain((field.table, field.column) for field in value.grouping_fields)
+        )
+    )
+
+    def identity(item: CanonicalExpressionIdentity) -> CanonicalExpressionIdentity:
+        if item.field is not None:
+            return replace(
+                item,
+                field=CanonicalFieldIdentity(
+                    *proof.field((item.field.table, item.field.column))
+                ),
+            )
+        assert item.aggregation is not None
+        # Normalize grouping identity only: SUM/COUNT targets and distinctness
+        # remain exact. A shared group grain does not equate aggregate measures.
+        return replace(
+            item, aggregation=replace(item.aggregation, grouping_fields=grouping)
+        )
+
+    return replace(
+        value,
+        grouping_fields=grouping,
+        outputs=tuple(
+            replace(output, identity=identity(output.identity))
+            for output in value.outputs
+        ),
+        ordering=tuple(
+            replace(order, identity=identity(order.identity))
+            for order in value.ordering
+        ),
+        row_grain=replace(
+            value.row_grain,
+            identities=(
+                tuple(
+                    CanonicalExpressionIdentity(kind="field", field=field)
+                    for field in grouping
+                )
+                if value.row_grain.mode == "grouped"
+                else value.row_grain.identities
+            ),
+        ),
     )
 
 
@@ -668,6 +830,7 @@ def _canonicalize_tabular_rows(
     }
     matches: list[tuple[EvaluationOutputProvenance, EvaluationOutputProvenance]] = []
     matched_actual_names: set[str] = set()
+    omitted = []
     for expected_output in expected_provenance.outputs:
         if expected_output.identity.kind == "aggregation":
             candidates = actual_by_identity.get(expected_output.identity, ())
@@ -675,7 +838,9 @@ def _canonicalize_tabular_rows(
             candidate = actual_by_name.get(expected_output.presentation_name)
             if candidate is not None:
                 candidates = (
-                    (candidate,) if candidate.identity == expected_output.identity else ()
+                    (candidate,)
+                    if candidate.identity == expected_output.identity
+                    else ()
                 )
             else:
                 candidates = _canonical_field_alias_candidates(
@@ -686,6 +851,9 @@ def _canonicalize_tabular_rows(
                     actual_provenance,
                 )
         if len(candidates) != 1:
+            if not candidates and expected_output.identity.field is not None:
+                omitted.append(expected_output)
+                continue
             raise _ProvenanceComparisonFailure()
         actual_output = candidates[0]
         if actual_output.presentation_name in matched_actual_names:
@@ -693,15 +861,79 @@ def _canonicalize_tabular_rows(
         matched_actual_names.add(actual_output.presentation_name)
         matches.append((expected_output, actual_output))
 
+    if omitted:
+        # Different unique keys do not have equal VALUES. Compare a shared key
+        # supplied by the baseline, and omit only redundant identity columns.
+        shared = [
+            (item.identity.field.table, item.identity.field.column)
+            for item, _ in matches
+            if item.identity.field is not None
+        ]
+        grain = IdentityProof().grain(
+            (f.table, f.column) for f in expected_provenance.grouping_fields
+        )
+        if not (
+            case.semantic_contract is not None
+            and expected_provenance.row_grain.mode == "grouped"
+            and all(
+                _has_validated_provenance(p)
+                for p in (expected_provenance, actual_provenance)
+            )
+            and shared
+            and IdentityProof().grain(shared) == grain
+            and all(
+                item.authorized is True
+                and item.identity.field is not None
+                and (item.identity.field.table, item.identity.field.column)
+                not in {
+                    _provenance_proof(expected_provenance).field(
+                        (f.entity_id, f.column)
+                    )
+                    for f in case.semantic_contract.output_fields
+                }
+                and IdentityProof().grain(
+                    [*shared, (item.identity.field.table, item.identity.field.column)]
+                )
+                == grain
+                for item in omitted
+            )
+        ):
+            raise _ProvenanceComparisonFailure()
+
     extras = tuple(
         output
         for output in actual_provenance.outputs
         if output.presentation_name not in matched_actual_names
     )
     if extras:
-        if case.comparison_mode is not ComparisonMode.UNORDERED_ROWS or any(
-            output.authorized is not True for output in extras
-        ):
+        redundant_group_fields = (
+            case.semantic_contract is not None
+            and expected_provenance.row_grain.mode == "grouped"
+            and all(
+                _has_validated_provenance(p)
+                for p in (expected_provenance, actual_provenance)
+            )
+            and all(
+                output.identity.field is not None
+                and IdentityProof().grain(
+                    [
+                        *(
+                            (f.table, f.column)
+                            for f in actual_provenance.grouping_fields
+                        ),
+                        (output.identity.field.table, output.identity.field.column),
+                    ]
+                )
+                == IdentityProof().grain(
+                    (f.table, f.column) for f in actual_provenance.grouping_fields
+                )
+                for output in extras
+            )
+        )
+        if (
+            case.comparison_mode is not ComparisonMode.UNORDERED_ROWS
+            and not redundant_group_fields
+        ) or any(output.authorized is not True for output in extras):
             raise _ProvenanceComparisonFailure()
 
     expected = _project_rows(expected_rows, matches, side="expected")
@@ -831,8 +1063,7 @@ def _freeze_signature_value(value: Any) -> Any:
     if isinstance(value, Mapping):
         return tuple(
             sorted(
-                (str(key), _freeze_signature_value(item))
-                for key, item in value.items()
+                (str(key), _freeze_signature_value(item)) for key, item in value.items()
             )
         )
     if isinstance(value, tuple):
@@ -896,9 +1127,7 @@ def _rows_equal(
 ) -> bool:
     if set(expected) != set(actual):
         return False
-    return all(
-        _values_equal(expected[key], actual[key], tolerance) for key in expected
-    )
+    return all(_values_equal(expected[key], actual[key], tolerance) for key in expected)
 
 
 def _values_equal(expected: Any, actual: Any, tolerance: Decimal | None) -> bool:
@@ -915,7 +1144,9 @@ def _normalize_value(value: Any) -> Any:
     if isinstance(value, uuid.UUID):
         return str(value).lower()
     if isinstance(value, datetime):
-        normalized = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+        normalized = (
+            value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+        )
         return normalized.astimezone(timezone.utc).isoformat(timespec="microseconds")
     if isinstance(value, date):
         return value.isoformat()

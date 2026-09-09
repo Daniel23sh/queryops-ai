@@ -1,5 +1,13 @@
 # QueryOps V1 Readiness Report
 
+## Current correction and historical source state
+
+The source checkpoints and digests below describe the original PR11 evidence.
+They do not qualify the corrected Evaluation V2 candidate. Current identities and
+the evaluator-only correction are recorded in [semantic corrections](v2-semantic-corrections.md)
+and [release policy](v1-quality-gates.md). Readiness remains incomplete; a new
+freeze and separately authorized evidence sequence are required.
+
 Policy: `queryops-v1-readiness-v1`
 
 ## Source state

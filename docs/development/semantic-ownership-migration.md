@@ -202,8 +202,10 @@ reason to stay binding. Independently trusted structured constraints, if
 introduced later, would need their own provenance and must not be passed through
 this question-derived ablation.
 
-Frozen V2 digest remains
+At the PR57 checkpoint, the frozen V2 digest remained
 `a2ce20e766ee816a5fef357d8a46ef987ed3ba614f3b273f593bc63ed317e6b0`.
 The recorded PR52 evidence remains unchanged; versioned reruns above neither modify
 V2 nor uses its conflict count as a success criterion. Validation/review evidence
 is recorded in [development history](../history/development-history.md).
+
+Later evaluator-only identity changes are documented in [V2 semantic corrections](../evaluation/v2-semantic-corrections.md); the historical evidence above is not a current release freeze.

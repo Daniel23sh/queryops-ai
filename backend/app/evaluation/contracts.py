@@ -188,6 +188,9 @@ class EvaluationQueryProvenance:
     row_grain: EvaluationRowGrainProvenance
     authorization_evidence: ProvenanceAuthorizationEvidence
     ordering_significance_explicit: bool = False
+    inner_key_equalities: tuple[
+        tuple[CanonicalFieldIdentity, CanonicalFieldIdentity], ...
+    ] = ()
 
     def as_safe_dict(self) -> dict[str, Any]:
         return {
@@ -199,6 +202,10 @@ class EvaluationQueryProvenance:
             "row_grain": self.row_grain.as_safe_dict(),
             "authorization_evidence": self.authorization_evidence.value,
             "ordering_significance_explicit": self.ordering_significance_explicit,
+            "inner_key_equalities": [
+                [left.as_safe_dict(), right.as_safe_dict()]
+                for left, right in self.inner_key_equalities
+            ],
         }
 
 

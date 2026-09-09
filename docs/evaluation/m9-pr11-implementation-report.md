@@ -1,5 +1,13 @@
 # M9 PR11 — Evaluation V2 & Stability Release Gate
 
+## Historical PR11 identities
+
+The source checkpoints and digests below describe the original PR11 evidence.
+They do not qualify the corrected Evaluation V2 candidate. Current identities and
+the evaluator-only correction are recorded in [semantic corrections](v2-semantic-corrections.md)
+and [release policy](v1-quality-gates.md). Readiness remains incomplete; a new
+freeze and separately authorized evidence sequence are required.
+
 Implementation report dated 2026-09-02 (Asia/Jerusalem).
 
 ## Executive summary
