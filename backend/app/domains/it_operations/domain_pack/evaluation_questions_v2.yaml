@@ -996,7 +996,7 @@
           "group_id"
         ]
       },
-      "baseline_sql": "SELECT d.name AS department_name, COUNT(DISTINCT du.id) AS user_count FROM departments d JOIN directory_users du ON du.department_id = d.id JOIN user_group_memberships ugm ON ugm.user_id = du.id JOIN groups g ON g.id = ugm.group_id WHERE g.is_privileged = true GROUP BY d.name ORDER BY d.name",
+      "baseline_sql": "SELECT d.id, d.name AS department_name, COUNT(DISTINCT du.id) AS user_count FROM departments d JOIN directory_users du ON du.department_id = d.id JOIN user_group_memberships ugm ON ugm.user_id = du.id JOIN groups g ON g.id = ugm.group_id WHERE g.is_privileged = true GROUP BY d.id, d.name ORDER BY d.name",
       "requires_join": true,
       "clarification_expected": false,
       "security_sensitive": true,
@@ -1018,12 +1018,7 @@
             "column": "name"
           }
         ],
-        "output_fields": [
-          {
-            "entity_id": "departments",
-            "column": "name"
-          }
-        ],
+        "output_fields": [],
         "aggregations": [
           {
             "id": "user_count",
@@ -1918,11 +1913,15 @@
       "scope_mode": "assigned",
       "expected_outcome": "success",
       "expected_tables": [
+        "directory_users",
         "groups",
         "login_events",
         "user_group_memberships"
       ],
       "expected_columns": {
+        "directory_users": [
+          "id"
+        ],
         "groups": [
           "id",
           "is_privileged"
@@ -1938,7 +1937,7 @@
           "group_id"
         ]
       },
-      "baseline_sql": "SELECT le.user_id, COUNT(DISTINCT le.id) AS failed_login_count FROM login_events le JOIN user_group_memberships ugm ON ugm.user_id = le.user_id JOIN groups g ON g.id = ugm.group_id WHERE le.event_type = 'failed' AND le.occurred_at >= CURRENT_TIMESTAMP - INTERVAL '30 days' AND g.is_privileged = true GROUP BY le.user_id HAVING COUNT(DISTINCT le.id) > 5 ORDER BY le.user_id",
+      "baseline_sql": "SELECT le.user_id, COUNT(DISTINCT le.id) AS failed_login_count FROM login_events le JOIN directory_users du ON du.id = le.user_id JOIN user_group_memberships ugm ON ugm.user_id = du.id JOIN groups g ON g.id = ugm.group_id WHERE le.event_type = 'failed' AND le.occurred_at >= CURRENT_TIMESTAMP - INTERVAL '30 days' AND g.is_privileged = true GROUP BY le.user_id HAVING COUNT(DISTINCT le.id) > 5 ORDER BY le.user_id",
       "requires_join": true,
       "clarification_expected": false,
       "security_sensitive": true,
@@ -2097,7 +2096,7 @@
           "monthly_cost_usd"
         ]
       },
-      "baseline_sql": "SELECT l.product_name, COUNT(*) AS reclaim_count, SUM(l.monthly_cost_usd) AS monthly_savings FROM license_assignments la JOIN licenses l ON l.id = la.license_id WHERE la.status = 'active' AND la.is_mandatory = false AND la.is_exception = false AND (la.last_used_at IS NULL OR la.last_used_at < CURRENT_TIMESTAMP - INTERVAL '60 days') GROUP BY l.product_name ORDER BY monthly_savings DESC, l.product_name",
+      "baseline_sql": "SELECT l.product_name, SUM(l.monthly_cost_usd) AS monthly_savings FROM license_assignments la JOIN licenses l ON l.id = la.license_id WHERE la.status = 'active' AND la.is_mandatory = false AND la.is_exception = false AND (la.last_used_at IS NULL OR la.last_used_at < CURRENT_TIMESTAMP - INTERVAL '60 days') GROUP BY l.product_name ORDER BY monthly_savings DESC, l.product_name",
       "requires_join": true,
       "clarification_expected": false,
       "security_sensitive": false,
@@ -2127,12 +2126,6 @@
           }
         ],
         "aggregations": [
-          {
-            "id": "reclaim_count",
-            "function": "count",
-            "field": null,
-            "distinct": false
-          },
           {
             "id": "monthly_savings",
             "function": "sum",

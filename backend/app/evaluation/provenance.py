@@ -6,6 +6,8 @@ from collections.abc import Sequence
 from sqlglot import exp, parse_one
 from sqlglot.errors import ParseError
 
+from app.evaluation.identity import catalog_equalities
+
 from app.evaluation.contracts import (
     CanonicalAggregationIdentity,
     CanonicalExpressionIdentity,
@@ -44,9 +46,10 @@ def extract_evaluation_query_provenance(
         raise EvaluationProvenanceError("sql_parse_failed") from None
     if not isinstance(statement, exp.Select):
         raise EvaluationProvenanceError("sql_shape_unsupported")
-    if statement.args.get("with_") is not None or len(
-        list(statement.find_all(exp.Select))
-    ) != 1:
+    if (
+        statement.args.get("with_") is not None
+        or len(list(statement.find_all(exp.Select))) != 1
+    ):
         raise EvaluationProvenanceError("sql_shape_unsupported")
 
     resolver = _FieldResolver.from_select(statement)
@@ -62,7 +65,9 @@ def extract_evaluation_query_provenance(
     output_identities = {
         output.presentation_name: output.identity for output in outputs
     }
-    ordering = _extract_ordering(statement, resolver, grouping_fields, output_identities)
+    ordering = _extract_ordering(
+        statement, resolver, grouping_fields, output_identities
+    )
     row_grain = _extract_row_grain(
         statement,
         resolver,
@@ -78,7 +83,43 @@ def extract_evaluation_query_provenance(
         # The frozen case contract currently records ORDERED_ROWS and baseline SQL,
         # but not which ORDER BY positions are business-significant.
         ordering_significance_explicit=False,
+        inner_key_equalities=_inner_key_equalities(statement, resolver),
     )
+
+
+def _inner_key_equalities(
+    statement: exp.Select,
+    resolver: _FieldResolver,
+) -> tuple[tuple[CanonicalFieldIdentity, CanonicalFieldIdentity], ...]:
+    """Only selected catalog FK equalities in conjunctive INNER JOIN ON clauses."""
+    tables = list(statement.find_all(exp.Table))
+    if len(tables) != len({table.name for table in tables}):
+        return ()  # Self-join aliases cannot be represented by table-only identities.
+    allowed = {frozenset(pair) for pair in catalog_equalities().values()}
+    pairs = []
+    for join in statement.args.get("joins") or ():
+        if join.side or join.kind not in {"", "INNER"}:
+            continue
+        on = join.args.get("on")
+        if on is None:
+            continue
+        predicates = list(on.flatten()) if isinstance(on, exp.And) else [on]
+        for predicate in predicates:
+            if not isinstance(predicate, exp.EQ) or not all(
+                isinstance(value, exp.Column)
+                for value in (predicate.this, predicate.expression)
+            ):
+                continue
+            left, right = (
+                resolver.field(predicate.this),
+                resolver.field(predicate.expression),
+            )
+            if (
+                frozenset(((left.table, left.column), (right.table, right.column)))
+                in allowed
+            ):
+                pairs.append((left, right))
+    return tuple(pairs)
 
 
 def build_evaluation_comparison_provenance(
@@ -111,7 +152,9 @@ def build_evaluation_comparison_provenance(
 
 
 class _FieldResolver:
-    def __init__(self, *, alias_to_table: dict[str, str], source_tables: tuple[str, ...]):
+    def __init__(
+        self, *, alias_to_table: dict[str, str], source_tables: tuple[str, ...]
+    ):
         self.alias_to_table = alias_to_table
         self.source_tables = source_tables
 
@@ -268,7 +311,9 @@ def _expression_identity(
     if isinstance(expression, exp.Column):
         return _field_identity(resolver.field(expression))
     if isinstance(expression, exp.AggFunc):
-        columns = tuple(resolver.field(column) for column in expression.find_all(exp.Column))
+        columns = tuple(
+            resolver.field(column) for column in expression.find_all(exp.Column)
+        )
         if len(columns) > 1:
             raise EvaluationProvenanceError("aggregation_target_ambiguous")
         aggregation = CanonicalAggregationIdentity(

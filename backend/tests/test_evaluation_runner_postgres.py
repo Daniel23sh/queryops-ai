@@ -7,7 +7,7 @@ from dataclasses import replace
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, delete, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -134,9 +134,7 @@ def test_baseline_rls_context_is_scoped_per_case_without_leak(
     source = evaluation_set.cases_by_id["itops-easy-001"]
     case = replace(
         source,
-        baseline_sql=(
-            "SELECT id, department_id FROM directory_users ORDER BY id"
-        ),
+        baseline_sql=("SELECT id, department_id FROM directory_users ORDER BY id"),
     )
     pack = load_it_operations_domain_pack()
     with Session(postgres_engine) as db:
@@ -301,3 +299,134 @@ def postgres_engine() -> Generator[Engine, None, None]:
         yield engine
     finally:
         engine.dispose()
+
+
+@pytest.mark.parametrize(
+    "case_id,grouping",
+    [
+        ("itops-medium-006", [("departments", "name")]),
+        ("itops-medium-006", [("departments", "id")]),
+        ("itops-medium-006", [("departments", "id"), ("departments", "name")]),
+        ("itops-hard-004", [("login_events", "user_id")]),
+        ("itops-hard-004", [("directory_users", "id")]),
+        ("itops-hard-006", None),
+    ],
+)
+def test_corrected_baselines_and_representations_execute_under_rls(
+    postgres_engine, case_id, grouping
+):
+    from datetime import datetime, timedelta, timezone
+    from uuid import uuid4
+
+    from app.domains.it_operations.models import (
+        DirectoryUser,
+        Group,
+        LoginEvent,
+        UserGroupMembership,
+    )
+    from app.models.product import AccessScope
+    from tests.test_evaluation_semantic_corrections import compare, example
+
+    case, _, sql = example(case_id, grouping=grouping)
+    pack = load_it_operations_domain_pack()
+    with Session(postgres_engine) as db:
+        identity = resolve_evaluation_identity(db, case)
+        added = []
+        if case_id == "itops-hard-004":
+            scope = db.scalar(
+                select(AccessScope).where(
+                    AccessScope.scope_type == "department",
+                    AccessScope.scope_key == identity.target_scope.scope_key,
+                )
+            )
+            now = datetime.now(timezone.utc)
+            groups = [
+                Group(
+                    id=uuid4(),
+                    name=f"audit-test-{uuid4()}",
+                    group_type="security",
+                    department_id=scope.department_id,
+                    is_privileged=True,
+                )
+                for _ in range(2)
+            ]
+            users = [
+                DirectoryUser(
+                    id=uuid4(),
+                    employee_number=f"test-{uuid4()}",
+                    email=f"{uuid4()}@example.test",
+                    full_name="Synthetic audit user",
+                    department_id=scope.department_id,
+                )
+                for _ in range(2)
+            ]
+            db.add_all([*groups, *users])
+            db.flush()
+            for user, count in zip(users, (6, 5), strict=True):
+                db.add_all(
+                    [
+                        UserGroupMembership(
+                            user_id=user.id,
+                            group_id=group.id,
+                            department_id=scope.department_id,
+                            added_at=now,
+                        )
+                        for group in groups
+                    ]
+                )
+                db.add_all(
+                    [
+                        LoginEvent(
+                            user_id=user.id,
+                            department_id=scope.department_id,
+                            event_type="failed",
+                            occurred_at=now - timedelta(days=1),
+                        )
+                        for _ in range(count)
+                    ]
+                )
+                db.add(
+                    LoginEvent(
+                        user_id=user.id,
+                        department_id=scope.department_id,
+                        event_type="failed",
+                        occurred_at=now - timedelta(days=31),
+                    )
+                )
+                db.add(
+                    LoginEvent(
+                        user_id=user.id,
+                        department_id=scope.department_id,
+                        event_type="success",
+                        occurred_at=now,
+                    )
+                )
+            db.commit()
+            added = [*groups, *users]
+        try:
+            expected = execute_evaluation_baseline(
+                db, identity.access_context, case, pack
+            )
+            actual = execute_evaluation_baseline(
+                db, identity.access_context, replace(case, baseline_sql=sql), pack
+            )
+            if added:
+                counts = {
+                    str(row["user_id"]): row["failed_login_count"]
+                    for row in expected.rows
+                }
+                assert counts[str(users[0].id)] == 6
+                assert str(users[1].id) not in counts
+        finally:
+            if added:
+                db.execute(
+                    delete(Group).where(Group.id.in_([group.id for group in groups]))
+                )
+                db.execute(
+                    delete(DirectoryUser).where(
+                        DirectoryUser.id.in_([user.id for user in users])
+                    )
+                )
+                db.commit()
+    assert expected.rows, "Seed must exercise nonempty corrected result comparison"
+    assert compare(case, sql, expected.rows, actual.rows).passed

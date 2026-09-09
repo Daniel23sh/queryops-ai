@@ -46,7 +46,7 @@ class CanaryCoverage(str, Enum):
 V2_DATASET_ID = "it_operations_v2"
 V2_DATASET_VERSION = "2"
 V2_DATASET_DIGEST = (
-    "a2ce20e766ee816a5fef357d8a46ef987ed3ba614f3b273f593bc63ed317e6b0"
+    "372a5c203fb86e176f207656846884b8d5df5a1e939501e5ec9a35f65da2fe5e"
 )
 CANARY_SUITE_ID = "it_operations_v2_stability_canary"
 CANARY_SUITE_VERSION = "1"
