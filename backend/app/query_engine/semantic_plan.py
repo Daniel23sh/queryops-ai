@@ -128,6 +128,8 @@ class SemanticOrderIntent(BaseModel):
 
 
 class SemanticPlan(BaseModel):
+    """A query plan with a metric, explicit output field, or aggregation."""
+
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
     entity_ids: tuple[Identifier, ...] = Field(max_length=MAX_PLAN_ITEMS)
@@ -149,6 +151,14 @@ class SemanticPlan(BaseModel):
     having: tuple[SemanticHavingIntent, ...] = Field(max_length=MAX_PLAN_ITEMS)
     order_by: tuple[SemanticOrderIntent, ...] = Field(max_length=MAX_PLAN_ITEMS)
     limit: Annotated[int, Field(ge=1, le=500)] | None
+
+    @property
+    def has_output_intent(self) -> bool:
+        return (
+            self.metric_id is not None
+            or bool(self.output_fields)
+            or bool(self.aggregations)
+        )
 
 
 @dataclass(frozen=True)
@@ -377,7 +387,7 @@ def validate_semantic_plan(
     if not required_entity_ids <= set(plan.entity_ids):
         raise SemanticPlanValidationError("required_entity_missing")
 
-    if not plan.metric_id and not plan.output_fields and not plan.aggregations:
+    if not plan.has_output_intent:
         raise SemanticPlanValidationError("output_intent_missing")
 
     selected_relationships = {
