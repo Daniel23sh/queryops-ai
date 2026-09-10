@@ -60,6 +60,31 @@ def test_release_environment_manifest_builds_and_validates_exact_v2_identity(
     assert identity.source_git_sha == "a" * 40
 
 
+def test_release_environment_manifest_normalizes_official_postgres_version(
+    tmp_path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _stub_release_environment(monkeypatch, stub_postgres_version=False)
+    db = _PostgresVersionSession("16.14 (Debian 16.14-1.pgdg13+1)")
+
+    manifest = build_evaluation_environment_manifest(
+        db,  # type: ignore[arg-type]
+        _release_seed_summary(),
+        source_git_sha="a" * 40,
+    )
+
+    assert manifest["identity"]["postgres_version"] == "16.14"
+    path = tmp_path / "evaluation-environment.json"
+    path.write_text(json.dumps(manifest), encoding="utf-8")
+    identity = validate_evaluation_environment_manifest(
+        db,  # type: ignore[arg-type]
+        path,
+        now=REFERENCE_TIME,
+        source_git_sha="a" * 40,
+    )
+    assert identity.postgres_version == "16.14"
+
+
 def test_release_environment_manifest_rejects_historical_v1_identity(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
@@ -159,6 +184,12 @@ def test_persisted_environment_identity_is_strict_and_time_bounded() -> None:
     assert validate_persisted_environment_identity(
         {**identity.as_dict(), "database_fingerprint": "invalid"}
     ) is None
+    assert validate_persisted_environment_identity(
+        {
+            **identity.as_dict(),
+            "postgres_version": "16.14 (Debian 16.14-1.pgdg13+1)",
+        }
+    ) is None
     assert reference_time_is_eligible(identity, REFERENCE_TIME + timedelta(hours=24))
     assert not reference_time_is_eligible(
         identity,
@@ -191,7 +222,11 @@ def _release_seed_summary() -> SeedSummary:
     )
 
 
-def _stub_release_environment(monkeypatch: pytest.MonkeyPatch) -> None:
+def _stub_release_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    stub_postgres_version: bool = True,
+) -> None:
     monkeypatch.setattr(environment, "_require_release_database", lambda _db: None)
     monkeypatch.setattr(
         environment,
@@ -203,9 +238,19 @@ def _stub_release_environment(monkeypatch: pytest.MonkeyPatch) -> None:
         "_alembic_revision",
         lambda _db: "0010_disable_inactive_user",
     )
-    monkeypatch.setattr(environment, "_postgres_version", lambda _db: "16.9")
+    if stub_postgres_version:
+        monkeypatch.setattr(environment, "_postgres_version", lambda _db: "16.9")
     monkeypatch.setattr(environment, "_dependency_manifest_hash", lambda: "c" * 64)
     monkeypatch.setattr(environment, "_runtime_versions", lambda: {"runtime": "test"})
+
+
+class _PostgresVersionSession:
+    def __init__(self, server_version: str) -> None:
+        self.server_version = server_version
+
+    def scalar(self, statement) -> str:
+        assert str(statement) == "SHOW server_version"
+        return self.server_version
 
 
 def _as_utc(value: datetime) -> datetime:
