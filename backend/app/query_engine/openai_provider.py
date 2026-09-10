@@ -86,6 +86,11 @@ consistent with the request, Required Intent, the authorized schema, and
 the authoritative Semantic Catalog. Do not treat Suggested fields as mandatory,
 and do not invent or promote Required, Suggested, or other semantics merely
 because a field is unset.
+Every semantic plan must have an executable output form. A canonical metric plan
+uses metric_id and may leave output_fields and aggregations empty. An ad-hoc
+aggregate plan uses at least one aggregation. A detail or list plan without a
+metric or aggregation must select at least one authorized output_field. A plan
+with no metric_id, output_fields, or aggregations is invalid.
 Select a canonical metric only when the wording invokes that named business
 measure. Set metric_id to that metric and do not add or restate its count or sum
 in aggregations. V1 canonical metrics are scalar: leave output_fields,
@@ -162,6 +167,8 @@ class _StructuredProviderOutput(BaseModel):
         if self.outcome == "plan":
             if self.semantic_plan is None:
                 raise ValueError("Plan output is missing")
+            if not self.semantic_plan.has_output_intent:
+                raise ValueError("Plan output intent is missing")
             if self.clarification_reason is not None:
                 raise ValueError("Plan output cannot include a clarification reason")
         elif self.outcome == "clarification" and (

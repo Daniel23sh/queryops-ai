@@ -124,6 +124,18 @@ ACTIVE_HUMAN_PLAN = {
     "order_by": [],
     "limit": None,
 }
+AGGREGATE_PLAN = {
+    **DEVICE_PLAN,
+    "output_fields": [],
+    "aggregations": [
+        {
+            "id": "device_count",
+            "function": "count",
+            "field": None,
+            "distinct": False,
+        }
+    ],
+}
 
 
 class FakeResponses:
@@ -317,6 +329,29 @@ def test_openai_provider_parses_plan_and_extracts_only_safe_usage() -> None:
     }
 
 
+@pytest.mark.parametrize(
+    "plan",
+    [DEVICE_PLAN, ACTIVE_HUMAN_PLAN, AGGREGATE_PLAN],
+    ids=["detail", "canonical_metric", "aggregate"],
+)
+def test_openai_provider_accepts_each_executable_output_form(
+    plan: dict[str, Any],
+) -> None:
+    result = provider_for(
+        FakeClient(
+            {
+                "outcome": "plan",
+                "semantic_plan": plan,
+                "clarification_reason": None,
+            }
+        )
+    ).generate_plan(QUESTION, SCHEMA_CONTEXT, USER_CONTEXT, {})
+
+    assert result.outcome is PlanGenerationOutcome.PLAN
+    assert result.semantic_plan is not None
+    assert result.semantic_plan.has_output_intent is True
+
+
 def test_required_and_suggested_intent_remain_in_plan_only_request() -> None:
     question = "Show users with active license assignments by product."
     schema_context = _full_schema_context()
@@ -370,6 +405,8 @@ def test_required_and_suggested_intent_remain_in_plan_only_request() -> None:
     assert "suggested intent is non-binding planner guidance" in instructions
     assert "do not treat suggested fields as mandatory" in instructions
     assert "lexical candidate evidence and candidate signals are retrieval hints only" in instructions
+    assert "every semantic plan must have an executable output form" in instructions
+    assert "a plan with no metric_id, output_fields, or aggregations is invalid" in instructions
     assert "mandatory_semantic_evidence" not in prompt["semantic_catalog"]
     assert "never emit sql" in instructions
     assert "return a catalog-referenced semantic_plan" in instructions
@@ -642,6 +679,27 @@ def test_malformed_semantic_plan_is_rejected() -> None:
 
     assert exc_info.value.code == "provider_response_invalid"
     assert "secret" not in str(exc_info.value).lower()
+
+
+def test_openai_provider_rejects_plan_without_executable_output() -> None:
+    plan = {
+        **DEVICE_PLAN,
+        "concept_ids": ["active_device"],
+        "output_fields": [],
+    }
+
+    with pytest.raises(ProviderFailure) as exc_info:
+        provider_for(
+            FakeClient(
+                {
+                    "outcome": "plan",
+                    "semantic_plan": plan,
+                    "clarification_reason": None,
+                }
+            )
+        ).generate_plan(QUESTION, SCHEMA_CONTEXT, USER_CONTEXT, {})
+
+    assert exc_info.value.code == "provider_response_invalid"
 
 
 def test_openai_provider_returns_controlled_clarification_without_plan() -> None:
