@@ -35,7 +35,10 @@ MAX_FUTURE_SKEW = timedelta(minutes=5)
 _SAFE_REVISION = re.compile(r"^[A-Za-z0-9_]{1,128}$")
 _SAFE_SHA = re.compile(r"^[0-9a-f]{40}$")
 _SAFE_DIGEST = re.compile(r"^[0-9a-f]{64}$")
-_SAFE_VERSION = re.compile(r"^[A-Za-z0-9][A-Za-z0-9.+_ -]{0,127}$")
+_SAFE_POSTGRES_VERSION = re.compile(r"^[1-9][0-9]*\.[0-9]+(?:\.[0-9]+)?$")
+_POSTGRES_SERVER_VERSION = re.compile(
+    r"^(?P<version>[1-9][0-9]*\.[0-9]+(?:\.[0-9]+)?)(?: \([^()]+\))?$"
+)
 
 _FINGERPRINT_TABLES = (
     "access_scopes",
@@ -349,7 +352,7 @@ def _parse_identity(value: Any) -> EvaluationEnvironmentIdentity:
         or not 0 <= identity.seed <= 2_147_483_647
         or _SAFE_SHA.fullmatch(identity.source_git_sha) is None
         or _SAFE_REVISION.fullmatch(identity.alembic_revision) is None
-        or _SAFE_VERSION.fullmatch(identity.postgres_version) is None
+        or _SAFE_POSTGRES_VERSION.fullmatch(identity.postgres_version) is None
         or _SAFE_DIGEST.fullmatch(identity.database_fingerprint) is None
         or _SAFE_DIGEST.fullmatch(identity.dependency_manifest_hash) is None
     ):
@@ -395,8 +398,11 @@ def _alembic_revision(db: Session) -> str:
 
 
 def _postgres_version(db: Session) -> str:
-    value = db.scalar(text("SHOW server_version"))
-    return _safe_text(value)
+    value = _safe_text(db.scalar(text("SHOW server_version")))
+    match = _POSTGRES_SERVER_VERSION.fullmatch(value)
+    if match is None:
+        raise EvaluationEnvironmentError("evaluation_environment_invalid")
+    return match.group("version")
 
 
 def _dependency_manifest_hash() -> str:
