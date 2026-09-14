@@ -31,6 +31,19 @@ export type EvaluationActualOutcome =
   | "execution_failed"
   | "internal_error";
 
+export type EvaluationComparisonState =
+  | "correct"
+  | "incorrect"
+  | "unestablished"
+  | "not_reached"
+  | "not_applicable";
+
+export type EvaluationDeliveryCompleteness =
+  | "complete"
+  | "safety_limited"
+  | "unknown"
+  | "not_applicable";
+
 export type EvaluationFailureReason =
   | "unexpected_outcome"
   | "execution_state_mismatch"
@@ -72,7 +85,7 @@ export type ReadinessGate = {
 };
 
 export type EvaluationReadiness = {
-  policy_id: "queryops-v1-readiness-v1";
+  policy_id: "queryops-v1-readiness-v2";
   verdict: ReadinessVerdict;
   provider: "openai" | null;
   model_label: string | null;
@@ -114,6 +127,14 @@ export type EvaluationRun = {
   completed_at: string | null;
 };
 
+export type EvaluationComparisonStateCounts = {
+  correct: number;
+  incorrect: number;
+  unestablished: number;
+  not_reached: number;
+  not_applicable: number;
+};
+
 export type EvaluationMetricSummary = {
   availability: EvaluationAvailability;
   eligible_count: number;
@@ -121,6 +142,8 @@ export type EvaluationMetricSummary = {
   completed_count: number;
   passed_count: number;
   failed_count: number;
+  unestablished_count: number;
+  comparison_state_counts: EvaluationComparisonStateCounts;
   overall_score: number | null;
   expected_behavior_match_rate: number | null;
   security_pass_rate: number | null;
@@ -134,6 +157,8 @@ export type EvaluationBreakdown = {
   completed_count: number;
   passed_count: number;
   failed_count: number;
+  unestablished_count: number;
+  comparison_state_counts: EvaluationComparisonStateCounts;
   score: number | null;
 };
 
@@ -162,6 +187,11 @@ export type EvaluationTechnicalDetails = {
   actual_row_count: number;
   missing_row_count: number;
   extra_row_count: number;
+  returned_row_count_shortfall: number;
+  returned_row_count_surplus: number;
+  comparison_state: EvaluationComparisonState;
+  delivery_completeness: EvaluationDeliveryCompleteness;
+  comparison_limitation_reason: string | null;
   failure_reasons: EvaluationFailureReason[];
   error_code: EvaluationErrorCode | null;
   duration_ms: number;
@@ -175,6 +205,8 @@ export type EvaluationCaseMetric = {
   case_type: EvaluationCaseType;
   passed: boolean;
   score: number;
+  comparison_state: EvaluationComparisonState;
+  delivery_completeness: EvaluationDeliveryCompleteness;
   technical: EvaluationTechnicalDetails | null;
 };
 

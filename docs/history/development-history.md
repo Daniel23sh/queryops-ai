@@ -1,5 +1,52 @@
 # QueryOps AI — Development History
 
+## Approach 3 bounded-result evaluation correction
+
+Implemented from audited main
+`a64d1fa9ebae3abf2a9cd87d27fa0f47e29b1c94`. Production execution retains its
+existing safety limit and delivered rows. Evaluation can widen only a structurally
+proven outer safety bound, under one authorized read-only `REPEATABLE READ`
+transaction and the versioned `queryops-bounded-result-evidence-v1` resource
+budget. Complete evidence can qualify a correct safety-limited delivery;
+insufficient evidence remains explicit, non-qualifying `unestablished` evidence.
+
+The implementation keeps comparison state in metrics without a database migration,
+preserves legacy returned-count delta fields and adds clear read-model aliases.
+Delivery completeness is separate from correctness and appears in product and
+evaluation UI without exposing auxiliary rows or invented totals. Readiness policy
+`queryops-v1-readiness-v2` rejects required unestablished comparisons and historical
+evidence. V2 dataset and fixed-canary digests changed deterministically to
+`6ac164ab6c58c0b008a65afc01cd26aa434fecd3eaa402b5bdad9c89e6f6540f` and
+`83dadd97b819003e9e6aa20b4487affc8a3c926cd7ca3d2672c85225b4ae3fc2`.
+
+Verification completed:
+
+- Full offline gates: Ruff, zero-error/warning Pyright, compilation, ESLint, both
+  TypeScript checks and production build passed; **1,580 backend tests passed**
+  with 199 expected environment-gated skips, and **282 frontend tests passed**.
+- The two V3 guarded disposable-PostgreSQL selections passed **20** and **1,754**
+  tests with zero skips. After the final three pre-commit corrections, the full
+  second selection passed **1,759** tests with zero skips.
+  Focused evaluation tests additionally covered arbitrary safety subsets,
+  differing populations, exact cap, 1,000/1,001 evidence boundaries through the
+  runner, structural bounds, duplicates, `DISTINCT`, grouping, aggregates,
+  ranking ties, transaction time, concurrent commits, RLS/context mismatch,
+  deadlines, payload accounting and original-stage failures.
+- Five Chromium Evaluation flows passed. Alembic reported
+  `0010_disable_inactive_user` at head and no model/schema changes. `git diff
+  --check` passed.
+- The final three pre-commit corrections preserve successful execution across
+  QueryRun persistence/context teardown failures, distinguish SQL exhaustion
+  from population completeness and comparison proof from context compatibility,
+  and use one exact payload-set definition. A fresh-context focused independent
+  review found no remaining blocker in those three areas. No live provider call,
+  canary, release environment, candidate, user
+  database, migration, push, PR or release operation occurred.
+
+The correction does not resolve medium-009 provider semantic reliability,
+hard-004 aggregate-grouping provider/runtime ownership, other tracked DISTINCT
+enforcement gaps, pagination/export, provider tuning or release qualification.
+
 ## Evaluation V2 semantic correctness correction
 
 Based on audited `75568dc5f6cef5f541eac1b357e8809828133547`, with no initial

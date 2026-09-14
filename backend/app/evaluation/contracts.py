@@ -59,6 +59,40 @@ class ComparisonMode(str, Enum):
     NONE = "none"
 
 
+class ComparisonState(str, Enum):
+    CORRECT = "correct"
+    INCORRECT = "incorrect"
+    UNESTABLISHED = "unestablished"
+    NOT_REACHED = "not_reached"
+    NOT_APPLICABLE = "not_applicable"
+
+
+class DeliveryCompleteness(str, Enum):
+    COMPLETE = "complete"
+    SAFETY_LIMITED = "safety_limited"
+    UNKNOWN = "unknown"
+    NOT_APPLICABLE = "not_applicable"
+
+
+class EvaluationAnswerBoundKind(str, Enum):
+    POPULATION = "population"
+    LIMIT = "limit"
+    TOP_N = "top_n"
+
+
+@dataclass(frozen=True)
+class EvaluationAnswerBound:
+    kind: EvaluationAnswerBoundKind
+    limit: int | None = None
+
+    def __post_init__(self) -> None:
+        if self.kind is EvaluationAnswerBoundKind.POPULATION:
+            if self.limit is not None:
+                raise ValueError("Population answer bound cannot define a limit")
+        elif self.limit is None or self.limit < 1:
+            raise ValueError("Bounded answer requires a positive limit")
+
+
 class RequestingRole(str, Enum):
     USER = "user"
     MANAGER = "manager"
@@ -303,6 +337,9 @@ class EvaluationSemanticContract:
     group_by: tuple[EvaluationSemanticField, ...]
     having: tuple[EvaluationSemanticHaving, ...]
     ordering: tuple[EvaluationSemanticOrdering, ...]
+    answer_bound: EvaluationAnswerBound = EvaluationAnswerBound(
+        EvaluationAnswerBoundKind.POPULATION
+    )
 
     def as_safe_dict(self) -> dict[str, Any]:
         return {
@@ -319,6 +356,10 @@ class EvaluationSemanticContract:
             "group_by": [field.as_safe_dict() for field in self.group_by],
             "having": [item.as_safe_dict() for item in self.having],
             "ordering": [item.as_safe_dict() for item in self.ordering],
+            "answer_bound": {
+                "kind": self.answer_bound.kind.value,
+                "limit": self.answer_bound.limit,
+            },
         }
 
 

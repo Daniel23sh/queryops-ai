@@ -51,6 +51,15 @@ def test_three_matching_passing_runs_form_one_stable_set() -> None:
     assert assessment.model_label == "gpt-5.6-terra"
 
 
+def test_three_identical_unestablished_runs_cannot_pass_stability() -> None:
+    runs = [_with_unestablished(_run(index=index)) for index in range(3)]
+
+    assessment = _evaluate(load_it_operations_evaluation_v2_set(), runs)
+
+    assert assessment.status is StabilityStatus.INCOMPLETE
+    assert assessment.reason_code == "stability_comparison_unestablished"
+
+
 def test_mismatched_sha_or_model_does_not_form_a_stability_set() -> None:
     for mutation in ("sha", "model"):
         runs = [_run(index=0), _run(index=1), _run(index=2)]
@@ -96,6 +105,82 @@ def test_mismatched_dataset_and_malformed_results_fail_closed() -> None:
         assert assessment.status is StabilityStatus.INCOMPLETE
         assert assessment.reason_code == "stability_evidence_malformed"
         assert len(assessment.run_ids) == 2
+
+
+def test_failed_actual_execution_cannot_stabilize_as_comparison_correct() -> None:
+    runs = [_run(index=index) for index in range(3)]
+    rows = list(runs[-1].results)
+    index = next(
+        index
+        for index, row in enumerate(rows)
+        if row.metrics["comparison_state"] == "correct"
+    )
+    row = rows[index]
+    rows[index] = replace(
+        row,
+        status="failed",
+        score=0.5,
+        actual_output={
+            **row.actual_output,
+            "outcome": "execution_failed",
+            "execution_succeeded": False,
+            "error_code": "execution_failed",
+        },
+        metrics={
+            **row.metrics,
+            "score": 0.5,
+            "passed": False,
+            "outcome_correct": False,
+            "execution_correct": False,
+            "failure_reasons": ["unexpected_outcome", "execution_state_mismatch"],
+        },
+    )
+    runs[-1] = _with_results(runs[-1], rows)
+
+    assessment = _evaluate(
+        load_it_operations_evaluation_v2_set(),
+        tuple(runs),
+    )
+
+    assert assessment.status is StabilityStatus.INCOMPLETE
+    assert assessment.reason_code == "stability_evidence_malformed"
+    assert len(assessment.run_ids) == 2
+
+
+def test_stability_rejects_summary_counts_and_evidence_that_do_not_support_state() -> None:
+    dataset = load_it_operations_evaluation_v2_set()
+    wrong_count = [_run(index=index) for index in range(3)]
+    wrong_count[-1] = _with_summary(wrong_count[-1], unestablished_count=1)
+
+    wrong_state_count = [_run(index=index) for index in range(3)]
+    counts = dict(wrong_state_count[-1].summary["comparison_state_counts"])
+    counts["correct"] -= 1
+    counts["incorrect"] += 1
+    wrong_state_count[-1] = _with_summary(
+        wrong_state_count[-1], comparison_state_counts=counts
+    )
+
+    wrong_evidence = [_run(index=index) for index in range(3)]
+    rows = list(wrong_evidence[-1].results)
+    index = next(i for i, row in enumerate(rows) if row.case_id == "itops-easy-006")
+    row = rows[index]
+    evidence = _evidence_summary()
+    evidence["actual"] = {
+        **evidence["actual"],
+        "complete": False,
+        "exhausted": False,
+        "limitation_reason": "evidence_row_budget_exceeded",
+    }
+    rows[index] = replace(
+        row,
+        metrics={**row.metrics, "comparison_evidence": evidence},
+    )
+    wrong_evidence[-1] = replace(wrong_evidence[-1], results=tuple(rows))
+
+    for runs in (wrong_count, wrong_state_count, wrong_evidence):
+        assessment = _evaluate(dataset, runs)
+        assert assessment.status is StabilityStatus.INCOMPLETE
+        assert assessment.reason_code == "stability_evidence_malformed"
 
 
 def test_mixed_partial_identities_report_only_the_best_matching_group() -> None:
@@ -151,6 +236,24 @@ def test_outcome_oscillation_fails_even_when_each_run_clears_aggregate_rates() -
         if row.case_id == "itops-easy-006"
     )
     row = rows[index]
+    metrics = {
+        **row.metrics,
+        "score": 0.25,
+        "passed": False,
+        "outcome_correct": False,
+        "execution_correct": False,
+        "result_correct": None,
+        "comparison_state": "not_reached",
+        "delivery_completeness": "unknown",
+        "query_execution_attempted": False,
+        "failure_reasons": [
+            "unexpected_outcome",
+            "execution_state_mismatch",
+            "result_semantics_mismatch",
+        ],
+        "failure_stage": "plan_generation",
+    }
+    metrics.pop("comparison_evidence", None)
     rows[index] = replace(
         row,
         status="failed",
@@ -160,23 +263,9 @@ def test_outcome_oscillation_fails_even_when_each_run_clears_aggregate_rates() -
             "outcome": "clarification",
             "execution_succeeded": False,
         },
-        metrics={
-            **row.metrics,
-            "score": 0.25,
-            "passed": False,
-            "outcome_correct": False,
-            "execution_correct": False,
-            "result_correct": False,
-            "query_execution_attempted": False,
-            "failure_reasons": [
-                "unexpected_outcome",
-                "execution_state_mismatch",
-                "result_semantics_mismatch",
-            ],
-            "failure_stage": "plan_generation",
-        },
+        metrics=metrics,
     )
-    runs[-1] = replace(runs[-1], results=tuple(rows))
+    runs[-1] = _with_results(runs[-1], rows)
 
     assessment = _evaluate(
         load_it_operations_evaluation_v2_set(),
@@ -264,6 +353,19 @@ def _run(*, index: int) -> StabilityRunEvidence:
             },
             "selected_count": 10,
             "completed_count": 10,
+            "unestablished_count": 0,
+            "comparison_state_counts": {
+                state: sum(
+                    row.metrics["comparison_state"] == state for row in rows
+                )
+                for state in (
+                    "correct",
+                    "incorrect",
+                    "unestablished",
+                    "not_reached",
+                    "not_applicable",
+                )
+            },
             "failure_code": None,
             "planner_metrics": {
                 "eligible_case_count": len(planner),
@@ -297,6 +399,9 @@ def _result(case) -> StabilityResultEvidence:
         "execution_correct": True,
         "tables_correct": True,
         "result_correct": True if success else None,
+        "comparison_state": "correct" if success else "not_applicable",
+        "delivery_completeness": "complete" if success else "not_applicable",
+        "comparison_limitation_reason": None,
         "expected_row_count": 1 if success else 0,
         "actual_row_count": 1 if success else 0,
         "failure_reasons": [],
@@ -310,6 +415,8 @@ def _result(case) -> StabilityResultEvidence:
         "query_invoked": case.case_type is not CaseType.AUTHORIZATION,
         "query_execution_attempted": success,
     }
+    if success:
+        metrics["comparison_evidence"] = _evidence_summary()
     if case.template_id is None and success:
         metrics["provider_measurement"] = {
             "provider": "openai",
@@ -339,6 +446,7 @@ def _result(case) -> StabilityResultEvidence:
                 "group_by_correct": True,
                 "having_correct": True,
                 "ordering_correct": True,
+                "answer_bound_correct": True,
                 "failure_reasons": [],
             },
         }
@@ -365,6 +473,64 @@ def _with_summary(run: StabilityRunEvidence, **updates: Any) -> StabilityRunEvid
     return replace(run, summary={**run.summary, **updates})
 
 
+def _with_results(
+    run: StabilityRunEvidence,
+    rows,
+) -> StabilityRunEvidence:
+    results = tuple(rows)
+    states = tuple(row.metrics.get("comparison_state") for row in results)
+    counts = {
+        state: states.count(state)
+        for state in (
+            "correct",
+            "incorrect",
+            "unestablished",
+            "not_reached",
+            "not_applicable",
+        )
+    }
+    return replace(
+        run,
+        summary={
+            **run.summary,
+            "unestablished_count": counts["unestablished"],
+            "comparison_state_counts": counts,
+        },
+        results=results,
+    )
+
+
+def _evidence_summary() -> dict[str, Any]:
+    side = {
+        "complete": True,
+        "comparison_eligible": True,
+        "exhausted": True,
+        "limitation_reason": None,
+        "delivery_completeness": "complete",
+        "row_count": 1,
+        "observed_execution_count": 1,
+        "observed_duration_ms": 1.0,
+        "auxiliary_execution_count": 0,
+        "auxiliary_duration_ms": 0.0,
+    }
+    return {
+        "policy_id": "queryops-bounded-result-evidence-v1",
+        "budget": {
+            "row_limit_per_side": 1000,
+            "sql_lookahead_limit": 1001,
+            "statement_timeout_ms": 5000,
+            "total_timeout_ms": 10000,
+            "payload_limit_bytes": 8388608,
+            "max_auxiliary_executions": 2,
+        },
+        "expected": dict(side),
+        "actual": dict(side),
+        "actual_delivery_completeness": "complete",
+        "actual_delivery_row_limit": None,
+        "context_compatible": True,
+    }
+
+
 def _with_source_sha(run: StabilityRunEvidence, source_sha: str) -> StabilityRunEvidence:
     return _with_summary(
         run,
@@ -373,6 +539,43 @@ def _with_source_sha(run: StabilityRunEvidence, source_sha: str) -> StabilityRun
             "source_git_sha": source_sha,
         },
     )
+
+
+def _with_unestablished(run: StabilityRunEvidence) -> StabilityRunEvidence:
+    rows = list(run.results)
+    index = next(
+        index for index, row in enumerate(rows) if row.case_id == "itops-easy-006"
+    )
+    row = rows[index]
+    evidence = _evidence_summary()
+    for side in ("expected", "actual"):
+        evidence[side] = {
+            **evidence[side],
+            "complete": False,
+            "exhausted": False,
+            "limitation_reason": "evidence_row_budget_exceeded",
+            "delivery_completeness": "unknown",
+            "row_count": 1000,
+            "auxiliary_execution_count": 1,
+        }
+    evidence["actual_delivery_row_limit"] = 100
+    evidence["actual_delivery_completeness"] = "safety_limited"
+    rows[index] = replace(
+        row,
+        status="failed",
+        score=0.75,
+        metrics={
+            **row.metrics,
+            "score": 0.75,
+            "passed": False,
+            "result_correct": None,
+            "comparison_state": "unestablished",
+            "delivery_completeness": "safety_limited",
+            "comparison_limitation_reason": "evidence_row_budget_exceeded",
+            "comparison_evidence": evidence,
+        },
+    )
+    return _with_results(run, rows)
 
 
 def _with_measurement_model(

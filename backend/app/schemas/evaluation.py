@@ -10,6 +10,8 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.evaluation.contracts import (
     ActualOutcome,
     CaseType,
+    ComparisonState,
+    DeliveryCompleteness,
     EvaluationDifficulty,
     ExpectedOutcome,
 )
@@ -86,6 +88,14 @@ class EvaluationRunView(StrictModel):
     completed_at: datetime | None
 
 
+class ComparisonStateCounts(StrictModel):
+    correct: int = Field(ge=0)
+    incorrect: int = Field(ge=0)
+    unestablished: int = Field(ge=0)
+    not_reached: int = Field(ge=0)
+    not_applicable: int = Field(ge=0)
+
+
 class MetricSummary(StrictModel):
     availability: CoverageAvailability
     eligible_count: int = Field(ge=0)
@@ -93,6 +103,8 @@ class MetricSummary(StrictModel):
     completed_count: int = Field(ge=0)
     passed_count: int = Field(ge=0)
     failed_count: int = Field(ge=0)
+    unestablished_count: int = Field(ge=0)
+    comparison_state_counts: ComparisonStateCounts
     overall_score: float | None = Field(default=None, ge=0, le=1)
     expected_behavior_match_rate: float | None = Field(default=None, ge=0, le=1)
     security_pass_rate: float | None = Field(default=None, ge=0, le=1)
@@ -106,6 +118,8 @@ class MetricBreakdown(StrictModel):
     completed_count: int = Field(ge=0)
     passed_count: int = Field(ge=0)
     failed_count: int = Field(ge=0)
+    unestablished_count: int = Field(ge=0)
+    comparison_state_counts: ComparisonStateCounts
     score: float | None = Field(default=None, ge=0, le=1)
 
 
@@ -134,6 +148,13 @@ class EvaluationTechnicalDetails(StrictModel):
     actual_row_count: int = Field(ge=0)
     missing_row_count: int = Field(ge=0)
     extra_row_count: int = Field(ge=0)
+    returned_row_count_shortfall: int = Field(ge=0)
+    returned_row_count_surplus: int = Field(ge=0)
+    comparison_state: ComparisonState
+    delivery_completeness: DeliveryCompleteness
+    comparison_limitation_reason: str | None = Field(
+        default=None, max_length=128, pattern=r"^[a-z][a-z0-9_]*$"
+    )
     failure_reasons: list[SafeFailureReason] = Field(max_length=7)
     error_code: SafeEvaluationErrorCode | None
     duration_ms: float = Field(ge=0)
@@ -147,6 +168,8 @@ class EvaluationCaseMetric(StrictModel):
     case_type: CaseType
     passed: bool
     score: float = Field(ge=0, le=1)
+    comparison_state: ComparisonState
+    delivery_completeness: DeliveryCompleteness
     technical: EvaluationTechnicalDetails | None
 
 
@@ -257,7 +280,9 @@ class ReadinessGateView(StrictModel):
         "stability_unsafe_gate_failed",
         "stability_clarification_gate_failed",
         "stability_candidate_mismatch",
+        "stability_comparison_unestablished",
         "planner_implementation_defect",
+        "comparison_unestablished",
     ] | None = None
 
 
@@ -292,7 +317,7 @@ class StabilityCanaryView(StrictModel):
 
 
 class EvaluationReadiness(StrictModel):
-    policy_id: Literal["queryops-v1-readiness-v1"]
+    policy_id: Literal["queryops-v1-readiness-v2"]
     verdict: Literal["ready", "not_ready", "incomplete"]
     provider: Literal["openai"] | None
     model_label: str | None = Field(

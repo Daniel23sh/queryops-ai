@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import json
 import re
-from dataclasses import dataclass, field
+from collections.abc import Generator
+from contextlib import contextmanager
+from dataclasses import dataclass, field, replace
 from time import perf_counter
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from sqlalchemy import Engine, select, text
 from sqlalchemy.engine import Connection
@@ -63,6 +66,8 @@ class SQLExecutionOptions:
     statement_timeout_ms: int = DEFAULT_STATEMENT_TIMEOUT_MS
     row_limit: int = DEFAULT_ROW_LIMIT
     query_action: str = QUERY_ACTION
+    max_payload_bytes: int | None = None
+    acquisition_deadline: float | None = None
 
 
 @dataclass(frozen=True)
@@ -130,7 +135,7 @@ def execute_validated_sql(
             referenced_tables,
         )
 
-    resources = _load_data_resources(engine, referenced_tables)
+    resources = _load_data_resources_for_execution(db, referenced_tables)
     resource_error = _validate_and_authorize_resources(
         resources,
         referenced_tables,
@@ -150,22 +155,110 @@ def execute_validated_sql(
         )
 
     try:
-        return _execute_in_read_only_runtime_role(
-            engine,
-            access_context,
-            sanitized_sql,
-            referenced_tables,
-            execution_options,
-            started_at,
+        if isinstance(db, Connection):
+            result = _execute_on_runtime_connection(
+                db,
+                access_context,
+                sanitized_sql,
+                referenced_tables,
+                execution_options,
+                started_at,
+            )
+        else:
+            result = _execute_in_read_only_runtime_role(
+                engine,
+                access_context,
+                sanitized_sql,
+                referenced_tables,
+                execution_options,
+                started_at,
+            )
+        if result.status != "succeeded":
+            return replace(
+                result,
+                execution_metadata={
+                    **result.execution_metadata,
+                    "delivery_completeness": "unknown",
+                },
+            )
+        safety_bound_reached = (
+            getattr(validation_result, "limit_source", None)
+            in {"safety_added", "safety_clamped"}
+            and getattr(validation_result, "effective_limit", None) is not None
+            and result.row_count >= validation_result.effective_limit
+        )
+        input_bound_reached = (
+            getattr(validation_result, "limit_source", None) == "input"
+            and getattr(validation_result, "effective_limit", None) is not None
+            and result.row_count >= validation_result.effective_limit
+        )
+        return replace(
+            result,
+            execution_metadata={
+                **result.execution_metadata,
+                "delivery_completeness": (
+                    "safety_limited"
+                    if safety_bound_reached
+                    else "unknown"
+                    if input_bound_reached
+                    or result.truncated
+                    or result.execution_metadata.get("payload_limited") is True
+                    or result.execution_metadata.get("timeout") is True
+                    else "complete"
+                ),
+            },
         )
     except SQLAlchemyError as exc:
+        original = getattr(exc, "orig", None)
         return _failure(
             started_at,
             "database_error",
             QUERY_EXECUTION_PUBLIC_ERROR,
             referenced_tables,
-            execution_metadata={"internal_error_type": type(exc).__name__},
+            execution_metadata={
+                "internal_error_type": type(exc).__name__,
+                "timeout": getattr(original, "sqlstate", None) == "57014",
+            },
         )
+
+
+@contextmanager
+def query_runtime_transaction(
+    db: Session | Engine | Connection,
+    access_context: UserAccessContext,
+    *,
+    isolation_level: Literal["read_committed", "repeatable_read"] = "read_committed",
+    timezone_name: Literal["UTC"] | None = None,
+) -> Generator[Connection, None, None]:
+    """Open one governed read-only query-runtime transaction."""
+    engine = _engine_from_db(db)
+    if engine.dialect.name != "postgresql":
+        raise TypeError("Query runtime transactions require PostgreSQL.")
+    with engine.connect() as connection:
+        with connection.begin():
+            isolation = (
+                " ISOLATION LEVEL REPEATABLE READ"
+                if isolation_level == "repeatable_read"
+                else ""
+            )
+            # This must be the first statement in the transaction.
+            connection.execute(text(f"SET TRANSACTION{isolation} READ ONLY"))
+            resources = connection.execute(select(DataResource)).mappings().all()
+            set_query_runtime_role(connection)
+            if timezone_name is not None:
+                connection.execute(text(f"SET LOCAL TIME ZONE '{timezone_name}'"))
+            set_rls_context(connection, build_rls_context(access_context))
+            connection.info["queryops_runtime_context"] = _context_identity(
+                access_context
+            )
+            connection.info["queryops_runtime_resources"] = {
+                row["table_name"]: DataResource(**dict(row)) for row in resources
+            }
+            try:
+                yield connection
+            finally:
+                connection.info.pop("queryops_runtime_context", None)
+                connection.info.pop("queryops_runtime_resources", None)
 
 
 def _normalize_options(options: SQLExecutionOptions | None) -> SQLExecutionOptions:
@@ -183,6 +276,12 @@ def _normalize_options(options: SQLExecutionOptions | None) -> SQLExecutionOptio
             if raw_options.query_action in QUERY_ACTIONS
             else QUERY_ACTION
         ),
+        max_payload_bytes=(
+            max(1, int(raw_options.max_payload_bytes))
+            if raw_options.max_payload_bytes is not None
+            else None
+        ),
+        acquisition_deadline=raw_options.acquisition_deadline,
     )
 
 
@@ -213,6 +312,18 @@ def _load_data_resources(
             .order_by(DataResource.table_name)
         ).all()
         return {resource.table_name: resource for resource in resources}
+
+
+def _load_data_resources_for_execution(
+    db: Session | Engine | Connection,
+    table_names: list[str],
+) -> dict[str, DataResource]:
+    if not isinstance(db, Connection):
+        return _load_data_resources(_engine_from_db(db), table_names)
+    cache = db.info.get("queryops_runtime_resources")
+    if not isinstance(cache, dict):
+        return {}
+    return {name: cache[name] for name in table_names if name in cache}
 
 
 def _validate_and_authorize_resources(
@@ -279,26 +390,90 @@ def _execute_in_read_only_runtime_role(
     options: SQLExecutionOptions,
     started_at: float,
 ) -> SQLExecutionResult:
-    with engine.connect() as connection:
-        with connection.begin():
-            # This must be the first statement in the execution transaction.
-            connection.execute(text("SET TRANSACTION READ ONLY"))
-            set_query_runtime_role(connection)
-            connection.execute(
-                text(f"SET LOCAL statement_timeout = {options.statement_timeout_ms}")
-            )
-            set_rls_context(connection, build_rls_context(access_context))
+    with query_runtime_transaction(engine, access_context) as connection:
+        return _execute_on_runtime_connection(
+            connection,
+            access_context,
+            sanitized_sql,
+            referenced_tables,
+            options,
+            started_at,
+        )
 
-            runtime_role = connection.execute(text("SELECT current_user")).scalar_one()
-            transaction_read_only = connection.execute(
-                text("SHOW transaction_read_only")
-            ).scalar_one()
-            result = connection.execute(text(sanitized_sql))
-            columns = list(result.keys())
-            row_mappings = result.mappings().fetchmany(options.row_limit + 1)
 
-    truncated = len(row_mappings) > options.row_limit
-    rows = [dict(row) for row in row_mappings[: options.row_limit]]
+def _execute_on_runtime_connection(
+    connection: Connection,
+    access_context: UserAccessContext,
+    sanitized_sql: str,
+    referenced_tables: list[str],
+    options: SQLExecutionOptions,
+    started_at: float,
+) -> SQLExecutionResult:
+    connection.execute(
+        text(f"SET LOCAL statement_timeout = {options.statement_timeout_ms}")
+    )
+    runtime_role = connection.execute(text("SELECT current_user")).scalar_one()
+    transaction_read_only = connection.execute(text("SHOW transaction_read_only")).scalar_one()
+    transaction_isolation = connection.execute(text("SHOW transaction_isolation")).scalar_one()
+    if (
+        runtime_role != "queryops_query_runtime"
+        or transaction_read_only != "on"
+        or connection.info.get("queryops_runtime_context")
+        != _context_identity(access_context)
+    ):
+        raise SQLAlchemyError("Query runtime connection is not governed.")
+    result = connection.execute(
+        text(sanitized_sql),
+        execution_options=(
+            {"stream_results": True, "max_row_buffer": 1}
+            if options.max_payload_bytes is not None
+            else None
+        ),
+    )
+    try:
+        columns = list(result.keys())
+        rows: list[dict[str, Any]] = []
+        payload_bytes = 2 if options.max_payload_bytes is not None else 0
+        payload_limited = False
+        acquisition_timed_out = False
+        truncated = False
+        for row in result.mappings():
+            if (
+                options.acquisition_deadline is not None
+                and perf_counter() >= options.acquisition_deadline
+            ):
+                acquisition_timed_out = True
+                break
+            if (
+                options.max_payload_bytes is not None
+                and payload_bytes > options.max_payload_bytes
+            ):
+                payload_limited = True
+                break
+            if len(rows) == options.row_limit:
+                truncated = True
+                break
+            mapped = dict(row)
+            if options.max_payload_bytes is not None:
+                encoded_size = normalized_json_size(
+                    mapped,
+                    maximum=options.max_payload_bytes - payload_bytes,
+                )
+                if rows:
+                    encoded_size += 1
+                if payload_bytes + encoded_size > options.max_payload_bytes:
+                    payload_limited = True
+                    break
+                payload_bytes += encoded_size
+            rows.append(mapped)
+            if (
+                options.acquisition_deadline is not None
+                and perf_counter() >= options.acquisition_deadline
+            ):
+                acquisition_timed_out = True
+                break
+    finally:
+        result.close()
     return SQLExecutionResult(
         status="succeeded",
         columns=columns,
@@ -309,13 +484,30 @@ def _execute_in_read_only_runtime_role(
         execution_metadata={
             "runtime_role": runtime_role,
             "transaction_read_only": transaction_read_only,
+            "transaction_isolation": transaction_isolation,
             "statement_timeout_ms": options.statement_timeout_ms,
             "row_limit": options.row_limit,
+            "payload_bytes": payload_bytes,
+            "payload_limited": payload_limited,
+            "timeout": acquisition_timed_out,
         },
         referenced_tables=referenced_tables,
         error_code=None,
         public_error=None,
     )
+
+
+def normalized_json_size(value: Any, *, maximum: int | None = None) -> int:
+    size = 0
+    for chunk in json.JSONEncoder(
+        default=str,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).iterencode(value):
+        size += len(chunk.encode("utf-8"))
+        if maximum is not None and size > maximum:
+            return maximum + 1
+    return size
 
 
 def _sanitized_sql_is_read_only(sanitized_sql: str) -> bool:
@@ -330,6 +522,35 @@ def _sanitized_sql_is_read_only(sanitized_sql: str) -> bool:
     return not any(
         re.search(rf"\b{re.escape(keyword)}\b", lowered)
         for keyword in PROHIBITED_SQL_KEYWORDS
+    )
+
+
+def _context_identity(access_context: UserAccessContext) -> tuple[Any, ...]:
+    return (
+        str(access_context.user_id),
+        access_context.role,
+        tuple(sorted(access_context.permissions)),
+        access_context.has_global_scope,
+        tuple(
+            sorted(
+                (
+                    str(scope.id),
+                    scope.type,
+                    scope.key,
+                    scope.access_level,
+                    scope.is_default,
+                    str(scope.department_id) if scope.department_id else None,
+                )
+                for scope in access_context.scopes
+            )
+        ),
+        str(access_context.default_scope.id) if access_context.default_scope else None,
+        json.dumps(
+            access_context.subject_attributes,
+            default=str,
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
     )
 
 
@@ -371,7 +592,10 @@ def _failure(
         row_count=0,
         duration_ms=_duration_ms(started_at),
         truncated=False,
-        execution_metadata=execution_metadata or {},
+        execution_metadata={
+            "delivery_completeness": "unknown",
+            **(execution_metadata or {}),
+        },
         referenced_tables=referenced_tables,
         error_code=error_code,
         public_error=public_error,

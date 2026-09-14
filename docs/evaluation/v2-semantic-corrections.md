@@ -75,6 +75,23 @@ The medium-009 distinctness-enforcement gap remains unchanged. Product-name grai
 in hard-006 remains as instructed; vendor/product identity disambiguation requires
 separate dataset review. Neither concern is silently expanded into this fix.
 
+## Bounded-result evidence transition
+
+The later bounded-result correction was implemented from audited main
+`a64d1fa9ebae3abf2a9cd87d27fa0f47e29b1c94`. It adds an explicit structural
+answer bound to every V2 semantic contract and therefore changes the current
+dataset and canary digests without changing their IDs, versions, membership,
+questions or baseline answer semantics.
+
+| Identity | Semantic-correction value | Bounded-evidence value |
+| --- | --- | --- |
+| V2 dataset | `372a5c203fb86e176f207656846884b8d5df5a1e939501e5ec9a35f65da2fe5e` | `6ac164ab6c58c0b008a65afc01cd26aa434fecd3eaa402b5bdad9c89e6f6540f` |
+| Canary | `c4fac0491cbd576d47d38722d7c45b3be6562a187c0324758ea98ce19a74a389` | `83dadd97b819003e9e6aa20b4487affc8a3c926cd7ca3d2672c85225b4ae3fc2` |
+
+The full execution, evidence, delivery and qualification rules are defined in
+[Bounded-result evaluation evidence](bounded-result-evidence.md). Earlier values
+in this document remain historical identities and cannot qualify the new policy.
+
 ## Files changed
 
 - Dataset: `backend/app/domains/it_operations/domain_pack/evaluation_questions_v2.yaml`.

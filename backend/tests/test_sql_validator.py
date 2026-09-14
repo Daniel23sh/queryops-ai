@@ -36,6 +36,9 @@ def test_valid_select_passes() -> None:
     ]
     assert result.error_code is None
     assert result.public_error is None
+    assert result.input_limit == 25
+    assert result.effective_limit == 25
+    assert result.limit_source == "input"
 
 
 def test_valid_with_select_passes() -> None:
@@ -69,6 +72,9 @@ def test_select_without_limit_gets_deterministic_default_limit() -> None:
     assert result.sanitized_sql == (
         "SELECT email FROM directory_users WHERE account_status = 'active' LIMIT 100"
     )
+    assert result.input_limit is None
+    assert result.effective_limit == 100
+    assert result.limit_source == "safety_added"
 
 
 def test_too_large_limit_is_reduced_to_safe_max() -> None:
@@ -79,6 +85,9 @@ def test_too_large_limit_is_reduced_to_safe_max() -> None:
 
     assert result.valid is True
     assert result.sanitized_sql == "SELECT email FROM directory_users LIMIT 500"
+    assert result.input_limit == 9999
+    assert result.effective_limit == 500
+    assert result.limit_source == "safety_clamped"
 
 
 @pytest.mark.parametrize(

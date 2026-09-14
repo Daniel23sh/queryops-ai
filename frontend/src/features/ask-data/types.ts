@@ -79,6 +79,7 @@ export type QueryExecutionMetadata = {
   row_count: number | null;
   duration_ms: number | null;
   truncated: boolean | null;
+  delivery_completeness: "complete" | "safety_limited" | "unknown" | null;
 };
 
 export type QuerySelfCorrectionMetadata = {

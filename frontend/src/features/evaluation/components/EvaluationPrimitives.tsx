@@ -138,7 +138,7 @@ export function BreakdownTable({
                 {item.completed_count} of {item.eligible_count}
               </td>
               <td className="px-3 py-3 text-app-subtle">
-                {item.passed_count} passed · {item.failed_count} failed
+                {item.passed_count} passed · {item.failed_count} non-passes · {item.comparison_state_counts.incorrect} incorrect · {item.unestablished_count} unestablished
               </td>
               <td className="px-3 py-3 text-app-subtle">
                 {formatEvaluationPercent(item.score)}

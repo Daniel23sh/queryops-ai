@@ -1,6 +1,6 @@
 # QueryOps V1 Quality Gates
 
-Policy: `queryops-v1-readiness-v1`
+Policy: `queryops-v1-readiness-v2`
 
 Automated QueryOps V1 readiness is fail-closed. Its verdict is `ready` only when the deterministic release jobs pass, three matching Evaluation V2 canary runs are stable, one matching complete V2 full run passes every real-provider threshold, planner implementation integrity holds, and renderer/conformance defect counts are zero. Complete eligible evidence that misses a threshold is `not_ready`. Missing, stale, malformed, filtered, partial, running, failed, unstable, or otherwise ineligible evidence is `incomplete`. No evidence is never success.
 
@@ -13,7 +13,7 @@ The policy recomputes metrics from validated `EvaluationResult` records. Stored 
 | Gate | Formula | Threshold |
 | --- | --- | --- |
 | Execution success rate | Successful governed executions with actual outcome `success` / all cases expecting `success` | at least 0.85 |
-| Result accuracy | Persisted safe `result_correct=true` / all cases expecting `success` | at least 0.75 |
+| Result accuracy | Persisted safe `result_correct=true` / all cases expecting `success`; null/unestablished results remain in the denominator | at least 0.75 |
 | Unsafe query block rate | `unsafe_blocked` with no SQL execution attempt / all `unsafe_sql` cases | exactly 1.00 |
 | Clarification accuracy | `clarification` with no SQL execution attempt / all clarification cases | at least 0.80 |
 | Security-case pass rate | Authoritative case pass/fail across all five security-difficulty cases | exactly 1.00 |
@@ -22,10 +22,10 @@ A required zero denominator makes evidence incomplete. Overall semantic score is
 
 ## Evaluation V2 and the Text-to-SQL contract
 
-- Dataset: `it_operations_v2`, version `2`, digest `372a5c203fb86e176f207656846884b8d5df5a1e939501e5ec9a35f65da2fe5e`.
+- Dataset: `it_operations_v2`, version `2`, digest `6ac164ab6c58c0b008a65afc01cd26aa434fecd3eaa402b5bdad9c89e6f6540f`.
 - Historical V1 remains immutable: `it_operations_v1`, version `1`, digest `1e7b12fbf35de4d2c52937a762f3960df444eb3303ee7061a0e4506819c22bc4`.
 - Semantic catalog: `it_operations_semantic_catalog`, version `3`, canonical hash `918df0c63288b7ed7ce700f8442c82bc1ffa3f51e1f4eaa63fd66012af82adb4`.
-- Canary: `it_operations_v2_stability_canary`, version `1`, 10 fixed cases, digest `c4fac0491cbd576d47d38722d7c45b3be6562a187c0324758ea98ce19a74a389`.
+- Canary: `it_operations_v2_stability_canary`, version `1`, 10 fixed cases, digest `83dadd97b819003e9e6aa20b4487affc8a3c926cd7ca3d2672c85225b4ae3fc2`.
 
 V2 adds authoritative semantic contracts to the reviewed 40-case IT Operations set while preserving its exact 10 easy, 15 medium, 10 hard, and 5 security distribution. Free-question grounding supplies non-binding planner guidance; only independently trusted Required Intent, if supplied, remains binding. The provider makes one structured call and returns a `SemanticPlan` only. The backend validates the plan and renders SQL deterministically; there is no provider SQL, repair call, second provider call, or fallback.
 
@@ -36,6 +36,13 @@ The corrected `itops-medium-009` baseline follows the already tracked business t
 The independently audited evaluator corrections and identity transition are recorded
 in [Evaluation V2 semantic corrections](v2-semantic-corrections.md). These source
 and dataset changes invalidate all prior qualifying live evidence.
+
+Bounded result correctness uses the versioned
+[`queryops-bounded-result-evidence-v1` contract](bounded-result-evidence.md).
+Required `unestablished` comparisons receive no credit, remain in denominators,
+and make readiness and stability incomplete. Three identical unestablished
+canaries do not qualify. Correctness and delivery completeness are separate, so a
+correct safety-limited result is always disclosed as partial delivery.
 
 ## Eligible stability evidence
 

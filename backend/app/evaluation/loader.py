@@ -12,6 +12,8 @@ from app.evaluation.contracts import (
     CaseType,
     ComparisonMode,
     EvaluationAnswerability,
+    EvaluationAnswerBound,
+    EvaluationAnswerBoundKind,
     EvaluationCase,
     EvaluationDifficulty,
     EvaluationSemanticAggregation,
@@ -83,6 +85,7 @@ SEMANTIC_CONTRACT_FIELDS = frozenset(
         "group_by",
         "having",
         "ordering",
+        "answer_bound",
     }
 )
 SEMANTIC_FIELD_FIELDS = frozenset({"entity_id", "column"})
@@ -93,6 +96,7 @@ SEMANTIC_HAVING_FIELDS = frozenset({"aggregation_id", "operator", "value"})
 SEMANTIC_ORDERING_FIELDS = frozenset(
     {"target_kind", "field", "aggregation_id", "direction"}
 )
+SEMANTIC_ANSWER_BOUND_FIELDS = frozenset({"kind", "limit"})
 CASE_ID = re.compile(r"^itops-(easy|medium|hard|security)-[0-9]{3}$")
 SEMANTIC_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
 SUPPORTED_SCOPE_TYPES = frozenset({"department", "global"})
@@ -329,6 +333,9 @@ def _parse_semantic_contract(
     ordering = _parse_semantic_ordering(
         item["ordering"], f"{path}.ordering", pack, aggregation_ids
     )
+    answer_bound = _parse_answer_bound(
+        item["answer_bound"], f"{path}.answer_bound"
+    )
 
     concept_ids = pack.semantic_catalog.concepts_by_id
     unknown_concepts = sorted(set(required_concept_ids) - set(concept_ids))
@@ -363,7 +370,26 @@ def _parse_semantic_contract(
         group_by=group_by,
         having=having,
         ordering=ordering,
+        answer_bound=answer_bound,
     )
+
+
+def _parse_answer_bound(raw: Any, path: str) -> EvaluationAnswerBound:
+    item = _mapping(raw, path)
+    _require_exact_fields(item, SEMANTIC_ANSWER_BOUND_FIELDS, path)
+    try:
+        kind = EvaluationAnswerBoundKind(item["kind"])
+    except (TypeError, ValueError) as exc:
+        raise EvaluationDatasetValidationError(f"{path}.kind is invalid") from exc
+    limit = item["limit"]
+    if limit is not None and (
+        not isinstance(limit, int) or isinstance(limit, bool)
+    ):
+        raise EvaluationDatasetValidationError(f"{path}.limit is invalid")
+    try:
+        return EvaluationAnswerBound(kind=kind, limit=limit)
+    except ValueError as exc:
+        raise EvaluationDatasetValidationError(f"{path} is invalid") from exc
 
 
 def _parse_semantic_fields(

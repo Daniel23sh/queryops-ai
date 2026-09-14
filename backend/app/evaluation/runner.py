@@ -2,17 +2,19 @@ from __future__ import annotations
 
 from collections import defaultdict
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field
+from contextlib import ExitStack
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from time import perf_counter
 from typing import Any
 from uuid import UUID
 
 from sqlalchemy import select
+from sqlalchemy.engine import Connection
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.auth.access_policy import authorize_resource_access
+from app.auth.access_policy import APPROVED_TEMPLATE_QUERY_ACTION, authorize_resource_access
 from app.evaluation.baseline import (
     EvaluationBaselineError,
     execute_evaluation_baseline,
@@ -26,12 +28,28 @@ from app.evaluation.environment import EvaluationEnvironmentIdentity
 from app.evaluation.contracts import (
     ActualOutcome,
     CaseType,
+    ComparisonState,
+    DeliveryCompleteness,
     EvaluationComparisonProvenance,
     EvaluationCase,
     EvaluationQueryProvenance,
     EvaluationSet,
     ExpectedOutcome,
     ProvenanceAuthorizationEvidence,
+)
+from app.evaluation.evidence import (
+    EVIDENCE_PAYLOAD_LIMIT_BYTES,
+    EVIDENCE_ROW_LIMIT,
+    EVIDENCE_STATEMENT_TIMEOUT_MS,
+    EVIDENCE_TOTAL_TIMEOUT_MS,
+    EvaluationComparisonEvidence,
+    EvaluationEvidenceSide,
+    auxiliary_evidence_side,
+    build_auxiliary_validation,
+    comparison_payload_size,
+    comparison_state_counts,
+    distinct_delivery_payload_rows,
+    observed_evidence_side,
 )
 from app.evaluation.loader import load_it_operations_evaluation_set
 from app.evaluation.provenance import (
@@ -65,8 +83,20 @@ from app.query_engine.mock_llm_provider import MockLLMProvider
 from app.query_engine.provider_config import ProviderDescriptor, ProviderId
 from app.query_engine.request_authorization import authorize_query_request
 from app.query_engine.result_formatter import QueryEngineServiceResult
+from app.query_engine.schema_context import SchemaContextOptions, build_schema_context
 from app.query_engine.semantic_catalog import semantic_catalog_identity
-from app.query_engine.service import QueryEngineRequest, QueryEngineService
+from app.query_engine.service import (
+    QueryEngineRequest,
+    QueryEngineService,
+    QueryRunPersistenceError,
+)
+from app.query_engine.sql_executor import (
+    SQLExecutionOptions,
+    SQLExecutionResult,
+    execute_validated_sql,
+    query_runtime_transaction,
+)
+from app.query_engine.sql_validator import SQLValidationResult
 
 
 SAFE_UNSAFE_VALIDATION_CODES = frozenset(
@@ -97,6 +127,8 @@ SAFE_PIPELINE_STAGES = frozenset(
         "sql_safety",
         "semantic_conformance",
         "execution",
+        "execution_context",
+        "persistence",
         "result_comparison",
         "setup",
     }
@@ -114,11 +146,13 @@ class EvaluationRunnerError(RuntimeError):
         message: str,
         *,
         run_id: UUID | None = None,
+        stage: str = "setup",
     ) -> None:
         super().__init__(message)
         self.code = code
         self.safe_message = message
         self.run_id = run_id
+        self.stage = stage
 
 
 @dataclass(frozen=True)
@@ -132,6 +166,8 @@ class EvaluationCaseSummary:
     passed: bool
     score: float
     error_code: str | None
+    comparison_state: str
+    delivery_completeness: str
 
 
 @dataclass(frozen=True)
@@ -147,6 +183,8 @@ class EvaluationRunSummary:
     completed_count: int
     passed_count: int
     failed_count: int
+    unestablished_count: int
+    comparison_state_counts: dict[str, int]
     overall_score: float
     expected_behavior_match_rate: float
     security_pass_rate: float | None
@@ -182,6 +220,8 @@ class _CaseExecution:
     renderer_status: str | None = None
     conformance_status: str | None = None
     semantic_plan_observation: Mapping[str, Any] | None = None
+    validation: SQLValidationResult | None = None
+    execution_result: SQLExecutionResult | None = None
 
 
 @dataclass(frozen=True)
@@ -192,6 +232,8 @@ class _CompletedCase:
     semantic_score: EvaluationSemanticScore
     duration_ms: float
     provenance: EvaluationComparisonProvenance | None = None
+    comparison_evidence: EvaluationComparisonEvidence | None = None
+    evaluation_failure_stage: str | None = None
 
 
 SessionFactory = Callable[[], Session]
@@ -275,40 +317,22 @@ class EvaluationRunner:
         fatal_error: EvaluationRunnerError | None = None
         for case in cases:
             started_at = perf_counter()
+            execution: _CaseExecution | None = None
+            expected_rows: tuple[Mapping[str, Any], ...] = ()
             provenance: EvaluationComparisonProvenance | None = None
+            comparison_evidence: EvaluationComparisonEvidence | None = None
+            evaluation_failure_stage: str | None = None
             try:
-                execution, expected_rows, provenance = self._execute_case(
-                    case, domain_pack, query_service
-                )
-                score = score_evaluation_case(
-                    case,
-                    actual_outcome=execution.actual_outcome,
-                    execution_succeeded=execution.execution_succeeded,
-                    actual_referenced_tables=execution.actual_referenced_tables,
-                    expected_rows=expected_rows,
-                    actual_rows=execution.actual_rows,
-                    provenance=provenance,
-                )
-                if execution.provider_failure_fatal:
-                    fatal_error = EvaluationRunnerError(
-                        execution.error_code or "provider_unavailable",
-                        "The selected evaluation provider is unavailable.",
-                        run_id=run_id,
-                    )
-            except EvaluationBaselineError as exc:
+                (
+                    execution,
+                    expected_rows,
+                    provenance,
+                    comparison_evidence,
+                    post_execution_error,
+                ) = self._execute_case(case, domain_pack, query_service)
+            except (EvaluationBaselineError, EvaluationSetupError) as exc:
                 execution = _internal_failure("internal_error")
-                score = score_evaluation_case(
-                    case,
-                    actual_outcome=execution.actual_outcome,
-                    execution_succeeded=False,
-                )
-                fatal_error = EvaluationRunnerError(
-                    exc.code,
-                    exc.safe_message,
-                    run_id=run_id,
-                )
-            except EvaluationSetupError as exc:
-                execution = _internal_failure("internal_error")
+                semantic_score = score_evaluation_semantic_contract(case, None)
                 score = score_evaluation_case(
                     case,
                     actual_outcome=execution.actual_outcome,
@@ -320,23 +344,55 @@ class EvaluationRunner:
                     run_id=run_id,
                 )
             except Exception:
-                # Case failures are deliberately isolated. Diagnostics are bounded
-                # classifications; exception text and tracebacks are never persisted.
+                # Acquisition failed before it returned an immutable observation.
                 execution = _internal_failure("internal_error")
-                score = score_evaluation_case(
-                    case,
-                    actual_outcome=execution.actual_outcome,
-                    execution_succeeded=False,
-                )
-
-            semantic_score = score_evaluation_semantic_contract(
-                case,
-                (
-                    execution.semantic_plan_observation
-                    if execution.plan_validation_status == "passed"
-                    else None
-                ),
-            )
+                semantic_score = score_evaluation_semantic_contract(case, None)
+                score = _post_execution_failure_score(case, execution, ())
+            else:
+                try:
+                    semantic_score = score_evaluation_semantic_contract(
+                        case,
+                        (
+                            execution.semantic_plan_observation
+                            if execution.plan_validation_status == "passed"
+                            else None
+                        ),
+                    )
+                    score = score_evaluation_case(
+                        case,
+                        actual_outcome=execution.actual_outcome,
+                        execution_succeeded=execution.execution_succeeded,
+                        actual_referenced_tables=execution.actual_referenced_tables,
+                        expected_rows=expected_rows,
+                        actual_rows=execution.actual_rows,
+                        provenance=provenance,
+                        comparison_evidence=comparison_evidence,
+                        semantic_contract_passed=semantic_score.passed,
+                    )
+                except Exception:
+                    # Judgment failures cannot replace the observed production result.
+                    if execution.execution_succeeded:
+                        comparison_evidence = self._comparison_context_evidence(
+                            case, execution
+                        )
+                    semantic_score = score_evaluation_semantic_contract(case, None)
+                    score = _post_execution_failure_score(
+                        case, execution, expected_rows
+                    )
+                    evaluation_failure_stage = "result_comparison"
+                if post_execution_error is not None:
+                    evaluation_failure_stage = post_execution_error.stage
+                    fatal_error = EvaluationRunnerError(
+                        post_execution_error.code,
+                        post_execution_error.safe_message,
+                        run_id=run_id,
+                    )
+                elif execution.provider_failure_fatal:
+                    fatal_error = EvaluationRunnerError(
+                        execution.error_code or "provider_unavailable",
+                        "The selected evaluation provider is unavailable.",
+                        run_id=run_id,
+                    )
             completed_case = _CompletedCase(
                 case=case,
                 execution=execution,
@@ -344,6 +400,8 @@ class EvaluationRunner:
                 semantic_score=semantic_score,
                 duration_ms=(perf_counter() - started_at) * 1000,
                 provenance=provenance,
+                comparison_evidence=comparison_evidence,
+                evaluation_failure_stage=evaluation_failure_stage,
             )
             completed.append(completed_case)
             self._persist_result(run_id, completed_case)
@@ -482,26 +540,429 @@ class EvaluationRunner:
         _CaseExecution,
         tuple[Mapping[str, Any], ...],
         EvaluationComparisonProvenance | None,
+        EvaluationComparisonEvidence | None,
+        EvaluationRunnerError | None,
     ]:
-        with self._session_factory() as db:
-            identity = resolve_evaluation_identity(db, case)
-            execution = self._execute_actual(
-                db, identity, case, domain_pack, query_service
+        execution: _CaseExecution | None = None
+        provenance: EvaluationComparisonProvenance | None = None
+        try:
+            with self._session_factory() as db:
+                identity = resolve_evaluation_identity(db, case)
+                with ExitStack() as stack:
+                    runtime_connection: Connection | None = None
+
+                    def execution_db_factory(
+                        access_context,
+                    ) -> Connection:
+                        nonlocal runtime_connection
+                        if runtime_connection is None:
+                            runtime_connection = stack.enter_context(
+                                query_runtime_transaction(
+                                    db.get_bind(),
+                                    access_context,
+                                    isolation_level="repeatable_read",
+                                    timezone_name="UTC",
+                                )
+                            )
+                        return runtime_connection
+
+                    execution, actual_error = self._execute_actual(
+                        db,
+                        identity,
+                        case,
+                        domain_pack,
+                        query_service,
+                        execution_db_factory=execution_db_factory,
+                    )
+                    try:
+                        provenance = _build_case_provenance(db, case, execution)
+                    except Exception:
+                        provenance = None
+                    if actual_error is not None:
+                        return (
+                            execution,
+                            (),
+                            provenance,
+                            self._comparison_context_evidence(case, execution),
+                            actual_error,
+                        )
+                    if (
+                        case.expected_outcome is not ExpectedOutcome.SUCCESS
+                        or not execution.execution_succeeded
+                    ):
+                        return execution, (), provenance, None, None
+                    try:
+                        baseline = execute_evaluation_baseline(
+                            db,
+                            identity.access_context,
+                            case,
+                            domain_pack,
+                            executor=(
+                                (
+                                    lambda _db, access, validation, *, options=None: execute_validated_sql(
+                                        runtime_connection,
+                                        access,
+                                        validation,
+                                        options=options,
+                                    )
+                                )
+                                if runtime_connection is not None
+                                else execute_validated_sql
+                            ),
+                        )
+                    except EvaluationBaselineError as exc:
+                        if case.semantic_contract is None:
+                            return (
+                                execution,
+                                (),
+                                provenance,
+                                None,
+                                EvaluationRunnerError(exc.code, exc.safe_message),
+                            )
+                        return (
+                            execution,
+                            (),
+                            provenance,
+                            self._baseline_limitation_evidence(case, execution, exc),
+                            None,
+                        )
+                    except Exception:
+                        return (
+                            execution,
+                            (),
+                            provenance,
+                            self._comparison_context_evidence(case, execution),
+                            None,
+                        )
+                    try:
+                        evidence = self._comparison_evidence(
+                            db,
+                            identity,
+                            case,
+                            domain_pack,
+                            execution,
+                            baseline,
+                            runtime_connection,
+                        )
+                    except Exception:
+                        evidence = self._comparison_context_evidence(
+                            case, execution, baseline
+                        )
+                    return execution, baseline.rows, provenance, evidence, None
+        except Exception:
+            if execution is None:
+                raise
+            return (
+                execution,
+                (),
+                provenance,
+                self._comparison_context_evidence(case, execution),
+                EvaluationRunnerError(
+                    "evaluation_execution_context_failed",
+                    "The evaluation execution context could not close safely.",
+                    stage="execution_context",
+                ),
             )
-            provenance = _build_case_provenance(db, case, execution)
-            expected_rows: tuple[Mapping[str, Any], ...] = ()
-            if (
-                case.expected_outcome is ExpectedOutcome.SUCCESS
-                and not execution.provider_failure_fatal
-            ):
-                baseline = execute_evaluation_baseline(
-                    db,
-                    identity.access_context,
-                    case,
-                    domain_pack,
+
+    @staticmethod
+    def _baseline_limitation_evidence(
+        case: EvaluationCase,
+        execution: _CaseExecution,
+        error: EvaluationBaselineError,
+    ) -> EvaluationComparisonEvidence | None:
+        if (
+            case.semantic_contract is None
+            or execution.validation is None
+            or execution.execution_result is None
+        ):
+            return None
+        actual = observed_evidence_side(
+            execution.actual_rows,
+            execution.validation,
+            execution.execution_result,
+            case.semantic_contract.answer_bound,
+        )
+        baseline_execution = error.execution
+        limitation_reason = (
+            "evidence_validation_failed"
+            if error.code
+            in {
+                "baseline_not_defined",
+                "baseline_tables_mismatch",
+                "baseline_validation_failed",
+            }
+            else "evidence_timeout"
+            if baseline_execution is not None
+            and baseline_execution.execution_metadata.get("timeout") is True
+            else "comparison_context_unestablished"
+            if error.code
+            in {
+                "baseline_access_denied",
+                "baseline_missing_referenced_tables",
+                "baseline_postgres_required",
+                "baseline_resource_not_found",
+                "baseline_resource_not_queryable",
+            }
+            else "evidence_execution_failed"
+        )
+        return EvaluationComparisonEvidence(
+            expected=EvaluationEvidenceSide(
+                rows=(
+                    tuple(dict(row) for row in baseline_execution.rows)
+                    if baseline_execution is not None
+                    else ()
+                ),
+                complete=False,
+                comparison_eligible=False,
+                exhausted=False,
+                limitation_reason=limitation_reason,
+                delivery_completeness=DeliveryCompleteness.UNKNOWN,
+                observed_execution_count=1 if baseline_execution is not None else 0,
+                observed_duration_ms=(
+                    baseline_execution.duration_ms
+                    if baseline_execution is not None
+                    else 0.0
+                ),
+            ),
+            actual=actual,
+            actual_delivery_completeness=actual.delivery_completeness,
+            actual_delivery_row_limit=(
+                execution.validation.effective_limit
+                if actual.delivery_completeness is DeliveryCompleteness.SAFETY_LIMITED
+                else None
+            ),
+            context_compatible=(
+                limitation_reason != "comparison_context_unestablished"
+            ),
+        )
+
+    @staticmethod
+    def _comparison_context_evidence(
+        case: EvaluationCase,
+        execution: _CaseExecution,
+        baseline=None,
+    ) -> EvaluationComparisonEvidence | None:
+        if (
+            case.semantic_contract is None
+            or execution.validation is None
+            or execution.execution_result is None
+        ):
+            return None
+        answer_bound = case.semantic_contract.answer_bound
+        actual = observed_evidence_side(
+            execution.actual_rows,
+            execution.validation,
+            execution.execution_result,
+            answer_bound,
+        )
+        expected = (
+            observed_evidence_side(
+                baseline.rows,
+                baseline.validation,
+                baseline.execution,
+                answer_bound,
+            )
+            if baseline is not None
+            else EvaluationEvidenceSide(
+                rows=(),
+                complete=False,
+                comparison_eligible=False,
+                exhausted=False,
+                limitation_reason="comparison_context_unestablished",
+                delivery_completeness=DeliveryCompleteness.UNKNOWN,
+                observed_execution_count=0,
+            )
+        )
+        return EvaluationComparisonEvidence(
+            expected=expected,
+            actual=actual,
+            actual_delivery_completeness=actual.delivery_completeness,
+            actual_delivery_row_limit=(
+                execution.validation.effective_limit
+                if actual.delivery_completeness is DeliveryCompleteness.SAFETY_LIMITED
+                else None
+            ),
+            context_compatible=False,
+        )
+
+    def _comparison_evidence(
+        self,
+        db: Session,
+        identity: EvaluationIdentity,
+        case: EvaluationCase,
+        domain_pack: DomainPack,
+        execution: _CaseExecution,
+        baseline,
+        runtime_connection: Connection | None,
+    ) -> EvaluationComparisonEvidence | None:
+        if (
+            case.semantic_contract is None
+            or runtime_connection is None
+            or execution.validation is None
+            or execution.execution_result is None
+        ):
+            return None
+        answer_bound = case.semantic_contract.answer_bound
+        actual_observed = observed_evidence_side(
+            execution.actual_rows,
+            execution.validation,
+            execution.execution_result,
+            answer_bound,
+        )
+        expected_observed = observed_evidence_side(
+            baseline.rows,
+            baseline.validation,
+            baseline.execution,
+            answer_bound,
+        )
+        if actual_observed.complete and expected_observed.complete:
+            return EvaluationComparisonEvidence(
+                expected=expected_observed,
+                actual=actual_observed,
+                actual_delivery_completeness=actual_observed.delivery_completeness,
+            )
+        query_action = (
+            APPROVED_TEMPLATE_QUERY_ACTION
+            if case.template_id is not None
+            else "query:scoped_data"
+        )
+        schema_context = build_schema_context(
+            db,
+            identity.access_context,
+            domain_pack=domain_pack,
+            options=SchemaContextOptions(
+                template_id=case.template_id,
+                query_action=query_action,
+            ),
+        )
+        auxiliary_started_at = perf_counter()
+        total_deadline = auxiliary_started_at + EVIDENCE_TOTAL_TIMEOUT_MS / 1000
+        transaction_usable = True
+
+        def acquire(
+            observed: EvaluationEvidenceSide,
+            validation: SQLValidationResult,
+            *,
+            payload_budget: int,
+        ) -> EvaluationEvidenceSide:
+            nonlocal transaction_usable
+            if observed.complete:
+                return observed
+            elapsed_ms = (perf_counter() - auxiliary_started_at) * 1000
+            remaining_timeout_ms = EVIDENCE_TOTAL_TIMEOUT_MS - elapsed_ms
+            if remaining_timeout_ms <= 0:
+                return replace(
+                    observed,
+                    limitation_reason="evidence_timeout",
                 )
-                expected_rows = baseline.rows
-            return execution, expected_rows, provenance
+            if payload_budget <= 2:
+                return replace(
+                    observed,
+                    limitation_reason="evidence_payload_exceeded",
+                )
+            if not transaction_usable:
+                return replace(
+                    observed,
+                    limitation_reason="evidence_timeout",
+                )
+            auxiliary = build_auxiliary_validation(validation, schema_context)
+            if auxiliary is None:
+                return EvaluationEvidenceSide(
+                    rows=observed.rows,
+                    complete=False,
+                    comparison_eligible=observed.comparison_eligible,
+                    exhausted=observed.exhausted,
+                    limitation_reason="unsupported_query_shape",
+                    delivery_completeness=observed.delivery_completeness,
+                    observed_execution_count=observed.observed_execution_count,
+                    observed_duration_ms=observed.observed_duration_ms,
+                )
+            remaining_timeout_ms = (total_deadline - perf_counter()) * 1000
+            if remaining_timeout_ms <= 0:
+                return replace(
+                    observed,
+                    limitation_reason="evidence_timeout",
+                )
+            result = execute_validated_sql(
+                runtime_connection,
+                identity.access_context,
+                auxiliary,
+                options=SQLExecutionOptions(
+                    statement_timeout_ms=max(
+                        1,
+                        min(EVIDENCE_STATEMENT_TIMEOUT_MS, int(remaining_timeout_ms)),
+                    ),
+                    row_limit=EVIDENCE_ROW_LIMIT,
+                    query_action=query_action,
+                    max_payload_bytes=payload_budget,
+                    acquisition_deadline=min(
+                        total_deadline,
+                        perf_counter() + EVIDENCE_STATEMENT_TIMEOUT_MS / 1000,
+                    ),
+                ),
+            )
+            side = auxiliary_evidence_side(auxiliary, result, answer_bound)
+            if result.status != "succeeded":
+                transaction_usable = False
+            if (
+                result.duration_ms > EVIDENCE_STATEMENT_TIMEOUT_MS
+                or (perf_counter() - auxiliary_started_at) * 1000
+                > EVIDENCE_TOTAL_TIMEOUT_MS
+            ):
+                side = replace(
+                    side,
+                    complete=False,
+                    exhausted=False,
+                    limitation_reason="evidence_timeout",
+                    delivery_completeness=DeliveryCompleteness.UNKNOWN,
+                )
+            return replace(
+                side,
+                observed_execution_count=observed.observed_execution_count,
+                observed_duration_ms=observed.observed_duration_ms,
+            )
+
+        actual_base_payload = comparison_payload_size(
+            expected_observed.rows if expected_observed.complete else (),
+            (),
+            delivered=(
+                actual_observed.rows if not actual_observed.complete else ()
+            ),
+        )
+        actual_evidence = acquire(
+            actual_observed,
+            execution.validation,
+            payload_budget=max(
+                0,
+                EVIDENCE_PAYLOAD_LIMIT_BYTES - actual_base_payload + 2,
+            ),
+        )
+        expected_base_payload = comparison_payload_size(
+            (),
+            actual_evidence.rows,
+            delivered=distinct_delivery_payload_rows(
+                actual_evidence, actual_observed.rows
+            ),
+        )
+        expected_evidence = acquire(
+            expected_observed,
+            baseline.validation,
+            payload_budget=max(
+                0,
+                EVIDENCE_PAYLOAD_LIMIT_BYTES - expected_base_payload + 2,
+            ),
+        )
+        return EvaluationComparisonEvidence(
+            expected=expected_evidence,
+            actual=actual_evidence,
+            actual_delivery_completeness=actual_observed.delivery_completeness,
+            actual_delivery_row_limit=(
+                execution.validation.effective_limit
+                if actual_observed.delivery_completeness
+                is DeliveryCompleteness.SAFETY_LIMITED
+                else None
+            ),
+        )
 
     def _execute_actual(
         self,
@@ -510,30 +971,47 @@ class EvaluationRunner:
         case: EvaluationCase,
         domain_pack: DomainPack,
         query_service: QueryEngineService,
-    ) -> _CaseExecution:
+        *,
+        execution_db_factory,
+    ) -> tuple[_CaseExecution, EvaluationRunnerError | None]:
         authorization = authorize_query_request(
             identity.access_context,
             domain_pack,
             template_id=case.template_id,
         )
         if not authorization.allowed:
-            return _denied_execution(())
+            return _denied_execution(()), None
 
         denied_tables = _denied_case_resources(db, identity, case)
         if denied_tables is not None:
-            return _denied_execution(denied_tables)
+            return _denied_execution(denied_tables), None
 
-        result = query_service.run(
-            db,
-            identity.user,
-            QueryEngineRequest(
-                question=case.question,
-                template_id=case.template_id,
-            ),
+        request = QueryEngineRequest(
+            question=case.question,
+            template_id=case.template_id,
         )
+        try:
+            if isinstance(query_service, QueryEngineService):
+                result = query_service.run(
+                    db,
+                    identity.user,
+                    request,
+                    execution_db_factory=execution_db_factory,
+                )
+            else:
+                result = query_service.run(db, identity.user, request)
+        except QueryRunPersistenceError as exc:
+            return (
+                _classify_query_result(exc.observation),
+                EvaluationRunnerError(
+                    "query_run_persistence_failed",
+                    "The production observation could not be persisted.",
+                    stage="persistence",
+                ),
+            )
         if case.template_id is None and not self._result_provider_matches_run(result):
-            return _provider_identity_failure()
-        return _classify_query_result(result)
+            return _provider_identity_failure(), None
+        return _classify_query_result(result), None
 
     def _result_provider_matches_run(
         self,
@@ -566,7 +1044,9 @@ class EvaluationRunner:
                 completed.execution.query_execution_attempted
             ),
         }
-        failure_stage = completed.execution.failure_stage
+        failure_stage = (
+            completed.evaluation_failure_stage or completed.execution.failure_stage
+        )
         if (
             failure_stage is None
             and completed.execution.execution_succeeded
@@ -586,6 +1066,10 @@ class EvaluationRunner:
             metrics["planner"] = planner_metrics
         if completed.provenance is not None:
             metrics["result_provenance"] = completed.provenance.as_safe_dict()
+        if completed.comparison_evidence is not None:
+            metrics["comparison_evidence"] = (
+                completed.comparison_evidence.as_safe_dict()
+            )
         result = EvaluationResult(
             evaluation_run_id=run_id,
             query_run_id=completed.execution.query_run_id,
@@ -708,6 +1192,68 @@ def _denied_case_resources(
     return None
 
 
+def _post_execution_failure_score(
+    case: EvaluationCase,
+    execution: _CaseExecution,
+    expected_rows: Sequence[Mapping[str, Any]],
+) -> EvaluationScore:
+    outcome_correct = execution.actual_outcome.value == case.expected_outcome.value
+    execution_correct = execution.execution_succeeded == (
+        case.expected_outcome is ExpectedOutcome.SUCCESS
+    )
+    tables_correct = set(execution.actual_referenced_tables) == set(
+        case.expected_tables
+    )
+    failures = []
+    if not outcome_correct:
+        failures.append("unexpected_outcome")
+    if not execution_correct:
+        failures.append("execution_state_mismatch")
+    if not tables_correct:
+        failures.append("referenced_tables_mismatch")
+    expects_result = case.expected_outcome is ExpectedOutcome.SUCCESS
+    comparison_state = (
+        ComparisonState.UNESTABLISHED
+        if expects_result and execution.execution_succeeded
+        else ComparisonState.NOT_REACHED
+        if expects_result
+        else ComparisonState.NOT_APPLICABLE
+    )
+    delivery = DeliveryCompleteness.NOT_APPLICABLE
+    if expects_result:
+        try:
+            delivery = DeliveryCompleteness(
+                execution.execution_result.execution_metadata.get(
+                    "delivery_completeness"
+                )
+                if execution.execution_result is not None
+                else None
+            )
+        except (TypeError, ValueError):
+            delivery = DeliveryCompleteness.UNKNOWN
+    components = [outcome_correct, execution_correct, tables_correct]
+    if expects_result:
+        components.append(False)
+    return EvaluationScore(
+        score=sum(components) / len(components),
+        passed=False,
+        outcome_correct=outcome_correct,
+        execution_correct=execution_correct,
+        tables_correct=tables_correct,
+        result_correct=None,
+        comparison_state=comparison_state,
+        delivery_completeness=delivery,
+        comparison_limitation_reason=(
+            "comparison_context_unestablished"
+            if comparison_state is ComparisonState.UNESTABLISHED
+            else None
+        ),
+        expected_row_count=len(expected_rows),
+        actual_row_count=len(execution.actual_rows),
+        failure_reasons=tuple(failures),
+    )
+
+
 def _build_case_provenance(
     db: Session,
     case: EvaluationCase,
@@ -718,7 +1264,17 @@ def _build_case_provenance(
         ProvenanceAuthorizationEvidence.FROZEN_BASELINE_VALIDATED,
     )
     actual = None
-    if execution.query_run_id is not None:
+    if (
+        execution.execution_succeeded
+        and execution.validation is not None
+        and execution.validation.valid
+        and execution.validation.sanitized_sql is not None
+    ):
+        actual = _safe_query_provenance(
+            execution.validation.sanitized_sql,
+            ProvenanceAuthorizationEvidence.FINAL_SQL_VALIDATED,
+        )
+    elif execution.query_run_id is not None:
         query_run = db.get(QueryRun, execution.query_run_id)
         if query_run is not None and isinstance(query_run.executed_sql, str):
             validation = (
@@ -768,6 +1324,8 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
     )
     provider_failure_code = result.metadata.get("provider_failure_code")
     planner = _planner_execution_fields(result.metadata)
+    validation = result.validation_result
+    execution_result = result.execution_result
     if provider_failure_code in {
         "provider_authentication_failed",
         "provider_timeout",
@@ -803,6 +1361,8 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
                 result.metadata.get("provider_failure_fatal") is True
             ),
             **planner,
+            validation=validation,
+            execution_result=execution_result,
         )
     if result.status == "succeeded":
         return _CaseExecution(
@@ -816,6 +1376,8 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
             error_code=None,
             provider_measurement=provider_measurement,
             **planner,
+            validation=validation,
+            execution_result=execution_result,
         )
     if (
         result.error_code == "unsafe_sql_blocked"
@@ -836,6 +1398,8 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
             stage_reason_code="unsafe_request",
             provider_measurement=provider_measurement,
             **planner,
+            validation=validation,
+            execution_result=execution_result,
         )
     if result.clarification_required:
         return _CaseExecution(
@@ -853,9 +1417,15 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
             ),
             provider_measurement=provider_measurement,
             **planner,
+            validation=validation,
+            execution_result=execution_result,
         )
-    validation = result.metadata.get("validation")
-    validation_code = validation.get("error_code") if isinstance(validation, dict) else None
+    validation_metadata = result.metadata.get("validation")
+    validation_code = (
+        validation_metadata.get("error_code")
+        if isinstance(validation_metadata, dict)
+        else None
+    )
     if validation_code in SAFE_UNSAFE_VALIDATION_CODES:
         return _CaseExecution(
             actual_outcome=ActualOutcome.UNSAFE_BLOCKED,
@@ -870,6 +1440,8 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
             stage_reason_code=validation_code,
             provider_measurement=provider_measurement,
             **planner,
+            validation=validation,
+            execution_result=execution_result,
         )
     conformance = result.metadata.get("semantic_conformance")
     if (
@@ -891,6 +1463,8 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
             stage_reason_code=_safe_stage_reason(conformance.get("reason_code")),
             provider_measurement=provider_measurement,
             **planner,
+            validation=validation,
+            execution_result=execution_result,
         )
     render = result.metadata.get("semantic_sql_render")
     failure_stage = (
@@ -903,7 +1477,7 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
         else "execution"
         if isinstance(result.metadata.get("execution"), dict)
         else "sql_safety"
-        if isinstance(validation, dict)
+        if isinstance(validation_metadata, dict)
         else "plan_generation"
     )
     return _CaseExecution(
@@ -931,6 +1505,8 @@ def _classify_query_result(result: QueryEngineServiceResult) -> _CaseExecution:
         ),
         provider_measurement=provider_measurement,
         **planner,
+        validation=validation,
+        execution_result=execution_result,
     )
 
 
@@ -1149,6 +1725,13 @@ def _build_summary(
         completed_count=completed_count,
         passed_count=passed_count,
         failed_count=completed_count - passed_count,
+        unestablished_count=sum(
+            item.score.comparison_state.value == "unestablished"
+            for item in completed
+        ),
+        comparison_state_counts=comparison_state_counts(
+            tuple(item.score.comparison_state for item in completed)
+        ),
         overall_score=round(overall_score, 6),
         expected_behavior_match_rate=round(
             outcome_match_count / completed_count if completed_count else 0.0,
@@ -1179,6 +1762,8 @@ def _build_summary(
                 passed=item.score.passed,
                 score=item.score.score,
                 error_code=item.execution.error_code,
+                comparison_state=item.score.comparison_state.value,
+                delivery_completeness=item.score.delivery_completeness.value,
             )
             for item in completed
         ),
@@ -1193,7 +1778,7 @@ def _build_summary(
 def _group_metrics(
     completed: Sequence[_CompletedCase],
     key: Callable[[_CompletedCase], str],
-) -> dict[str, dict[str, int | float]]:
+) -> dict[str, dict[str, Any]]:
     groups: dict[str, list[_CompletedCase]] = defaultdict(list)
     for item in completed:
         groups[key(item)].append(item)
@@ -1202,6 +1787,13 @@ def _group_metrics(
             "completed": len(items),
             "passed": sum(item.score.passed for item in items),
             "failed": sum(not item.score.passed for item in items),
+            "unestablished": sum(
+                item.score.comparison_state.value == "unestablished"
+                for item in items
+            ),
+            "comparison_states": comparison_state_counts(
+                tuple(item.score.comparison_state for item in items)
+            ),
             "score": round(sum(item.score.score for item in items) / len(items), 6),
         }
         for name, items in sorted(groups.items())
@@ -1259,6 +1851,8 @@ def _summary_for_persistence(
         "completed_count": summary.completed_count,
         "passed_count": summary.passed_count,
         "failed_count": summary.failed_count,
+        "unestablished_count": summary.unestablished_count,
+        "comparison_state_counts": summary.comparison_state_counts,
         "overall_score": summary.overall_score,
         "expected_behavior_match_rate": summary.expected_behavior_match_rate,
         "security_pass_rate": summary.security_pass_rate,

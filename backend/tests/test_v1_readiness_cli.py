@@ -129,7 +129,7 @@ def _assessment(verdict: ReadinessVerdict) -> ReadinessAssessment:
     }[verdict]
     run_id = UUID("00000000-0000-4000-8000-000000009999")
     return ReadinessAssessment(
-        policy_id="queryops-v1-readiness-v1",
+        policy_id="queryops-v1-readiness-v2",
         verdict=verdict,
         run_id=run_id,
         provider="openai",

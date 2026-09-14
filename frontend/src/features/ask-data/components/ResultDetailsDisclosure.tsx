@@ -53,6 +53,13 @@ function DetailButton({ active, label, onClick }: { active: boolean; label: stri
 
 function ResultSummary({ current }: { current: CurrentQueryResult }) {
   const { result } = current;
+  const deliveryCompleteness = result.metadata.execution?.delivery_completeness;
+  const partialDelivery = result.truncated || deliveryCompleteness === "safety_limited";
+  const deliveryUnknown =
+    result.status === "succeeded" &&
+    !result.clarification_required &&
+    !partialDelivery &&
+    deliveryCompleteness !== "complete";
   return (
     <div className="grid gap-3 rounded-card border border-app-border bg-app-muted p-4 text-sm leading-6 text-app-subtle">
       <p className="m-0 text-app-text">{result.message}</p>
@@ -62,7 +69,7 @@ function ResultSummary({ current }: { current: CurrentQueryResult }) {
         <div><dt className="font-bold text-app-faint">Rows</dt><dd className="m-0">{result.row_count}</dd></div>
         <div><dt className="font-bold text-app-faint">Duration</dt><dd className="m-0">{formatDuration(result.duration_ms)}</dd></div>
       </dl>
-      {result.warnings.length ? <p className="m-0">{result.warnings.length} {result.warnings.length === 1 ? "warning" : "warnings"}.{result.truncated ? " Result is truncated." : ""}</p> : result.truncated ? <p className="m-0">Result is truncated.</p> : null}
+      {result.warnings.length ? <p className="m-0">{result.warnings.length} {result.warnings.length === 1 ? "warning" : "warnings"}.{partialDelivery ? " Delivery is partial." : deliveryUnknown ? " Delivery completeness could not be established." : ""}</p> : partialDelivery ? <p className="m-0">Delivery is partial because the governed row limit may have applied.</p> : deliveryUnknown ? <p className="m-0">Delivery completeness could not be established.</p> : null}
     </div>
   );
 }

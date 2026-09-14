@@ -26,7 +26,7 @@ def test_cli_defaults_to_full_selection_and_reports_low_score_safely(capsys) -> 
     assert fake.suite is EvaluationSuite.FULL
     assert "Provider: mock (mock-queryops-v1)" in output.out
     assert "Semantic catalog: it_operations_semantic_catalog v3" in output.out
-    assert "selected=40 completed=40 passed=6 failed=34" in output.out
+    assert "selected=40 completed=40 passed=6 failed=34 unestablished=0" in output.out
     assert "Semantic planning: generated=30 validated=27" in output.out
     assert "renderer_defects=1 conformance_defects=2" in output.out
     assert "itops-security-003" in output.out
@@ -286,6 +286,8 @@ def _summary(
         passed=False,
         score=0.25,
         error_code="clarification_required",
+        comparison_state="not_applicable",
+        delivery_completeness="not_applicable",
     )
     return EvaluationRunSummary(
         run_id=uuid4(),
@@ -299,6 +301,14 @@ def _summary(
         completed_count=completed,
         passed_count=6,
         failed_count=max(0, completed - 6),
+        unestablished_count=0,
+        comparison_state_counts={
+            "correct": 0,
+            "incorrect": 0,
+            "unestablished": 0,
+            "not_reached": 0,
+            "not_applicable": 1,
+        },
         overall_score=0.4,
         expected_behavior_match_rate=0.25,
         security_pass_rate=0.6,

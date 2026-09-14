@@ -92,7 +92,7 @@ function isGateStatus(value: string): value is ReadinessGateStatus {
 
 function isSafeReadiness(data: EvaluationReadiness): boolean {
   if (
-    data.policy_id !== "queryops-v1-readiness-v1" ||
+    data.policy_id !== "queryops-v1-readiness-v2" ||
     !isVerdict(data.verdict) ||
     (data.provider !== null && data.provider !== "openai") ||
     !Array.isArray(data.gates) ||

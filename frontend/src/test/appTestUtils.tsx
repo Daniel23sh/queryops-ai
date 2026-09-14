@@ -214,7 +214,7 @@ export function backendEvaluationReadiness({
     ? (provider === "openai" ? 40 : null)
     : completedCount;
   return {
-    policy_id: "queryops-v1-readiness-v1",
+    policy_id: "queryops-v1-readiness-v2",
     verdict,
     provider,
     model_label: provider === "openai" ? "gpt-5.6-terra" : provider === null ? null : "mock-queryops-v1",
@@ -257,8 +257,8 @@ export function backendEvaluationReadiness({
   };
 }
 
-export function backendEvaluationQueries({ runId = "00000000-0000-4000-8000-000000000901", technical = false } = {}) {
-  const item = backendEvaluationCase({ technical });
+export function backendEvaluationQueries({ runId = "00000000-0000-4000-8000-000000000901", technical = false, deliveryCompleteness = "unknown", comparisonState = "not_reached" } = {}) {
+  const item = backendEvaluationCase({ technical, deliveryCompleteness, comparisonState });
   return {
     run: backendEvaluationRun(runId),
     metrics: backendEvaluationMetrics({ completed: 1, failed: 1, passed: 0 }),
@@ -304,14 +304,14 @@ function backendEvaluationRun(
 }
 
 function backendEvaluationMetrics({ availability = "measured", completed, failed, passed }: { availability?: string; completed: number; failed: number; passed: number }) {
-  return { availability, eligible_count: completed, selected_count: completed, completed_count: completed, passed_count: passed, failed_count: failed, overall_score: completed ? passed / completed : null, expected_behavior_match_rate: completed ? passed / completed : null, security_pass_rate: completed === 5 ? passed / completed : null, query_execution_succeeded_count: passed, query_execution_failed_count: failed };
+  return { availability, eligible_count: completed, selected_count: completed, completed_count: completed, passed_count: passed, failed_count: failed, unestablished_count: 0, comparison_state_counts: { correct: passed, incorrect: failed, unestablished: 0, not_reached: 0, not_applicable: 0 }, overall_score: completed ? passed / completed : null, expected_behavior_match_rate: completed ? passed / completed : null, security_pass_rate: completed === 5 ? passed / completed : null, query_execution_succeeded_count: passed, query_execution_failed_count: failed };
 }
 
 function evaluationBreakdown(key: string, eligible: number, completed: number, passed: number, failed: number, score: number | null) {
-  return { key, eligible_count: eligible, completed_count: completed, passed_count: passed, failed_count: failed, score };
+  return { key, eligible_count: eligible, completed_count: completed, passed_count: passed, failed_count: failed, unestablished_count: 0, comparison_state_counts: { correct: passed, incorrect: failed, unestablished: 0, not_reached: 0, not_applicable: 0 }, score };
 }
 
-function backendEvaluationCase({ technical }: { technical: boolean }) {
+function backendEvaluationCase({ technical, deliveryCompleteness = "not_applicable", comparisonState = "not_applicable" }: { technical: boolean; deliveryCompleteness?: string; comparisonState?: string }) {
   return {
     case_id: "itops-security-003",
     category: "directory_users",
@@ -319,6 +319,8 @@ function backendEvaluationCase({ technical }: { technical: boolean }) {
     case_type: "unsafe_sql",
     passed: false,
     score: 0,
+    comparison_state: comparisonState,
+    delivery_completeness: deliveryCompleteness,
     technical: technical ? {
       expected_outcome: "unsafe_blocked",
       actual_outcome: "execution_failed",
@@ -328,6 +330,11 @@ function backendEvaluationCase({ technical }: { technical: boolean }) {
       actual_row_count: 0,
       missing_row_count: 0,
       extra_row_count: 0,
+      returned_row_count_shortfall: 0,
+      returned_row_count_surplus: 0,
+      comparison_state: comparisonState,
+      delivery_completeness: deliveryCompleteness,
+      comparison_limitation_reason: comparisonState === "unestablished" ? "evidence_row_budget_exceeded" : null,
       failure_reasons: ["unexpected_outcome"],
       error_code: "execution_failed",
       duration_ms: 12.4,

@@ -41,8 +41,8 @@ EXPECTED_TEMPLATE_IDS = {
     "unused_licenses_by_department",
 }
 V1_DATASET_DIGEST = "1e7b12fbf35de4d2c52937a762f3960df444eb3303ee7061a0e4506819c22bc4"
-V2_DATASET_DIGEST = "372a5c203fb86e176f207656846884b8d5df5a1e939501e5ec9a35f65da2fe5e"
-CANARY_DIGEST = "c4fac0491cbd576d47d38722d7c45b3be6562a187c0324758ea98ce19a74a389"
+V2_DATASET_DIGEST = "6ac164ab6c58c0b008a65afc01cd26aa434fecd3eaa402b5bdad9c89e6f6540f"
+CANARY_DIGEST = "83dadd97b819003e9e6aa20b4487affc8a3c926cd7ca3d2672c85225b4ae3fc2"
 
 
 def _semantic_contract_for_outcome(outcome: str) -> dict[str, object]:
@@ -53,6 +53,7 @@ def _semantic_contract_for_outcome(outcome: str) -> dict[str, object]:
         "unsafe_blocked": "unsafe",
     }[outcome]
     return {
+        "answer_bound": {"kind": "population", "limit": None},
         "answerability": answerability,
         "semantic_source": (
             "explicit_question" if outcome == "success" else "not_applicable"
@@ -325,6 +326,7 @@ def test_v2_non_result_cases_omit_irrelevant_semantic_fields(tmp_path: Path) -> 
         assert safe["required_metric_id"] is None
         assert safe["aggregations"] == []
         assert safe["output_fields"] == []
+        assert safe["answer_bound"] == {"kind": "population", "limit": None}
 
 
 @pytest.mark.parametrize(

@@ -76,6 +76,84 @@ def test_complete_openai_evidence_passes_exact_policy() -> None:
     assert assessment.average_latency_ms == 1.0
 
 
+def test_unestablished_comparison_is_incomplete_and_kept_nonqualifying() -> None:
+    dataset = load_it_operations_evaluation_v2_set()
+    evidence = _evidence(dataset)
+    rows = list(evidence.results)
+    index = next(
+        index
+        for index, row in enumerate(rows)
+        if row.case_id == "itops-easy-006"
+    )
+    row = rows[index]
+    limited = _evidence_summary()
+    for side in ("expected", "actual"):
+        limited[side] = {
+            **limited[side],
+            "complete": False,
+            "exhausted": False,
+            "limitation_reason": "evidence_row_budget_exceeded",
+            "delivery_completeness": "unknown",
+            "row_count": 1000,
+            "auxiliary_execution_count": 1,
+        }
+    limited["actual_delivery_row_limit"] = 100
+    limited["actual_delivery_completeness"] = "safety_limited"
+    rows[index] = replace(
+        row,
+        status="failed",
+        score=0.75,
+        metrics={
+            **row.metrics,
+            "score": 0.75,
+            "passed": False,
+            "result_correct": None,
+            "comparison_state": "unestablished",
+            "delivery_completeness": "safety_limited",
+            "comparison_limitation_reason": "evidence_row_budget_exceeded",
+            "comparison_evidence": limited,
+        },
+    )
+
+    assessment = evaluate_v1_readiness(
+        dataset,
+        _with_results(evidence, rows),
+        deterministic_evidence_passed=True,
+    )
+
+    assert assessment.verdict is ReadinessVerdict.INCOMPLETE
+    assert assessment.gates[0].reason_code == "comparison_unestablished"
+
+
+def test_readiness_rejects_inconsistent_unestablished_summary_count() -> None:
+    evidence = _evidence()
+    assessment = evaluate_v1_readiness(
+        load_it_operations_evaluation_v2_set(),
+        replace(
+            evidence,
+            summary={**evidence.summary, "unestablished_count": 1},
+        ),
+        deterministic_evidence_passed=True,
+    )
+
+    assert assessment.verdict is ReadinessVerdict.INCOMPLETE
+    assert assessment.gates[0].reason_code == "result_set_malformed"
+
+    counts = dict(evidence.summary["comparison_state_counts"])
+    counts["correct"] -= 1
+    counts["incorrect"] += 1
+    assessment = evaluate_v1_readiness(
+        load_it_operations_evaluation_v2_set(),
+        replace(
+            evidence,
+            summary={**evidence.summary, "comparison_state_counts": counts},
+        ),
+        deterministic_evidence_passed=True,
+    )
+    assert assessment.verdict is ReadinessVerdict.INCOMPLETE
+    assert assessment.gates[0].reason_code == "result_set_malformed"
+
+
 def test_canary_incomplete_or_failed_blocks_readiness_before_full_evidence() -> None:
     dataset = load_it_operations_evaluation_v2_set()
     evidence = _evidence(dataset)
@@ -177,7 +255,7 @@ def test_smallest_discrete_execution_and_accuracy_boundary_values_pass() -> None
 
     assessment = evaluate_v1_readiness(
         load_it_operations_evaluation_v2_set(),
-        replace(evidence, results=tuple(rows)),
+        _with_results(evidence, rows),
         deterministic_evidence_passed=True,
     )
 
@@ -224,7 +302,7 @@ def test_smallest_discrete_execution_and_accuracy_boundary_values_pass() -> None
 )
 def test_just_below_each_threshold_is_not_ready(metric, mutator, reason) -> None:
     evidence = _evidence()
-    mutated = replace(evidence, results=mutator(list(evidence.results)))
+    mutated = _with_results(evidence, mutator(list(evidence.results)))
     assessment = evaluate_v1_readiness(
         load_it_operations_evaluation_v2_set(),
         mutated,
@@ -539,6 +617,46 @@ def test_provider_identity_without_a_live_measurement_is_incomplete() -> None:
     assert assessment.gates[0].reason_code == "result_set_malformed"
 
 
+def test_failed_actual_execution_cannot_claim_comparison_correct() -> None:
+    evidence = _evidence()
+    row = next(
+        row
+        for row in evidence.results
+        if row.metrics["comparison_state"] == "correct"
+    )
+    actual = {
+        **row.actual_output,
+        "outcome": "execution_failed",
+        "execution_succeeded": False,
+        "error_code": "execution_failed",
+    }
+    metrics = {
+        **row.metrics,
+        "score": 0.5,
+        "passed": False,
+        "outcome_correct": False,
+        "execution_correct": False,
+        "failure_reasons": ["unexpected_outcome", "execution_state_mismatch"],
+    }
+    replacement = replace(
+        row,
+        status="failed",
+        score=0.5,
+        actual_output=actual,
+        metrics=metrics,
+    )
+    rows = tuple(replacement if item.case_id == row.case_id else item for item in evidence.results)
+
+    assessment = evaluate_v1_readiness(
+        load_it_operations_evaluation_v2_set(),
+        replace(evidence, results=rows),
+        deterministic_evidence_passed=True,
+    )
+
+    assert assessment.verdict is ReadinessVerdict.INCOMPLETE
+    assert assessment.gates[0].reason_code == "result_set_malformed"
+
+
 def test_unsafe_and_clarification_execution_attempts_fail_even_with_expected_label() -> None:
     evidence = _evidence()
     rows = _mutate_type(list(evidence.results), CaseType.UNSAFE_SQL, attempted=True)
@@ -611,6 +729,14 @@ def _evidence(dataset=None) -> ReadinessRunEvidence:
             },
             "selected_count": 40,
             "completed_count": 40,
+            "unestablished_count": 0,
+            "comparison_state_counts": {
+                "correct": 35,
+                "incorrect": 0,
+                "unestablished": 0,
+                "not_reached": 0,
+                "not_applicable": 5,
+            },
             "filters": {
                 "case_id": None,
                 "difficulty": None,
@@ -636,6 +762,9 @@ def _result(case) -> ReadinessResultEvidence:
         "execution_correct": True,
         "tables_correct": True,
         "result_correct": True if success else None,
+        "comparison_state": "correct" if success else "not_applicable",
+        "delivery_completeness": "complete" if success else "not_applicable",
+        "comparison_limitation_reason": None,
         "expected_row_count": 1 if success else 0,
         "actual_row_count": 1 if success else 0,
         "failure_reasons": [],
@@ -659,6 +788,8 @@ def _result(case) -> ReadinessResultEvidence:
             "total_tokens": 2,
         },
     }
+    if success:
+        metrics["comparison_evidence"] = _evidence_summary()
     if case.template_id is None and success:
         metrics["planner"] = _passing_planner()
     return ReadinessResultEvidence(
@@ -699,6 +830,7 @@ def _passing_planner() -> dict[str, Any]:
             "group_by_correct": True,
             "having_correct": True,
             "ordering_correct": True,
+            "answer_bound_correct": True,
             "failure_reasons": [],
         },
     }
@@ -765,6 +897,33 @@ def _with_summary(evidence: ReadinessRunEvidence, **updates: Any) -> ReadinessRu
     return replace(evidence, summary={**evidence.summary, **updates})
 
 
+def _with_results(
+    evidence: ReadinessRunEvidence,
+    rows,
+) -> ReadinessRunEvidence:
+    results = tuple(rows)
+    states = tuple(row.metrics.get("comparison_state") for row in results)
+    counts = {
+        state: states.count(state)
+        for state in (
+            "correct",
+            "incorrect",
+            "unestablished",
+            "not_reached",
+            "not_applicable",
+        )
+    }
+    return replace(
+        evidence,
+        summary={
+            **evidence.summary,
+            "unestablished_count": counts["unestablished"],
+            "comparison_state_counts": counts,
+        },
+        results=results,
+    )
+
+
 def _fail_success_rows(
     rows,
     count: int,
@@ -791,7 +950,9 @@ def _fail_success_rows(
                 {
                     "outcome_correct": False,
                     "execution_correct": False,
-                    "result_correct": False,
+                    "result_correct": None,
+                    "comparison_state": "not_reached",
+                    "delivery_completeness": "unknown",
                     "passed": False,
                     "score": 0.25,
                     "failure_reasons": [
@@ -801,10 +962,12 @@ def _fail_success_rows(
                     ],
                 }
             )
+            metrics.pop("comparison_evidence", None)
         if result:
             metrics["result_correct"] = False
             metrics.update(
                 {
+                    "comparison_state": "incorrect",
                     "passed": False,
                     "score": 0.75,
                     "failure_reasons": ["result_semantics_mismatch"],
@@ -818,6 +981,37 @@ def _fail_success_rows(
             metrics=metrics,
         )
     return tuple(output)
+
+
+def _evidence_summary() -> dict[str, Any]:
+    side = {
+        "complete": True,
+        "comparison_eligible": True,
+        "exhausted": True,
+        "limitation_reason": None,
+        "delivery_completeness": "complete",
+        "row_count": 1,
+        "observed_execution_count": 1,
+        "observed_duration_ms": 1.0,
+        "auxiliary_execution_count": 0,
+        "auxiliary_duration_ms": 0.0,
+    }
+    return {
+        "policy_id": "queryops-bounded-result-evidence-v1",
+        "budget": {
+            "row_limit_per_side": 1000,
+            "sql_lookahead_limit": 1001,
+            "statement_timeout_ms": 5000,
+            "total_timeout_ms": 10000,
+            "payload_limit_bytes": 8388608,
+            "max_auxiliary_executions": 2,
+        },
+        "expected": dict(side),
+        "actual": dict(side),
+        "actual_delivery_completeness": "complete",
+        "actual_delivery_row_limit": None,
+        "context_compatible": True,
+    }
 
 
 def _mutate_type(rows, case_type: CaseType, *, attempted: bool):

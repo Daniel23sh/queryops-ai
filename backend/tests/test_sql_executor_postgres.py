@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+import time
 import uuid
 from collections.abc import Generator
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +29,7 @@ from app.query_engine.sql_executor import (
     SQLExecutionOptions,
     SQLExecutionResult,
     execute_validated_sql,
+    query_runtime_transaction,
 )
 from app.query_engine.sql_validator import SQLValidationResult, validate_sql
 
@@ -377,6 +380,7 @@ def test_timeout_behavior_returns_sanitized_error(postgres_engine: Engine) -> No
     assert result.public_error == QUERY_EXECUTION_PUBLIC_ERROR
     assert "pg_sleep" not in result.public_error
     assert "statement timeout" not in result.public_error.lower()
+    assert result.execution_metadata["delivery_completeness"] == "unknown"
 
 
 def test_row_limit_and_truncation_behavior(postgres_engine: Engine) -> None:
@@ -400,6 +404,231 @@ def test_row_limit_and_truncation_behavior(postgres_engine: Engine) -> None:
     assert result.truncated is True
     assert len(result.rows) == 2
     assert result.execution_metadata["row_limit"] == 2
+
+
+def test_automatic_safety_limit_at_exact_cap_is_truthfully_partial(
+    postgres_engine: Engine,
+) -> None:
+    with Session(postgres_engine) as session:
+        admin = access_context_for(session, "demo.admin@queryops.local")
+        validation = validate_for_user(
+            session,
+            admin,
+            "SELECT id FROM license_assignments",
+        )
+
+    result = execute_validated_sql(postgres_engine, admin, validation)
+
+    assert_success(result)
+    assert validation.limit_source == "safety_added"
+    assert result.row_count == 100
+    assert result.truncated is False
+    assert result.execution_metadata["delivery_completeness"] == "safety_limited"
+
+
+def test_input_limit_at_exact_bound_keeps_delivery_completeness_unknown(
+    postgres_engine: Engine,
+) -> None:
+    with Session(postgres_engine) as session:
+        admin = access_context_for(session, "demo.admin@queryops.local")
+        validation = validate_for_user(
+            session,
+            admin,
+            "SELECT id FROM departments ORDER BY id LIMIT 1",
+        )
+
+    result = execute_validated_sql(postgres_engine, admin, validation)
+
+    assert_success(result)
+    assert validation.limit_source == "input"
+    assert result.row_count == 1
+    assert result.truncated is False
+    assert result.execution_metadata["delivery_completeness"] == "unknown"
+
+
+def test_payload_budget_stops_row_acquisition_and_marks_delivery_unknown(
+    postgres_engine: Engine,
+) -> None:
+    with Session(postgres_engine) as session:
+        admin = access_context_for(session, "demo.admin@queryops.local")
+        validation = validate_for_user(
+            session,
+            admin,
+            "SELECT id, name FROM departments ORDER BY id",
+        )
+
+    result = execute_validated_sql(
+        postgres_engine,
+        admin,
+        validation,
+        options=SQLExecutionOptions(max_payload_bytes=1),
+    )
+
+    assert_success(result)
+    assert result.rows == []
+    assert result.execution_metadata["payload_limited"] is True
+    assert result.execution_metadata["delivery_completeness"] == "unknown"
+
+
+def test_payload_budget_rejects_one_oversized_value_without_retaining_it(
+    postgres_engine: Engine,
+) -> None:
+    with Session(postgres_engine) as session:
+        admin = access_context_for(session, "demo.admin@queryops.local")
+        validation = validate_for_user(
+            session,
+            admin,
+            "SELECT repeat(name, 100000) AS value FROM departments ORDER BY id",
+        )
+
+    result = execute_validated_sql(
+        postgres_engine,
+        admin,
+        validation,
+        options=SQLExecutionOptions(max_payload_bytes=1024),
+    )
+
+    assert_success(result)
+    assert result.rows == []
+    assert result.execution_metadata["payload_limited"] is True
+    assert result.execution_metadata["payload_bytes"] <= 1024
+
+
+def test_acquisition_deadline_bounds_cumulative_row_processing(
+    postgres_engine: Engine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with Session(postgres_engine) as session:
+        admin = access_context_for(session, "demo.admin@queryops.local")
+        validation = validate_for_user(
+            session,
+            admin,
+            "SELECT id, name FROM departments ORDER BY id",
+        )
+        department_count = session.scalar(
+            select(func.count()).select_from(Department)
+        )
+        assert department_count is not None and department_count > 1
+
+    from app.query_engine import sql_executor
+
+    original_size = sql_executor.normalized_json_size
+
+    def slow_size(value, *, maximum=None):
+        time.sleep(0.002)
+        return original_size(value, maximum=maximum)
+
+    monkeypatch.setattr(sql_executor, "normalized_json_size", slow_size)
+    result = execute_validated_sql(
+        postgres_engine,
+        admin,
+        validation,
+        options=SQLExecutionOptions(
+            row_limit=1000,
+            max_payload_bytes=1024 * 1024,
+            acquisition_deadline=time.perf_counter() + 0.003,
+        ),
+    )
+
+    assert_success(result)
+    assert result.execution_metadata["timeout"] is True
+    assert result.execution_metadata["delivery_completeness"] == "unknown"
+    assert result.row_count < department_count
+
+
+def test_repeatable_read_runtime_connection_shares_time_and_snapshot(
+    postgres_engine: Engine,
+) -> None:
+    inserted_id = uuid.uuid4()
+    inserted_name = f"snapshot-{inserted_id}"
+    with Session(postgres_engine) as session:
+        admin = access_context_for(session, "demo.admin@queryops.local")
+        validation = validate_for_user(
+            session,
+            admin,
+            "SELECT COUNT(*) AS count, CURRENT_TIMESTAMP AS observed_at FROM departments",
+        )
+
+    try:
+        with query_runtime_transaction(
+            postgres_engine,
+            admin,
+            isolation_level="repeatable_read",
+            timezone_name="UTC",
+        ) as connection:
+            assert connection.execute(text("SHOW TimeZone")).scalar_one() == "UTC"
+            before = execute_validated_sql(connection, admin, validation)
+            with postgres_engine.begin() as writer:
+                writer.execute(
+                    text(
+                        "INSERT INTO departments (id, name, description) "
+                        "VALUES (:id, :name, 'snapshot test')"
+                    ),
+                    {"id": inserted_id, "name": inserted_name},
+                )
+            after = execute_validated_sql(connection, admin, validation)
+
+        outside = execute_validated_sql(postgres_engine, admin, validation)
+    finally:
+        with postgres_engine.begin() as cleanup:
+            cleanup.execute(
+                text("DELETE FROM departments WHERE id = :id"),
+                {"id": inserted_id},
+            )
+
+    assert_success(before)
+    assert_success(after)
+    assert_success(outside)
+    assert before.rows == after.rows
+    assert outside.rows[0]["count"] == before.rows[0]["count"] + 1
+    assert before.execution_metadata["transaction_isolation"] == "repeatable read"
+
+
+def test_supplied_runtime_connection_rejects_authorization_context_mismatch(
+    postgres_engine: Engine,
+) -> None:
+    with Session(postgres_engine) as session:
+        manager = access_context_for(session, "demo.manager@queryops.local")
+        admin = access_context_for(session, "demo.admin@queryops.local")
+        validation = validate_for_user(
+            session,
+            manager,
+            "SELECT id FROM directory_users ORDER BY id LIMIT 1",
+        )
+
+    with query_runtime_transaction(
+        postgres_engine,
+        manager,
+        isolation_level="repeatable_read",
+    ) as connection:
+        result = execute_validated_sql(connection, admin, validation)
+
+    assert_failed(result, "database_error")
+
+
+def test_supplied_runtime_connection_rejects_permission_only_context_mismatch(
+    postgres_engine: Engine,
+) -> None:
+    with Session(postgres_engine) as session:
+        manager = access_context_for(session, "demo.manager@queryops.local")
+        validation = validate_for_user(
+            session,
+            manager,
+            "SELECT id FROM directory_users ORDER BY id LIMIT 1",
+        )
+    elevated = replace(
+        manager,
+        permissions=manager.permissions | {"query:restricted_data"},
+    )
+
+    with query_runtime_transaction(
+        postgres_engine,
+        manager,
+        isolation_level="repeatable_read",
+    ) as connection:
+        result = execute_validated_sql(connection, elevated, validation)
+
+    assert_failed(result, "database_error")
 
 
 def test_database_errors_are_sanitized(postgres_engine: Engine) -> None:

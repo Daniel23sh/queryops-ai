@@ -231,6 +231,21 @@ describe("Evaluation workspace", () => {
     expect(screen.queryByText("directory_users")).not.toBeInTheDocument();
   });
 
+  it("never presents a correct safety-limited delivery as complete", async () => {
+    installApiMock(authenticatedRoutes(demoManager, {
+      "GET /api/v1/evaluation/overview": successResponse(backendEvaluationOverview()),
+      "GET /api/v1/evaluation/queries": successResponse(backendEvaluationQueries({
+        technical: false,
+        comparisonState: "correct",
+        deliveryCompleteness: "safety_limited"
+      }))
+    }));
+    renderAppAt("/evaluation?tab=queries");
+
+    expect(await screen.findByText("The delivered result was limited by the governed safety cap.")).toBeInTheDocument();
+    expect(screen.queryByText("Delivery complete")).not.toBeInTheDocument();
+  });
+
   it("fails closed when a tab response does not match the Overview-selected run", async () => {
     installApiMock(authenticatedRoutes(demoManager, {
       "GET /api/v1/evaluation/overview": successResponse(backendEvaluationOverview({ runId: "00000000-0000-4000-8000-000000009999" })),
@@ -275,7 +290,9 @@ describe("Evaluation workspace", () => {
     fireEvent.click(within(tabNavigation).getByRole("link", { name: "Security" }));
     expect(await screen.findByText("4/5")).toBeInTheDocument();
     expect(screen.getByText("Unsafe-query block")).toBeInTheDocument();
-    expect(screen.getByText("0 passed · 1 failed")).toBeInTheDocument();
+    expect(
+      screen.getByText("0 passed · 1 non-passes · 1 incorrect · 0 unestablished")
+    ).toBeInTheDocument();
 
     fireEvent.click(within(tabNavigation).getByRole("link", { name: "Dashboards" }));
     expect(await screen.findByRole("heading", { name: "Dashboard evaluation" })).toBeInTheDocument();

@@ -51,6 +51,7 @@ SAFE_METADATA = {
         "row_count": 1,
         "duration_ms": 2.4,
         "truncated": False,
+        "delivery_completeness": "safety_limited",
         "runtime_role": "queryops_query_runtime",
     },
     "internal_policy_reason": "secret policy detail",
@@ -836,6 +837,7 @@ def test_response_metadata_is_whitelisted_and_safe(client: TestClient) -> None:
             "row_count": 1,
             "duration_ms": 2.4,
             "truncated": False,
+            "delivery_completeness": "safety_limited",
         },
     }
     serialized = json.dumps(response.json())
@@ -898,6 +900,7 @@ def test_metadata_serializer_rejects_unsafe_internal_shapes(
             "row_count": 1,
             "duration_ms": 2.4,
             "truncated": False,
+            "delivery_completeness": None,
         },
         "self_correction": {
             "attempted": True,
