@@ -4,7 +4,7 @@ Policy: `queryops-v1-readiness-v2`
 
 Automated QueryOps V1 readiness is fail-closed. Its verdict is `ready` only when the deterministic release jobs pass, three matching Evaluation V2 canary runs are stable, one matching complete V2 full run passes every real-provider threshold, planner implementation integrity holds, and renderer/conformance defect counts are zero. Complete eligible evidence that misses a threshold is `not_ready`. Missing, stale, malformed, filtered, partial, running, failed, unstable, or otherwise ineligible evidence is `incomplete`. No evidence is never success.
 
-An automated `ready` verdict is necessary but does not by itself complete Milestone 9 or the QueryOps AI V1 release. Final release completion separately requires the full manual QA checklist to pass on that same unchanged immutable candidate.
+An automated `ready` verdict is necessary but does not by itself complete M10 or the local synthetic IT Operations V1 release. Final release completion separately requires the full manual QA checklist to pass on that same unchanged immutable candidate.
 
 ## Real-provider metrics
 
@@ -58,7 +58,7 @@ The full run must pass every metric threshold, every deterministic release gate,
 
 ## Environment identity and invalidation
 
-Release evidence must contain the bounded `queryops-evaluation-environment-v1` identity produced from a clean source revision and a freshly reset deterministic `medium` seed. The release-manifest boundary explicitly freezes `it_operations_v2` version `2` and its exact digest; a historical V1 dataset identity cannot validate PR11 live evidence. Before provider construction, the runner verifies source SHA, Alembic revision, PostgreSQL/runtime versions, dependency-manifest hash, V2 dataset/catalog identities, table/anomaly counts, and the canonical digest of evaluation-relevant seeded state. The explicit UTC reference time may be at most 24 hours old when a run starts. The persisted identity contains no database URL or rows.
+Release evidence must contain the bounded `queryops-evaluation-environment-v1` identity produced from a clean source revision and a freshly reset deterministic `medium` seed. The release-manifest boundary explicitly freezes `it_operations_v2` version `2` and its exact digest; a historical V1 dataset identity cannot validate current V2 release evidence. Before provider construction, the runner verifies source SHA, Alembic revision, PostgreSQL/runtime versions, dependency-manifest hash, V2 dataset/catalog identities, table/anomaly counts, and the canonical digest of evaluation-relevant seeded state. The explicit UTC reference time may be at most 24 hours old when a run starts. The persisted identity contains no database URL or rows.
 
 Any source SHA, provider/model, dataset, canary membership or digest, semantic catalog, seed state, dependency manifest, environment identity, provider/Query Engine behavior, grounding, plan validation, SQL renderer, safety validator, semantic conformance, scorer, runner, stability assessment, readiness logic, or behavior-affecting configuration change invalidates live evidence. A new deterministic freeze and a separately authorized three-run canary plus full run are then required. Documentation-only evidence recording does not invalidate an otherwise unchanged measurement.
 
@@ -72,9 +72,10 @@ The complete manual QA checklist remains independently required on the same immu
 
 Because source SHA is part of the frozen evidence identity, the safe completion sequence is:
 
-1. Finish and review all PR11 fixes.
-2. Pass deterministic CI on the PR11 branch.
-3. Merge PR11.
+1. Complete the required M10 reliability packages, including W5 provider/runtime
+   identity and independent W6c semantic validation.
+2. Pass deterministic CI on the final completion branch.
+3. Integrate the reviewed completion changes.
 4. Pass deterministic CI on final `main`.
 5. Freeze that exact `main` SHA.
 6. Create a fresh deterministic Evaluation V2 environment manifest for that SHA.
@@ -84,7 +85,12 @@ Because source SHA is part of the frozen evidence identity, the safe completion 
 10. Run one matching full 40-case V2 evaluation.
 11. Require automated readiness to be `ready`.
 12. Complete manual QA on the same unchanged candidate.
-13. Only then mark Milestone 9 and QueryOps AI V1 release complete.
+13. Only then mark M10 and local synthetic IT Operations V1 complete.
+
+This sequence supersedes the historical PR11/M9 milestone sequence; numerical
+thresholds, fixed suites, security requirements and evidence ordering are unchanged.
+Shared/production deployment is separate future scope. See the
+[M10 roadmap](../development/m10-completion-roadmap.md).
 
 ## Cost and execution policy
 

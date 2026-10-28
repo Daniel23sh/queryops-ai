@@ -2,7 +2,9 @@
 
 Use the unchanged runtime revision and freshly migrated, manifest-verified disposable PostgreSQL database used for the three matching Evaluation V2 canary runs and the qualifying full 40-case V2 run. Record date and Asia/Jerusalem timezone, tester identity, whether QA was human or Codex-assisted, runtime commit, safe manifest/database fingerprint, browser/version, desktop viewport, 390×844 mobile viewport, themes, and only safe controlled failure codes. Do not paste SQL, rows, prompts, provider payloads, keys, raw errors, or database URLs into the report.
 
-Current result: **not performed**. This keeps V1 readiness `incomplete`.
+Current result: **not performed**. M10 local synthetic IT Operations V1 remains
+incomplete. W0 deterministic/browser verification does not satisfy this complete
+release checklist. Shared/production identity and deployment are future scope.
 
 ## Environment record
 
