@@ -1,5 +1,27 @@
 # QueryOps AI — Development History
 
+## 2026-10-28 — W0 integrated; W1 approved
+
+[PR #61](https://github.com/Daniel23sh/queryops-ai/pull/61) merged the reviewed
+feature head `a3759d8f3e22dc16e762b4876c234a784991d65a` into `main` at
+`f23099c1a7d9ffaad8bc2c445a6551d77ffa5cb1`. All five deterministic jobs and the aggregate
+V1 Deterministic Release Gates check passed on the PR head. The original feature
+branch was removed locally/remotely only after verifying its head is an ancestor
+of main; original unique work remains protected by the local and remote
+`codex/archive-m9-bounded-result-2d7796c` ref. No force-push or baseline rewrite.
+
+The prior W0 record below describes the decision, fixes and local evidence at the
+pre-merge checkpoint. This entry supersedes its pending-integration status only.
+The October audit remains unchanged as dated evidence. Current documentation was
+reconciled to M10 and W1; old private planning bodies remain historical with clear
+supersession notices and were not committed. No unrelated M10 fix was implemented.
+
+W1 — Dashboard Exact-Scope Authorization is now the approved next implementation.
+Role-request concurrency, scoped Evaluation JSON DISTINCT, derived completeness,
+UI defects and semantic/provider-identity work remain open. No live provider call
+or release qualification occurred. All W0 disposable containers/volumes and local
+app processes were removed after verification; existing project data was untouched.
+
 ## 2026-10-28 — W0 bounded-result disposition: retain with corrections
 
 W0 compared remote main `a64d1fa9ebae3abf2a9cd87d27fa0f47e29b1c94` with the

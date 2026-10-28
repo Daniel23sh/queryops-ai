@@ -50,8 +50,8 @@ Git integration status and the active task remain in PROJECT_PLAN.md.
 S/M/L are relative effort, not calendar estimates. Each package must close its
 specific invariant with executable evidence, review proportional to
 [validation risk](validation-model.md), and an explicit remaining-limit record.
-W0 is active; later packages describe approved direction, not permission to batch
-unrelated fixes into W0.
+W0 established the baseline; current approval belongs in PROJECT_PLAN.md. Later
+packages describe direction, not permission to batch unrelated fixes into one PR.
 
 | Package | Scope and intended result | Dependencies / acceptance / verification | Effort and decisions |
 | --- | --- | --- | --- |
@@ -70,7 +70,7 @@ unrelated fixes into W0.
 | W9 — Freeze and V1 Completion | Close all V1 blockers, final CI, matching canary×3 then full40, complete manual QA and evidence | Depends W1–W8 including W2a/W6c; same unchanged source/data/config; existing thresholds and zero-defect gates; full QA roles/themes/mobile/keyboard/error/partial; exact model/run authorization before paid sequence | M/V3; failed/unknown evidence never qualifies |
 | W10 — Optional Cleanup / Measured Performance | Audit F15 legacy dashboard deletion, chart loading or list hot paths only when justified | After core reliability; preserve useful active-path tests, verify imports/dependencies before deletion; measure performance before optimizing | S–M; not a release blocker absent demonstrated impact |
 
-W1 is the expected first implementation after W0. W2/W2a, W3/W4 and W5 can then
+W1 is the first implementation priority after W0. W2/W2a, W3/W4 and W5 can then
 be sequenced with minimal overlap. W6a can diagnose while other fixes proceed,
 but qualifying evidence must wait for W5 and independent W6c validation. W9 does
 not absorb unbounded redesign; unresolved blockers return to their package.
