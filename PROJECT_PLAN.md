@@ -13,18 +13,21 @@ explicit scopes and governed actions remain the design. The
 working functionality and reproducible defects; passing tests and historical
 milestones do not establish release readiness. V1 is **incomplete and unreleased**.
 
-`main` was locally recorded at `a64d1fa`; the bounded-result implementation at
-`2d7796c` on `fix/m9-bounded-result-evaluation` is **awaiting separate technical
-disposition**. It is not declared integrated, abandoned or release-qualified.
-Remote state and the final baseline will be verified during W0.
+Remote `main` was verified at `a64d1fa`. W0 selected **retain with narrow
+corrections before integration** for `fix/m9-bounded-result-evaluation`.
+The original implementation is preserved at
+`codex/archive-m9-bounded-result-2d7796c`. Corrections and independent reviews are
+complete; GitHub CI and integration remain pending. This is not release qualification.
 
 ## Active Objective and Approved Scope
 
-**W0 — Baseline Resolution** is approved now: inspect the complete M9 branch,
-compare retaining/correcting/splitting/replacing it, preserve unique work, make
-only necessary integration corrections, verify the selected result, and complete
-safe Git integration or record an exact external blocker. Documentation updates,
-including relevant ignored local planning documents, are explicitly authorized.
+**W0 — Baseline Resolution** is completing verification and integration. The
+selected design preserves bounded same-snapshot evidence, with fixes for table-only
+authorization metadata, supported input-limit exhaustion, matching top-N answers,
+three-run incomplete UI state, and malformed persisted shapes. No unrelated M10
+implementation is included. Complete safe GitHub CI/integration, then record the
+actual baseline and activate W1. See the decision and evidence in
+[development history](docs/history/development-history.md).
 
 Use the [M10 completion roadmap](docs/development/m10-completion-roadmap.md) for
 work-package scope, dependencies, acceptance criteria and Definition of Done.

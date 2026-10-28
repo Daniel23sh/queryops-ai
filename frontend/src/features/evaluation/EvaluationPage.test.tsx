@@ -80,6 +80,28 @@ describe("Evaluation workspace", () => {
     expect(screen.getByText("No qualifying OpenAI evidence")).toBeInTheDocument();
   });
 
+  it.each(["stability_comparison_unestablished", "stability_runs_missing"])(
+    "handles three incomplete canaries with reason %s", async (reason) => {
+      const readiness = backendEvaluationReadiness({
+        verdict: "incomplete", provider: null, stabilityStatus: "incomplete",
+        stabilityRunCount: 3, completedCount: null
+      });
+      readiness.stability_canary.reason_code = reason;
+      installApiMock(authenticatedRoutes(demoAnalyst, {
+        "GET /api/v1/evaluation/overview": successResponse(backendEvaluationOverview()),
+        "GET /api/v1/evaluation/readiness": successResponse(readiness)
+      }));
+      renderAppAt("/evaluation");
+      if (reason === "stability_comparison_unestablished") {
+        expect(await screen.findByRole("heading", { name: "V1 readiness: Incomplete" })).toBeInTheDocument();
+        expect(screen.getByText("Incomplete · 3/3 runs")).toBeInTheDocument();
+        expect(screen.queryByText("Status: Ready")).not.toBeInTheDocument();
+      } else {
+        expect(await screen.findByRole("heading", { name: "V1 readiness unavailable" })).toBeInTheDocument();
+      }
+    }
+  );
+
   it("shows a passed canary while the matching full run is still missing", async () => {
     installApiMock(authenticatedRoutes(demoAnalyst, {
       "GET /api/v1/evaluation/overview": successResponse(backendEvaluationOverview()),

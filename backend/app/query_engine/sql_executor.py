@@ -243,7 +243,9 @@ def query_runtime_transaction(
             )
             # This must be the first statement in the transaction.
             connection.execute(text(f"SET TRANSACTION{isolation} READ ONLY"))
-            resources = connection.execute(select(DataResource)).mappings().all()
+            resources = connection.execute(
+                select(DataResource).where(DataResource.resource_type == "table")
+            ).mappings().all()
             set_query_runtime_role(connection)
             if timezone_name is not None:
                 connection.execute(text(f"SET LOCAL TIME ZONE '{timezone_name}'"))

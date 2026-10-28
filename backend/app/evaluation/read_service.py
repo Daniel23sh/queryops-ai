@@ -456,6 +456,7 @@ class EvaluationReadService:
             isinstance(summary, dict)
             and summary.get("dataset_id") == self._evaluation_set.dataset_id
             and summary.get("dataset_version") == self._evaluation_set.version
+            and isinstance(summary.get("dataset_digest"), str)
             and (
                 summary.get("dataset_digest") == self._dataset_digest
                 or summary.get("dataset_digest")

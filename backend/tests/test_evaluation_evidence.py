@@ -26,6 +26,7 @@ from app.evaluation.evidence import (
     evidence_summary_supports_judgment,
     is_safe_evidence_summary,
     observed_evidence_side,
+    validate_persisted_comparison_contract,
 )
 from app.evaluation.loader import load_it_operations_evaluation_v2_set
 from app.evaluation.provenance import build_evaluation_comparison_provenance
@@ -157,7 +158,10 @@ def test_population_below_safety_cap_is_complete_without_auxiliary_execution() -
     assert side.auxiliary_execution_count == 0
 
 
-def test_sql_exhaustion_without_population_completeness_persists_unestablished() -> None:
+@pytest.mark.parametrize("semantic_contract_passed", [True, False])
+def test_underfilled_input_limit_proves_population_exhaustion(
+    semantic_contract_passed: bool,
+) -> None:
     case = load_it_operations_evaluation_v2_set().cases_by_id["itops-easy-006"]
     validation = validate_sql(
         "SELECT id FROM license_assignments LIMIT 10", SCHEMA
@@ -172,7 +176,7 @@ def test_sql_exhaustion_without_population_completeness_persists_unestablished()
     evidence = EvaluationComparisonEvidence(
         expected=side,
         actual=side,
-        actual_delivery_completeness=DeliveryCompleteness.UNKNOWN,
+        actual_delivery_completeness=side.delivery_completeness,
     )
     score = score_evaluation_case(
         case,
@@ -182,12 +186,15 @@ def test_sql_exhaustion_without_population_completeness_persists_unestablished()
         expected_rows=rows,
         actual_rows=rows,
         comparison_evidence=evidence,
-        semantic_contract_passed=True,
+        semantic_contract_passed=semantic_contract_passed,
     )
 
     assert side.exhausted is True
-    assert side.complete is False
-    assert score.comparison_state is ComparisonState.UNESTABLISHED
+    assert side.complete is True
+    assert side.delivery_completeness is DeliveryCompleteness.COMPLETE
+    assert score.comparison_state is (
+        ComparisonState.CORRECT if semantic_contract_passed else ComparisonState.INCORRECT
+    )
     assert evidence_summary_supports_judgment(
         evidence.as_safe_dict(),
         score.comparison_state,
@@ -679,7 +686,10 @@ def test_safety_clamped_semantic_bound_is_not_complete_until_restored() -> None:
     assert restored.complete is True
 
 
-def test_unresolved_top_n_cutoff_ties_are_unestablished() -> None:
+@pytest.mark.parametrize("same_members", [True, False])
+def test_top_n_matches_qualify_but_different_cutoff_ties_remain_unestablished(
+    same_members: bool,
+) -> None:
     base = load_it_operations_evaluation_v2_set().cases_by_id["itops-hard-006"]
     assert base.semantic_contract is not None
     case = replace(
@@ -691,6 +701,8 @@ def test_unresolved_top_n_cutoff_ties_are_unestablished() -> None:
     )
     expected = ({"product_name": "A", "monthly_savings": 10}, {"product_name": "B", "monthly_savings": 5})
     actual = ({"product_name": "A", "monthly_savings": 10}, {"product_name": "C", "monthly_savings": 5})
+    if same_members:
+        actual = expected
     evidence = EvaluationComparisonEvidence(
         expected=EvaluationEvidenceSide(
             rows=expected,
@@ -718,8 +730,12 @@ def test_unresolved_top_n_cutoff_ties_are_unestablished() -> None:
         semantic_contract_passed=True,
     )
 
-    assert score.comparison_state is ComparisonState.UNESTABLISHED
-    assert score.comparison_limitation_reason == "ranking_tie_unestablished"
+    assert score.comparison_state is (
+        ComparisonState.CORRECT if same_members else ComparisonState.UNESTABLISHED
+    )
+    assert score.comparison_limitation_reason == (
+        None if same_members else "ranking_tie_unestablished"
+    )
 
 
 def test_unordered_semantic_limit_does_not_claim_one_arbitrary_selection() -> None:
@@ -903,6 +919,8 @@ def test_comparison_payload_limitation_can_preserve_an_earlier_side_limitation()
         ("auxiliary_execution_count", False),
         ("observed_duration_ms", float("inf")),
         ("auxiliary_duration_ms", float("nan")),
+        ("observed_duration_ms", 10**1000),
+        ("auxiliary_duration_ms", 10**1000),
     ),
 )
 def test_safe_evidence_summary_rejects_noncanonical_counts_and_durations(
@@ -923,6 +941,33 @@ def test_safe_evidence_summary_rejects_noncanonical_counts_and_durations(
     summary["actual"][field] = value
 
     assert is_safe_evidence_summary(summary) is False
+
+
+@pytest.mark.parametrize("value", [[], {}])
+@pytest.mark.parametrize("field", ["limitation_reason", "delivery_completeness", "actual_delivery_completeness"])
+def test_evidence_summary_rejects_nonstring_states_without_raising(field, value) -> None:
+    side = EvaluationEvidenceSide(
+        rows=(), complete=False, limitation_reason="evidence_timeout",
+        delivery_completeness=DeliveryCompleteness.UNKNOWN,
+    )
+    summary = EvaluationComparisonEvidence(
+        expected=side, actual=side,
+        actual_delivery_completeness=DeliveryCompleteness.UNKNOWN,
+    ).as_safe_dict()
+    if field == "actual_delivery_completeness":
+        summary[field] = value
+    else:
+        summary["actual"][field] = value
+    assert is_safe_evidence_summary(summary) is False
+
+
+@pytest.mark.parametrize("value", [[], {}])
+def test_persisted_comparison_rejects_nonstring_limitation_without_raising(value) -> None:
+    assert validate_persisted_comparison_contract(
+        {"comparison_state": "unestablished", "delivery_completeness": "unknown",
+         "result_correct": None, "comparison_limitation_reason": value},
+        expects_result=True, execution_succeeded=True, passed=False,
+    ) is None
 
 
 def test_payload_exhaustion_does_not_hide_a_small_delivery_witness() -> None:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import math
+import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, replace
 from typing import Any
@@ -333,9 +333,11 @@ def is_safe_evidence_summary(value: Any) -> bool:
         "max_auxiliary_executions": EVIDENCE_MAX_AUXILIARY_EXECUTIONS,
     }:
         return False
-    if value.get("actual_delivery_completeness") not in {
-        item.value for item in DeliveryCompleteness
-    }:
+    if (
+        not isinstance(value.get("actual_delivery_completeness"), str)
+        or value.get("actual_delivery_completeness")
+        not in {item.value for item in DeliveryCompleteness}
+    ):
         return False
     if not isinstance(value.get("context_compatible"), bool):
         return False
@@ -429,7 +431,10 @@ def validate_persisted_comparison_contract(
     limitation = metrics.get("comparison_limitation_reason")
     if (
         (state is ComparisonState.UNESTABLISHED) != (limitation is not None)
-        or (limitation is not None and limitation not in SAFE_LIMITATION_REASONS)
+        or (
+            limitation is not None
+            and (not isinstance(limitation, str) or limitation not in SAFE_LIMITATION_REASONS)
+        )
     ):
         return None
     if expects_result:
@@ -507,7 +512,11 @@ def _safe_side_summary(value: Any) -> bool:
         and (not value["complete"] or value["comparison_eligible"])
         and isinstance(value.get("exhausted"), bool)
         and (value["complete"] is (reason is None))
-        and (reason is None or reason in SAFE_LIMITATION_REASONS)
+        and (
+            reason is None
+            or (isinstance(reason, str) and reason in SAFE_LIMITATION_REASONS)
+        )
+        and isinstance(value.get("delivery_completeness"), str)
         and value.get("delivery_completeness")
         in {item.value for item in DeliveryCompleteness}
         and isinstance(value.get("row_count"), int)
@@ -517,14 +526,12 @@ def _safe_side_summary(value: Any) -> bool:
         and observed_count in {0, 1}
         and isinstance(observed_duration, int | float)
         and not isinstance(observed_duration, bool)
-        and math.isfinite(float(observed_duration))
-        and 0 <= float(observed_duration)
+        and 0 <= observed_duration <= sys.float_info.max
         and type(auxiliary_count) is int
         and auxiliary_count in {0, 1}
         and isinstance(auxiliary_duration, int | float)
         and not isinstance(auxiliary_duration, bool)
-        and math.isfinite(float(auxiliary_duration))
-        and 0 <= float(auxiliary_duration)
+        and 0 <= auxiliary_duration <= sys.float_info.max
         and (observed_count == 1 or float(observed_duration) == 0)
         and (auxiliary_count == 1 or float(auxiliary_duration) == 0)
         and (
@@ -594,7 +601,13 @@ def _executed_answer_is_complete(
         return False
     return (
         exhausted
-        and validation.limit_source in {"safety_added", "safety_clamped"}
+        and (
+            validation.limit_source in {"safety_added", "safety_clamped"}
+            or (
+                validation.limit_source == "input"
+                and _validation_supports_comparison(validation)
+            )
+        )
     ) or (
         answer_bound.limit is not None
         and validation.input_limit == answer_bound.limit

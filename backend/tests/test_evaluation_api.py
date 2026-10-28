@@ -898,6 +898,18 @@ def test_default_and_explicit_selection_reject_stale_dataset_identity(
     assert explicit.status_code == 404
 
 
+@pytest.mark.parametrize("value", [[], {}])
+def test_explicit_run_with_nonstring_digest_is_unavailable_without_crashing(
+    client: TestClient, db_session: Session, value,
+) -> None:
+    run = _create_run(db_session, case_ids={"itops-easy-001"})
+    run.summary = {**run.summary, "dataset_digest": value}
+    db_session.commit()
+    _login(client, "demo.admin@queryops.local")
+    response = client.get(f"/api/v1/evaluation/overview?run_id={run.id}")
+    assert response.status_code == 404
+
+
 def test_explicit_historical_v2_run_remains_viewable_under_legacy_contract(
     client: TestClient,
     db_session: Session,

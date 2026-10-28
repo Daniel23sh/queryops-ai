@@ -3,7 +3,7 @@
 ## Current M10 evidence status — 2026-10-28
 
 V1 remains incomplete and unreleased for the local synthetic IT Operations target.
-W0 is assessing the unintegrated bounded-result branch; its disposition is pending.
+W0 selected retention with focused corrections; CI and Git integration are pending.
 The [October audit](../audits/2026-10-26-project-audit-he.md) records one diagnostic
 canary (9/10), not qualifying stability/full evidence. The checkpoint sections below
 are historical; their policy IDs, digests and test counts are not current release

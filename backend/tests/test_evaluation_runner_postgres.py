@@ -1085,6 +1085,20 @@ def test_real_evidence_path_distinguishes_exactly_1000_rows_from_1001(
     "expected_sql,actual_sql,comparison_mode,answer_bound,expected_state",
     [
         (
+            "SELECT DISTINCT status FROM license_assignments ORDER BY status",
+            "SELECT DISTINCT status FROM license_assignments ORDER BY status LIMIT 10",
+            ComparisonMode.UNORDERED_ROWS,
+            EvaluationAnswerBound(EvaluationAnswerBoundKind.POPULATION),
+            ComparisonState.CORRECT,
+        ),
+        (
+            "SELECT id, status FROM license_assignments ORDER BY status, id LIMIT 5",
+            "SELECT id, status FROM license_assignments ORDER BY status, id LIMIT 5",
+            ComparisonMode.ORDERED_ROWS,
+            EvaluationAnswerBound(EvaluationAnswerBoundKind.TOP_N, 5),
+            ComparisonState.CORRECT,
+        ),
+        (
             "SELECT status FROM license_assignments ORDER BY status",
             "SELECT DISTINCT status FROM license_assignments ORDER BY status",
             ComparisonMode.UNORDERED_ROWS,

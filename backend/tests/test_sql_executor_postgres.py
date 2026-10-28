@@ -21,7 +21,7 @@ from app.core.rls import RLSContext, set_rls_context
 from app.db.base import Base
 from app.domains.it_operations.models import Department
 from app.domains.it_operations.seed import seed_database
-from app.models.product import AppUser
+from app.models.product import AppUser, DataResource
 from app.query_engine.runtime_role import QUERY_RUNTIME_ROLE, set_query_runtime_role
 from app.query_engine.schema_context import build_schema_context
 from app.query_engine.sql_executor import (
@@ -199,6 +199,43 @@ def test_non_queryable_table_execution_is_denied(postgres_engine: Engine) -> Non
     )
 
     assert_failed(result, "resource_not_queryable")
+
+
+def test_shared_runtime_uses_table_authority_when_column_metadata_exists(
+    postgres_engine: Engine,
+) -> None:
+    with Session(postgres_engine) as session:
+        admin = access_context_for(session, "demo.admin@queryops.local")
+        table = session.scalar(select(DataResource).where(
+            DataResource.resource_type == "table",
+            DataResource.table_name == "departments",
+        ))
+        assert table is not None
+        original_queryable = table.is_queryable
+        column = DataResource(
+            resource_type="column", domain="it_operations", schema_name="public",
+            table_name="departments", column_name="id", display_name="Column metadata",
+            sensitivity_level="public", is_queryable=True, is_exportable=False,
+            llm_exposure_level="full",
+        )
+        table.is_queryable = False
+        session.add(column)
+        session.commit()
+        try:
+            validation = SQLValidationResult(
+                valid=True, sanitized_sql="SELECT id FROM departments LIMIT 10",
+                referenced_tables=["departments"],
+            )
+            with query_runtime_transaction(postgres_engine, admin) as connection:
+                resource = connection.info["queryops_runtime_resources"]["departments"]
+                assert resource.resource_type == "table"
+                assert resource.is_queryable is False
+                result = execute_validated_sql(connection, admin, validation)
+            assert_failed(result, "resource_not_queryable")
+        finally:
+            table.is_queryable = original_queryable
+            session.delete(column)
+            session.commit()
 
 
 def test_it_audit_events_execution_is_denied(postgres_engine: Engine) -> None:

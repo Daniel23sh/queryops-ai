@@ -1390,3 +1390,11 @@ def client(
     finally:
         app.dependency_overrides.pop(get_db, None)
         app.dependency_overrides.pop(get_query_engine_service, None)
+
+
+@pytest.mark.parametrize("value", [[], {}])
+def test_execution_delivery_metadata_rejects_nonstring_shapes(value) -> None:
+    from app.api.routes.queries import _safe_metadata
+
+    safe = _safe_metadata({"execution": {"delivery_completeness": value}})
+    assert safe["execution"]["delivery_completeness"] is None

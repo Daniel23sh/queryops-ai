@@ -41,9 +41,9 @@ that run; do not treat every historical suspicion as a proven defect.
 
 These are dated observations, not proof of the current/final revision. Provider
 configuration identity and usage telemetry need work before qualifying evidence.
-No current automated `ready` or complete manual release QA is established. W0
-must independently decide the still-unmerged bounded-result branch on engineering
-merit; this direction update does not select its treatment.
+No current automated `ready` or complete manual release QA is established. W0 selected retention with narrow corrections after independent review. The
+[decision record](../history/development-history.md) compares alternatives; actual
+Git integration status and the active task remain in PROJECT_PLAN.md.
 
 ## Work packages
 

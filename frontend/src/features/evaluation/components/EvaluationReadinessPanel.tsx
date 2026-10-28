@@ -124,7 +124,8 @@ function isSafeReadiness(data: EvaluationReadiness): boolean {
       data.stability_canary.reason_code !== null
     )) ||
     (data.stability_canary.status === "incomplete" && (
-      data.stability_canary.run_count >= 3 ||
+      (data.stability_canary.run_count === 3 &&
+        data.stability_canary.reason_code !== "stability_comparison_unestablished") ||
       data.stability_canary.reason_code === null
     )) ||
     (data.stability_canary.status === "failed" && (

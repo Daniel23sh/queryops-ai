@@ -723,8 +723,6 @@ def _compare_with_evidence(
             ):
                 return _unestablished("ranking_tie_unestablished")
             return ComparisonState.INCORRECT, False, failure, None
-        if _top_n_boundary_unproved(case, evidence):
-            return _unestablished("ranking_tie_unestablished")
         if evidence.actual_delivery_completeness is DeliveryCompleteness.UNKNOWN:
             return _unestablished("completeness_evidence_missing")
         delivered_valid = actual_delivery_valid
@@ -968,21 +966,6 @@ def _delivery_is_valid(
     required = [row for row in complete if rank(row) != cutoff and _rank_precedes(rank(row), cutoff, directions)]
     observed_required = [row for row in delivered if rank(row) != cutoff]
     return _unordered_rows_equal(required, observed_required, case.numeric_tolerance)
-
-
-def _top_n_boundary_unproved(
-    case: EvaluationCase,
-    evidence: EvaluationComparisonEvidence,
-) -> bool:
-    contract = case.semantic_contract
-    return bool(
-        contract is not None
-        and contract.answer_bound.kind is EvaluationAnswerBoundKind.TOP_N
-        and contract.answer_bound.limit is not None
-        and len(evidence.expected.rows) == contract.answer_bound.limit
-        and len(evidence.actual.rows) == contract.answer_bound.limit
-        and (not evidence.expected.exhausted or not evidence.actual.exhausted)
-    )
 
 
 def _unordered_limit_selection_unproved(

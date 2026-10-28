@@ -114,14 +114,19 @@ from validated visible case records rather than trusting stored summary totals.
 Complete unordered results compare as duplicate-sensitive multisets unless the
 answer is `DISTINCT`. Grouped and aggregate results retain the established grain,
 measure and numeric-tolerance rules. Semantic top-N keeps its requested bound and
-ordering. Ranking comparison accepts exact cutoff ties without inventing an
-unrequested tie-breaker; unresolved tie membership remains `unestablished`. An
+ordering. Identical valid top-N answers can establish correctness without
+exhausting the population beyond N. Ranking comparison accepts exact cutoff ties
+without inventing an unrequested tie-breaker; differing unresolved cutoff tie
+membership remains `unestablished`. An
 unordered semantic `LIMIT` defines a bounded selection, not a particular set of
 rows. Different or matching arbitrary selections remain `unestablished` unless
 exhaustion or another complete compatible witness proves equality or a defect.
 
-Planner-selected limits remain part of the answer SQL. If they may hide rows,
-executor exhaustion does not prove population completeness. Different visible
+Planner-selected limits remain part of the answer SQL. Reaching an intact input
+limit does not prove population completeness. Returning fewer rows than that
+limit, without truncation and with a supported comparison shape, proves exhaustion
+of that SQL answer. This does not override a failed semantic bound contract or
+make nested/offset/volatile queries comparable. Different visible
 partial subsets do not prove different populations, and identical visible subsets
 do not prove equal populations. Baseline ordering is evidence only when reviewed
 answer semantics require it; it is never copied into production planning.
@@ -141,3 +146,29 @@ The correction does not resolve the separate aggregate-grouping provider/runtime
 contract (`itops-hard-004`), provider semantic reliability/composition
 interpretation (`itops-medium-009`), other tracked DISTINCT enforcement gaps, or
 pagination/export.
+
+## M10 W0 integration review
+
+The 2026-10-28 review selected retention with narrow corrections, rather than a
+rewrite or discarding the evidence model. The implementation addresses a real
+ambiguity: equal limited prefixes do not prove equal answer populations. Treating
+every bounded result as unknown would be smaller but would lose useful valid
+measurements; removing caps or accepting prefixes would break correctness.
+
+Pre-integration corrections restrict cached authorization metadata to table
+resources, recognize supported input-limit exhaustion and identical valid top-N
+answers, admit the legitimate three-canary incomplete UI state, and reject
+malformed persisted string states/digests without raising. They do not change
+provider prompts, historical baselines, safety/evidence budgets, RLS or thresholds.
+The redundant unconditional top-N-boundary veto was removed; no replacement
+abstraction was introduced. Actual integration and validation records belong in
+[development history](../history/development-history.md) and current status in
+[PROJECT_PLAN](../../PROJECT_PLAN.md).
+
+Remaining M10 work includes exact-scope dashboards, atomic role requests, scoped
+Evaluation reads, derived card/export delivery disclosure, provider identity and
+usage, and independently validated semantic reliability. These are separate
+packages, not claims that this baseline qualifies V1. The 8 MiB budget bounds
+normalized retained comparison payload, not total Python process RAM; the ten
+second budget bounds cumulative auxiliary acquisition, not provider planning plus
+all observed executions.

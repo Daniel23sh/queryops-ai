@@ -515,7 +515,7 @@ def _safe_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
             "truncated": _safe_optional_bool(execution.get("truncated")),
             "delivery_completeness": (
                 delivery_completeness
-                if delivery_completeness
+                if isinstance(delivery_completeness, str) and delivery_completeness
                 in {"complete", "safety_limited", "unknown"}
                 else None
             ),
