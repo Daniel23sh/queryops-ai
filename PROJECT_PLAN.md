@@ -2,45 +2,63 @@
 
 ## Current Status
 
-The bounded-result evidence correction is implemented from audited main
-`a64d1fa9ebae3abf2a9cd87d27fa0f47e29b1c94`. Production delivery remains subject
-to its existing safety cap while evaluator-owned, resource-bounded evidence can
-establish the underlying answer population on one shared authorized snapshot.
+Active milestone: **M10 — Product Reliability & V1 Completion**. The target is a
+reliable, complete **local IT Operations V1 using synthetic data**. Shared or
+production deployment, real identity integration, additional domains and new
+major capabilities are separate future scope.
 
-Milestones 0–8 and M9 implementation through PR11 are complete. V1 remains
-**incomplete, not production-ready, and not released**. Prior live measurements
-are non-qualifying for the corrected source/dataset, including the formal
-provider run described by the operator as diagnostic evidence.
+The modular architecture, plan-only provider, deterministic SQL, PostgreSQL RLS,
+explicit scopes and governed actions remain the design. The
+[2026-10-26 audit](docs/audits/2026-10-26-project-audit-he.md) found substantial
+working functionality and reproducible defects; passing tests and historical
+milestones do not establish release readiness. V1 is **incomplete and unreleased**.
+
+`main` was locally recorded at `a64d1fa`; the bounded-result implementation at
+`2d7796c` on `fix/m9-bounded-result-evaluation` is **awaiting separate technical
+disposition**. It is not declared integrated, abandoned or release-qualified.
+Remote state and the final baseline will be verified during W0.
 
 ## Active Objective and Approved Scope
 
-Implementation, offline and isolated-PostgreSQL verification, and the final
-focused independent review of the bounded-result correction are complete. The
-dataset ID/version and canary membership stay fixed while their
-structured-contract digests change deterministically. See the
-[bounded-result evidence contract](docs/evaluation/bounded-result-evidence.md).
+**W0 — Baseline Resolution** is approved now: inspect the complete M9 branch,
+compare retaining/correcting/splitting/replacing it, preserve unique work, make
+only necessary integration corrections, verify the selected result, and complete
+safe Git integration or record an exact external blocker. Documentation updates,
+including relevant ignored local planning documents, are explicitly authorized.
+
+Use the [M10 completion roadmap](docs/development/m10-completion-roadmap.md) for
+work-package scope, dependencies, acceptance criteria and Definition of Done.
+That document supersedes automatic continuation of historical milestone plans;
+this file remains the authority for current status and approved next work.
 
 ## Constraints
 
-- No live provider calls, canary, provider-output inspection, or result-driven tuning.
-- No production planner/prompt/algebra, authorization, RLS, renderer, conformance,
-  historical V1 dataset, or readiness-threshold changes.
-- Preserve medium-009 provider semantic reliability/composition interpretation,
-  hard-004 aggregate-grouping provider/runtime behavior, and other separately
-  tracked DISTINCT gaps as independent release blockers.
-- Changes invalidate prior qualifying evidence. This work does not claim readiness.
-- Do not modify ignored planning documents or run tests against user databases.
+- No unrelated W1–W9 fixes during W0 unless needed for safe baseline integration.
+- Preserve authorization, RLS, safety caps, semantic correctness criteria,
+  historical V1 baselines and release thresholds. No result-driven dataset tuning.
+- Mock is the normal default. Qualifying paid evidence requires a frozen candidate
+  and exact model/run authorization; W0 does not need an expensive release sequence.
+- Use disposable databases only for state-changing validation; preserve existing
+  user work and protect unique branch work before destructive replacement.
+- Audit evidence is diagnostic, not qualifying release evidence. Scope, role-request
+  races, scoped Evaluation reads, partial delivery, visualizations and semantic
+  reliability remain open until individually fixed and verified.
 
 ## Next Approved Work
 
-None after completion of this correction. A later release candidate must be
-explicitly frozen and separately authorized before the three-canary/full-run
-sequence; full manual QA remains required.
+After W0 establishes the baseline: **W1 — Dashboard Exact-Scope Authorization**.
+Remove department-affiliation authorization fallbacks; enforce effective
+permissions plus explicit assigned scopes across dashboard and card surfaces.
+Verify revocation, assigned secondary/global scopes, current-viewer refresh/export
+and matching UI capabilities with PostgreSQL and browser regressions. W0 may
+identify a justified prerequisite; record it explicitly rather than silently
+expanding implementation scope.
 
 ## References
 
 - [Agent instructions](AGENTS.md)
+- [M10 roadmap and Definition of Done](docs/development/m10-completion-roadmap.md)
 - [Validation model](docs/development/validation-model.md)
 - [Release policy](docs/evaluation/v1-quality-gates.md)
-- [Readiness report](docs/evaluation/v1-readiness-report.md)
+- [Readiness evidence](docs/evaluation/v1-readiness-report.md)
 - [Development history](docs/history/development-history.md)

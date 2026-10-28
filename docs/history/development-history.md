@@ -1,5 +1,20 @@
 # QueryOps AI — Development History
 
+## 2026-10-28 — M10 direction adopted; W0 opened
+
+The owner selected local synthetic IT Operations V1 as the completion target and
+authorized M10 — Product Reliability & V1 Completion. The October project audit
+is dated evidence, not release qualification. Existing modular/query/action/RLS
+architecture is retained; major new capabilities and shared/production deployment
+are deferred. The historical milestone sequence no longer authorizes the next
+feature. The detailed [M10 roadmap](../development/m10-completion-roadmap.md) splits
+semantic work into diagnosis, targeted correction and independent validation.
+
+W0 was opened to independently resolve `fix/m9-bounded-result-evaluation` at
+`2d7796c` against current main. No integration/discard decision had been made at
+this documentation checkpoint. Older implementation evidence below records work
+done on particular revisions, not proof that the branch was merged or released.
+
 ## Approach 3 bounded-result evaluation correction
 
 Implemented from audited main

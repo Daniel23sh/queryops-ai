@@ -15,7 +15,7 @@ Request
   ├── free-text question
   │     → authorized schema and semantic grounding
   │     → provider-generated SemanticPlan only
-  │     → Required Intent and SemanticPlan validation
+  │     → SemanticPlan validation and selected-definition/relational checks
   │     → deterministic backend SQL rendering, safety, and conformance checks
   └── approved template
         → deterministic provider-free SQL
@@ -33,10 +33,7 @@ Eligible result
   → audit and notification records
 ```
 
-Approved query templates bypass the LLM provider. Free-text queries use the current plan-only provider contract, which returns a structured `SemanticPlan` in one call. After validating that plan, the backend renders SQL deterministically. Deterministic grounding separates result semantics into:
-
-- **Required Intent** — high-confidence requirements that are validated fail-closed.
-- **Suggested Intent** — non-binding planner guidance that cannot independently reject an otherwise valid plan.
+Approved query templates bypass the LLM provider. Free-text queries use the current plan-only provider contract, which returns a structured `SemanticPlan` in one call. After validating that plan, the backend renders SQL deterministically. Free-query language interpretation belongs to the planner. Lexical/structural matches supply non-binding candidates and Suggested Intent. Selected catalog definitions and deterministic relational/security checks remain binding. Required Intent is fail-closed only when supplied by an independently trusted structured source; ordinary free questions currently have no such source.
 
 The backend-rendered SQL remains untrusted and must pass every downstream control before execution.
 
@@ -136,7 +133,7 @@ Stop the stack without deleting the database volume:
 docker compose down
 ```
 
-The checked-in environment example is intended for local development. Replace `SESSION_SECRET_KEY` and database credentials before using the stack in any shared environment.
+The supported V1 target is local use with synthetic data. The checked-in environment is for that target; changing credentials alone does not provide real authentication or make shared/production deployment supported.
 
 ### Optional host-based development
 
@@ -232,7 +229,9 @@ Some backend security and RLS tests require PostgreSQL and intentionally skip wi
 
 The core Query Engine, Ask Data workspace, dashboard and export flows, scope-aware authorization, PostgreSQL RLS, two governed IT Operations actions, approvals, audit views, notifications, and evaluation/readiness infrastructure are implemented.
 
-The project remains under active V1 hardening. Text-to-SQL architecture and evaluation work continue, demo authentication is the only usable auth mode, actions execute synchronously, notifications are database-only, and the implemented action catalog is intentionally limited to two IT Operations workflows. Qualifying live-provider evidence has not been completed, so automated V1 readiness remains **incomplete**. Final manual QA is a separate release-completion requirement and is also open; the repository should not be treated as production-ready.
+The active milestone is **M10 — Product Reliability & V1 Completion**, targeting a complete local IT Operations V1 with synthetic data. Demo authentication is the only usable auth mode; actions are synchronous, notifications database-only, and the action catalog has two workflows. Shared/production deployment and major new capabilities are separate future scope.
+
+The [October audit](docs/audits/2026-10-26-project-audit-he.md) verified substantial functionality while reproducing scope-revocation, concurrent role-request, scoped Evaluation read, result-delivery and UI defects. Its single live canary passed 9/10 and is diagnostic only. Automated readiness and full manual release QA remain incomplete. The architecture is being preserved; remaining work follows the [M10 roadmap](docs/development/m10-completion-roadmap.md), with current approval/status in [PROJECT_PLAN.md](PROJECT_PLAN.md). W0 is resolving the unintegrated bounded-result branch before W1 dashboard exact-scope authorization. The repository is not release-ready.
 
 ## Maintainer
 
