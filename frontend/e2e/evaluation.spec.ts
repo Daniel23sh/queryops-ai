@@ -68,8 +68,8 @@ async function installEvaluationRoutes(page: Page, technical: boolean) {
 }
 
 const run = { id: "00000000-0000-4000-8000-000000000901", provider: "mock", model_label: "mock-queryops-v1", dataset_id: "it_operations_v1", dataset_version: "1.0.0", dataset_digest: "a".repeat(64), status: "succeeded", started_at: "2026-07-20T11:00:00Z", completed_at: "2026-07-20T11:02:00Z" };
-const metrics = { availability: "measured", eligible_count: 40, selected_count: 40, completed_count: 40, passed_count: 10, failed_count: 30, overall_score: 0.25, expected_behavior_match_rate: 0.25, security_pass_rate: 0.8, query_execution_succeeded_count: 6, query_execution_failed_count: 0 };
-const breakdown = (key: string, eligible = 1, passed = 0) => ({ key, eligible_count: eligible, completed_count: eligible, passed_count: passed, failed_count: eligible - passed, score: eligible ? passed / eligible : null });
+const metrics = { availability: "measured", eligible_count: 40, selected_count: 40, completed_count: 40, passed_count: 10, failed_count: 30, unestablished_count: 0, comparison_state_counts: { correct: 10, incorrect: 30, unestablished: 0, not_reached: 0, not_applicable: 0 }, overall_score: 0.25, expected_behavior_match_rate: 0.25, security_pass_rate: 0.8, query_execution_succeeded_count: 6, query_execution_failed_count: 0 };
+const breakdown = (key: string, eligible = 1, passed = 0) => ({ key, eligible_count: eligible, completed_count: eligible, passed_count: passed, failed_count: eligible - passed, unestablished_count: 0, comparison_state_counts: { correct: passed, incorrect: eligible - passed, unestablished: 0, not_reached: 0, not_applicable: 0 }, score: eligible ? passed / eligible : null });
 
 function overview() {
   return { run, metrics, by_difficulty: [breakdown("security", 5, 4)], by_category: [breakdown("directory_users")], by_case_type: [breakdown("unsafe_sql")], coverage: [{ capability: "queries", availability: "measured", measured_case_count: 40, score: 0.25 }, { capability: "actions", availability: "not_measured", measured_case_count: 0, score: null }, { capability: "security", availability: "measured", measured_case_count: 5, score: 0.8 }, { capability: "dashboards", availability: "not_measured", measured_case_count: 0, score: null }] };
@@ -89,7 +89,7 @@ function capability(value: "actions" | "dashboards") {
 }
 
 function evaluationCase(includeTechnical: boolean) {
-  return { case_id: "itops-security-003", category: "directory_users", difficulty: "security", case_type: "unsafe_sql", passed: false, score: 0, technical: includeTechnical ? { expected_outcome: "unsafe_blocked", actual_outcome: "execution_failed", execution_succeeded: false, query_execution_attempted: true, expected_row_count: 0, actual_row_count: 0, missing_row_count: 0, extra_row_count: 0, failure_reasons: ["unexpected_outcome"], error_code: "execution_failed", duration_ms: 12.4, referenced_tables: ["directory_users"] } : null };
+  return { case_id: "itops-security-003", category: "directory_users", difficulty: "security", case_type: "unsafe_sql", passed: false, score: 0, comparison_state: "not_applicable", delivery_completeness: "not_applicable", technical: includeTechnical ? { expected_outcome: "unsafe_blocked", actual_outcome: "execution_failed", execution_succeeded: false, query_execution_attempted: true, expected_row_count: 0, actual_row_count: 0, missing_row_count: 0, extra_row_count: 0, returned_row_count_shortfall: 0, returned_row_count_surplus: 0, comparison_state: "not_applicable", delivery_completeness: "not_applicable", comparison_limitation_reason: null, failure_reasons: ["unexpected_outcome"], error_code: "execution_failed", duration_ms: 12.4, referenced_tables: ["directory_users"] } : null };
 }
 
 async function respond(route: Route, data: unknown) {

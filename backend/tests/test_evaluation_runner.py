@@ -218,6 +218,39 @@ def test_baseline_rejects_unsafe_or_protected_sql(baseline_sql: str) -> None:
             )
 
 
+def test_baseline_execution_failure_retains_attempt_metadata() -> None:
+    engine = create_engine("sqlite+pysqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    failed = SQLExecutionResult(
+        status="failed",
+        columns=[],
+        rows=[],
+        row_count=0,
+        duration_ms=12.5,
+        truncated=False,
+        execution_metadata={"timeout": True},
+        error_code="database_error",
+    )
+    with Session(engine) as db:
+        seed_database(db, profile_name="small", reset=True)
+        db.commit()
+        case = load_it_operations_evaluation_set().cases_by_id["itops-easy-001"]
+        identity = resolve_evaluation_identity(db, case)
+
+        with pytest.raises(EvaluationBaselineError) as captured:
+            execute_evaluation_baseline(
+                db,
+                identity.access_context,
+                case,
+                load_it_operations_domain_pack(),
+                executor=lambda *_args, **_kwargs: failed,
+            )
+
+    assert captured.value.code == "baseline_database_error"
+    assert captured.value.execution is failed
+    assert captured.value.validation is not None
+
+
 def test_runner_orders_cases_invokes_service_and_persists_safe_results(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -15,11 +15,17 @@ from app.evaluation.context import EVALUATION_ACTOR_EMAILS
 from app.evaluation.contracts import (
     ActualOutcome,
     CaseType,
+    ComparisonState,
+    DeliveryCompleteness,
     EvaluationCase,
     EvaluationDifficulty,
     ExpectedOutcome,
     RequestingRole,
     ScopeMode,
+)
+from app.evaluation.evidence import (
+    comparison_state_counts,
+    validate_persisted_comparison_contract,
 )
 from app.evaluation.loader import load_it_operations_evaluation_v2_set
 from app.evaluation.scoring import SAFE_FAILURE_REASONS
@@ -36,6 +42,7 @@ from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.provider_config import ProviderId, valid_model_label
 from app.schemas.evaluation import (
     CoverageAvailability,
+    ComparisonStateCounts,
     CoverageItem,
     EvaluationCapabilityMetrics,
     EvaluationCaseMetric,
@@ -47,6 +54,14 @@ from app.schemas.evaluation import (
     MetricBreakdown,
     MetricSummary,
     Pagination,
+)
+
+
+_READABLE_HISTORICAL_V2_DATASET_DIGESTS = frozenset(
+    {
+        "a2ce20e766ee816a5fef357d8a46ef987ed3ba614f3b273f593bc63ed317e6b0",
+        "372a5c203fb86e176f207656846884b8d5df5a1e939501e5ec9a35f65da2fe5e",
+    }
 )
 
 
@@ -124,6 +139,9 @@ class _ParsedResult:
     error_code: str | None
     duration_ms: float
     referenced_tables: tuple[str, ...]
+    comparison_state: ComparisonState
+    delivery_completeness: DeliveryCompleteness
+    comparison_limitation_reason: str | None
 
 
 @dataclass(frozen=True)
@@ -401,10 +419,15 @@ class EvaluationReadService:
         visible_rows = tuple(row for row in rows if row.case_name in cases_by_id)
         counts = Counter(row.case_name for row in visible_rows)
         parsed: list[_ParsedResult] = []
+        historical = run.summary.get("dataset_digest") != self._dataset_digest
         for row in visible_rows:
             if counts[row.case_name] != 1:
                 continue
-            result = _parse_result(row, cases_by_id[row.case_name])
+            result = _parse_result(
+                row,
+                cases_by_id[row.case_name],
+                allow_legacy=historical,
+            )
             if result is not None:
                 parsed.append(result)
         return _ReadSnapshot(
@@ -433,7 +456,12 @@ class EvaluationReadService:
             isinstance(summary, dict)
             and summary.get("dataset_id") == self._evaluation_set.dataset_id
             and summary.get("dataset_version") == self._evaluation_set.version
-            and summary.get("dataset_digest") == self._dataset_digest
+            and isinstance(summary.get("dataset_digest"), str)
+            and (
+                summary.get("dataset_digest") == self._dataset_digest
+                or summary.get("dataset_digest")
+                in _READABLE_HISTORICAL_V2_DATASET_DIGESTS
+            )
             and _valid_run_identity(summary)
         )
 
@@ -455,6 +483,11 @@ class EvaluationReadService:
                 actual_row_count=result.actual_row_count,
                 missing_row_count=result.missing_row_count,
                 extra_row_count=result.extra_row_count,
+                returned_row_count_shortfall=result.missing_row_count,
+                returned_row_count_surplus=result.extra_row_count,
+                comparison_state=result.comparison_state,
+                delivery_completeness=result.delivery_completeness,
+                comparison_limitation_reason=result.comparison_limitation_reason,
                 failure_reasons=list(result.failure_reasons),
                 error_code=result.error_code,
                 duration_ms=result.duration_ms,
@@ -475,6 +508,8 @@ class EvaluationReadService:
             case_type=result.case.case_type.value,
             passed=result.passed,
             score=result.score,
+            comparison_state=result.comparison_state,
+            delivery_completeness=result.delivery_completeness,
             technical=technical,
         )
 
@@ -509,6 +544,8 @@ def _load_actor_scopes(db: Session) -> dict[RequestingRole, frozenset[str]]:
 def _parse_result(
     row: EvaluationResult,
     case: EvaluationCase,
+    *,
+    allow_legacy: bool,
 ) -> _ParsedResult | None:
     expected = row.expected_output
     actual = row.actual_output
@@ -555,6 +592,15 @@ def _parse_result(
     if any(not isinstance(value, bool) for value in booleans.values()):
         return None
     if booleans["execution_succeeded"] != (actual_outcome == ActualOutcome.SUCCESS.value):
+        return None
+    comparison = validate_persisted_comparison_contract(
+        metrics,
+        expects_result=case.expected_outcome is ExpectedOutcome.SUCCESS,
+        execution_succeeded=booleans["execution_succeeded"],
+        passed=passed,
+        allow_legacy=allow_legacy,
+    )
+    if comparison is None:
         return None
     counts = {}
     for key in (
@@ -618,6 +664,9 @@ def _parse_result(
         error_code=error_code,
         duration_ms=duration_ms,
         referenced_tables=tuple(sorted(set(references))),
+        comparison_state=comparison.comparison_state,
+        delivery_completeness=comparison.delivery_completeness,
+        comparison_limitation_reason=comparison.limitation_reason,
     )
 
 
@@ -642,6 +691,15 @@ def _metric_summary(snapshot: _ReadSnapshot) -> MetricSummary:
         completed_count=completed,
         passed_count=passed,
         failed_count=completed - passed,
+        unestablished_count=sum(
+            result.comparison_state is ComparisonState.UNESTABLISHED
+            for result in snapshot.results
+        ),
+        comparison_state_counts=ComparisonStateCounts(
+            **comparison_state_counts(
+                tuple(result.comparison_state for result in snapshot.results)
+            )
+        ),
         overall_score=(
             round(sum(result.score for result in snapshot.results) / completed, 6)
             if completed
@@ -698,6 +756,15 @@ def _breakdowns(snapshot: _ReadSnapshot, dimension: str) -> list[MetricBreakdown
             completed_count=len(groups[key]),
             passed_count=sum(result.passed for result in groups[key]),
             failed_count=sum(not result.passed for result in groups[key]),
+            unestablished_count=sum(
+                result.comparison_state is ComparisonState.UNESTABLISHED
+                for result in groups[key]
+            ),
+            comparison_state_counts=ComparisonStateCounts(
+                **comparison_state_counts(
+                    tuple(result.comparison_state for result in groups[key])
+                )
+            ),
             score=(
                 round(sum(result.score for result in groups[key]) / len(groups[key]), 6)
                 if groups[key]
@@ -795,6 +862,15 @@ def _security_breakdowns(snapshot: _ReadSnapshot) -> list[MetricBreakdown]:
             completed_count=len(groups[key]),
             passed_count=sum(result.passed for result in groups[key]),
             failed_count=sum(not result.passed for result in groups[key]),
+            unestablished_count=sum(
+                result.comparison_state is ComparisonState.UNESTABLISHED
+                for result in groups[key]
+            ),
+            comparison_state_counts=ComparisonStateCounts(
+                **comparison_state_counts(
+                    tuple(result.comparison_state for result in groups[key])
+                )
+            ),
             score=(
                 round(sum(result.score for result in groups[key]) / len(groups[key]), 6)
                 if groups[key]

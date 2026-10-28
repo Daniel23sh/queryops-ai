@@ -13,9 +13,14 @@ from uuid import UUID
 from app.evaluation.contracts import (
     ActualOutcome,
     CaseType,
+    ComparisonState,
     EvaluationDifficulty,
     EvaluationSet,
     ExpectedOutcome,
+)
+from app.evaluation.evidence import (
+    comparison_state_counts_match,
+    validate_persisted_comparison_contract,
 )
 from app.evaluation.environment import (
     EvaluationEnvironmentIdentity,
@@ -53,6 +58,8 @@ _FAILURE_STAGES = frozenset(
         "sql_safety",
         "semantic_conformance",
         "execution",
+        "execution_context",
+        "persistence",
         "result_comparison",
         "setup",
     }
@@ -83,6 +90,10 @@ _RESULT_METRIC_FIELDS = frozenset(
         "provider_measurement",
         "planner",
         "result_provenance",
+        "comparison_state",
+        "delivery_completeness",
+        "comparison_limitation_reason",
+        "comparison_evidence",
     }
 )
 _PLANNER_METRIC_FIELDS = frozenset(
@@ -114,6 +125,7 @@ _SEMANTIC_CONTRACT_FIELDS = frozenset(
         "group_by_correct",
         "having_correct",
         "ordering_correct",
+        "answer_bound_correct",
         "failure_reasons",
     }
 )
@@ -195,6 +207,7 @@ class _CaseObservation:
     passed: bool
     score: float
     result_correct: bool | None
+    comparison_state: ComparisonState
     query_execution_attempted: bool
     execution_succeeded: bool
     failure_stage: str | None
@@ -280,6 +293,15 @@ def evaluate_stability_canary(
         parsed_runs.append(parsed)
 
     for parsed in parsed_runs:
+        if any(
+            item.comparison_state is ComparisonState.UNESTABLISHED
+            for item in parsed.observations
+        ):
+            return _assessment(
+                StabilityStatus.INCOMPLETE,
+                "stability_comparison_unestablished",
+                selected,
+            )
         if parsed.renderer_defect_count:
             return _assessment(
                 StabilityStatus.FAILED,
@@ -431,6 +453,19 @@ def _parse_run(
             provider_measurements += 1
     if provider_measurements == 0:
         return None
+    if not _exact_int(
+        evidence.summary.get("unestablished_count"),
+        sum(
+            item.comparison_state is ComparisonState.UNESTABLISHED
+            for item in observations
+        ),
+    ):
+        return None
+    if not comparison_state_counts_match(
+        evidence.summary.get("comparison_state_counts"),
+        tuple(item.comparison_state for item in observations),
+    ):
+        return None
     planner = evidence.summary.get("planner_metrics")
     if (
         not isinstance(planner, dict)
@@ -507,6 +542,7 @@ def _parse_result(
         "provider_measurement",
         "planner",
         "result_provenance",
+        "comparison_evidence",
     }
     if (
         not required_metrics <= set(evidence.metrics)
@@ -517,15 +553,15 @@ def _parse_result(
         or score is None
         or score != metric_score
         or (evidence.status == "succeeded") is not passed
-        or (
-            case.expected_outcome is ExpectedOutcome.SUCCESS
-            and not isinstance(result_correct, bool)
-        )
-        or (
-            case.expected_outcome is not ExpectedOutcome.SUCCESS
-            and result_correct is not None
-        )
     ):
+        return None
+    comparison = validate_persisted_comparison_contract(
+        evidence.metrics,
+        expects_result=case.expected_outcome is ExpectedOutcome.SUCCESS,
+        execution_succeeded=execution_succeeded,
+        passed=passed,
+    )
+    if comparison is None:
         return None
     actual_tables = evidence.actual_output.get("referenced_tables")
     if not isinstance(actual_tables, list) or any(
@@ -562,8 +598,8 @@ def _parse_result(
         evidence.metrics["execution_correct"],
         evidence.metrics["tables_correct"],
     ]
-    if result_correct is not None:
-        components.append(result_correct)
+    if case.expected_outcome is ExpectedOutcome.SUCCESS:
+        components.append(result_correct is True)
     if passed is not all(components) or score != sum(components) / len(components):
         return None
     for key in (
@@ -632,6 +668,7 @@ def _parse_result(
         passed=passed,
         score=score,
         result_correct=result_correct,
+        comparison_state=comparison.comparison_state,
         query_execution_attempted=attempted,
         execution_succeeded=execution_succeeded,
         failure_stage=failure_stage,

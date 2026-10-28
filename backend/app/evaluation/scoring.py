@@ -15,12 +15,21 @@ from app.evaluation.contracts import (
     CanonicalExpressionIdentity,
     CanonicalFieldIdentity,
     ComparisonMode,
+    ComparisonState,
+    DeliveryCompleteness,
+    EvaluationAnswerBoundKind,
     EvaluationCase,
     EvaluationComparisonProvenance,
     EvaluationOutputProvenance,
     EvaluationQueryProvenance,
     ExpectedOutcome,
     ProvenanceAuthorizationEvidence,
+)
+from app.evaluation.evidence import (
+    EVIDENCE_PAYLOAD_LIMIT_BYTES,
+    EvaluationComparisonEvidence,
+    comparison_payload_size,
+    distinct_delivery_payload_rows,
 )
 from app.evaluation.identity import IdentityProof, observation_identity_proof
 
@@ -47,6 +56,7 @@ SAFE_SEMANTIC_FAILURE_REASONS = frozenset(
         "group_by_mismatch",
         "having_mismatch",
         "ordering_mismatch",
+        "answer_bound_mismatch",
     }
 )
 _SAFE_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
@@ -64,6 +74,9 @@ class EvaluationScore:
     execution_correct: bool
     tables_correct: bool
     result_correct: bool | None
+    comparison_state: ComparisonState
+    delivery_completeness: DeliveryCompleteness
+    comparison_limitation_reason: str | None
     expected_row_count: int
     actual_row_count: int
     failure_reasons: tuple[str, ...]
@@ -76,6 +89,9 @@ class EvaluationScore:
             "execution_correct": self.execution_correct,
             "tables_correct": self.tables_correct,
             "result_correct": self.result_correct,
+            "comparison_state": self.comparison_state.value,
+            "delivery_completeness": self.delivery_completeness.value,
+            "comparison_limitation_reason": self.comparison_limitation_reason,
             "expected_row_count": self.expected_row_count,
             "actual_row_count": self.actual_row_count,
             "failure_reasons": list(self.failure_reasons),
@@ -95,6 +111,7 @@ class EvaluationSemanticScore:
     group_by_correct: bool | None
     having_correct: bool | None
     ordering_correct: bool | None
+    answer_bound_correct: bool | None
     failure_reasons: tuple[str, ...]
 
     def as_safe_metrics(self) -> dict[str, Any]:
@@ -110,6 +127,7 @@ class EvaluationSemanticScore:
             "group_by_correct": self.group_by_correct,
             "having_correct": self.having_correct,
             "ordering_correct": self.ordering_correct,
+            "answer_bound_correct": self.answer_bound_correct,
             "failure_reasons": list(self.failure_reasons),
         }
 
@@ -124,6 +142,7 @@ class _PlanContractObservation:
     group_by: frozenset[_FieldKey]
     having: frozenset[tuple[_AggregationKey, str, Decimal]]
     ordering: tuple[_OrderKey, ...]
+    limit: int | None
 
 
 def score_evaluation_semantic_contract(
@@ -207,6 +226,11 @@ def score_evaluation_semantic_contract(
         _expected_order_key(item, expected_aggregations) for item in contract.ordering
     )
     ordering_correct = plan.ordering[: len(expected_ordering)] == expected_ordering
+    answer_bound_correct = (
+        True
+        if contract.answer_bound.kind is EvaluationAnswerBoundKind.POPULATION
+        else plan.limit == contract.answer_bound.limit
+    )
 
     components = (
         ("required_concept_missing", concepts_correct),
@@ -218,6 +242,7 @@ def score_evaluation_semantic_contract(
         ("group_by_mismatch", group_by_correct),
         ("having_mismatch", having_correct),
         ("ordering_mismatch", ordering_correct),
+        ("answer_bound_mismatch", answer_bound_correct),
     )
     failures = tuple(reason for reason, passed in components if not passed)
     assert set(failures) <= SAFE_SEMANTIC_FAILURE_REASONS
@@ -233,6 +258,7 @@ def score_evaluation_semantic_contract(
         group_by_correct=group_by_correct,
         having_correct=having_correct,
         ordering_correct=ordering_correct,
+        answer_bound_correct=answer_bound_correct,
         failure_reasons=failures,
     )
 
@@ -250,6 +276,7 @@ def _semantic_not_evaluated() -> EvaluationSemanticScore:
         group_by_correct=None,
         having_correct=None,
         ordering_correct=None,
+        answer_bound_correct=None,
         failure_reasons=(),
     )
 
@@ -302,7 +329,19 @@ def _parse_plan_contract_observation(
         return None
     having = _safe_having(value.get("having"), aggregations)
     ordering = _safe_ordering(value.get("order_by"), aggregations)
-    if having is None or ordering is None:
+    limit = value.get("limit")
+    if (
+        having is None
+        or ordering is None
+        or (
+            limit is not None
+            and (
+                not isinstance(limit, int)
+                or isinstance(limit, bool)
+                or limit < 1
+            )
+        )
+    ):
         return None
     return _PlanContractObservation(
         effective_concept_ids=effective_concepts,
@@ -313,6 +352,7 @@ def _parse_plan_contract_observation(
         group_by=group_by,
         having=having,
         ordering=ordering,
+        limit=limit,
     )
 
 
@@ -474,6 +514,8 @@ def score_evaluation_case(
     expected_rows: Sequence[Mapping[str, Any]] = (),
     actual_rows: Sequence[Mapping[str, Any]] = (),
     provenance: EvaluationComparisonProvenance | None = None,
+    comparison_evidence: EvaluationComparisonEvidence | None = None,
+    semantic_contract_passed: bool | None = None,
 ) -> EvaluationScore:
     outcome_correct = actual_outcome.value == case.expected_outcome.value
     execution_correct = execution_succeeded == (
@@ -481,6 +523,9 @@ def score_evaluation_case(
     )
     tables_correct = set(actual_referenced_tables) == set(case.expected_tables)
     result_correct: bool | None = None
+    comparison_state = ComparisonState.NOT_APPLICABLE
+    delivery_completeness = DeliveryCompleteness.NOT_APPLICABLE
+    comparison_limitation_reason: str | None = None
     failures: list[str] = []
 
     if not outcome_correct:
@@ -491,18 +536,63 @@ def score_evaluation_case(
         failures.append("referenced_tables_mismatch")
 
     if case.expected_outcome is ExpectedOutcome.SUCCESS:
-        result_correct, result_failure = _compare_rows(
-            case,
-            expected_rows,
-            actual_rows,
-            provenance,
-        )
+        if not execution_succeeded:
+            comparison_state = ComparisonState.NOT_REACHED
+            delivery_completeness = DeliveryCompleteness.UNKNOWN
+            result_failure = None
+        elif comparison_evidence is None and case.semantic_contract is None:
+            result_correct, result_failure = _compare_rows(
+                case, expected_rows, actual_rows, provenance
+            )
+            comparison_state = (
+                ComparisonState.CORRECT
+                if result_correct
+                else ComparisonState.INCORRECT
+            )
+            delivery_completeness = DeliveryCompleteness.COMPLETE
+        elif comparison_evidence is None:
+            comparison_state = ComparisonState.UNESTABLISHED
+            result_failure = None
+            comparison_limitation_reason = "completeness_evidence_missing"
+            delivery_completeness = DeliveryCompleteness.UNKNOWN
+        else:
+            (
+                comparison_state,
+                result_correct,
+                result_failure,
+                comparison_limitation_reason,
+            ) = _compare_with_evidence(
+                case,
+                expected_rows,
+                actual_rows,
+                provenance,
+                comparison_evidence,
+            )
+            delivery_completeness = comparison_evidence.actual_delivery_completeness
         if result_failure is not None:
             failures.append(result_failure)
 
+        if case.semantic_contract is not None and case.template_id is None:
+            if (
+                semantic_contract_passed is False
+                and comparison_state
+                in {ComparisonState.CORRECT, ComparisonState.UNESTABLISHED}
+            ):
+                comparison_state = ComparisonState.INCORRECT
+                result_correct = False
+                comparison_limitation_reason = None
+                failures.append("result_semantics_mismatch")
+            elif (
+                semantic_contract_passed is None
+                and comparison_state is ComparisonState.CORRECT
+            ):
+                comparison_state = ComparisonState.UNESTABLISHED
+                result_correct = None
+                comparison_limitation_reason = "comparison_proof_unavailable"
+
     components = [outcome_correct, execution_correct, tables_correct]
-    if result_correct is not None:
-        components.append(result_correct)
+    if case.expected_outcome is ExpectedOutcome.SUCCESS:
+        components.append(result_correct is True)
     score = sum(1 for component in components if component) / len(components)
     deduplicated_failures = tuple(dict.fromkeys(failures))
     assert set(deduplicated_failures) <= SAFE_FAILURE_REASONS
@@ -513,10 +603,459 @@ def score_evaluation_case(
         execution_correct=execution_correct,
         tables_correct=tables_correct,
         result_correct=result_correct,
+        comparison_state=comparison_state,
+        delivery_completeness=delivery_completeness,
+        comparison_limitation_reason=comparison_limitation_reason,
         expected_row_count=len(expected_rows),
         actual_row_count=len(actual_rows),
         failure_reasons=deduplicated_failures,
     )
+
+
+def _compare_with_evidence(
+    case: EvaluationCase,
+    expected_rows: Sequence[Mapping[str, Any]],
+    actual_rows: Sequence[Mapping[str, Any]],
+    provenance: EvaluationComparisonProvenance | None,
+    evidence: EvaluationComparisonEvidence,
+) -> tuple[ComparisonState, bool | None, str | None, str | None]:
+    expected = evidence.expected
+    actual = evidence.actual
+    if not evidence.context_compatible:
+        return _unestablished("comparison_context_unestablished")
+
+    # Constant-size witnesses stay available even when full payload admission fails.
+    if expected.complete and actual.complete and len(expected.rows) != len(actual.rows):
+        return ComparisonState.INCORRECT, False, "row_count_mismatch", None
+    if expected.complete and actual.comparison_eligible and len(actual.rows) > len(expected.rows):
+        return ComparisonState.INCORRECT, False, "row_count_mismatch", None
+    if actual.complete and expected.comparison_eligible and len(expected.rows) > len(actual.rows):
+        return ComparisonState.INCORRECT, False, "row_count_mismatch", None
+    known_population_count = (
+        len(actual.rows)
+        if actual.complete
+        else len(expected.rows)
+        if expected.complete and actual.comparison_eligible
+        else None
+    )
+    if (
+        known_population_count is not None
+        and evidence.actual_delivery_completeness is not DeliveryCompleteness.UNKNOWN
+        and not _delivery_cardinality_is_valid(
+            known_population_count,
+            len(actual_rows),
+            evidence.actual_delivery_completeness,
+            evidence.actual_delivery_row_limit,
+        )
+    ):
+        return ComparisonState.INCORRECT, False, "result_semantics_mismatch", None
+
+    expected_delivery_valid: bool | None = None
+    actual_delivery_valid: bool | None = None
+    if (
+        expected.complete
+        and not actual.complete
+        and actual.comparison_eligible
+        and evidence.actual_delivery_completeness is not DeliveryCompleteness.UNKNOWN
+        and comparison_payload_size(
+            expected.rows, actual_rows, maximum=EVIDENCE_PAYLOAD_LIMIT_BYTES
+        )
+        <= EVIDENCE_PAYLOAD_LIMIT_BYTES
+    ):
+        expected_delivery_valid = _sample_is_valid_delivery(
+            case, expected.rows, actual_rows, provenance,
+            evidence.actual_delivery_completeness, evidence.actual_delivery_row_limit,
+        )
+        if expected_delivery_valid is False:
+            return ComparisonState.INCORRECT, False, "result_semantics_mismatch", None
+    if (
+        actual.complete
+        and comparison_payload_size(
+            actual.rows, actual_rows, maximum=EVIDENCE_PAYLOAD_LIMIT_BYTES
+        )
+        <= EVIDENCE_PAYLOAD_LIMIT_BYTES
+    ):
+        actual_delivery_valid = _actual_delivery_is_valid(
+            case, actual.rows, actual_rows, provenance,
+            evidence.actual_delivery_completeness, evidence.actual_delivery_row_limit,
+        )
+        if actual_delivery_valid is False:
+            return ComparisonState.INCORRECT, False, "result_semantics_mismatch", None
+
+    if comparison_payload_size(
+        expected.rows,
+        actual.rows,
+        delivered=distinct_delivery_payload_rows(actual, actual_rows),
+        maximum=EVIDENCE_PAYLOAD_LIMIT_BYTES,
+    ) > EVIDENCE_PAYLOAD_LIMIT_BYTES:
+        return _unestablished("evidence_payload_exceeded")
+    if not expected.comparison_eligible or not actual.comparison_eligible:
+        return _unestablished(
+            (
+                expected.limitation_reason
+                if not expected.comparison_eligible
+                else actual.limitation_reason
+            )
+            or "unsupported_query_shape"
+        )
+
+    if expected.complete and actual.complete:
+        if _unordered_limit_selection_unproved(case, evidence):
+            return _unestablished("bounded_selection_unestablished")
+        if (
+            not _has_complete_provenance(provenance)
+            and _row_shapes(expected.rows) != _row_shapes(actual.rows)
+        ):
+            alias_insensitive_aggregate = _compare_single_grouped_aggregate(
+                case, expected.rows, actual.rows
+            )
+            if alias_insensitive_aggregate is None:
+                return _unestablished("comparison_proof_unavailable")
+            evidence_equal = alias_insensitive_aggregate
+            failure = None if evidence_equal else "result_semantics_mismatch"
+        else:
+            evidence_equal, failure = _compare_rows(
+                case, expected.rows, actual.rows, provenance
+            )
+        if not evidence_equal:
+            if _only_cutoff_tie_membership_differs(
+                case, expected.rows, actual.rows, provenance
+            ):
+                return _unestablished("ranking_tie_unestablished")
+            return ComparisonState.INCORRECT, False, failure, None
+        if evidence.actual_delivery_completeness is DeliveryCompleteness.UNKNOWN:
+            return _unestablished("completeness_evidence_missing")
+        delivered_valid = actual_delivery_valid
+        if delivered_valid is None:
+            delivered_valid = _actual_delivery_is_valid(
+                case, actual.rows, actual_rows, provenance,
+                evidence.actual_delivery_completeness, evidence.actual_delivery_row_limit,
+            )
+        if delivered_valid is None:
+            return _unestablished("comparison_proof_unavailable")
+        if not delivered_valid:
+            return ComparisonState.INCORRECT, False, "result_semantics_mismatch", None
+        return ComparisonState.CORRECT, True, None, None
+
+    if expected.complete:
+        if evidence.actual_delivery_completeness is not DeliveryCompleteness.UNKNOWN:
+            delivered_valid = expected_delivery_valid
+            if delivered_valid is None:
+                delivered_valid = _sample_is_valid_delivery(
+                    case, expected.rows, actual_rows, provenance,
+                    evidence.actual_delivery_completeness,
+                    evidence.actual_delivery_row_limit,
+                )
+            if delivered_valid is False:
+                return ComparisonState.INCORRECT, False, "result_semantics_mismatch", None
+            if delivered_valid is None:
+                return _unestablished("comparison_proof_unavailable")
+        if actual.rows != tuple(actual_rows):
+            subset = _sample_is_compatible_subset(case, expected.rows, actual.rows, provenance)
+            if subset is False:
+                return ComparisonState.INCORRECT, False, "result_semantics_mismatch", None
+    elif actual.complete:
+        delivered_valid = actual_delivery_valid
+        if delivered_valid is None:
+            delivered_valid = _actual_delivery_is_valid(
+                case, actual.rows, actual_rows, provenance,
+                evidence.actual_delivery_completeness, evidence.actual_delivery_row_limit,
+            )
+        if delivered_valid is False:
+            return ComparisonState.INCORRECT, False, "result_semantics_mismatch", None
+        if delivered_valid is None:
+            return _unestablished("comparison_proof_unavailable")
+        subset = _sample_is_compatible_subset(
+            case, actual.rows, expected.rows, provenance, sample_is_expected=True
+        )
+        if subset is False:
+            return ComparisonState.INCORRECT, False, "result_semantics_mismatch", None
+    return _unestablished(
+        expected.limitation_reason
+        or actual.limitation_reason
+        or "completeness_evidence_missing"
+    )
+
+
+def _unestablished(reason: str) -> tuple[ComparisonState, None, None, str]:
+    return ComparisonState.UNESTABLISHED, None, None, reason
+
+
+def _sample_is_compatible_subset(
+    case: EvaluationCase,
+    complete_rows: Sequence[Mapping[str, Any]],
+    sample_rows: Sequence[Mapping[str, Any]],
+    provenance: EvaluationComparisonProvenance | None,
+    *,
+    sample_is_expected: bool = False,
+) -> bool | None:
+    try:
+        canonical = _canonicalize_rows(
+            case,
+            sample_rows if sample_is_expected else complete_rows,
+            complete_rows if sample_is_expected else sample_rows,
+            provenance,
+        )
+        if canonical is None:
+            if (
+                not _has_complete_provenance(provenance)
+                and _row_shapes(complete_rows) != _row_shapes(sample_rows)
+            ):
+                return None
+            complete = [_select_row_values(case, row) for row in complete_rows]
+            sample = [_select_row_values(case, row) for row in sample_rows]
+        elif sample_is_expected:
+            sample, complete = canonical
+        else:
+            complete, sample = canonical
+        return _rows_are_subset(sample, complete, case.numeric_tolerance)
+    except KeyError:
+        return False if _has_complete_provenance(provenance) else None
+    except (_ProvenanceComparisonFailure, InvalidOperation, ValueError, OverflowError):
+        return False
+
+
+def _actual_delivery_is_valid(
+    case: EvaluationCase,
+    population_rows: Sequence[Mapping[str, Any]],
+    delivered_rows: Sequence[Mapping[str, Any]],
+    provenance: EvaluationComparisonProvenance | None,
+    delivery_completeness: DeliveryCompleteness,
+    delivery_row_limit: int | None,
+) -> bool | None:
+    """Validate two observations produced by the same actual query."""
+    try:
+        actual_provenance = provenance.actual if provenance is not None else None
+        if actual_provenance is not None:
+            _require_unique_provenance(actual_provenance)
+            _require_rows_match_provenance(population_rows, actual_provenance)
+            _require_rows_match_provenance(delivered_rows, actual_provenance)
+            outputs = actual_provenance.outputs
+            population = [
+                {output.identity: row[output.presentation_name] for output in outputs}
+                for row in population_rows
+            ]
+            delivered = [
+                {output.identity: row[output.presentation_name] for output in outputs}
+                for row in delivered_rows
+            ]
+        else:
+            if _row_shapes(population_rows) != _row_shapes(delivered_rows):
+                return None
+            population = [_select_row_values(case, row) for row in population_rows]
+            delivered = [_select_row_values(case, row) for row in delivered_rows]
+        return _delivery_is_valid(
+            case,
+            population,
+            delivered,
+            delivery_completeness,
+            delivery_row_limit,
+        )
+    except KeyError:
+        return False if actual_provenance is not None else None
+    except (_ProvenanceComparisonFailure, InvalidOperation, ValueError, OverflowError):
+        return False
+
+
+def _sample_is_valid_delivery(
+    case: EvaluationCase,
+    complete_rows: Sequence[Mapping[str, Any]],
+    delivered_rows: Sequence[Mapping[str, Any]],
+    provenance: EvaluationComparisonProvenance | None,
+    delivery_completeness: DeliveryCompleteness,
+    delivery_row_limit: int | None,
+) -> bool | None:
+    try:
+        canonical = _canonicalize_rows(
+            case, complete_rows, delivered_rows, provenance
+        )
+        if canonical is None:
+            if (
+                not _has_complete_provenance(provenance)
+                and _row_shapes(complete_rows) != _row_shapes(delivered_rows)
+            ):
+                return None
+            complete = [_select_row_values(case, row) for row in complete_rows]
+            delivered = [_select_row_values(case, row) for row in delivered_rows]
+        else:
+            complete, delivered = canonical
+        return _delivery_is_valid(
+            case,
+            complete,
+            delivered,
+            delivery_completeness,
+            delivery_row_limit,
+        )
+    except KeyError:
+        return False if _has_complete_provenance(provenance) else None
+    except (_ProvenanceComparisonFailure, InvalidOperation, ValueError, OverflowError):
+        return False
+
+
+def _has_complete_provenance(
+    provenance: EvaluationComparisonProvenance | None,
+) -> bool:
+    return bool(
+        provenance is not None
+        and provenance.expected is not None
+        and provenance.actual is not None
+    )
+
+
+def _row_shapes(
+    rows: Sequence[Mapping[str, Any]],
+) -> frozenset[frozenset[str]]:
+    return frozenset(frozenset(row) for row in rows)
+
+
+def _delivery_cardinality_is_valid(
+    population_count: int,
+    delivered_count: int,
+    delivery_completeness: DeliveryCompleteness,
+    delivery_row_limit: int | None,
+) -> bool:
+    required_count = (
+        population_count
+        if delivery_completeness is DeliveryCompleteness.COMPLETE
+        else min(population_count, delivery_row_limit)
+        if delivery_completeness is DeliveryCompleteness.SAFETY_LIMITED
+        and delivery_row_limit is not None
+        else None
+    )
+    return required_count is not None and delivered_count == required_count
+
+
+def _delivery_is_valid(
+    case: EvaluationCase,
+    complete: list[dict[Any, Any]],
+    delivered: list[dict[Any, Any]],
+    delivery_completeness: DeliveryCompleteness,
+    delivery_row_limit: int | None,
+) -> bool:
+    if not _delivery_cardinality_is_valid(
+        len(complete),
+        len(delivered),
+        delivery_completeness,
+        delivery_row_limit,
+    ):
+        return False
+    if not _rows_are_subset(delivered, complete, case.numeric_tolerance):
+        return False
+    if not (
+        case.comparison_mode is ComparisonMode.ORDERED_ROWS
+        and case.semantic_contract is not None
+        and case.semantic_contract.ordering
+    ):
+        return True
+    keys = _ranking_keys(case, complete[0]) if complete else ()
+    if keys is None:
+        return False
+
+    def rank(row: Mapping[Any, Any]) -> tuple[Any, ...]:
+        return tuple(row.get(key) for key in keys)
+
+    directions = tuple(item.direction for item in case.semantic_contract.ordering)
+    if not all(
+        _rank_precedes(rank(left), rank(right), directions)
+        for left, right in zip(delivered, delivered[1:])
+    ):
+        return False
+    if not delivered:
+        return not complete
+    cutoff = rank(delivered[-1])
+    required = [row for row in complete if rank(row) != cutoff and _rank_precedes(rank(row), cutoff, directions)]
+    observed_required = [row for row in delivered if rank(row) != cutoff]
+    return _unordered_rows_equal(required, observed_required, case.numeric_tolerance)
+
+
+def _unordered_limit_selection_unproved(
+    case: EvaluationCase,
+    evidence: EvaluationComparisonEvidence,
+) -> bool:
+    contract = case.semantic_contract
+    return bool(
+        contract is not None
+        and contract.answer_bound.kind is EvaluationAnswerBoundKind.LIMIT
+        and (not evidence.expected.exhausted or not evidence.actual.exhausted)
+    )
+
+
+def _only_cutoff_tie_membership_differs(
+    case: EvaluationCase,
+    expected_rows: Sequence[Mapping[str, Any]],
+    actual_rows: Sequence[Mapping[str, Any]],
+    provenance: EvaluationComparisonProvenance | None,
+) -> bool:
+    contract = case.semantic_contract
+    if (
+        contract is None
+        or contract.answer_bound.kind is not EvaluationAnswerBoundKind.TOP_N
+        or contract.answer_bound.limit is None
+        or not contract.ordering
+        or case.comparison_mode is not ComparisonMode.ORDERED_ROWS
+        or len(expected_rows) != contract.answer_bound.limit
+        or len(actual_rows) != contract.answer_bound.limit
+        or not expected_rows
+    ):
+        return False
+    try:
+        canonical = _canonicalize_rows(case, expected_rows, actual_rows, provenance)
+        if canonical is None:
+            expected = [_select_row_values(case, row) for row in expected_rows]
+            actual = [_select_row_values(case, row) for row in actual_rows]
+        else:
+            expected, actual = canonical
+    except (
+        _ProvenanceComparisonFailure,
+        InvalidOperation,
+        KeyError,
+        ValueError,
+        OverflowError,
+    ):
+        return False
+    keys = _ranking_keys(case, expected[0])
+    if keys is None:
+        return False
+
+    def rank(row: Mapping[Any, Any]) -> tuple[Any, ...]:
+        return tuple(row.get(key) for key in keys)
+
+    directions = tuple(item.direction for item in contract.ordering)
+    if not all(
+        _rank_precedes(rank(left), rank(right), directions)
+        for rows in (expected, actual)
+        for left, right in zip(rows, rows[1:])
+    ):
+        return False
+    expected_cutoff = rank(expected[-1])
+    if expected_cutoff != rank(actual[-1]):
+        return False
+    return _unordered_rows_equal(
+        [row for row in expected if rank(row) != expected_cutoff],
+        [row for row in actual if rank(row) != expected_cutoff],
+        case.numeric_tolerance,
+    )
+
+
+def _rows_are_subset(
+    subset: Sequence[Mapping[Any, Any]],
+    population: Sequence[Mapping[Any, Any]],
+    tolerance: Decimal | None,
+) -> bool:
+    unmatched = list(population)
+    for row in subset:
+        match = next(
+            (
+                index
+                for index, candidate in enumerate(unmatched)
+                if _rows_equal(row, candidate, tolerance)
+            ),
+            None,
+        )
+        if match is None:
+            return False
+        unmatched.pop(match)
+    return True
 
 
 def _compare_rows(

@@ -12,9 +12,14 @@ from uuid import UUID
 from app.evaluation.contracts import (
     ActualOutcome,
     CaseType,
+    ComparisonState,
     EvaluationDifficulty,
     EvaluationSet,
     ExpectedOutcome,
+)
+from app.evaluation.evidence import (
+    comparison_state_counts_match,
+    validate_persisted_comparison_contract,
 )
 from app.evaluation.environment import (
     reference_time_is_eligible,
@@ -125,6 +130,7 @@ class _ParsedResult:
     query_execution_attempted: bool
     execution_succeeded: bool
     result_correct: bool | None
+    comparison_state: ComparisonState
     passed: bool
     duration_ms: float
     provider_measurement: dict[str, Any] | None
@@ -166,6 +172,10 @@ _METRICS_FIELDS = frozenset(
         "stage_reason_code",
         "planner",
         "result_provenance",
+        "comparison_state",
+        "delivery_completeness",
+        "comparison_limitation_reason",
+        "comparison_evidence",
     }
 )
 _MEASUREMENT_FIELDS = frozenset(
@@ -216,6 +226,8 @@ _SAFE_PIPELINE_STAGES = frozenset(
         "sql_safety",
         "semantic_conformance",
         "execution",
+        "execution_context",
+        "persistence",
         "result_comparison",
         "setup",
     }
@@ -271,6 +283,18 @@ def evaluate_v1_readiness(
             stability_canary=stability_canary,
         )
     summary, results, usage, environment, planner_defects = validated
+    if any(
+        result.comparison_state is ComparisonState.UNESTABLISHED
+        for result in results
+    ):
+        return _incomplete(
+            evaluation_set,
+            digest,
+            "comparison_unestablished",
+            evidence=evidence,
+            semantic_catalog=current_catalog,
+            stability_canary=stability_canary,
+        )
 
     gates: list[ReadinessGate] = [
         ReadinessGate(
@@ -535,6 +559,19 @@ def _validate_evidence(
         parsed.append(parsed_result)
         if parsed_result.provider_measurement is not None:
             measurements.append(parsed_result.provider_measurement)
+    if not _exact_int(
+        summary.get("unestablished_count"),
+        sum(
+            item.comparison_state is ComparisonState.UNESTABLISHED
+            for item in parsed
+        ),
+    ):
+        return "result_set_malformed"
+    if not comparison_state_counts_match(
+        summary.get("comparison_state_counts"),
+        tuple(item.comparison_state for item in parsed),
+    ):
+        return "result_set_malformed"
     usage = _usage(measurements)
     if (
         usage is None
@@ -580,6 +617,7 @@ def _parse_result(
         "stage_reason_code",
         "planner",
         "result_provenance",
+        "comparison_evidence",
     }
     if not required_metrics <= set(metrics):
         return None
@@ -630,10 +668,13 @@ def _parse_result(
     if metrics["tables_correct"] is not (set(references) == set(case.expected_tables)):
         return None
     result_correct = metrics.get("result_correct")
-    if case.expected_outcome is ExpectedOutcome.SUCCESS:
-        if not isinstance(result_correct, bool):
-            return None
-    elif result_correct is not None:
+    comparison = validate_persisted_comparison_contract(
+        metrics,
+        expects_result=case.expected_outcome is ExpectedOutcome.SUCCESS,
+        execution_succeeded=actual["execution_succeeded"],
+        passed=metrics["passed"],
+    )
+    if comparison is None:
         return None
     for key in (
         "expected_row_count",
@@ -670,8 +711,8 @@ def _parse_result(
         metrics["execution_correct"],
         metrics["tables_correct"],
     ]
-    if result_correct is not None:
-        components.append(result_correct)
+    if case.expected_outcome is ExpectedOutcome.SUCCESS:
+        components.append(result_correct is True)
     if metrics["passed"] is not all(components):
         return None
     if score != sum(components) / len(components):
@@ -698,6 +739,7 @@ def _parse_result(
         query_execution_attempted=metrics["query_execution_attempted"],
         execution_succeeded=actual["execution_succeeded"],
         result_correct=result_correct,
+        comparison_state=comparison.comparison_state,
         passed=metrics["passed"],
         duration_ms=duration_ms,
         provider_measurement=parsed_measurement,

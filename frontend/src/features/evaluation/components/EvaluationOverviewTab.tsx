@@ -42,7 +42,7 @@ export function EvaluationOverviewTab({ data }: { data: EvaluationOverview }) {
         ) : null}
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <MetricCard label="Completed" value={`${metrics.completed_count}/${metrics.eligible_count}`} detail={`${metrics.selected_count} selected in this run`} />
-          <MetricCard label="Passed" value={metrics.passed_count} detail={`${metrics.failed_count} visible cases did not pass`} />
+          <MetricCard label="Passed" value={metrics.passed_count} detail={`${metrics.failed_count} did not pass · ${metrics.comparison_state_counts.incorrect} incorrect · ${metrics.unestablished_count} unestablished · ${metrics.comparison_state_counts.not_reached} not reached`} />
           <MetricCard label="Semantic score" value={formatEvaluationPercent(metrics.overall_score)} detail="Result semantics and expected outcomes" />
           <MetricCard label="Behavior match" value={formatEvaluationPercent(metrics.expected_behavior_match_rate)} detail="Expected behavior matched exactly" />
           <MetricCard label="Security pass rate" value={formatEvaluationPercent(metrics.security_pass_rate)} detail="Visible security-sensitive cases only" />

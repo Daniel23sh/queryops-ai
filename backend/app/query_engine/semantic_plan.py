@@ -213,6 +213,7 @@ class ValidatedSemanticPlan:
             "order_by": [
                 item.model_dump(mode="json") for item in self.plan.order_by
             ],
+            "limit": self.plan.limit,
         }
 
 

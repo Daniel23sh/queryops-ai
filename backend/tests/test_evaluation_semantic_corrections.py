@@ -5,8 +5,16 @@ from dataclasses import asdict, replace
 
 import pytest
 
-from app.evaluation.contracts import ActualOutcome, ProvenanceAuthorizationEvidence
-from app.evaluation.contracts import EvaluationSemanticField
+from app.evaluation.contracts import (
+    ActualOutcome,
+    DeliveryCompleteness,
+    EvaluationSemanticField,
+    ProvenanceAuthorizationEvidence,
+)
+from app.evaluation.evidence import (
+    EvaluationComparisonEvidence,
+    EvaluationEvidenceSide,
+)
 from app.evaluation.loader import load_it_operations_evaluation_v2_set
 from app.evaluation.identity import IdentityProof
 from app.evaluation.provenance import build_evaluation_comparison_provenance
@@ -113,6 +121,20 @@ def compare(case, sql, expected, actual, *, verified=True):
             else ProvenanceAuthorizationEvidence.UNVERIFIED
         ),
     )
+    expected_side = EvaluationEvidenceSide(
+        rows=tuple(expected),
+        complete=True,
+        exhausted=True,
+        limitation_reason=None,
+        delivery_completeness=DeliveryCompleteness.COMPLETE,
+    )
+    actual_side = EvaluationEvidenceSide(
+        rows=tuple(actual),
+        complete=True,
+        exhausted=True,
+        limitation_reason=None,
+        delivery_completeness=DeliveryCompleteness.COMPLETE,
+    )
     return score_evaluation_case(
         case,
         actual_outcome=ActualOutcome.SUCCESS,
@@ -121,6 +143,12 @@ def compare(case, sql, expected, actual, *, verified=True):
         expected_rows=expected,
         actual_rows=actual,
         provenance=provenance,
+        comparison_evidence=EvaluationComparisonEvidence(
+            expected=expected_side,
+            actual=actual_side,
+            actual_delivery_completeness=DeliveryCompleteness.COMPLETE,
+        ),
+        semantic_contract_passed=True,
     )
 
 

@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from app.query_engine.sql_executor import SQLExecutionResult
+from app.query_engine.sql_validator import SQLValidationResult
 
 
 QUERY_RESULT_SUCCESS_MESSAGE = "Query completed successfully."
@@ -26,6 +27,8 @@ class QueryEngineServiceResult:
     error_code: str | None = None
     public_error: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    validation_result: SQLValidationResult | None = None
+    execution_result: SQLExecutionResult | None = None
 
 
 def format_query_result(
@@ -38,6 +41,7 @@ def format_query_result(
     clarification_required: bool = False,
     metadata: dict[str, Any] | None = None,
     warnings: list[str] | None = None,
+    validation_result: SQLValidationResult | None = None,
 ) -> QueryEngineServiceResult:
     if execution_result is None:
         columns: list[str] = []
@@ -71,6 +75,8 @@ def format_query_result(
         error_code=error_code,
         public_error=public_error,
         metadata=dict(metadata or {}),
+        validation_result=validation_result,
+        execution_result=execution_result,
     )
 
 

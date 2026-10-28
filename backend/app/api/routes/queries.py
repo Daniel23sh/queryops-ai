@@ -506,12 +506,19 @@ def _safe_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
 
     execution = metadata.get("execution")
     if isinstance(execution, dict):
+        delivery_completeness = execution.get("delivery_completeness")
         safe["execution"] = {
             "status": _safe_optional_string(execution.get("status")),
             "error_code": _safe_optional_string(execution.get("error_code")),
             "row_count": _safe_optional_int(execution.get("row_count")),
             "duration_ms": _safe_optional_number(execution.get("duration_ms")),
             "truncated": _safe_optional_bool(execution.get("truncated")),
+            "delivery_completeness": (
+                delivery_completeness
+                if isinstance(delivery_completeness, str) and delivery_completeness
+                in {"complete", "safety_limited", "unknown"}
+                else None
+            ),
         }
 
     self_correction = metadata.get("self_correction")

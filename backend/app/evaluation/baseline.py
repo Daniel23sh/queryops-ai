@@ -16,13 +16,23 @@ from app.query_engine.sql_executor import (
     execute_validated_sql,
 )
 from app.query_engine.sql_validator import validate_sql
+from app.query_engine.sql_validator import SQLValidationResult
 
 
 class EvaluationBaselineError(RuntimeError):
-    def __init__(self, code: str, message: str) -> None:
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        validation: SQLValidationResult | None = None,
+        execution: SQLExecutionResult | None = None,
+    ) -> None:
         super().__init__(message)
         self.code = code
         self.safe_message = message
+        self.validation = validation
+        self.execution = execution
 
 
 @dataclass(frozen=True)
@@ -30,6 +40,8 @@ class EvaluationBaselineResult:
     rows: tuple[dict[str, Any], ...]
     row_count: int
     referenced_tables: tuple[str, ...]
+    validation: SQLValidationResult
+    execution: SQLExecutionResult
 
 
 def execute_evaluation_baseline(
@@ -63,11 +75,13 @@ def execute_evaluation_baseline(
         raise EvaluationBaselineError(
             "baseline_validation_failed",
             "Trusted evaluation baseline failed runtime validation.",
+            validation=validation,
         )
     if set(validation.referenced_tables) != set(case.expected_tables):
         raise EvaluationBaselineError(
             "baseline_tables_mismatch",
             "Trusted evaluation baseline references unexpected resources.",
+            validation=validation,
         )
 
     execution: SQLExecutionResult = executor(
@@ -95,9 +109,13 @@ def execute_evaluation_baseline(
         raise EvaluationBaselineError(
             f"baseline_{code}",
             "Trusted evaluation baseline could not be executed safely.",
+            validation=validation,
+            execution=execution,
         )
     return EvaluationBaselineResult(
         rows=tuple(dict(row) for row in execution.rows),
         row_count=execution.row_count,
         referenced_tables=tuple(execution.referenced_tables),
+        validation=validation,
+        execution=execution,
     )

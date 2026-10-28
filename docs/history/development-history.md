@@ -1,5 +1,129 @@
 # QueryOps AI — Development History
 
+## 2026-10-28 — W0 bounded-result disposition: retain with corrections
+
+W0 compared remote main `a64d1fa9ebae3abf2a9cd87d27fa0f47e29b1c94` with the
+original bounded-result commit `2d7796c056ce2c234989dae010b4c34f71758a9d`. The
+branch had not been integrated or superseded. Its unique work was protected by
+local recovery ref `codex/archive-m9-bounded-result-2d7796c`; no history was
+rewritten or force-pushed. Phase 1 direction documents were committed separately
+at `4894672` before the branch treatment was selected.
+
+Selected option B: keep the implementation with narrowly justified corrections.
+The evaluator solves a real defect: equal capped prefixes do not establish equal
+populations, while differing valid prefixes need not mean different answers.
+Shared REPEATABLE READ/UTC context, validator-authorized outer safety-bound
+widening, role/RLS enforcement, bounded row/time/payload acquisition, explicit
+unestablished state and safe projections are necessary parts of that proof.
+
+Alternatives evaluated:
+
+- Unchanged merge preserves valuable work but leaves reproducible cache, proof
+  and consumer defects; rejected.
+- Conservatively label every bounded comparison unknown: smaller, but loses
+  correct measurable answers within the fixed budget; rejected.
+- Accept equal prefixes or raise/remove production caps: fails correctness or
+  resource safety; rejected.
+- Split/rewrite: no independent component sequence reduces the coordinated
+  runner/scoring/persistence/UI contract risk; discarding tested invariants is
+  costlier than the focused corrections. Preserve the original commit and put
+  corrections in a separate reviewable commit instead.
+
+Corrections (new regressions were observed failing before fixes):
+
+- Cache only table DataResource metadata, preventing column metadata from
+  replacing table authorization; PostgreSQL regression proves denial.
+- Recognize EOF below a supported input LIMIT without widening that limit or
+  accepting nested/offset/volatile comparisons; semantic bound mismatch still fails.
+- Accept identical valid exactly-N top-N answers; differing unresolved cutoff
+  members remain unestablished. Removed the redundant unconditional veto helper.
+- Render the legitimate three-canary `stability_comparison_unestablished` state
+  as Incomplete, while contradictory count/reason combinations remain unavailable.
+- Reject list/dict states/digests and oversized numeric durations at persisted
+  boundaries without TypeError/OverflowError or fabricated qualification.
+
+Independent correctness, runtime/security and contracts reviews approved the
+corrected scope. Local verification: 1,776 PostgreSQL backend tests plus the
+20-case action security suite passed without skips; 284 frontend tests, Ruff,
+zero-error/warning Pyright, compileall, ESLint, both TypeScript checks and build
+passed. The final additional numeric guard passed the focused 253-case selection
+and independent malformed-shape probes; GitHub will rerun the complete graph on
+the exact committed revision. General Chromium flows passed 12/12 and guarded M8 flows 2/2. A separate
+Chromium probe rendered the actual backend-shaped three-run unestablished
+payload as Incomplete (readiness response routed as a fixture, not persisted
+integration evidence). Fresh Alembic
+upgrade/current/check reached 0010 with no model diff. The existing charts chunk
+warning remains non-blocking. Detailed temporary logs are under `/tmp/queryops-w0`.
+
+No provider call, qualifying evaluation sequence, historical baseline change,
+RLS/role grant change, cap/budget/threshold weakening or schema migration was
+introduced. No unrelated W1–W9 fix was bundled. W1 scope revocation, W2 role
+races, W2a scoped JSON DISTINCT reads, W3 derived delivery and other audited
+product/semantic/identity gaps remain open. Integration status at this checkpoint
+is **pending GitHub CI and merge**, not a completed release.
+
+## 2026-10-28 — M10 direction adopted; W0 opened
+
+The owner selected local synthetic IT Operations V1 as the completion target and
+authorized M10 — Product Reliability & V1 Completion. The October project audit
+is dated evidence, not release qualification. Existing modular/query/action/RLS
+architecture is retained; major new capabilities and shared/production deployment
+are deferred. The historical milestone sequence no longer authorizes the next
+feature. The detailed [M10 roadmap](../development/m10-completion-roadmap.md) splits
+semantic work into diagnosis, targeted correction and independent validation.
+
+W0 was opened to independently resolve `fix/m9-bounded-result-evaluation` at
+`2d7796c` against current main. No integration/discard decision had been made at
+this documentation checkpoint. Older implementation evidence below records work
+done on particular revisions, not proof that the branch was merged or released.
+
+## Approach 3 bounded-result evaluation correction
+
+Implemented from audited main
+`a64d1fa9ebae3abf2a9cd87d27fa0f47e29b1c94`. Production execution retains its
+existing safety limit and delivered rows. Evaluation can widen only a structurally
+proven outer safety bound, under one authorized read-only `REPEATABLE READ`
+transaction and the versioned `queryops-bounded-result-evidence-v1` resource
+budget. Complete evidence can qualify a correct safety-limited delivery;
+insufficient evidence remains explicit, non-qualifying `unestablished` evidence.
+
+The implementation keeps comparison state in metrics without a database migration,
+preserves legacy returned-count delta fields and adds clear read-model aliases.
+Delivery completeness is separate from correctness and appears in product and
+evaluation UI without exposing auxiliary rows or invented totals. Readiness policy
+`queryops-v1-readiness-v2` rejects required unestablished comparisons and historical
+evidence. V2 dataset and fixed-canary digests changed deterministically to
+`6ac164ab6c58c0b008a65afc01cd26aa434fecd3eaa402b5bdad9c89e6f6540f` and
+`83dadd97b819003e9e6aa20b4487affc8a3c926cd7ca3d2672c85225b4ae3fc2`.
+
+Verification completed:
+
+- Full offline gates: Ruff, zero-error/warning Pyright, compilation, ESLint, both
+  TypeScript checks and production build passed; **1,580 backend tests passed**
+  with 199 expected environment-gated skips, and **282 frontend tests passed**.
+- The two V3 guarded disposable-PostgreSQL selections passed **20** and **1,754**
+  tests with zero skips. After the final three pre-commit corrections, the full
+  second selection passed **1,759** tests with zero skips.
+  Focused evaluation tests additionally covered arbitrary safety subsets,
+  differing populations, exact cap, 1,000/1,001 evidence boundaries through the
+  runner, structural bounds, duplicates, `DISTINCT`, grouping, aggregates,
+  ranking ties, transaction time, concurrent commits, RLS/context mismatch,
+  deadlines, payload accounting and original-stage failures.
+- Five Chromium Evaluation flows passed. Alembic reported
+  `0010_disable_inactive_user` at head and no model/schema changes. `git diff
+  --check` passed.
+- The final three pre-commit corrections preserve successful execution across
+  QueryRun persistence/context teardown failures, distinguish SQL exhaustion
+  from population completeness and comparison proof from context compatibility,
+  and use one exact payload-set definition. A fresh-context focused independent
+  review found no remaining blocker in those three areas. No live provider call,
+  canary, release environment, candidate, user
+  database, migration, push, PR or release operation occurred.
+
+The correction does not resolve medium-009 provider semantic reliability,
+hard-004 aggregate-grouping provider/runtime ownership, other tracked DISTINCT
+enforcement gaps, pagination/export, provider tuning or release qualification.
+
 ## Evaluation V2 semantic correctness correction
 
 Based on audited `75568dc5f6cef5f541eac1b357e8809828133547`, with no initial

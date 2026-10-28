@@ -7,6 +7,8 @@ from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
+from sqlalchemy import Engine
+from sqlalchemy.engine import Connection
 from sqlalchemy.orm import Session
 
 from app.auth.access_context import UserAccessContext, build_user_access_context
@@ -83,7 +85,7 @@ REQUIRED_INTENT_FAILURE_CODES = frozenset(
 class SQLExecutorCallable(Protocol):
     def __call__(
         self,
-        db: Session,
+        db: Session | Engine | Connection,
         access_context: UserAccessContext,
         validation_result: SQLValidationResult,
         *,
@@ -94,6 +96,7 @@ class SQLExecutorCallable(Protocol):
 
 
 ValidatorCallable = Callable[[str, dict[str, Any]], SQLValidationResult]
+ExecutionDBFactory = Callable[[UserAccessContext], Session | Engine | Connection]
 DomainPackLoaderCallable = Callable[[], DomainPack]
 SemanticSQLRendererCallable = Callable[[ValidatedSemanticPlan, DomainPack], str]
 
@@ -144,6 +147,14 @@ class _GeneratedQueryResult:
         return self.failure_code is not None
 
 
+class QueryRunPersistenceError(RuntimeError):
+    """Preserve a completed SQL observation when its QueryRun cannot be stored."""
+
+    def __init__(self, observation: QueryEngineServiceResult) -> None:
+        super().__init__("Query execution completed but its run could not be persisted.")
+        self.observation = observation
+
+
 class QueryEngineService:
     def __init__(
         self,
@@ -167,6 +178,8 @@ class QueryEngineService:
         db: Session,
         user: AppUser,
         request: QueryEngineRequest,
+        *,
+        execution_db_factory: ExecutionDBFactory | None = None,
     ) -> QueryEngineServiceResult:
         started_at = datetime.now(UTC)
         access_context = build_user_access_context(user, db)
@@ -382,7 +395,7 @@ class QueryEngineService:
                 )
 
         execution_result = self._executor(
-            db,
+            execution_db_factory(access_context) if execution_db_factory else db,
             access_context,
             validation_result,
             options=_execution_options_for_request(request),
@@ -414,26 +427,36 @@ class QueryEngineService:
                 public_error=public_error,
                 error_code=execution_result.error_code,
                 metadata=query_run.query_metadata,
+                validation_result=validation_result,
             )
 
-        query_run = self._persist_query_run(
-            db,
-            user,
-            request,
-            RunStatus.SUCCEEDED.value,
-            started_at=started_at,
-            generated_sql=generation_result.generated_sql,
-            executed_sql=validation_result.sanitized_sql,
-            row_count=execution_result.row_count,
-            duration_ms=int(round(execution_result.duration_ms)),
-            error_message=None,
-            metadata=metadata,
-        )
-        return format_query_result(
+        observation = format_query_result(
             status="succeeded",
-            query_run_id=str(query_run.id),
+            query_run_id=None,
             execution_result=execution_result,
-            metadata=query_run.query_metadata,
+            metadata=metadata,
+            validation_result=validation_result,
+        )
+        try:
+            query_run = self._persist_query_run(
+                db,
+                user,
+                request,
+                RunStatus.SUCCEEDED.value,
+                started_at=started_at,
+                generated_sql=generation_result.generated_sql,
+                executed_sql=validation_result.sanitized_sql,
+                row_count=execution_result.row_count,
+                duration_ms=int(round(execution_result.duration_ms)),
+                error_message=None,
+                metadata=metadata,
+            )
+        except Exception as exc:
+            raise QueryRunPersistenceError(observation) from exc
+        return replace(
+            observation,
+            query_run_id=str(query_run.id),
+            metadata=dict(query_run.query_metadata or {}),
         )
 
     def _generate_sql(
@@ -1063,6 +1086,9 @@ def _validation_summary(validation_result: SQLValidationResult) -> dict[str, Any
         "valid": validation_result.valid,
         "error_code": validation_result.error_code,
         "referenced_tables": sorted(validation_result.referenced_tables),
+        "input_limit": validation_result.input_limit,
+        "effective_limit": validation_result.effective_limit,
+        "limit_source": validation_result.limit_source,
     }
 
 
@@ -1074,4 +1100,7 @@ def _execution_summary(execution_result: SQLExecutionResult) -> dict[str, Any]:
         "row_count": execution_result.row_count,
         "duration_ms": execution_result.duration_ms,
         "truncated": execution_result.truncated,
+        "delivery_completeness": execution_result.execution_metadata.get(
+            "delivery_completeness", "unknown"
+        ),
     }

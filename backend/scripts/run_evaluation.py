@@ -176,7 +176,13 @@ def _print_summary(summary: EvaluationRunSummary) -> None:
     print(
         "Cases: "
         f"selected={summary.selected_count} completed={summary.completed_count} "
-        f"passed={summary.passed_count} failed={summary.failed_count}"
+        f"passed={summary.passed_count} failed={summary.failed_count} "
+        f"unestablished={summary.unestablished_count}"
+    )
+    states = summary.comparison_state_counts
+    print(
+        "Comparison states: "
+        + " ".join(f"{state}={count}" for state, count in states.items())
     )
     print(
         f"Overall semantic score: {summary.overall_score:.3f}; "
@@ -223,7 +229,8 @@ def _print_summary(summary: EvaluationRunSummary) -> None:
             code = case.error_code or "semantic_mismatch"
             print(
                 f"  {case.case_id}: expected={case.expected_outcome} "
-                f"actual={case.actual_outcome} code={code}"
+                f"actual={case.actual_outcome} comparison={case.comparison_state} "
+                f"delivery={case.delivery_completeness} code={code}"
             )
 
 

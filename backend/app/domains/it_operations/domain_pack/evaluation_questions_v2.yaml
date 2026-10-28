@@ -35,6 +35,7 @@
       "stable_key_columns": [],
       "template_id": "inactive_users_by_department",
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "both",
         "required_concept_ids": [
@@ -96,6 +97,7 @@
       ],
       "template_id": "non_compliant_devices_by_department",
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "catalog",
         "required_concept_ids": [],
@@ -149,6 +151,7 @@
       "stable_key_columns": [],
       "template_id": "open_support_tickets_by_department",
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "both",
         "required_concept_ids": [
@@ -226,6 +229,7 @@
       "stable_key_columns": [],
       "template_id": "high_severity_security_events_by_department",
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "both",
         "required_concept_ids": [
@@ -304,6 +308,7 @@
       "stable_key_columns": [],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "catalog",
         "required_concept_ids": [],
@@ -350,6 +355,7 @@
       ],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "catalog",
         "required_concept_ids": [
@@ -406,6 +412,7 @@
       ],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "catalog",
         "required_concept_ids": [
@@ -461,6 +468,7 @@
       ],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "catalog",
         "required_concept_ids": [
@@ -519,6 +527,7 @@
       ],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "catalog",
         "required_concept_ids": [
@@ -575,6 +584,7 @@
       ],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "catalog",
         "required_concept_ids": [
@@ -641,6 +651,7 @@
       ],
       "template_id": "unused_licenses_by_department",
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "catalog",
         "required_concept_ids": [
@@ -700,6 +711,7 @@
       "stable_key_columns": [],
       "template_id": "privileged_group_memberships_by_department",
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "both",
         "required_concept_ids": [
@@ -784,6 +796,7 @@
       "stable_key_columns": [],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "both",
         "required_concept_ids": [
@@ -855,6 +868,7 @@
       "stable_key_columns": [],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "both",
         "required_concept_ids": [
@@ -937,6 +951,7 @@
       ],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "both",
         "required_concept_ids": [
@@ -1005,6 +1020,7 @@
       "stable_key_columns": [],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "both",
         "required_concept_ids": [
@@ -1069,6 +1085,7 @@
       "stable_key_columns": [],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "both",
         "required_concept_ids": [
@@ -1135,6 +1152,7 @@
       "stable_key_columns": [],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "both",
         "required_concept_ids": [
@@ -1213,6 +1231,7 @@
       "stable_key_columns": [],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "both",
         "required_concept_ids": [
@@ -1272,6 +1291,7 @@
       ],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "catalog",
         "required_concept_ids": [
@@ -1328,6 +1348,7 @@
       ],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "catalog",
         "required_concept_ids": [
@@ -1386,6 +1407,7 @@
       "stable_key_columns": [],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "explicit_question",
         "required_concept_ids": [],
@@ -1469,6 +1491,7 @@
       ],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "catalog",
         "required_concept_ids": [
@@ -1530,6 +1553,7 @@
       "stable_key_columns": [],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "catalog",
         "required_concept_ids": [
@@ -1599,6 +1623,7 @@
       "stable_key_columns": [],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "catalog",
         "required_concept_ids": [
@@ -1686,6 +1711,7 @@
       "stable_key_columns": [],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "both",
         "required_concept_ids": [
@@ -1764,6 +1790,7 @@
       "stable_key_columns": [],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "both",
         "required_concept_ids": [
@@ -1840,6 +1867,7 @@
       "stable_key_columns": [],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "both",
         "required_concept_ids": [
@@ -1946,6 +1974,7 @@
       "stable_key_columns": [],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "both",
         "required_concept_ids": [
@@ -2034,6 +2063,7 @@
       ],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "catalog",
         "required_concept_ids": [
@@ -2105,6 +2135,7 @@
       "stable_key_columns": [],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "both",
         "required_concept_ids": [
@@ -2193,6 +2224,7 @@
       ],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "catalog",
         "required_concept_ids": [
@@ -2287,6 +2319,7 @@
       ],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "catalog",
         "required_concept_ids": [
@@ -2346,6 +2379,7 @@
       "stable_key_columns": [],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "both",
         "required_concept_ids": [
@@ -2442,6 +2476,7 @@
       "stable_key_columns": [],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "answerable",
         "semantic_source": "both",
         "required_concept_ids": [
@@ -2538,6 +2573,7 @@
       "stable_key_columns": [],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "denied",
         "semantic_source": "not_applicable",
         "required_concept_ids": [],
@@ -2579,6 +2615,7 @@
       "stable_key_columns": [],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "denied",
         "semantic_source": "not_applicable",
         "required_concept_ids": [],
@@ -2619,6 +2656,7 @@
       "stable_key_columns": [],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "unsafe",
         "semantic_source": "not_applicable",
         "required_concept_ids": [],
@@ -2662,6 +2700,7 @@
       "stable_key_columns": [],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "denied",
         "semantic_source": "not_applicable",
         "required_concept_ids": [],
@@ -2696,6 +2735,7 @@
       "stable_key_columns": [],
       "template_id": null,
       "semantic_contract": {
+        "answer_bound": {"kind": "population", "limit": null},
         "answerability": "clarification",
         "semantic_source": "not_applicable",
         "required_concept_ids": [],

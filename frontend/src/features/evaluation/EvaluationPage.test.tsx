@@ -80,6 +80,28 @@ describe("Evaluation workspace", () => {
     expect(screen.getByText("No qualifying OpenAI evidence")).toBeInTheDocument();
   });
 
+  it.each(["stability_comparison_unestablished", "stability_runs_missing"])(
+    "handles three incomplete canaries with reason %s", async (reason) => {
+      const readiness = backendEvaluationReadiness({
+        verdict: "incomplete", provider: null, stabilityStatus: "incomplete",
+        stabilityRunCount: 3, completedCount: null
+      });
+      readiness.stability_canary.reason_code = reason;
+      installApiMock(authenticatedRoutes(demoAnalyst, {
+        "GET /api/v1/evaluation/overview": successResponse(backendEvaluationOverview()),
+        "GET /api/v1/evaluation/readiness": successResponse(readiness)
+      }));
+      renderAppAt("/evaluation");
+      if (reason === "stability_comparison_unestablished") {
+        expect(await screen.findByRole("heading", { name: "V1 readiness: Incomplete" })).toBeInTheDocument();
+        expect(screen.getByText("Incomplete · 3/3 runs")).toBeInTheDocument();
+        expect(screen.queryByText("Status: Ready")).not.toBeInTheDocument();
+      } else {
+        expect(await screen.findByRole("heading", { name: "V1 readiness unavailable" })).toBeInTheDocument();
+      }
+    }
+  );
+
   it("shows a passed canary while the matching full run is still missing", async () => {
     installApiMock(authenticatedRoutes(demoAnalyst, {
       "GET /api/v1/evaluation/overview": successResponse(backendEvaluationOverview()),
@@ -231,6 +253,21 @@ describe("Evaluation workspace", () => {
     expect(screen.queryByText("directory_users")).not.toBeInTheDocument();
   });
 
+  it("never presents a correct safety-limited delivery as complete", async () => {
+    installApiMock(authenticatedRoutes(demoManager, {
+      "GET /api/v1/evaluation/overview": successResponse(backendEvaluationOverview()),
+      "GET /api/v1/evaluation/queries": successResponse(backendEvaluationQueries({
+        technical: false,
+        comparisonState: "correct",
+        deliveryCompleteness: "safety_limited"
+      }))
+    }));
+    renderAppAt("/evaluation?tab=queries");
+
+    expect(await screen.findByText("The delivered result was limited by the governed safety cap.")).toBeInTheDocument();
+    expect(screen.queryByText("Delivery complete")).not.toBeInTheDocument();
+  });
+
   it("fails closed when a tab response does not match the Overview-selected run", async () => {
     installApiMock(authenticatedRoutes(demoManager, {
       "GET /api/v1/evaluation/overview": successResponse(backendEvaluationOverview({ runId: "00000000-0000-4000-8000-000000009999" })),
@@ -275,7 +312,9 @@ describe("Evaluation workspace", () => {
     fireEvent.click(within(tabNavigation).getByRole("link", { name: "Security" }));
     expect(await screen.findByText("4/5")).toBeInTheDocument();
     expect(screen.getByText("Unsafe-query block")).toBeInTheDocument();
-    expect(screen.getByText("0 passed · 1 failed")).toBeInTheDocument();
+    expect(
+      screen.getByText("0 passed · 1 non-passes · 1 incorrect · 0 unestablished")
+    ).toBeInTheDocument();
 
     fireEvent.click(within(tabNavigation).getByRole("link", { name: "Dashboards" }));
     expect(await screen.findByRole("heading", { name: "Dashboard evaluation" })).toBeInTheDocument();

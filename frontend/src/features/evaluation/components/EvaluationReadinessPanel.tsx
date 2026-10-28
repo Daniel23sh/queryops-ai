@@ -92,7 +92,7 @@ function isGateStatus(value: string): value is ReadinessGateStatus {
 
 function isSafeReadiness(data: EvaluationReadiness): boolean {
   if (
-    data.policy_id !== "queryops-v1-readiness-v1" ||
+    data.policy_id !== "queryops-v1-readiness-v2" ||
     !isVerdict(data.verdict) ||
     (data.provider !== null && data.provider !== "openai") ||
     !Array.isArray(data.gates) ||
@@ -124,7 +124,8 @@ function isSafeReadiness(data: EvaluationReadiness): boolean {
       data.stability_canary.reason_code !== null
     )) ||
     (data.stability_canary.status === "incomplete" && (
-      data.stability_canary.run_count >= 3 ||
+      (data.stability_canary.run_count === 3 &&
+        data.stability_canary.reason_code !== "stability_comparison_unestablished") ||
       data.stability_canary.reason_code === null
     )) ||
     (data.stability_canary.status === "failed" && (

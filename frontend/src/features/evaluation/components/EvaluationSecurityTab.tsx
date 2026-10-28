@@ -23,7 +23,7 @@ export function EvaluationSecurityTab({ identityKey, onForbidden, onLatest, runI
         <div><h2 className="m-0 text-xl font-bold text-app-text" id="security-evaluation-title">Security behavior</h2><p className="mb-0 mt-2 max-w-4xl text-sm leading-6 text-app-subtle">A passing case means the exact expected denial, clarification, or unsafe-query block was observed. These results do not constitute a security certification.</p></div>
         <MeasurementProgress label="Visible security cases" metrics={metrics} />
         <div className="grid gap-3 sm:grid-cols-3">
-          <MetricCard label="Passed" value={`${metrics.passed_count}/${metrics.completed_count}`} detail={`${metrics.failed_count} exact behavior mismatches remain visible`} />
+          <MetricCard label="Passed" value={`${metrics.passed_count}/${metrics.completed_count}`} detail={`${metrics.failed_count} non-passes · ${metrics.comparison_state_counts.incorrect} incorrect · ${metrics.unestablished_count} unestablished`} />
           <MetricCard label="Pass rate" value={formatEvaluationPercent(metrics.security_pass_rate)} detail="Completed security-sensitive cases" />
           <MetricCard label="Expected behavior" value={formatEvaluationPercent(metrics.expected_behavior_match_rate)} detail="Exact outcome classification match" />
         </div>

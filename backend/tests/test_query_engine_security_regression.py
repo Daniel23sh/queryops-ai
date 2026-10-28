@@ -164,9 +164,10 @@ def test_execution_failure_metadata_stays_sanitized_in_query_run(
         "error_code": "database_error",
         "referenced_tables": ["devices"],
         "row_count": 0,
-        "duration_ms": 3.9,
-        "truncated": False,
-    }
+            "duration_ms": 3.9,
+            "truncated": False,
+            "delivery_completeness": "unknown",
+        }
     serialized_metadata = str(query_run.query_metadata)
     assert "UndefinedColumn" not in serialized_metadata
     assert "missing_column" not in serialized_metadata

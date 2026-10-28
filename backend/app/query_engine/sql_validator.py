@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 
 PUBLIC_SQL_VALIDATION_ERROR = "SQL is not allowed for safe read-only querying."
@@ -53,6 +53,9 @@ class SQLValidationResult:
     error_code: str | None = None
     reason: str | None = None
     public_error: str | None = None
+    input_limit: int | None = None
+    effective_limit: int | None = None
+    limit_source: Literal["input", "safety_added", "safety_clamped"] | None = None
 
 
 class SQLValidator:
@@ -115,13 +118,14 @@ class SQLValidator:
         if table_error is not None:
             return table_error
 
-        limit_sql_or_error = _apply_limit(normalized_sql, masked_sql, self.options)
-        if isinstance(limit_sql_or_error, SQLValidationResult):
-            return limit_sql_or_error
+        limit_result = _apply_limit(normalized_sql, masked_sql, self.options)
+        if isinstance(limit_result, SQLValidationResult):
+            return limit_result
+        sanitized_sql, input_limit, effective_limit, limit_source = limit_result
 
         return SQLValidationResult(
             valid=True,
-            sanitized_sql=limit_sql_or_error,
+            sanitized_sql=sanitized_sql,
             referenced_tables=referenced_tables,
             referenced_columns=_extract_referenced_columns(
                 masked_sql,
@@ -132,6 +136,9 @@ class SQLValidator:
             error_code=None,
             reason=None,
             public_error=None,
+            input_limit=input_limit,
+            effective_limit=effective_limit,
+            limit_source=limit_source,
         )
 
 
@@ -372,12 +379,22 @@ def _apply_limit(
     normalized_sql: str,
     masked_sql: str,
     options: SQLValidationOptions,
-) -> str | SQLValidationResult:
+) -> tuple[
+    str,
+    int | None,
+    int,
+    Literal["input", "safety_added", "safety_clamped"],
+] | SQLValidationResult:
     top_level_limits = _find_top_level_limits(masked_sql)
     if len(top_level_limits) > 1:
         return _deny("invalid_limit", "Only one top-level LIMIT is allowed.")
     if not top_level_limits:
-        return f"{normalized_sql} LIMIT {options.default_limit}"
+        return (
+            f"{normalized_sql} LIMIT {options.default_limit}",
+            None,
+            options.default_limit,
+            "safety_added",
+        )
 
     limit = top_level_limits[0]
     raw_value = limit["value"]
@@ -386,12 +403,17 @@ def _apply_limit(
 
     value = int(raw_value)
     if value <= options.max_limit:
-        return normalized_sql
+        return normalized_sql, value, value, "input"
 
     return (
-        normalized_sql[: limit["value_start"]]
-        + str(options.max_limit)
-        + normalized_sql[limit["value_end"] :]
+        (
+            normalized_sql[: limit["value_start"]]
+            + str(options.max_limit)
+            + normalized_sql[limit["value_end"] :]
+        ),
+        value,
+        options.max_limit,
+        "safety_clamped",
     )
 
 

@@ -112,6 +112,9 @@ function ResultContent({
   const visualAvailable = recommendation.recommendedType !== "table";
   const successful = result.status === "succeeded" && !result.clarification_required;
   const hasRows = successful && result.rows.length > 0 && result.columns.length > 0;
+  const deliveryCompleteness = result.metadata.execution?.delivery_completeness;
+  const partialDelivery = result.truncated || deliveryCompleteness === "safety_limited";
+  const deliveryUnknown = successful && !partialDelivery && deliveryCompleteness !== "complete";
 
   return (
     <div className="grid gap-4">
@@ -124,13 +127,13 @@ function ResultContent({
         <dl className="m-0 flex flex-wrap gap-x-4 gap-y-1 text-xs text-app-subtle sm:justify-end">
           <div className="flex gap-1"><dt>Rows</dt><dd className="m-0 font-bold text-app-text">{result.row_count}</dd></div>
           <div className="flex gap-1"><dt>Duration</dt><dd className="m-0 font-bold text-app-text">{formatDuration(result.duration_ms)}</dd></div>
-          {result.truncated ? <div><dt className="qops-sr-only">Truncation</dt><dd className="m-0 font-bold text-status-warning">Truncated</dd></div> : null}
+          {partialDelivery ? <div><dt className="qops-sr-only">Delivery</dt><dd className="m-0 font-bold text-status-warning">Partial</dd></div> : null}
           {result.warnings.length ? <div className="flex gap-1"><dt>Warnings</dt><dd className="m-0 font-bold text-status-warning">{result.warnings.length}</dd></div> : null}
         </dl>
       </header>
 
       {result.warnings.length ? <details className="rounded-control border border-status-warning/40 bg-status-warning/10 px-3 py-2 text-sm text-app-text"><summary className="cursor-pointer font-semibold">{result.warnings.length === 1 ? result.warnings[0] : `${result.warnings.length} query warnings`}</summary>{result.warnings.length > 1 ? <ul className="mb-0 mt-2 pl-5">{result.warnings.map((warning, index) => <li key={`${warning}-${index}`}>{warning}</li>)}</ul> : null}</details> : null}
-      {result.truncated ? <p className="m-0 inline-flex items-center gap-2 text-sm text-status-warning"><AlertTriangle aria-hidden="true" size={16} />The result was truncated by the governed row limit.</p> : null}
+      {partialDelivery ? <p className="m-0 inline-flex items-center gap-2 text-sm text-status-warning"><AlertTriangle aria-hidden="true" size={16} />The governed row limit may have limited the delivered result.</p> : deliveryUnknown ? <p className="m-0 inline-flex items-center gap-2 text-sm text-status-warning"><AlertTriangle aria-hidden="true" size={16} />Delivery completeness could not be established.</p> : null}
       {actionRecommendation}
 
       {result.clarification_required ? (

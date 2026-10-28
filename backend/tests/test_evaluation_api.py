@@ -14,13 +14,22 @@ from sqlalchemy.pool import StaticPool
 from app.db.base import Base
 from app.db.session import get_db
 from app.domains.it_operations.seed import seed_database
-from app.evaluation.contracts import ExpectedOutcome
+from app.evaluation.contracts import (
+    ActualOutcome,
+    DeliveryCompleteness,
+    ExpectedOutcome,
+)
+from app.evaluation.evidence import (
+    EvaluationComparisonEvidence,
+    EvaluationEvidenceSide,
+)
 from app.evaluation.loader import load_it_operations_evaluation_v2_set
 from app.evaluation.selection import (
     EvaluationSuite,
     evaluation_dataset_digest,
     select_evaluation_suite,
 )
+from app.evaluation.scoring import score_evaluation_case
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.semantic_catalog import semantic_catalog_identity
 from app.main import app
@@ -125,6 +134,14 @@ def test_admin_overview_recomputes_full_metrics_and_honest_coverage(
         "completed_count": 40,
         "passed_count": 40,
         "failed_count": 0,
+        "unestablished_count": 0,
+        "comparison_state_counts": {
+            "correct": 35,
+            "incorrect": 0,
+            "unestablished": 0,
+            "not_reached": 0,
+            "not_applicable": 5,
+        },
         "overall_score": 1.0,
         "expected_behavior_match_rate": 1.0,
         "security_pass_rate": 1.0,
@@ -141,6 +158,219 @@ def test_admin_overview_recomputes_full_metrics_and_honest_coverage(
         "score": None,
     }
     assert coverage["dashboards"]["availability"] == "not_measured"
+
+
+def test_overview_round_trips_all_comparison_states(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run = _create_run(
+        db_session,
+        case_ids={
+            "itops-easy-001",
+            "itops-easy-002",
+            "itops-easy-003",
+            "itops-easy-004",
+            "itops-security-003",
+        },
+    )
+    results = {
+        result.case_name: result
+        for result in db_session.scalars(
+            select(EvaluationResult).where(EvaluationResult.evaluation_run_id == run.id)
+        )
+    }
+
+    incorrect = results["itops-easy-002"]
+    incorrect.status = "failed"
+    incorrect.score = 0.75
+    incorrect.metrics = {
+        **incorrect.metrics,
+        "score": 0.75,
+        "passed": False,
+        "result_correct": False,
+        "comparison_state": "incorrect",
+        "failure_reasons": ["result_semantics_mismatch"],
+    }
+
+    unestablished = results["itops-easy-003"]
+    limited_evidence = _evidence_summary()
+    limited_evidence["actual"] = {
+        **limited_evidence["actual"],
+        "complete": False,
+        "exhausted": False,
+        "limitation_reason": "evidence_row_budget_exceeded",
+        "delivery_completeness": "unknown",
+        "row_count": 1000,
+        "auxiliary_execution_count": 1,
+    }
+    limited_evidence["actual_delivery_completeness"] = "unknown"
+    unestablished.status = "failed"
+    unestablished.score = 0.75
+    unestablished.metrics = {
+        **unestablished.metrics,
+        "score": 0.75,
+        "passed": False,
+        "result_correct": None,
+        "comparison_state": "unestablished",
+        "delivery_completeness": "unknown",
+        "comparison_limitation_reason": "evidence_row_budget_exceeded",
+        "comparison_evidence": limited_evidence,
+        "failure_reasons": ["result_semantics_mismatch"],
+    }
+
+    not_reached = results["itops-easy-004"]
+    not_reached.status = "failed"
+    not_reached.score = 0.25
+    not_reached.actual_output = {
+        **not_reached.actual_output,
+        "outcome": "execution_failed",
+        "execution_succeeded": False,
+        "error_code": "execution_failed",
+    }
+    not_reached.metrics = {
+        **not_reached.metrics,
+        "score": 0.25,
+        "passed": False,
+        "outcome_correct": False,
+        "execution_correct": False,
+        "result_correct": None,
+        "comparison_state": "not_reached",
+        "delivery_completeness": "unknown",
+        "failure_reasons": [
+            "unexpected_outcome",
+            "execution_state_mismatch",
+            "result_semantics_mismatch",
+        ],
+    }
+    not_reached.metrics.pop("comparison_evidence")
+    run.summary = {**run.summary, "unestablished_count": 1}
+    db_session.commit()
+
+    _login(client, "demo.admin@queryops.local")
+    response = client.get(f"/api/v1/evaluation/overview?run_id={run.id}")
+
+    assert response.status_code == 200
+    metrics = response.json()["data"]["metrics"]
+    assert metrics["completed_count"] == 5
+    assert metrics["failed_count"] == 3
+    assert metrics["unestablished_count"] == 1
+    assert metrics["comparison_state_counts"] == {
+        "correct": 1,
+        "incorrect": 1,
+        "unestablished": 1,
+        "not_reached": 1,
+        "not_applicable": 1,
+    }
+
+
+def test_legitimate_unestablished_producer_states_remain_in_api_denominators(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    evaluation_set = load_it_operations_evaluation_v2_set()
+    cases = tuple(
+        evaluation_set.cases_by_id[case_id]
+        for case_id in ("itops-easy-001", "itops-easy-002")
+    )
+    run = _create_run(db_session, case_ids={case.id for case in cases})
+    persisted = {
+        result.case_name: result
+        for result in db_session.scalars(
+            select(EvaluationResult).where(
+                EvaluationResult.evaluation_run_id == run.id
+            )
+        )
+    }
+    incomplete_rows = ({"id": 1}, {"id": 2}, {"id": 3})
+    exhausted_side = EvaluationEvidenceSide(
+        rows=incomplete_rows,
+        complete=False,
+        exhausted=True,
+        limitation_reason="nonsemantic_bound_reached",
+        delivery_completeness=DeliveryCompleteness.UNKNOWN,
+    )
+    complete_expected = EvaluationEvidenceSide(
+        rows=({"id": 1},),
+        complete=True,
+        limitation_reason=None,
+        delivery_completeness=DeliveryCompleteness.COMPLETE,
+    )
+    complete_actual = EvaluationEvidenceSide(
+        rows=({"device_id": 1},),
+        complete=True,
+        limitation_reason=None,
+        delivery_completeness=DeliveryCompleteness.COMPLETE,
+    )
+    comparisons = (
+        (
+            cases[0],
+            incomplete_rows,
+            incomplete_rows,
+            EvaluationComparisonEvidence(
+                expected=exhausted_side,
+                actual=exhausted_side,
+                actual_delivery_completeness=DeliveryCompleteness.UNKNOWN,
+            ),
+        ),
+        (
+            cases[1],
+            complete_expected.rows,
+            complete_actual.rows,
+            EvaluationComparisonEvidence(
+                expected=complete_expected,
+                actual=complete_actual,
+                actual_delivery_completeness=DeliveryCompleteness.COMPLETE,
+            ),
+        ),
+    )
+    reasons = set()
+    for case, expected_rows, actual_rows, evidence in comparisons:
+        score = score_evaluation_case(
+            case,
+            actual_outcome=ActualOutcome.SUCCESS,
+            execution_succeeded=True,
+            actual_referenced_tables=case.expected_tables,
+            expected_rows=expected_rows,
+            actual_rows=actual_rows,
+            comparison_evidence=evidence,
+            semantic_contract_passed=True,
+        )
+        reasons.add(score.comparison_limitation_reason)
+        result = persisted[case.id]
+        result.status = "failed"
+        result.score = score.score
+        result.metrics = {
+            **result.metrics,
+            **score.as_safe_metrics(),
+            "comparison_evidence": evidence.as_safe_dict(),
+        }
+    run.summary = {
+        **run.summary,
+        "unestablished_count": 2,
+        "comparison_state_counts": {
+            "correct": 0,
+            "incorrect": 0,
+            "unestablished": 2,
+            "not_reached": 0,
+            "not_applicable": 0,
+        },
+    }
+    db_session.commit()
+    _login(client, "demo.admin@queryops.local")
+
+    response = client.get(f"/api/v1/evaluation/overview?run_id={run.id}")
+
+    assert reasons == {
+        "nonsemantic_bound_reached",
+        "comparison_proof_unavailable",
+    }
+    assert response.status_code == 200
+    metrics = response.json()["data"]["metrics"]
+    assert metrics["completed_count"] == 2
+    assert metrics["failed_count"] == 2
+    assert metrics["unestablished_count"] == 2
+    assert metrics["comparison_state_counts"]["unestablished"] == 2
 
 
 def test_scoped_roles_receive_only_visible_recomputed_totals(
@@ -245,10 +475,13 @@ def test_current_plan_pipeline_errors_have_bounded_technical_projections(
         "score": 0.5,
         "passed": False,
         "execution_correct": False,
-        "result_correct": False,
+        "result_correct": None,
+        "comparison_state": "not_reached",
+        "delivery_completeness": "unknown",
         "failure_reasons": ["execution_state_mismatch"],
         "query_execution_attempted": False,
     }
+    result.metrics.pop("comparison_evidence", None)
     db_session.commit()
 
     _login(client, "demo.admin@queryops.local")
@@ -665,6 +898,78 @@ def test_default_and_explicit_selection_reject_stale_dataset_identity(
     assert explicit.status_code == 404
 
 
+@pytest.mark.parametrize("value", [[], {}])
+def test_explicit_run_with_nonstring_digest_is_unavailable_without_crashing(
+    client: TestClient, db_session: Session, value,
+) -> None:
+    run = _create_run(db_session, case_ids={"itops-easy-001"})
+    run.summary = {**run.summary, "dataset_digest": value}
+    db_session.commit()
+    _login(client, "demo.admin@queryops.local")
+    response = client.get(f"/api/v1/evaluation/overview?run_id={run.id}")
+    assert response.status_code == 404
+
+
+def test_explicit_historical_v2_run_remains_viewable_under_legacy_contract(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run = _create_run(db_session, case_ids={"itops-easy-001"})
+    run.summary = {
+        **run.summary,
+        "dataset_digest": (
+            "372a5c203fb86e176f207656846884b8d5df5a1e939501e5ec9a35f65da2fe5e"
+        ),
+    }
+    result = db_session.scalar(
+        select(EvaluationResult).where(EvaluationResult.evaluation_run_id == run.id)
+    )
+    assert result is not None
+    result.metrics = {
+        key: value
+        for key, value in result.metrics.items()
+        if key
+        not in {
+            "comparison_state",
+            "delivery_completeness",
+            "comparison_limitation_reason",
+            "comparison_evidence",
+        }
+    }
+    db_session.commit()
+    _login(client, "demo.admin@queryops.local")
+
+    response = client.get(f"/api/v1/evaluation/queries?run_id={run.id}")
+
+    assert response.status_code == 200
+    item = response.json()["data"]["items"][0]
+    assert item["comparison_state"] == "correct"
+    assert item["delivery_completeness"] == "unknown"
+
+
+def test_current_v2_run_does_not_derive_missing_bounded_evidence_fields(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run = _create_run(db_session, case_ids={"itops-easy-001"})
+    result = db_session.scalar(
+        select(EvaluationResult).where(EvaluationResult.evaluation_run_id == run.id)
+    )
+    assert result is not None
+    result.metrics = {
+        key: value
+        for key, value in result.metrics.items()
+        if key not in {"comparison_state", "delivery_completeness"}
+    }
+    db_session.commit()
+    _login(client, "demo.admin@queryops.local")
+
+    response = client.get(f"/api/v1/evaluation/queries?run_id={run.id}")
+
+    assert response.status_code == 200
+    assert response.json()["data"]["items"] == []
+
+
 def test_explicit_running_run_is_clearly_partial(
     client: TestClient,
     db_session: Session,
@@ -701,8 +1006,16 @@ def test_query_filters_pagination_and_invalid_category_are_strict(
             "eligible_count": 5,
             "completed_count": 5,
             "passed_count": 5,
-            "failed_count": 0,
-            "score": 1.0,
+                "failed_count": 0,
+                "unestablished_count": 0,
+                "comparison_state_counts": {
+                    "correct": 0,
+                    "incorrect": 0,
+                    "unestablished": 0,
+                    "not_reached": 0,
+                    "not_applicable": 5,
+                },
+                "score": 1.0,
         }
     ]
 
@@ -923,6 +1236,42 @@ def test_malformed_and_duplicate_case_rows_are_partial_not_double_counted(
     assert metrics["availability"] == "partially_measured"
 
 
+def test_failed_actual_execution_cannot_round_trip_as_comparison_correct(
+    client: TestClient,
+    db_session: Session,
+) -> None:
+    run = _create_run(db_session, case_ids={"itops-easy-001"})
+    result = db_session.scalar(
+        select(EvaluationResult).where(EvaluationResult.evaluation_run_id == run.id)
+    )
+    assert result is not None
+    result.status = "failed"
+    result.score = 0.5
+    result.actual_output = {
+        **result.actual_output,
+        "outcome": "execution_failed",
+        "execution_succeeded": False,
+        "error_code": "execution_failed",
+    }
+    result.metrics = {
+        **result.metrics,
+        "score": 0.5,
+        "passed": False,
+        "outcome_correct": False,
+        "execution_correct": False,
+        "failure_reasons": ["unexpected_outcome", "execution_state_mismatch"],
+    }
+    db_session.commit()
+
+    _login(client, "demo.admin@queryops.local")
+    metrics = client.get(
+        f"/api/v1/evaluation/overview?run_id={run.id}"
+    ).json()["data"]["metrics"]
+
+    assert metrics["completed_count"] == 0
+    assert metrics["availability"] == "partially_measured"
+
+
 def test_duplicate_security_result_is_partial_not_unavailable_or_double_counted(
     client: TestClient,
     db_session: Session,
@@ -1077,6 +1426,20 @@ def _create_run(
             "evaluation_environment": environment,
             "selected_count": len(selected),
             "completed_count": len(selected),
+            "unestablished_count": 0,
+            "comparison_state_counts": {
+                "correct": sum(
+                    case.expected_outcome is ExpectedOutcome.SUCCESS
+                    for case in selected
+                ),
+                "incorrect": 0,
+                "unestablished": 0,
+                "not_reached": 0,
+                "not_applicable": sum(
+                    case.expected_outcome is not ExpectedOutcome.SUCCESS
+                    for case in selected
+                ),
+            },
             "filters": {
                 "case_id": None,
                 "difficulty": None,
@@ -1125,6 +1488,9 @@ def _create_run(
                     "execution_correct": True,
                     "tables_correct": True,
                     "result_correct": True if success else None,
+                    "comparison_state": "correct" if success else "not_applicable",
+                    "delivery_completeness": "complete" if success else "not_applicable",
+                    "comparison_limitation_reason": None,
                     "expected_row_count": 0,
                     "actual_row_count": 0,
                     "failure_reasons": [],
@@ -1137,6 +1503,11 @@ def _create_run(
                     "extra_row_count": 0,
                     "query_invoked": case.requesting_role.value != "user",
                     "query_execution_attempted": success,
+                    **(
+                        {"comparison_evidence": _evidence_summary()}
+                        if success
+                        else {}
+                    ),
                     **(
                         {
                             "provider_measurement": {
@@ -1186,8 +1557,40 @@ def _passing_planner() -> dict[str, object]:
             "group_by_correct": True,
             "having_correct": True,
             "ordering_correct": True,
+            "answer_bound_correct": True,
             "failure_reasons": [],
         },
+    }
+
+
+def _evidence_summary() -> dict[str, object]:
+    side = {
+        "complete": True,
+        "comparison_eligible": True,
+        "exhausted": True,
+        "limitation_reason": None,
+        "delivery_completeness": "complete",
+        "row_count": 0,
+        "observed_execution_count": 1,
+        "observed_duration_ms": 1.0,
+        "auxiliary_execution_count": 0,
+        "auxiliary_duration_ms": 0.0,
+    }
+    return {
+        "policy_id": "queryops-bounded-result-evidence-v1",
+        "budget": {
+            "row_limit_per_side": 1000,
+            "sql_lookahead_limit": 1001,
+            "statement_timeout_ms": 5000,
+            "total_timeout_ms": 10000,
+            "payload_limit_bytes": 8388608,
+            "max_auxiliary_executions": 2,
+        },
+        "expected": dict(side),
+        "actual": dict(side),
+        "actual_delivery_completeness": "complete",
+        "actual_delivery_row_limit": None,
+        "context_compatible": True,
     }
 
 
