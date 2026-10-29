@@ -1,5 +1,19 @@
 # QueryOps AI — Development History
 
+## 2026-10-29 — W1 + W2 merged; W2a + W3 authorized
+
+PR #63 merged into main at `8cb9c8d55921454337316fb2e1ef9b8be4a6b1a2`.
+Before beginning the next batch, GitHub merge metadata, fetched `origin/main`,
+ancestor checks and the identical reviewed implementation tree were verified.
+This supersedes only the previous handoff's unmerged status; its evidence and
+limitations remain historical records.
+
+The owner authorized W2a + W3 only, on a clean branch
+`feature/m10-evaluation-reads-result-delivery` from that main. The tracked worktree
+was clean; ignored planning files remain untouched. The intended handoff is an
+unmerged PR after PostgreSQL/browser verification and a fresh independent review.
+No W4/W5 or paid provider/evaluation run is authorized by this batch.
+
 ## 2026-10-29 — W1 + W2 implementation and local V3 evidence
 
 Integration branch `feature/m10-access-workflow-integrity` starts at main

@@ -22,51 +22,43 @@ evidence, not release qualification. V1 remains **incomplete and unreleased**.
 
 ## Active Objective and Approved Scope
 
-**W1 + W2 — Access & Workflow Integrity** is the active approved batch,
-explicitly expanded by the owner on 2026-10-29. Implementation is integrated on
-`feature/m10-access-workflow-integrity`, based on validated main `ada818b`.
-W1 `e997840`, W2 `22a2b01` and integration `8ced912` passed combined local V3
-verification and a fresh-context independent review with no blocking findings.
-[PR #63](https://github.com/Daniel23sh/queryops-ai/pull/63) is open for final
-approval; CI on its final documentation revision must pass before merge. These
-changes are **not merged into main** and are not release qualification.
+**W1 + W2 are merged.** [PR #63](https://github.com/Daniel23sh/queryops-ai/pull/63)
+merged at `8cb9c8d55921454337316fb2e1ef9b8be4a6b1a2`. Its reviewed implementation
+and passing deterministic CI are recorded in
+[development history](docs/history/development-history.md); this is not V1 release
+qualification.
 
-W1 — Dashboard Exact-Scope Authorization:
-Remove department-affiliation authorization fallbacks from shared policy and every
-caller; authorize using current effective permissions and exact assigned scopes.
-Keep department affiliation as domain/display metadata and preserve personal
-ownership and explicit global assignment contracts.
+**W2a + W3 — Scoped Evaluation & Reliable Result Delivery** is the active batch,
+explicitly authorized by the owner on 2026-10-29. Work on
+`feature/m10-evaluation-reads-result-delivery`, from verified main `8cb9c8d`.
+Keep the resulting PR unmerged for final approval.
 
-Acceptance: a permission-bearing user whose assignments are revoked loses
-catalog/library/detail/source/create/save/duplicate/update/archive/card access;
-explicit secondary-department/global assignments still work. Current-viewer
-refresh/export never expands authority. API capabilities and browser denial agree.
-Use disposable PostgreSQL regressions, focused frontend/browser checks and an
-independent V3 review.
+W2a: replace the scoped latest-run `DISTINCT` over JSON without expanding access.
+Preserve ordering, candidate limits, dataset identity, visible-result projections
+and hidden-run/count/evidence nondisclosure. Verify empty/visible/inaccessible
+Manager/Analyst states and Admin/global controls on actual PostgreSQL and browser
+APIs, without route mocks or a speculative migration.
 
-W2 — Atomic Role Requests: enforce one pending request per requester and exactly
-one terminal decision. Role, assigned scopes, request status and audit must commit
-or roll back together. Revalidate current state after lock waits; concurrent
-create/create, approve/approve and approve/reject must produce one winner and a
-safe losing response on actual PostgreSQL. Preserve permission/self-approval and
-identity boundaries. Verify frontend conflict behavior and role/scope transitions
-against Dashboard authorization. No generalized workflow engine.
+W3: preserve trusted delivery completeness and bound origin through Query Run,
+Saved Query, Card refresh, visualization and CSV. Distinguish requested top-N from
+safety bounds, and database delivery from visual clipping. Disclose partial or
+unknown delivery without inventing population totals or adding non-data rows to
+CSV. Preserve current-viewer authorization, RLS, SQL validation, safety caps,
+restricted export policy, CSV sanitization and audit; persist no result rows or
+evaluator auxiliary evidence. Exercise above-cap and intact top-N cases on
+disposable PostgreSQL, frontend and real browser flows.
 
-Separately owned implementation areas were integrated and verified together.
-The independent non-author reviewer reran all 49 new PostgreSQL regressions and
-found no blocking security/correctness issue. Detailed evidence and limitations
-are recorded in [development history](docs/history/development-history.md).
+Separate implementation ownership and identifiable commits are required, followed
+by combined V3 verification and a fresh-context independent non-author review.
 
 ## Constraints and Remaining Work
 
 - Follow the [M10 roadmap](docs/development/m10-completion-roadmap.md) for W2a–W9
   dependencies/acceptance; W10 cleanup is optional. W6a diagnosis, W6b targeted
   correction and W6c independent validation are separate packages.
-- W1 scope revocation and W2 role-request races have local PostgreSQL/browser
-  evidence on the feature branch; integration into main remains pending.
-  Scoped Evaluation JSON DISTINCT reads, derived card/CSV delivery disclosure,
-  editor/visualization defects, semantic reliability and complete provider/config
-  identity remain open.
+- Scoped Evaluation JSON DISTINCT reads and derived card/CSV delivery disclosure
+  are this batch's defects, not completed work yet. Dashboard editing/value
+  mapping, semantic reliability and complete provider/config identity remain open.
   The audit's hard-004 case passed its diagnostic canary; blanket historical
   failure claims are not accepted without new evidence.
 - Preserve authorization, RLS, safety caps, historical V1 baselines, semantic
@@ -79,9 +71,8 @@ are recorded in [development history](docs/history/development-history.md).
 
 ## Next Approved Work
 
-Hand off W1 + W2 in PR #63 and keep it **unmerged** for final approval. No further
-implementation is approved in this task. Do not start W2a, W3 or later packages;
-their roadmap order awaits a separate owner instruction after this handoff.
+Complete and hand off W2a + W3 only; keep the PR **unmerged**. Do not start W4,
+W5 or later packages. No paid provider, Canary or Full40 run is authorized.
 
 ## References
 
