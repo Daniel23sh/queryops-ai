@@ -29,7 +29,11 @@ from app.dashboards.editor import (
     safe_visualization_for_card,
     visualization_type_for_card,
 )
-from app.dashboards.policy import dashboard_is_manageable, dashboard_is_visible
+from app.dashboards.policy import (
+    dashboard_is_manageable,
+    dashboard_is_visible,
+    department_scope_is_assigned,
+)
 from app.domains.it_operations.models import Department
 from app.models.product import (
     AppUser,
@@ -1003,14 +1007,17 @@ def _dashboard_create_values(
     elif visibility_scope == VisibilityScope.DEPARTMENT.value:
         if not _has_any_permission(
             access_context,
-            {"can_create_department_dashboard", "can_manage_department_dashboard"},
+            {
+                "can_create_department_dashboard", "can_create_scope_dashboard",
+                "can_manage_department_dashboard", "can_manage_scope_dashboard",
+            },
         ):
             return _forbidden_response()
         if department_id is None:
             department_id = current_user.department_id
         if department_id is None:
             return _invalid_dashboard_request_response()
-        if not _department_allowed_for_user(department_id, current_user, access_context):
+        if not department_scope_is_assigned(department_id, access_context):
             return _forbidden_response()
 
     elif visibility_scope == VisibilityScope.GLOBAL.value:
@@ -1039,21 +1046,6 @@ def _department_uuid_from_payload(payload: dict[str, Any]) -> UUID | None:
     return UUID(str(department_id))
 
 
-def _department_allowed_for_user(
-    department_id: UUID,
-    current_user: AppUser,
-    access_context: UserAccessContext,
-) -> bool:
-    if access_context.has_global_scope:
-        return True
-    if current_user.department_id == department_id:
-        return True
-    return any(
-        scope.type == "department" and scope.department_id == department_id
-        for scope in access_context.scopes
-    )
-
-
 def _has_any_permission(
     access_context: UserAccessContext,
     permission_keys: set[str],
@@ -1074,14 +1066,13 @@ def _can_save_card_to_dashboard(
             return False
         if not _has_any_permission(
             access_context,
-            {"can_create_department_dashboard", "can_manage_department_dashboard"},
+            {
+                "can_create_department_dashboard", "can_create_scope_dashboard",
+                "can_manage_department_dashboard", "can_manage_scope_dashboard",
+            },
         ):
             return False
-        return _department_allowed_for_user(
-            dashboard.department_id,
-            current_user,
-            access_context,
-        )
+        return department_scope_is_assigned(dashboard.department_id, access_context)
 
     if dashboard.visibility_scope == VisibilityScope.GLOBAL.value:
         return access_context.has_global_scope and _has_any_permission(
@@ -1852,8 +1843,9 @@ def _serialize_dashboard_capabilities(
         "can_refresh_cards": access_context.has_permission("can_query_scoped_data"),
         "can_export_cards": access_context.has_permission("can_export_results"),
         "can_view_source": access_context.has_permission("can_view_sql"),
-        "can_create_cards": can_manage
-        and access_context.has_permission("can_create_card"),
+        "can_create_cards": _can_save_card_to_dashboard(
+            dashboard, current_user, access_context,
+        ) and access_context.has_permission("can_create_card"),
     }
 
 

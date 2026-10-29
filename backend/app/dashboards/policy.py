@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from uuid import UUID
+
 from app.auth.access_context import UserAccessContext
 from app.models.product import AppUser, Dashboard, VisibilityScope
 
@@ -16,19 +18,21 @@ def dashboard_is_visible(
         return access_context.has_global_scope
 
     if dashboard.visibility_scope == VisibilityScope.DEPARTMENT.value:
-        if access_context.has_global_scope:
-            return True
-        if dashboard.department_id is None:
-            return False
-        if current_user.department_id == dashboard.department_id:
-            return True
-        return any(
-            scope.type == "department"
-            and scope.department_id == dashboard.department_id
-            for scope in access_context.scopes
-        )
+        return department_scope_is_assigned(dashboard.department_id, access_context)
 
     return False
+
+
+def department_scope_is_assigned(
+    department_id: UUID | None,
+    access_context: UserAccessContext,
+) -> bool:
+    if department_id is None:
+        return False
+    return access_context.has_global_scope or any(
+        scope.type == "department" and scope.department_id == department_id
+        for scope in access_context.scopes
+    )
 
 
 def dashboard_is_manageable(
