@@ -1,5 +1,19 @@
 # QueryOps AI — Development History
 
+## 2026-10-29 — W1 + W2 batch authorized
+
+The owner explicitly expanded the next implementation from W1 to W1 + W2 only:
+Dashboard Exact-Scope Authorization and Atomic Role Requests. A clean integration
+branch `feature/m10-access-workflow-integrity` was created from validated main
+`ada818be002e918ccdbc4339137386a61354329f` after fetching origin; tracked worktree
+was clean. Existing ignored local planning changes were preserved.
+
+Separate implementation owners were assigned distinct Dashboard and Role Request
+files/tests. Combined PostgreSQL/browser verification and a fresh-context final
+security/correctness review are required. The requested handoff is an **unmerged
+PR** for final approval. W2a/W3 and later work remain outside this batch. This entry
+records approval and start, not completed implementation or release qualification.
+
 ## 2026-10-28 — W0 integrated; W1 approved
 
 [PR #61](https://github.com/Daniel23sh/queryops-ai/pull/61) merged the reviewed

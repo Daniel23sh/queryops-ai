@@ -22,7 +22,12 @@ evidence, not release qualification. V1 remains **incomplete and unreleased**.
 
 ## Active Objective and Approved Scope
 
-**W1 — Dashboard Exact-Scope Authorization** is the next approved implementation.
+**W1 + W2 — Access & Workflow Integrity** is the active approved batch,
+explicitly expanded by the owner on 2026-10-29. Implement on
+`feature/m10-access-workflow-integrity` from validated main `ada818b`; open a PR
+for final approval and **do not merge** during this task.
+
+W1 — Dashboard Exact-Scope Authorization:
 Remove department-affiliation authorization fallbacks from shared policy and every
 caller; authorize using current effective permissions and exact assigned scopes.
 Keep department affiliation as domain/display metadata and preserve personal
@@ -33,7 +38,18 @@ catalog/library/detail/source/create/save/duplicate/update/archive/card access;
 explicit secondary-department/global assignments still work. Current-viewer
 refresh/export never expands authority. API capabilities and browser denial agree.
 Use disposable PostgreSQL regressions, focused frontend/browser checks and an
-independent V3 review. No unrelated Role/Evaluation/provider fix is part of W1.
+independent V3 review.
+
+W2 — Atomic Role Requests: enforce one pending request per requester and exactly
+one terminal decision. Role, assigned scopes, request status and audit must commit
+or roll back together. Revalidate current state after lock waits; concurrent
+create/create, approve/approve and approve/reject must produce one winner and a
+safe losing response on actual PostgreSQL. Preserve permission/self-approval and
+identity boundaries. Verify frontend conflict behavior and role/scope transitions
+against Dashboard authorization. No generalized workflow engine.
+
+Use separately owned implementation areas, combined V3 verification and a fresh
+final security/correctness reviewer who did not author the implementation.
 
 ## Constraints and Remaining Work
 
@@ -55,8 +71,8 @@ independent V3 review. No unrelated Role/Evaluation/provider fix is part of W1.
 
 ## Next Approved Work
 
-Implement W1 only. Later packages are the approved direction, not permission to
-batch unrelated fixes into the next PR. Any prerequisite changing this order must
+Complete and hand off W1 + W2 only. Keep the PR unmerged for final approval; do
+not start W2a, W3 or later packages. Later packages remain the roadmap direction. Any prerequisite changing this order must
 be supported by evidence and recorded explicitly.
 
 ## References
