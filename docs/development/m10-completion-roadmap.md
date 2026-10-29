@@ -57,7 +57,7 @@ packages describe direction, not permission to batch unrelated fixes into one PR
 | --- | --- | --- | --- |
 | W0 — Baseline Resolution | Assess all M9 bounded-result changes; retain, correct, split or replace on evidence; preserve recoverable unique work; integrate the selected baseline | Compare current main/merge base and remote state; verify caps, same-snapshot evidence, role/RLS, budgets, correctness/unknown outcomes, persisted compatibility and projections; independent V3 review; record actual commits and integration state | M; choose minimum justified design, not minimum line count |
 | W1 — Dashboard Exact-Scope Authorization | Audit F1: remove affiliation fallback across policy/callers/capabilities | After W0; revoked assignments deny catalog/library/detail/source/create/save/duplicate/update/archive/card paths; explicit second/global assignments still work; PostgreSQL + browser, refresh/export cannot expand authority | M/V3; preserve personal ownership contract |
-| W2 — Atomic Role Requests | Audit F2: one pending request and one terminal winner; consistent role/scope/audit | PostgreSQL forced create/create, approve/approve and approve/reject interleavings; one safe conflict; atomic rollback; current-state revalidation; migration checks if DB invariant added | M/V3; choose lock/CAS/constraint using existing patterns |
+| W2 — Atomic Role Requests | Audit F2: one pending request and one terminal winner; consistent role/scope/audit | PostgreSQL forced create/create, approve/approve and approve/reject interleavings; one safe conflict; atomic rollback; current-state revalidation; frontend reloads conflicts without success; accepted/rejected/failed transitions govern existing Dashboard sessions; migration checks if DB invariant added | M/V3; choose lock/CAS/constraint using existing patterns |
 | W2a — Scoped Evaluation Reads | Audit F13: eliminate DISTINCT over JSON without broadening visibility | Independent of W2; PostgreSQL empty/visible/inaccessible scoped run APIs, Admin control and real browser without route mocks; preserve nondisclosure/order/limit | S/V2; EXISTS or ID-only deduplication, no speculative schema migration |
 | W3 — Reliable Result Delivery | Audit F5/F8: preserve safe answer-bound/delivery provenance through saved card, refresh and CSV; truthful displayed row counts | Explicit top-N versus safety cap; PostgreSQL population above cap; warnings survive save/refresh/download; no raw-row persistence or cap removal; API/browser/CSV tests | M/V3; choose bounded export disclosure explicitly |
 | W4 — Dashboard Editing and Values | Audit F6/F7: preserve dirty draft during mutations; correct KPI/chart numeric mapping | Composition tests for move/resize + rename/add/remove/visualization and conflict; total/max aliases and value-target pairs display actual values; desktop/mobile E2E | S–M/V2; guard or narrow reconciliation, no new state framework |
@@ -74,6 +74,10 @@ W1 is the first implementation priority after W0. W2/W2a, W3/W4 and W5 can then
 be sequenced with minimal overlap. W6a can diagnose while other fixes proceed,
 but qualifying evidence must wait for W5 and independent W6c validation. W9 does
 not absorb unbounded redesign; unresolved blockers return to their package.
+
+The owner approved W1 + W2 as one integration batch on 2026-10-29. This changes
+batching, not package boundaries or release criteria. Their handoff is an
+unmerged PR; see PROJECT_PLAN.md for actual status and further authorization.
 
 ## Definition of Done for local synthetic IT Operations V1
 

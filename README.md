@@ -54,6 +54,7 @@ The backend-rendered SQL remains untrusted and must pass every downstream contro
 Authorization is enforced by the backend and database; frontend capability checks are usability controls, not the security boundary.
 
 - `UserAccessContext` combines effective permissions with assigned department or global scopes.
+- Dashboard department affiliation is metadata, not a grant: departmental access requires an explicit matching or global assignment. Personal ownership remains separate.
 - PostgreSQL RLS restricts operational reads and writes using transaction-local viewer context.
 - The LLM sees an allowlisted projection of authorized schema and business semantics—not database rows, user identities, scope keys, credentials, evaluation baselines, or action targets.
 - Backend-rendered SQL is accepted only after the backend enforces read-only syntax, allowed resources, limits, semantic-plan consistency, and SQL semantic conformance.
@@ -223,7 +224,7 @@ npx playwright install chromium
 npx playwright test --grep-invert @m8-primary
 ```
 
-Some backend security and RLS tests require PostgreSQL and intentionally skip without a disposable test database. The state-changing `@m8-primary` browser flow also requires its isolated disposable database preparation. GitHub Actions runs the authoritative deterministic gates across backend tests, an isolated PostgreSQL security suite, frontend checks, general browser flows, and the state-changing action workflow.
+Some backend security and RLS tests require PostgreSQL and intentionally skip without a disposable test database. The state-changing `@m8-primary` browser flows also require isolated disposable database preparation. GitHub Actions runs the authoritative deterministic gates across backend tests, an isolated PostgreSQL security suite, frontend checks, general browser flows, and state-changing action/access workflows. See the [validation commands and fixture order](docs/development/validation-model.md#browser-and-cross-layer-flows).
 
 ## Project Status
 
@@ -231,7 +232,7 @@ The core Query Engine, Ask Data workspace, dashboard and export flows, scope-awa
 
 The active milestone is **M10 — Product Reliability & V1 Completion**, targeting a complete local IT Operations V1 with synthetic data. Demo authentication is the only usable auth mode; actions are synchronous, notifications database-only, and the action catalog has two workflows. Shared/production deployment and major new capabilities are separate future scope.
 
-The [October audit](docs/audits/2026-10-26-project-audit-he.md) verified substantial functionality while reproducing scope-revocation, concurrent role-request, scoped Evaluation read, result-delivery and UI defects. Its single live canary passed 9/10 and is diagnostic only. Automated readiness and full manual release QA remain incomplete. The architecture is being preserved; remaining work follows the [M10 roadmap](docs/development/m10-completion-roadmap.md), with current approval/status in [PROJECT_PLAN.md](PROJECT_PLAN.md). W0 integrated the reviewed bounded-result baseline through [PR #61](https://github.com/Daniel23sh/queryops-ai/pull/61). W1 dashboard exact-scope authorization is the next approved implementation. The repository is not release-ready.
+The [October audit](docs/audits/2026-10-26-project-audit-he.md) verified substantial functionality while reproducing scope-revocation, concurrent role-request, scoped Evaluation read, result-delivery and UI defects. Its single live canary passed 9/10 and is diagnostic only. Automated readiness and full manual release QA remain incomplete. The architecture is being preserved; remaining work follows the [M10 roadmap](docs/development/m10-completion-roadmap.md), with current approval, branch/merge status and next work only in [PROJECT_PLAN.md](PROJECT_PLAN.md). W0 integrated the reviewed bounded-result baseline through [PR #61](https://github.com/Daniel23sh/queryops-ai/pull/61). The repository is not release-ready.
 
 ## Maintainer
 

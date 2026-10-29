@@ -1,5 +1,120 @@
 # QueryOps AI — Development History
 
+## 2026-10-29 — W1 + W2 implementation and local V3 evidence
+
+Integration branch `feature/m10-access-workflow-integrity` starts at main
+`ada818be002e918ccdbc4339137386a61354329f`. Separate implementation agents owned
+Dashboard policy/routes/tests and Role Request routes/tests; the coordinator
+reviewed and committed each contribution, then added frontend conflict recovery
+and combined PostgreSQL/browser regressions. Commits: W1 `e997840`, W2 `22a2b01`,
+integration `8ced912`. [PR #63](https://github.com/Daniel23sh/queryops-ai/pull/63)
+was opened against main and intentionally remains unmerged. Main is unchanged;
+this is a handoff, not V1 completion. Current approval status belongs in
+PROJECT_PLAN.md.
+
+### Decisions and behavior
+
+- **W1:** one `department_scope_is_assigned` policy now governs Dashboard
+  visibility and create/save authorization. `AppUser.department_id` remains
+  display/default metadata, never a grant. Exact secondary department and explicit
+  global assignments work; missing department metadata fails closed. Personal
+  ownership remains separate. Generic and compatibility Dashboard permission keys
+  use the same assigned-scope checks. Card-create capabilities match actual save
+  policy, including create-only versus manage grants.
+- Catalog/library/detail/source, duplicate/update/archive/card/layout operations,
+  Home, refresh and CSV reuse these shared policies. Current-viewer resource
+  authorization, sanitized SQL, non-owner query runtime, RLS and CSV safety remain
+  intact; no owner-authority shortcut or result snapshot store was introduced.
+- **W2:** every supported create/approve/reject writer locks the requester's
+  stable `AppUser` row with PostgreSQL `NO KEY UPDATE`; decisions then lock the
+  request row. This serializes create/create even before a request exists, with
+  consistent requester-before-request ordering. The weaker parent lock avoids
+  cross-approver audit foreign-key `KEY SHARE` deadlocks.
+- After waiting, ORM state is refreshed and actor active/effective permission,
+  requester active/upward transition, pending status and explicit scope snapshot
+  are revalidated. Scope ID/type/key/department must still agree. Role, assignment,
+  request status and audit share one transaction. Duplicate/current-state losers
+  return safe 409; persistence failures roll back and return safe 503, without raw
+  driver details. Implicit Admin approval records the resolved global scope
+  consistently in requested/assigned/audit data.
+- A database uniqueness migration was considered unnecessary for the existing
+  closed set of API writers: the requester lock protects the no-row case and all
+  decision paths. Direct SQL/import writers must join this locking contract or
+  introduce a reviewed database invariant. Historical duplicate pending records
+  are preserved and fail closed on approval/rejection; this patch does not invent
+  decisions or silently clean user data. Any existing duplicates need explicit
+  operator remediation before those requests can proceed.
+- Legacy requests with all explicit scope snapshot fields absent retain their
+  existing current-default resolution; modern explicit snapshots fail closed on
+  changes. This is compatibility behavior, not an authorization grant from
+  affiliation for Dashboard access. No role workflow engine or Action Engine
+  reuse was added.
+- Frontend create/decision 409 responses reload current requests and never claim
+  success. Failed recovery clears stale controls and asks for a page refresh.
+
+### Reproducible validation
+
+PostgreSQL 16.14 ran in newly created disposable containers, separate for each
+implementation owner, combined regression verification and browser execution.
+Normal application databases and ignored private planning files were untouched.
+
+From `backend/`, with guarded `POSTGRES_TEST_DATABASE_URL` and
+`POSTGRES_TEST_DATABASE_DISPOSABLE=1` pointing to the disposable cluster:
+
+```bash
+.venv/bin/pytest tests/test_action_security_release.py -q -rs
+.venv/bin/pytest --ignore=tests/test_action_security_release.py -q -rs
+.venv/bin/pytest tests/test_dashboard_scope_integrity_postgres.py tests/test_role_requests_postgres.py tests/test_access_workflow_integrity_postgres.py -q -rs
+```
+
+At implementation head `8ced912`, the first two selections passed **20 + 1,827
+tests, zero skips/errors/failures**, including the three new modules: W1 22,
+W2 23 and combined interaction 4. Forced contention waits were observed through
+`pg_stat_activity`, not simulated SQLite locks: create/create, approve/approve,
+approve/reject and reject/approve produce one winner. Other cases cover state
+loaded before waiting, permission revocation, malformed/deleted/changed scope,
+historical duplicates, independent cross-approvals and rollback/retry. Combined
+tests preserve requester cookies across approval, rejection, stale-scope failure,
+commit failure and subsequent scope revocation; rejected mutations leave no
+grant or contradictory audit. A controlled flush-then-failure test rolls back
+actual PostgreSQL writes before checking Dashboard denial.
+
+The new W1 revocation regression failed against process-local original policy;
+four new frontend conflict tests failed before conflict recovery was implemented.
+No tracked implementation was reverted for those probes. Existing sequential
+Role Request tests passed 39/39 as compatibility evidence, not concurrency proof.
+
+Frontend: **288 tests in 48 files**, ESLint, both TypeScript checks and production
+build passed. Chromium: **12 general + 2 existing governed-action + 2 new
+access/workflow flows** passed with the actual mock-provider backend and disposable
+PostgreSQL. New browser cases cover revocation/nondisclosure, explicit secondary
+and global assignment, two admin sessions with a stale losing decision, and
+original-requester session access after approval. Backend Ruff, Pyright (zero
+errors/warnings), compileall and Alembic upgrade/current/check passed at head
+`0010_disable_inactive_user`, with no new operations detected. No schema migration
+was needed. The existing large-chart-chunk build warning remains non-blocking.
+
+CI reuses the guarded M8 disposable lane and runs existing actions before the
+new access spec; the new fixture resets only guarded synthetic data. The ordinary
+browser lane still excludes all `@m8-primary` cases. Local logs/JUnit and failure
+artifacts are under `/tmp/queryops-access`, with owner logs under
+`/tmp/queryops-w1-*` and `/tmp/queryops-w2-*`; they are temporary evidence, not
+committed raw artifacts. CI will preserve evidence for the exact PR revision.
+
+Fresh-context final independent review examined the complete `ada818b..8ced912`
+diff and connected callers, authentication, persistence models, failure paths and
+tests. The reviewer authored none of the implementation and independently reran
+all **49 new PostgreSQL regressions, zero skips**, on the idle disposable W2
+cluster. No blocking security/correctness finding or required correction remained.
+The reviewer explicitly accepted the current writer-lock invariant and legacy
+scope compatibility with the limitations above; those are not database-wide
+uniqueness or frozen-legacy-intent claims. Review log:
+`/tmp/queryops-access/reviewer-focused.log`. Documentation-only reconciliation
+follows the reviewed runtime head; final PR CI remains required before merge.
+No paid provider request, qualifying evaluation, release threshold/baseline change,
+unrelated M10 fix or production deployment occurred. W2a/W3 and later packages,
+full manual release QA and V1 qualification remain outside this handoff.
+
 ## 2026-10-29 — W1 + W2 batch authorized
 
 The owner explicitly expanded the next implementation from W1 to W1 + W2 only:

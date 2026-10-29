@@ -23,9 +23,13 @@ evidence, not release qualification. V1 remains **incomplete and unreleased**.
 ## Active Objective and Approved Scope
 
 **W1 + W2 — Access & Workflow Integrity** is the active approved batch,
-explicitly expanded by the owner on 2026-10-29. Implement on
-`feature/m10-access-workflow-integrity` from validated main `ada818b`; open a PR
-for final approval and **do not merge** during this task.
+explicitly expanded by the owner on 2026-10-29. Implementation is integrated on
+`feature/m10-access-workflow-integrity`, based on validated main `ada818b`.
+W1 `e997840`, W2 `22a2b01` and integration `8ced912` passed combined local V3
+verification and a fresh-context independent review with no blocking findings.
+[PR #63](https://github.com/Daniel23sh/queryops-ai/pull/63) is open for final
+approval; CI on its final documentation revision must pass before merge. These
+changes are **not merged into main** and are not release qualification.
 
 W1 — Dashboard Exact-Scope Authorization:
 Remove department-affiliation authorization fallbacks from shared policy and every
@@ -48,17 +52,21 @@ safe losing response on actual PostgreSQL. Preserve permission/self-approval and
 identity boundaries. Verify frontend conflict behavior and role/scope transitions
 against Dashboard authorization. No generalized workflow engine.
 
-Use separately owned implementation areas, combined V3 verification and a fresh
-final security/correctness reviewer who did not author the implementation.
+Separately owned implementation areas were integrated and verified together.
+The independent non-author reviewer reran all 49 new PostgreSQL regressions and
+found no blocking security/correctness issue. Detailed evidence and limitations
+are recorded in [development history](docs/history/development-history.md).
 
 ## Constraints and Remaining Work
 
-- Follow the [M10 roadmap](docs/development/m10-completion-roadmap.md) for W2–W9
+- Follow the [M10 roadmap](docs/development/m10-completion-roadmap.md) for W2a–W9
   dependencies/acceptance; W10 cleanup is optional. W6a diagnosis, W6b targeted
   correction and W6c independent validation are separate packages.
-- Scope revocation, role-request races, scoped Evaluation JSON DISTINCT reads,
-  derived card/CSV delivery disclosure, editor/visualization defects, semantic
-  reliability and complete provider/config identity remain open until verified.
+- W1 scope revocation and W2 role-request races have local PostgreSQL/browser
+  evidence on the feature branch; integration into main remains pending.
+  Scoped Evaluation JSON DISTINCT reads, derived card/CSV delivery disclosure,
+  editor/visualization defects, semantic reliability and complete provider/config
+  identity remain open.
   The audit's hard-004 case passed its diagnostic canary; blanket historical
   failure claims are not accepted without new evidence.
 - Preserve authorization, RLS, safety caps, historical V1 baselines, semantic
@@ -71,9 +79,9 @@ final security/correctness reviewer who did not author the implementation.
 
 ## Next Approved Work
 
-Complete and hand off W1 + W2 only. Keep the PR unmerged for final approval; do
-not start W2a, W3 or later packages. Later packages remain the roadmap direction. Any prerequisite changing this order must
-be supported by evidence and recorded explicitly.
+Hand off W1 + W2 in PR #63 and keep it **unmerged** for final approval. No further
+implementation is approved in this task. Do not start W2a, W3 or later packages;
+their roadmap order awaits a separate owner instruction after this handoff.
 
 ## References
 
