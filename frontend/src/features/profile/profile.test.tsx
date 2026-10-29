@@ -8,6 +8,7 @@ import {
   demoAnalyst,
   demoManager,
   demoUser,
+  errorResponse,
   installApiMock,
   renderAppAt,
   resetAppTestState,
@@ -121,6 +122,21 @@ describe("Profile", () => {
     );
   });
 
+  it("reloads a concurrently created pending request without claiming submission", async () => {
+    setCsrfCookie("csrf-from-cookie");
+    installApiMock(authenticatedRoutes(demoUser, {
+      "GET /api/v1/role-requests/my": [successResponse([]), successResponse([backendRoleRequest()])],
+      "POST /api/v1/role-requests": errorResponse("PENDING_ROLE_REQUEST_EXISTS", 409, "internal detail")
+    }));
+    renderAppAt("/profile");
+    fireEvent.change(await screen.findByLabelText("Reason"), { target: { value: "Need reporting" } });
+    fireEvent.click(screen.getByRole("button", { name: "Submit request" }));
+    expect(await screen.findByText("Pending")).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("The request state changed. The latest requests are shown below.");
+    expect(screen.queryByText("Role upgrade request submitted.")).not.toBeInTheDocument();
+    expect(screen.queryByText("internal detail")).not.toBeInTheDocument();
+  });
+
   it("logs out from Profile", async () => {
     setCsrfCookie("csrf-from-cookie");
     const fetchMock = installApiMock(
@@ -148,6 +164,37 @@ describe("Profile", () => {
 });
 
 describe("Admin Role Requests", () => {
+  it.each(["approve", "reject"])("reloads the authoritative state after a losing %s", async (action) => {
+    setCsrfCookie("csrf-from-cookie");
+    const finalStatus = action === "approve" ? "rejected" : "approved";
+    installApiMock(authenticatedRoutes(demoAdmin, {
+      "GET /api/v1/admin/role-requests": [successResponse([backendRoleRequest()]), successResponse([backendRoleRequest({ status: finalStatus })])],
+      [`POST /api/v1/admin/role-requests/role-request-id/${action}`]: errorResponse("ROLE_REQUEST_ALREADY_PROCESSED", 409, "internal detail")
+    }));
+    renderAppAt("/admin/role-requests");
+    fireEvent.change(await screen.findByLabelText("Decision reason for Demo User"), { target: { value: "Review" } });
+    fireEvent.click(screen.getByRole("button", { name: `${action === "approve" ? "Approve" : "Reject"} role request from Demo User` }));
+    expect(await screen.findByText(`This role request has already been ${finalStatus}.`)).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("The request state changed. The latest requests are shown below.");
+    expect(screen.queryByText(`Role request ${action === "approve" ? "approved" : "rejected"}.`)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Approve role request from Demo User" })).not.toBeInTheDocument();
+    expect(screen.queryByText("internal detail")).not.toBeInTheDocument();
+  });
+
+  it("removes stale decision controls if conflict recovery cannot reload", async () => {
+    setCsrfCookie("csrf-from-cookie");
+    installApiMock(authenticatedRoutes(demoAdmin, {
+      "GET /api/v1/admin/role-requests": [successResponse([backendRoleRequest()]), errorResponse("FORBIDDEN", 403, "internal detail")],
+      "POST /api/v1/admin/role-requests/role-request-id/approve": errorResponse("ROLE_REQUEST_ALREADY_PROCESSED", 409)
+    }));
+    renderAppAt("/admin/role-requests");
+    fireEvent.change(await screen.findByLabelText("Decision reason for Demo User"), { target: { value: "Review" } });
+    fireEvent.click(screen.getByRole("button", { name: "Approve role request from Demo User" }));
+    expect(await screen.findByText("Role requests could not be reloaded. Refresh the page before trying again.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Approve role request from Demo User" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Role request approved.")).not.toBeInTheDocument();
+  });
+
   it("loads and approves an existing request on its own route", async () => {
     setCsrfCookie("csrf-from-cookie");
     const pendingRequest = backendRoleRequest();

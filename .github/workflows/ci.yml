@@ -343,12 +343,14 @@ jobs:
             sleep 2
           done
 
-      - name: Run governed Manager to Analyst workflow
+      - name: Run governed action and access-workflow integrity flows
         working-directory: frontend
         env:
           PLAYWRIGHT_SKIP_WEBSERVER: "1"
           M8_E2E_PYTHON: python
-        run: npx playwright test e2e/m8-workflow.spec.ts --project=chromium
+        run: |
+          npx playwright test e2e/m8-workflow.spec.ts --project=chromium
+          npx playwright test e2e/access-workflow.spec.ts --project=chromium
 
       - name: Upload M8 Playwright failure artifacts
         if: failure()

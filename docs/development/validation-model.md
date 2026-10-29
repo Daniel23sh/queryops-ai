@@ -111,7 +111,7 @@ npm run test:e2e -- e2e/<flow>.spec.ts --project=chromium
 npx playwright test --grep-invert @m8-primary
 ```
 
-General flows require a migrated, seeded PostgreSQL-backed app. The `@m8-primary` flow is intentionally excluded because it mutates state and requires its own disposable database. Its existing preparation and execution commands are:
+General flows require a migrated, seeded PostgreSQL-backed app. The `@m8-primary` flows are intentionally excluded because they mutate state and require their own disposable database. Run the action flow before the access/workflow flow: the latter resets synthetic fixtures between cases. Preparation and execution are:
 
 ```bash
 cd backend
@@ -119,9 +119,10 @@ cd backend
 
 cd ../frontend
 npx playwright test e2e/m8-workflow.spec.ts --project=chromium
+npx playwright test e2e/access-workflow.spec.ts --project=chromium
 ```
 
-These commands require the guarded `M8_E2E_DATABASE_URL` and `M8_E2E_DATABASE_DISPOSABLE=1` environment plus separately running backend/frontend services. Follow the `M8 Primary E2E` CI job rather than improvising against a normal database.
+These commands require the guarded `M8_E2E_DATABASE_URL` and `M8_E2E_DATABASE_DISPOSABLE=1` environment plus separately running backend/frontend services. The access spec invokes `scripts.prepare_access_e2e` through `M8_E2E_PYTHON` (default: local backend `.venv/bin/python`; CI: `python`). It exercises real scope revocation, explicit secondary/global assignments and competing admin decisions without API mocks. Follow the `M8 Primary E2E` CI job rather than improvising against a normal database.
 
 ### Readiness and release
 

@@ -5,12 +5,17 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.api.responses import error_response, success_response
 from app.auth.access_context import build_user_access_context
-from app.auth.permissions import require_authenticated_user, require_permission
+from app.auth.permissions import (
+    require_authenticated_user,
+    require_permission,
+    resolve_effective_permission_keys,
+)
 from app.auth.session import csrf_is_valid, session_from_request
 from app.db.session import get_db
 from app.models.product import (
@@ -21,6 +26,7 @@ from app.models.product import (
     Role,
     RoleUpgradeRequest,
     UserAccessScope,
+    UserStatus,
 )
 
 
@@ -75,6 +81,12 @@ def create_role_request(
             code="ROLE_REQUEST_REASON_REQUIRED",
             message="A role upgrade request reason is required.",
             status_code=400,
+        )
+
+    current_user = _lock_role_requester(db, current_user.id)
+    if current_user is None or current_user.status != UserStatus.ACTIVE.value:
+        return error_response(
+            code="UNAUTHORIZED", message="Authentication is required.", status_code=401,
         )
 
     requested_role = db.scalar(select(Role).where(Role.name == requested_role_name))
@@ -137,7 +149,9 @@ def create_role_request(
         reason=reason,
     )
     db.add(role_request)
-    db.commit()
+    persistence_error = _commit_role_request(db)
+    if persistence_error is not None:
+        return persistence_error
     db.refresh(role_request)
 
     return success_response(_serialize_role_request(role_request), status_code=201)
@@ -192,7 +206,10 @@ def approve_role_request(
     if not isinstance(role_request, RoleUpgradeRequest):
         return role_request
 
-    processing_error = _role_request_processing_error(role_request, admin_user)
+    actor_error = _decision_actor_error(db, admin_user)
+    if actor_error is not None:
+        return actor_error
+    processing_error = _role_request_processing_error(db, role_request, admin_user)
     if processing_error is not None:
         return processing_error
 
@@ -204,16 +221,39 @@ def approve_role_request(
     old_role = requester.role.name if requester.role else None
     new_role = role_request.requested_role.name
     decided_at = datetime.now(UTC)
-    requested_scope = role_request.requested_scope or _default_scope_for_user(
-        requester,
-        db,
-    )
     assigned_scope = _scope_for_approval(
         role_request=role_request,
         requester=requester,
         requested_role_name=new_role,
         db=db,
     )
+    current_role = db.get(Role, requester.role_id) if requester.role_id else None
+    if (
+        requester.status != UserStatus.ACTIVE.value
+        or current_role is None
+        or new_role not in ROLE_UPGRADE_TARGETS
+        or not _is_upward_role_request(current_role.name, new_role)
+        or assigned_scope is None
+        or _requested_scope_validation_error(assigned_scope, new_role) is not None
+        or (
+            role_request.requested_scope_id is None
+            and (role_request.requested_scope_type is not None or role_request.requested_scope_key is not None)
+        )
+        or (
+            role_request.requested_scope_id is not None
+            and (
+                role_request.requested_scope_type != assigned_scope.scope_type
+                or role_request.requested_scope_key != assigned_scope.scope_key
+                or role_request.department_id != assigned_scope.department_id
+            )
+        )
+    ):
+        return error_response(
+            code="ROLE_REQUEST_STATE_CHANGED",
+            message="This role request is no longer valid for the current user or scope.",
+            status_code=409,
+        )
+    requested_scope = assigned_scope
     assigned_access_level = _access_level_for_role(new_role)
     if assigned_scope is not None:
         _assign_user_scope(
@@ -227,6 +267,7 @@ def approve_role_request(
         role_request.requested_scope_id = requested_scope.id
         role_request.requested_scope_type = requested_scope.scope_type
         role_request.requested_scope_key = requested_scope.scope_key
+        role_request.department_id = requested_scope.department_id
 
     requester.role_id = role_request.requested_role_id
     role_request.status = RequestStatus.APPROVED.value
@@ -258,7 +299,9 @@ def approve_role_request(
             },
         )
     )
-    db.commit()
+    persistence_error = _commit_role_request(db)
+    if persistence_error is not None:
+        return persistence_error
     db.refresh(role_request)
 
     return success_response(_serialize_role_request(role_request))
@@ -280,7 +323,10 @@ def reject_role_request(
     if not isinstance(role_request, RoleUpgradeRequest):
         return role_request
 
-    processing_error = _role_request_processing_error(role_request, admin_user)
+    actor_error = _decision_actor_error(db, admin_user)
+    if actor_error is not None:
+        return actor_error
+    processing_error = _role_request_processing_error(db, role_request, admin_user)
     if processing_error is not None:
         return processing_error
 
@@ -313,7 +359,9 @@ def reject_role_request(
             },
         )
     )
-    db.commit()
+    persistence_error = _commit_role_request(db)
+    if persistence_error is not None:
+        return persistence_error
     db.refresh(role_request)
 
     return success_response(_serialize_role_request(role_request))
@@ -359,8 +407,26 @@ def _csrf_error_response(request: Request):
     )
 
 
+def _lock_role_requester(db: Session, user_id: UUID) -> AppUser | None:
+    # NO KEY UPDATE serializes the requester without blocking audit foreign-key checks.
+    return db.scalar(
+        select(AppUser).where(AppUser.id == user_id).with_for_update(key_share=True)
+        .execution_options(populate_existing=True)
+    )
+
+
 def _get_role_request_or_error(db: Session, role_request_id: UUID):
-    role_request = db.get(RoleUpgradeRequest, role_request_id)
+    requester_id = db.scalar(
+        select(RoleUpgradeRequest.requester_user_id).where(RoleUpgradeRequest.id == role_request_id)
+    )
+    if requester_id is not None:
+        _lock_role_requester(db, requester_id)
+    role_request = db.scalar(
+        select(RoleUpgradeRequest).where(
+            RoleUpgradeRequest.id == role_request_id,
+            RoleUpgradeRequest.requester_user_id == requester_id,
+        ).with_for_update().execution_options(populate_existing=True)
+    )
     if role_request is None:
         return error_response(
             code="ROLE_REQUEST_NOT_FOUND",
@@ -371,7 +437,34 @@ def _get_role_request_or_error(db: Session, role_request_id: UUID):
     return role_request
 
 
+def _decision_actor_error(db: Session, admin_user: AppUser):
+    actor = db.get(AppUser, admin_user.id, populate_existing=True)
+    if (
+        actor is None
+        or actor.status != UserStatus.ACTIVE.value
+        or "can_approve_role_requests" not in resolve_effective_permission_keys(actor, db)
+    ):
+        return error_response(
+            code="FORBIDDEN", message="You are not authorized to perform this action.",
+            status_code=403,
+        )
+    return None
+
+
+def _commit_role_request(db: Session):
+    try:
+        db.commit()
+    except SQLAlchemyError:
+        db.rollback()
+        return error_response(
+            code="ROLE_REQUEST_PERSISTENCE_FAILED",
+            message="The role request could not be completed safely.", status_code=503,
+        )
+    return None
+
+
 def _role_request_processing_error(
+    db: Session,
     role_request: RoleUpgradeRequest,
     admin_user: AppUser,
 ):
@@ -386,6 +479,17 @@ def _role_request_processing_error(
         return error_response(
             code="ROLE_REQUEST_ALREADY_PROCESSED",
             message="This role upgrade request has already been processed.",
+            status_code=409,
+        )
+
+    pending_count = db.scalar(select(func.count()).select_from(RoleUpgradeRequest).where(
+        RoleUpgradeRequest.requester_user_id == role_request.requester_user_id,
+        RoleUpgradeRequest.status == RequestStatus.PENDING.value,
+    ))
+    if pending_count != 1:
+        return error_response(
+            code="ROLE_REQUEST_STATE_CHANGED",
+            message="This role request cannot be processed in its current state.",
             status_code=409,
         )
 
@@ -463,7 +567,10 @@ def _requested_scope_validation_error(
     if requested_role_name == "admin":
         if scope is None:
             return None
-        if scope.scope_type == "global" and scope.scope_key == "global":
+        if (
+            scope.scope_type == "global" and scope.scope_key == "global"
+            and scope.department_id is None
+        ):
             return None
         return error_response(
             code="INVALID_REQUESTED_SCOPE",
@@ -471,7 +578,10 @@ def _requested_scope_validation_error(
             status_code=400,
         )
 
-    if scope is not None and scope.scope_type == "department":
+    if (
+        scope is not None and scope.scope_type == "department"
+        and scope.department_id is not None and bool(scope.scope_key.strip())
+    ):
         return None
 
     return error_response(
