@@ -85,9 +85,18 @@ export function RoleRequestsPage({ csrfToken }: { csrfToken: string | null }) {
         action === "approve" ? "Role request approved." : "Role request rejected."
       );
     } catch (error) {
-      setDecisionError(
-        formatRoleRequestError(error, `Role request ${action} failed.`)
-      );
+      if (error instanceof ApiError && error.status === 409) {
+        setDecisionError("The request state changed. The latest requests are shown below.");
+        setLoadError(null);
+        try {
+          setRoleRequests(await getAdminRoleRequests());
+        } catch {
+          setRoleRequests([]);
+          setLoadError("Role requests could not be reloaded. Refresh the page before trying again.");
+        }
+      } else {
+        setDecisionError(formatRoleRequestError(error, `Role request ${action} failed.`));
+      }
     } finally {
       setProcessingDecision(null);
     }

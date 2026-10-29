@@ -106,7 +106,18 @@ export function RoleUpgradeSection({
       setReason("");
       setSuccessMessage("Role upgrade request submitted.");
     } catch (error) {
-      setSubmitError(formatRoleRequestError(error, "Role upgrade request failed."));
+      if (error instanceof ApiError && error.status === 409) {
+        setSubmitError("The request state changed. The latest requests are shown below.");
+        setLoadError(null);
+        try {
+          setRoleRequests(await getMyRoleRequests());
+        } catch {
+          setRoleRequests([]);
+          setLoadError("Role requests could not be reloaded. Refresh the page before trying again.");
+        }
+      } else {
+        setSubmitError(formatRoleRequestError(error, "Role upgrade request failed."));
+      }
     } finally {
       setIsSubmitting(false);
     }
