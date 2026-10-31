@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Area,
   AreaChart,
@@ -17,6 +18,7 @@ import {
 } from "recharts";
 
 import type { QueryResultRow, QueryRowValue } from "../../ask-data/types";
+import { resultDeliveryWarning } from "../../../lib/resultDelivery";
 import type { DashboardCardType, VisualizationConfig, VisualizationMapping } from "../types";
 import { formatVisualizationValue, inferVisualization, mappingForType, numericValue } from ".";
 import type { VisualizationResultData } from "./types";
@@ -48,31 +50,36 @@ export function DashboardVisualization({
   const mapping = validMapping(config.mapping, recommendation.renderType, result.columns)
     ? config.mapping
     : mappingForType(recommendation.renderType, recommendation.profiles);
-  const rows = result.rows.slice(0, MAX_CHART_ROWS);
-  const truncated = result.truncated || result.rows.length > rows.length;
+  const type = recommendation.renderType;
+  const visibleLimit = type === "table" ? result.rows.length
+    : type === "status_list" ? 12
+    : type === "kpi" || type === "semicircle_gauge" ? 1
+    : MAX_CHART_ROWS;
+  const rows = result.rows.slice(0, visibleLimit);
+  const visualSubset = result.rows.length > rows.length;
+  const deliveryWarning = resultDeliveryWarning(result.delivery_completeness, result.truncated);
   const primaryMeasure = mapping.value_columns[0];
-  const summary = `${title}: ${visualizationLabel(recommendation.renderType)} visualization with ${result.row_count} ${result.row_count === 1 ? "row" : "rows"}${truncated ? "; visual data is truncated" : ""}.${primaryMeasure ? ` Primary measure: ${humanize(primaryMeasure)}.` : ""}`;
-
-  if (result.rows.length === 0 || result.columns.length === 0) {
-    return <VisualizationEmptyState />;
-  }
+  const summary = `${title}: ${visualizationLabel(type)} visualization with ${result.row_count} ${result.row_count === 1 ? "row" : "rows"} returned${visualSubset ? "; only a visual subset is shown" : ""}.${primaryMeasure ? ` Primary measure: ${humanize(primaryMeasure)}.` : ""}`;
 
   return (
     <div className="dashboard-visualization" data-visualization={recommendation.renderType}>
       <p className="qops-sr-only">{summary}</p>
+      {deliveryWarning ? (
+        <p className="dashboard-visualization__warning" aria-live="polite">{deliveryWarning}</p>
+      ) : null}
       {recommendation.warning ? (
         <p className="dashboard-visualization__warning" role="status">
           {recommendation.warning}
         </p>
       ) : null}
-      <VisualizationByType
+      {result.rows.length === 0 || result.columns.length === 0 ? <VisualizationEmptyState /> : <VisualizationByType
         mapping={mapping}
         rows={rows}
         title={title}
         type={recommendation.renderType}
-      />
-      {truncated ? (
-        <p className="dashboard-visualization__truncated">Showing a representative subset of the returned data.</p>
+      />}
+      {visualSubset ? (
+        <p className="dashboard-visualization__truncated">Showing the first {rows.length} of {result.rows.length} returned rows in this visualization.</p>
       ) : null}
     </div>
   );
@@ -123,17 +130,33 @@ export function KpiVisualization({ mapping, rows }: VizProps) {
 }
 
 export function TableVisualization({ rows }: { rows: QueryResultRow[] }) {
+  const [expanded, setExpanded] = useState(false);
   const columns = rows.length > 0 ? Object.keys(rows[0]) : [];
+  const visibleRows = expanded ? rows : rows.slice(0, 10);
   return (
+    <div className="dashboard-viz-table-view">
+      <div className="dashboard-viz-table-controls">
+        <p className="dashboard-visualization__truncated">
+          {visibleRows.length < rows.length
+            ? `Showing ${visibleRows.length} of ${rows.length} returned rows.`
+            : `Showing all ${rows.length} returned rows.`}
+        </p>
+        {rows.length > 10 ? (
+          <button type="button" className="qops-button-secondary" aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
+            {expanded ? "Show fewer rows" : `Show all ${rows.length} returned rows`}
+          </button>
+        ) : null}
+      </div>
     <div className="dashboard-viz-table">
       <table aria-label="Dashboard card results">
         <thead><tr>{columns.map((column) => <th scope="col" key={column}>{humanize(column)}</th>)}</tr></thead>
         <tbody>
-          {rows.slice(0, 10).map((row, index) => (
+          {visibleRows.map((row, index) => (
             <tr key={index}>{columns.map((column) => <td key={column}>{formatVisualizationValue(row[column])}</td>)}</tr>
           ))}
         </tbody>
       </table>
+    </div>
     </div>
   );
 }

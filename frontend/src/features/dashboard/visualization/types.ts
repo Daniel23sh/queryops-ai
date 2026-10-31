@@ -1,4 +1,5 @@
 import type { QueryResultRow } from "../../ask-data/types";
+import type { DeliveryCompleteness } from "../../../lib/resultDelivery";
 import type {
   DashboardCardType,
   VisualizationConfig,
@@ -30,6 +31,7 @@ export type VisualizationResultData = {
   rows: QueryResultRow[];
   row_count: number;
   truncated: boolean;
+  delivery_completeness?: DeliveryCompleteness;
 };
 
 export type VisualizationRecommendation = {

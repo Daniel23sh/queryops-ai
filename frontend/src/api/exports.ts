@@ -6,6 +6,16 @@ export type CsvExportRequest = {
   include_headers?: boolean;
 };
 
+export function csvExportMessage(download: ApiDownloadResult): string {
+  const delivery = download.deliveryCompleteness === "safety_limited"
+    ? "Partial CSV downloaded. A safety limit may have omitted rows."
+    : download.deliveryCompleteness === "complete"
+      ? "CSV export downloaded."
+      : "CSV downloaded. Delivery completeness could not be established.";
+  const count = download.returnedRowCount;
+  return `${delivery}${count === undefined ? "" : ` ${count} ${count === 1 ? "row" : "rows"} returned.`} Exports are audited.`;
+}
+
 export function exportQueryRunCsv(
   queryRunId: string,
   csrfToken: string,

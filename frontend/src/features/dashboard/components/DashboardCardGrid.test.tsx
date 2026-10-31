@@ -19,7 +19,8 @@ vi.mock("../../../api/dashboards", () => ({
   updateMyDashboardLayout: vi.fn()
 }));
 
-vi.mock("../../../api/exports", () => ({
+vi.mock("../../../api/exports", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../../api/exports")>(),
   exportDashboardCardCsv: vi.fn()
 }));
 

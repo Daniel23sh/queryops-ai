@@ -2,7 +2,7 @@ import { Grip } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { ApiError, downloadBlob } from "../../../api/client";
-import { exportDashboardCardCsv } from "../../../api/exports";
+import { csvExportMessage, exportDashboardCardCsv } from "../../../api/exports";
 import { useDashboardCardRefresh } from "../hooks/useDashboardCardRefresh";
 import type { DashboardBreakpoint, DashboardCardRefreshResult, EditorDashboardCard } from "../types";
 import { VISUALIZATION_LABELS } from "../visualization";
@@ -60,9 +60,10 @@ export function DashboardEditorCard({
     setExportState("loading");
     setExportMessage(null);
     try {
-      downloadBlob(await exportDashboardCardCsv(card.id, csrfToken, { include_headers: true }));
+      const download = await exportDashboardCardCsv(card.id, csrfToken, { include_headers: true });
+      downloadBlob(download);
       setExportState("success");
-      setExportMessage("CSV downloaded. The export used your current access scope.");
+      setExportMessage(csvExportMessage(download));
     } catch (error: unknown) {
       setExportState("error");
       setExportMessage(error instanceof ApiError && error.status === 403
