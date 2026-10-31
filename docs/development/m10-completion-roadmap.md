@@ -75,9 +75,10 @@ be sequenced with minimal overlap. W6a can diagnose while other fixes proceed,
 but qualifying evidence must wait for W5 and independent W6c validation. W9 does
 not absorb unbounded redesign; unresolved blockers return to their package.
 
-The owner approved W1 + W2 as one integration batch on 2026-10-29. This changes
-batching, not package boundaries or release criteria. Their handoff is an
-unmerged PR; see PROJECT_PLAN.md for actual status and further authorization.
+The owner approved W1 + W2 as one integration batch on 2026-10-29 and W2a + W3
+as the next batch on 2026-10-31. Batching does not change package boundaries or
+release criteria. Each handoff requires independent review and an unmerged PR;
+actual merge status and further authorization belong only in PROJECT_PLAN.md.
 
 ## Definition of Done for local synthetic IT Operations V1
 

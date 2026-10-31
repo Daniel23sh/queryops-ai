@@ -29,9 +29,16 @@ and passing deterministic CI are recorded in
 qualification.
 
 **W2a + W3 — Scoped Evaluation & Reliable Result Delivery** is the active batch,
-explicitly authorized by the owner on 2026-10-29. Work on
+explicitly authorized by the owner on 2026-10-31. Work on
 `feature/m10-evaluation-reads-result-delivery`, from verified main `8cb9c8d`.
-Keep the resulting PR unmerged for final approval.
+W2a `4f6cf80`, W3 backend `6623d04` and frontend integration `01fbc8a` are
+implemented on this branch. Combined local verification passed 1,876 PostgreSQL
+backend tests plus 20 action-security cases without skips, 304 frontend tests and
+33 browser flows, including 17 new real-API flows. A fresh non-author review found
+no actionable issue and independently passed 46 backend/PostgreSQL and 50 frontend
+cases. [PR #64](https://github.com/Daniel23sh/queryops-ai/pull/64) is open and
+**unmerged** for final approval. CI on its final revision must pass before merge.
+This is implementation evidence, not V1 release qualification.
 
 W2a: replace the scoped latest-run `DISTINCT` over JSON without expanding access.
 Preserve ordering, candidate limits, dataset identity, visible-result projections
@@ -56,8 +63,8 @@ by combined V3 verification and a fresh-context independent non-author review.
 - Follow the [M10 roadmap](docs/development/m10-completion-roadmap.md) for W2a–W9
   dependencies/acceptance; W10 cleanup is optional. W6a diagnosis, W6b targeted
   correction and W6c independent validation are separate packages.
-- Scoped Evaluation JSON DISTINCT reads and derived card/CSV delivery disclosure
-  are this batch's defects, not completed work yet. Dashboard editing/value
+- Scoped Evaluation reads and derived delivery have branch-level implementation
+  and executable evidence; main integration is pending. Dashboard editing/value
   mapping, semantic reliability and complete provider/config identity remain open.
   The audit's hard-004 case passed its diagnostic canary; blanket historical
   failure claims are not accepted without new evidence.
@@ -71,8 +78,11 @@ by combined V3 verification and a fresh-context independent non-author review.
 
 ## Next Approved Work
 
-Complete and hand off W2a + W3 only; keep the PR **unmerged**. Do not start W4,
-W5 or later packages. No paid provider, Canary or Full40 run is authorized.
+Hand off W2a + W3 in PR #64 and keep it **unmerged**. No further implementation
+is approved in this task. After approval/merge, the recommended next package is
+W4 — Dashboard Editing and Values (draft preservation and faithful numeric
+mapping), subject to a separate owner instruction. Do not begin W4/W5 or later
+packages. No paid provider, Canary or Full40 run is authorized.
 
 ## References
 
