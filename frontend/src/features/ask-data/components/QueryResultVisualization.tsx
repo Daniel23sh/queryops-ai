@@ -22,7 +22,7 @@ export function QueryResultVisualization({
         Recommended: {VISUALIZATION_LABELS[recommendation.recommendedType]}
       </p>
       <div className="min-h-[260px] rounded-card border border-app-border bg-app-muted p-3 sm:min-h-[320px] sm:p-4">
-        <DashboardVisualization config={recommendedConfig(recommendation)} result={result} title={question} />
+        <DashboardVisualization config={recommendedConfig(recommendation)} result={{ ...result, delivery_completeness: result.metadata.execution?.delivery_completeness ?? "unknown" }} title={question} />
       </div>
     </section>
   );

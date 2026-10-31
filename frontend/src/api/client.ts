@@ -1,3 +1,5 @@
+import type { DeliveryCompleteness } from "../lib/resultDelivery";
+
 const DEFAULT_API_BASE_URL = "http://localhost:8000";
 
 export const API_BASE_URL =
@@ -52,6 +54,8 @@ export type ApiDownloadResult = {
   blob: Blob;
   filename: string;
   contentType: string;
+  deliveryCompleteness?: DeliveryCompleteness;
+  returnedRowCount?: number;
 };
 
 export async function apiRequest<T>(
@@ -104,13 +108,18 @@ export async function apiDownload(
 
   const contentType =
     response.headers.get("Content-Type") ?? "application/octet-stream";
+  const delivery = response.headers.get("X-QueryOps-Delivery-Completeness");
+  const rawCount = response.headers.get("X-QueryOps-Returned-Row-Count");
+  const count = rawCount !== null && /^\d+$/.test(rawCount) ? Number(rawCount) : NaN;
   return {
     blob: await response.blob(),
     filename: downloadFilename(
       response.headers.get("Content-Disposition"),
       fallbackFilename
     ),
-    contentType
+    contentType,
+    deliveryCompleteness: delivery === "complete" || delivery === "safety_limited" ? delivery : "unknown",
+    returnedRowCount: Number.isSafeInteger(count) ? count : undefined
   };
 }
 

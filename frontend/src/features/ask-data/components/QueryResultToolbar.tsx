@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Download, Save } from "lucide-react";
 
 import { ApiError, downloadBlob } from "../../../api/client";
-import { exportQueryRunCsv } from "../../../api/exports";
+import { csvExportMessage, exportQueryRunCsv } from "../../../api/exports";
 import type { CurrentQueryResult } from "../types";
 import { SaveResultToDashboardDialog } from "./SaveResultToDashboardDialog";
 
@@ -41,7 +41,7 @@ export function QueryResultToolbar({
       const download = await exportQueryRunCsv(queryRunId, csrfToken, { include_headers: true });
       if (requestGeneration.current !== generation) return;
       downloadBlob(download);
-      setStatus("CSV export downloaded. Exports are audited.");
+      setStatus(csvExportMessage(download));
     } catch (error) {
       if (requestGeneration.current !== generation) return;
       setStatus(error instanceof ApiError && PERMISSION_ERROR_CODES.has(error.code)

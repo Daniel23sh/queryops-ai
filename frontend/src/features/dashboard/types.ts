@@ -1,4 +1,5 @@
 import type { QueryResultRow } from "../ask-data/types";
+import type { DeliveryCompleteness } from "../../lib/resultDelivery";
 
 export type DashboardVisibilityScope = "personal" | "department" | "global";
 export type DashboardRelationship = "owned" | "shared";
@@ -182,6 +183,7 @@ export type DashboardCardRefreshResult = {
   row_count: number;
   duration_ms: number;
   truncated: boolean;
+  delivery_completeness?: DeliveryCompleteness;
   refreshed_at: string;
   message: string;
   warnings: string[];

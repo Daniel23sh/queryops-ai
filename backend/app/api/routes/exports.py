@@ -17,6 +17,7 @@ from app.auth.session import csrf_is_valid, session_from_request
 from app.db.session import get_db
 from app.dashboards.policy import dashboard_is_visible
 from app.exports.csv_exporter import rows_to_csv
+from app.query_engine.delivery import delivery_completeness, restore_saved_bound
 from app.models.product import (
     AppAuditLog,
     AppUser,
@@ -258,6 +259,7 @@ def _export_query_run_as_csv(
     if sorted(validation_result.referenced_tables) != referenced_tables:
         return _csv_export_not_allowed_response()
 
+    validation_result = restore_saved_bound(validation_result, query_run.query_metadata)
     execution_result = sql_executor(
         db,
         access_context,
@@ -275,7 +277,13 @@ def _export_query_run_as_csv(
         execution_result.rows,
         include_headers=parsed_payload["include_headers"],
     )
+    delivery = delivery_completeness(execution_result)
+    suffix = {"safety_limited": "-partial", "unknown": "-completeness-unknown"}.get(delivery, "")
+    if suffix:
+        filename = f"{filename[:-4][:255 - len(suffix) - 4]}{suffix}.csv"
     response = _csv_response(csv_body, filename=filename)
+    response.headers["X-QueryOps-Delivery-Completeness"] = delivery
+    response.headers["X-QueryOps-Returned-Row-Count"] = str(execution_result.row_count)
     _record_csv_export_audit(
         db,
         request=request,
@@ -289,6 +297,7 @@ def _export_query_run_as_csv(
             "filename": filename,
             "include_headers": parsed_payload["include_headers"],
             "row_count": execution_result.row_count,
+            "delivery_completeness": delivery,
             "referenced_tables": referenced_tables,
             "export_policy_override": resource_policy.override_used,
             "restricted_tables": list(resource_policy.restricted_tables),

@@ -3,7 +3,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError, apiDownload, downloadBlob } from "./client";
 import {
   exportDashboardCardCsv,
-  exportQueryRunCsv
+  exportQueryRunCsv,
+  csvExportMessage
 } from "./exports";
 
 afterEach(() => {
@@ -13,6 +14,30 @@ afterEach(() => {
 });
 
 describe("CSV export API client", () => {
+  it.each(["complete", "safety_limited", "unknown"] as const)("preserves %s delivery headers without altering CSV data", async (state) => {
+    const blob = new Blob(["name\nOnly row\n"]);
+    stubDownloadResponse(blob, {
+      "X-QueryOps-Delivery-Completeness": state,
+      "X-QueryOps-Returned-Row-Count": "1"
+    });
+    const result = await exportQueryRunCsv("run", "csrf");
+    expect(result.deliveryCompleteness).toBe(state);
+    expect(result.returnedRowCount).toBe(1);
+    expect(result.blob).toBe(blob);
+    expect(csvExportMessage(result)).toContain(state === "safety_limited" ? "Partial CSV" : state === "unknown" ? "could not be established" : "CSV export downloaded");
+  });
+
+  it.each(["-1", "1.5", "9007199254740992", "private-count"])("fails conservatively for malformed delivery metadata (%s)", async (rawCount) => {
+    stubDownloadResponse(new Blob(), {
+      "X-QueryOps-Delivery-Completeness": "private-invalid-value",
+      "X-QueryOps-Returned-Row-Count": rawCount
+    });
+    const result = await exportQueryRunCsv("run", "csrf");
+    expect(result.deliveryCompleteness).toBe("unknown");
+    expect(result.returnedRowCount).toBeUndefined();
+    expect(csvExportMessage(result)).not.toContain("private");
+  });
+
   it("downloads query runs through the encoded endpoint with cookies and CSRF", async () => {
     const csvBlob = new Blob(["name,count\nLicenses,3\n"], {
       type: "text/csv"
@@ -43,7 +68,9 @@ describe("CSV export API client", () => {
     expect(result).toEqual({
       blob: csvBlob,
       filename: "query-run.csv",
-      contentType: "text/csv; charset=utf-8"
+      contentType: "text/csv; charset=utf-8",
+      deliveryCompleteness: "unknown",
+      returnedRowCount: undefined
     });
   });
 

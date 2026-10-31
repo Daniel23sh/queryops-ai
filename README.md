@@ -44,6 +44,7 @@ The backend-rendered SQL remains untrusted and must pass every downstream contro
 - **Governed execution:** Validate structured plans and read-only SQL, check SQLGlot semantic conformance, and execute only sanitized SQL through a restricted PostgreSQL runtime role.
 - **Scope-aware access:** Apply effective permissions, assigned scopes, role-aware SQL visibility, and PostgreSQL Row-Level Security (RLS).
 - **Dashboards and visualizations:** Save successful query runs as cards, arrange responsive dashboards, refresh under the current viewer's scope, and render supported table, KPI, chart, gauge, and status views.
+- **Result delivery:** Preserve query-bound provenance through saved Cards and CSV. Partial or unknown delivery is disclosed separately from visualization previews; Table Cards can expand all already-returned rows. CSV downloads retain ordinary data records and identify delivery limitations in response metadata, filename and UI.
 - **Controlled export:** Revalidate and re-execute eligible reports for CSV export under current-viewer authorization, with sanitization and audit records.
 - **Governed operational actions:** Preview, request, approve, synchronously execute, and audit `reclaim_unused_license` and `disable_inactive_user` through deterministic handlers.
 - **Workflow visibility:** Provide requester action tracking, approval queues, scoped audit views, and database-backed notifications.

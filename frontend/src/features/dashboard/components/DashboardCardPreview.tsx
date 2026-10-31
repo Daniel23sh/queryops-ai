@@ -1,7 +1,8 @@
 import { useRef, useState } from "react";
 
 import { ApiError, downloadBlob } from "../../../api/client";
-import { exportDashboardCardCsv } from "../../../api/exports";
+import { csvExportMessage, exportDashboardCardCsv } from "../../../api/exports";
+import { resultDeliveryWarning } from "../../../lib/resultDelivery";
 import type { QueryRowValue } from "../../ask-data/types";
 import { useDashboardCardRefresh } from "../hooks/useDashboardCardRefresh";
 import type { DashboardCard, DashboardCardRefreshResult } from "../types";
@@ -51,7 +52,7 @@ export function DashboardCardPreview({
       });
       downloadBlob(download);
       setExportStatus("success");
-      setExportMessage("Card CSV export downloaded.");
+      setExportMessage(csvExportMessage(download));
     } catch (error: unknown) {
       setExportStatus("error");
       setExportMessage(cardExportErrorMessage(error));
@@ -167,6 +168,7 @@ export function DashboardCardPreview({
 function CardResultPreview({ result }: { result: DashboardCardRefreshResult }) {
   const previewRows = result.rows.slice(0, 5);
   const hasTable = result.columns.length > 0 && previewRows.length > 0;
+  const deliveryWarning = resultDeliveryWarning(result.delivery_completeness, result.truncated);
 
   return (
     <div className="dashboard-card-result" aria-label="Refreshed card result">
@@ -197,9 +199,9 @@ function CardResultPreview({ result }: { result: DashboardCardRefreshResult }) {
         <p className="dashboard-card-preview__status">No rows returned.</p>
       )}
 
-      {result.truncated ? (
+      {deliveryWarning && !result.warnings.includes(deliveryWarning) ? (
         <p className="dashboard-card-preview__warning">
-          Preview limited to the first 100 returned rows.
+          {deliveryWarning}
         </p>
       ) : null}
 
@@ -216,7 +218,7 @@ function CardResultPreview({ result }: { result: DashboardCardRefreshResult }) {
 
       {result.rows.length > 5 ? (
         <p className="dashboard-card-preview__notice">
-          Showing the first 5 rows in this card preview.
+          Showing the first 5 of {result.rows.length} returned rows in this card preview.
         </p>
       ) : null}
     </div>

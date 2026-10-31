@@ -142,10 +142,10 @@ versioned policy/budget identity, safe states, row counts, execution counts and
 durations, and safe limitation reasons. They store no rows, SQL, provider content,
 membership witnesses, scope keys or secrets.
 
-The correction does not resolve the separate aggregate-grouping provider/runtime
+The evaluator-only correction does not resolve the separate aggregate-grouping provider/runtime
 contract (`itops-hard-004`), provider semantic reliability/composition
 interpretation (`itops-medium-009`), other tracked DISTINCT enforcement gaps, or
-pagination/export.
+unbounded pagination or full-population export.
 
 ## M10 W0 integration review
 
@@ -165,10 +165,62 @@ abstraction was introduced. Actual integration and validation records belong in
 [development history](../history/development-history.md) and current status in
 [PROJECT_PLAN](../../PROJECT_PLAN.md).
 
-Remaining M10 work includes exact-scope dashboards, atomic role requests, scoped
-Evaluation reads, derived card/export delivery disclosure, provider identity and
-usage, and independently validated semantic reliability. These are separate
-packages, not claims that this baseline qualifies V1. The 8 MiB budget bounds
+At that W0 checkpoint, remaining work included exact-scope dashboards, atomic role
+requests, scoped Evaluation reads and derived delivery disclosure. Actual package
+completion and merge status belong in PROJECT_PLAN.md. Provider identity, usage
+and independently validated semantic reliability remain separate packages, not
+claims that the bounded-result baseline qualifies V1. The 8 MiB budget bounds
 normalized retained comparison payload, not total Python process RAM; the ten
 second budget bounds cumulative auxiliary acquisition, not provider planning plus
 all observed executions.
+
+## Product delivery through saved Cards and CSV
+
+Product delivery completeness describes the rows delivered for the validated SQL
+answer. It does **not** certify that the SQL correctly interprets the natural
+language question, nor that an intact SQL top-N exhausts the underlying population.
+The evaluator still uses its independently reviewed answer bound, semantic checks
+and comparison evidence; product delivery states do not replace those proofs or
+change readiness thresholds.
+
+An intact input `LIMIT N` can be completely delivered as that bounded SQL answer.
+If the execution row cap cuts it first, delivery is `safety_limited`; payload or
+deadline exhaustion remains `unknown`. A safety-added/clamped limit reached by
+the result remains `safety_limited`, even when `truncated=false` or the true
+population happens to equal the returned count. No exact population total is
+inferred. Below a known safety bound, successful unrestricted acquisition can
+establish complete delivery.
+
+Saving a Card links its SavedQuery to the existing server-owned QueryRun.
+Re-execution revalidates the saved SQL under the current viewer and restores only
+consistent server-persisted `validation.limit_source`, `input_limit` and
+`effective_limit` fields matching the freshly validated outer limit. SQL is never
+rewritten or widened for product refresh/export. A new refresh QueryRun retains
+this allowlisted provenance and its fresh execution delivery state. Legacy,
+missing or inconsistent provenance stays `unknown`; it is not relabeled as an
+input/business limit merely because saved SQL now contains `LIMIT`. No migration,
+raw result-row persistence or evaluator auxiliary evidence is added.
+
+Card refresh exposes `delivery_completeness` and safe warnings. Visual clipping
+is separate: tables initially show ten returned rows, disclose the displayed and
+returned counts, and allow expansion to all already-delivered rows. Chart and
+status previews disclose their actual visual subset. Expansion does not issue an
+unbounded query or claim to recover rows omitted by database delivery limits.
+
+Both CSV endpoints reauthorize and re-execute. CSV remains ordinary column/header
+and data records, with no warning/comment rows mixed into the data. Responses add:
+
+- `X-QueryOps-Delivery-Completeness`: `complete`, `safety_limited` or `unknown`.
+- `X-QueryOps-Returned-Row-Count`: the actual exported row count, never a population
+  total.
+- Filename suffix `-partial.csv` or `-completeness-unknown.csv` when appropriate,
+  including custom filenames within the existing safe length bound.
+
+These headers and Content-Disposition are exposed through the existing CORS
+policy. Download UI uses the **fresh export response**, including its returned
+count, rather than assuming the Card's earlier state still applies. For example,
+an intact SQL `LIMIT 500` can be partial in a 100-row Card refresh yet complete in
+a permitted 500-row export. Missing or invalid response metadata is shown as
+unknown. Audit records include only safe delivery state/counts, not result rows.
+Current-viewer scopes, restricted-export policy, RLS, runtime role, SQL validation,
+row caps and formula-injection sanitization remain authoritative.

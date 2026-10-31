@@ -1,10 +1,48 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import type { DashboardCardRefreshResult, VisualizationConfig } from "../types";
 import { DashboardVisualization } from "./DashboardVisualization";
 
 describe("DashboardVisualization", () => {
+  it("discloses the actual table preview and makes row 11 accessible", () => {
+    const rows = Array.from({ length: 24 }, (_, index) => ({ item: `Item ${index + 1}` }));
+    render(<DashboardVisualization config={config("table", "manual")} result={result(["item"], rows)} title="Items" />);
+    expect(screen.getByText("Showing 10 of 24 returned rows.")).toBeInTheDocument();
+    expect(screen.queryByText("Item 11")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show all 24 returned rows" }));
+    expect(screen.getByText("Item 11")).toBeInTheDocument();
+    expect(screen.getByText("Item 24")).toBeInTheDocument();
+    expect(screen.getByText("Showing all 24 returned rows.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show fewer rows" }));
+    expect(screen.queryByText("Item 11")).not.toBeInTheDocument();
+  });
+
+  it("keeps all returned table rows accessible beyond the chart-only limit", () => {
+    const rows = Array.from({ length: 100 }, (_, index) => ({ item: `Item ${index + 1}` }));
+    render(<DashboardVisualization config={config("table", "manual")} result={result(["item"], rows)} title="Items" />);
+    fireEvent.click(screen.getByRole("button", { name: "Show all 100 returned rows" }));
+    expect(screen.getByText("Item 100")).toBeInTheDocument();
+  });
+
+  it("discloses safety-limited delivery even when SQL truncation is false", () => {
+    const delivery = { ...result(["item"], [{ item: "Only delivered item" }]), delivery_completeness: "safety_limited" as const };
+    render(<DashboardVisualization config={config("table", "manual")} result={delivery} title="Items" />);
+    expect(screen.getByText(/Partial result: a safety limit may have omitted rows/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Showing 10 of/)).not.toBeInTheDocument();
+  });
+
+  it("does not claim completeness for a legacy response without delivery metadata", () => {
+    render(<DashboardVisualization config={config("table", "manual")} result={result(["item"], [{ item: "Legacy" }])} title="Items" />);
+    expect(screen.getByText(/Result completeness is unknown/i)).toBeInTheDocument();
+  });
+
+  it("does not mark an explicitly complete bounded result as partial", () => {
+    const delivery = { ...result(["item"], [{ item: "Top result" }]), delivery_completeness: "complete" as const };
+    render(<DashboardVisualization config={config("table", "manual")} result={delivery} title="Top item" />);
+    expect(screen.queryByText(/Partial result|completeness is unknown/)).not.toBeInTheDocument();
+  });
+
   it("renders an accessible empty state", () => {
     render(<DashboardVisualization config={config("table")} result={result([], [])} title="Empty card" />);
     expect(screen.getByText("No result rows are available for this card.")).toBeInTheDocument();

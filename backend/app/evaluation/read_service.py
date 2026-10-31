@@ -380,13 +380,13 @@ class EvaluationReadService:
         )
         if self._visibility.mode is VisibilityMode.SCOPED:
             visible_case_ids = [case.id for case in eligible_cases]
-            statement = (
-                statement.join(
-                    EvaluationResult,
+            statement = statement.where(
+                select(EvaluationResult.id)
+                .where(
                     EvaluationResult.evaluation_run_id == EvaluationRun.id,
+                    EvaluationResult.case_name.in_(visible_case_ids),
                 )
-                .where(EvaluationResult.case_name.in_(visible_case_ids))
-                .distinct()
+                .exists()
             )
         candidates = self._db.scalars(
             statement.order_by(

@@ -11,6 +11,9 @@ from sqlalchemy.orm import Session
 
 from app.auth.access_context import UserAccessContext
 from app.models.product import AppUser, DashboardCard, QueryRun, RunStatus
+from app.query_engine.delivery import (
+    DELIVERY_WARNINGS, bound_metadata, delivery_completeness, restore_saved_bound,
+)
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.schema_context import SchemaContextOptions, build_schema_context
 from app.query_engine.sql_executor import (
@@ -87,6 +90,8 @@ def refresh_dashboard_card(
     if sorted(validation_result.referenced_tables) != referenced_tables:
         raise _not_refreshable()
 
+    validation_result = restore_saved_bound(validation_result, source_run.query_metadata)
+
     started_at = datetime.now(UTC)
     execution_result = sql_executor(
         db,
@@ -106,6 +111,7 @@ def refresh_dashboard_card(
             status_code=500,
         )
 
+    delivery = delivery_completeness(execution_result)
     completed_at = datetime.now(UTC)
     duration_ms = max(0, int(round(execution_result.duration_ms)))
     refresh_run = QueryRun(
@@ -127,13 +133,14 @@ def refresh_dashboard_card(
             "saved_query_id": str(card.saved_query_id),
             "refreshed_from_query_run_id": str(source_run.id),
             "referenced_tables": referenced_tables,
-            "validation": {"valid": True, "error_code": None},
+            "validation": bound_metadata(validation_result),
             "execution": {
                 "status": "succeeded",
                 "error_code": None,
                 "row_count": execution_result.row_count,
                 "duration_ms": duration_ms,
                 "truncated": execution_result.truncated,
+                "delivery_completeness": delivery,
                 "row_limit": CARD_REFRESH_ROW_LIMIT,
             },
         },
@@ -153,9 +160,10 @@ def refresh_dashboard_card(
         "row_count": execution_result.row_count,
         "duration_ms": duration_ms,
         "truncated": execution_result.truncated,
+        "delivery_completeness": delivery,
         "refreshed_at": completed_at,
         "message": "Dashboard card refreshed successfully.",
-        "warnings": [],
+        "warnings": [DELIVERY_WARNINGS[delivery]] if delivery in DELIVERY_WARNINGS else [],
     }
 
 

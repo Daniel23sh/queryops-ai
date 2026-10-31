@@ -15,7 +15,8 @@ vi.mock("../../../api/dashboards", () => ({
   refreshDashboardCard: vi.fn()
 }));
 
-vi.mock("../../../api/exports", () => ({
+vi.mock("../../../api/exports", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../../../api/exports")>(),
   exportDashboardCardCsv: vi.fn()
 }));
 
@@ -116,8 +117,8 @@ describe("DashboardCardPreview refresh", () => {
       name: "Dashboard card results"
     });
     expect(within(table).getAllByRole("row")).toHaveLength(6);
-    expect(screen.getByText(/first 100 returned rows/i)).toBeInTheDocument();
-    expect(screen.getByText(/first 5 rows/i)).toBeInTheDocument();
+    expect(screen.getByText(/Partial result: a safety limit may have omitted rows/i)).toBeInTheDocument();
+    expect(screen.getByText(/first 5 of 10 returned rows/i)).toBeInTheDocument();
   });
 
   it("manually refreshes and retains the prior result after a failure", async () => {
@@ -229,7 +230,8 @@ describe("DashboardCardPreview export", () => {
       exportDashboardCardCsvMock.mockResolvedValue({
         blob: new Blob(["product_name\nJira\n"]),
         filename: "card.csv",
-        contentType: "text/csv"
+        contentType: "text/csv",
+        deliveryCompleteness: "complete"
       });
       renderCard({ canExport: true });
       await screen.findByRole("table", { name: "Dashboard card results" });
@@ -247,7 +249,7 @@ describe("DashboardCardPreview export", () => {
       );
       await waitFor(() => expect(downloadBlobMock).toHaveBeenCalledOnce());
       expect(screen.getByRole("status")).toHaveTextContent(
-        "Card CSV export downloaded."
+        "CSV export downloaded. Exports are audited."
       );
       expect(screen.getByText(/recorded in the audit log/i)).toBeInTheDocument();
     }

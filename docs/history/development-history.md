@@ -1,5 +1,128 @@
 # QueryOps AI — Development History
 
+## 2026-10-31 — W2a + W3 implementation and combined verification
+
+Branch `feature/m10-evaluation-reads-result-delivery` starts at verified main
+`8cb9c8d55921454337316fb2e1ef9b8be4a6b1a2`, after PR #63 was confirmed merged
+and its implementation present. Two independent implementation owners handled
+W2a reads/tests/browser fixtures and W3 backend/provenance/security tests. The
+coordinator reviewed both and implemented frontend/CSV/visualization integration.
+Identifiable commits: W2a `4f6cf80`, W3 backend `6623d04`, frontend/CI integration
+`01fbc8a`. [PR #64](https://github.com/Daniel23sh/queryops-ai/pull/64) was opened
+against main and remains unmerged; current approval and merge status belong in
+PROJECT_PLAN.md.
+
+### Decisions
+
+- W2a replaces only the latest-run JOIN/DISTINCT with correlated `EXISTS`, so
+  PostgreSQL never compares `EvaluationRun.summary` JSON for equality. Run
+  ordering, 100 distinct candidates, dataset identity validation, result parsing,
+  exact scoped visibility and safe projections remain unchanged. No JSONB
+  migration, permission expansion or read-service redesign was needed.
+- W3 reuses existing server-owned QueryRun validation metadata. Fresh SQL
+  validation and authorization still run; only consistent original bound fields
+  matching the freshly validated outer limit are restored. SavedQuery/Card links
+  and repeated refreshes preserve that provenance. No SQL rewriting, larger cap,
+  new persistence table, raw-row snapshot or evaluator auxiliary evidence is used.
+- Delivery `complete` means all rows of the **validated SQL answer**, including
+  an intact input LIMIT, were delivered. It does not prove natural-language
+  interpretation, business correctness or underlying population exhaustion.
+  Evaluator answer-bound/comparison/readiness rules remain independent and
+  unchanged. Executor/payload/deadline limits and missing provenance remain
+  distinct: a reached safety bound or acquisition row cap is `safety_limited`;
+  payload/deadline or legacy/malformed provenance is `unknown`.
+- Exactly 100 returned rows with `truncated=false` does not establish full
+  delivery of a safety-bounded population. Conversely an intact SQL top-100 can
+  be delivered completely. A top-500 Card can be partial under its 100-row fetch
+  cap while the separately authorized CSV delivers all 500 requested rows.
+- CSV stays ordinary header/data records. Safe completeness/count headers,
+  partial/unknown filename suffixes and fresh-response UI notices communicate
+  limitations without contaminating data rows. CORS exposes only those safe
+  headers plus Content-Disposition. Current-viewer execution/RLS, restricted
+  export policy, SQL validation, formula protection, filenames and successful
+  export auditing remain in force.
+- Table Cards disclose ten shown versus returned rows and can expand all already
+  returned rows. Chart/status/KPI subsets use their actual renderer row limit;
+  their notice is separate from database delivery completeness. No further rows
+  are queried by expansion. W4 draft/value-mapping changes were not included.
+
+### Verification on `01fbc8a`
+
+All database mutation/reset experiments used four newly created disposable
+PostgreSQL 16.14 containers, with separate W2a, W3, combined-suite and browser
+databases. Normal application data and ignored local planning files were untouched.
+
+- W2a original Manager/Analyst empty reads reproduced HTTP 503; corrected real
+  PostgreSQL tests passed 13/13, with existing API regressions 75/75. Coverage
+  includes all five shared-loader endpoints, hidden-run versus missing 404,
+  visible-only counts, malformed/duplicate results, dataset identity, tied
+  ordering and the 99/100 candidate boundary with multiple matching case rows.
+- W3 focused API/unit tests passed 157; executor/Card/export PostgreSQL tests
+  passed 53 with zero skips; Query service/API and evaluator evidence/scoring
+  consumer tests passed 201. New provenance units passed 23 and new delivery
+  PostgreSQL flows passed 10 as part of those selections. The actual pipeline
+  uses 620 synthetic licenses: original runtime execution, run export, real
+  save-card API, two refreshes, Card export and audit/persistence inspection.
+- Below/at/above cap, input top-100/top-500, safety clamp, LIMIT 0 and legacy
+  metadata cases pass. Mismatched provenance and legacy 11/24-row results remain
+  unknown. Exact scope revocation after a successful scoped export denies
+  refresh/run/Card export without delivery headers, protected metadata or a new
+  success audit. SavedQuery/Card/QueryRun and audit assertions reject raw rows.
+- Combined CI-equivalent PostgreSQL selections passed **1,876 backend tests +
+  the exact 20 action-security cases**, zero skips/errors/failures. Commands from
+  `backend/`, with guarded disposable test environment:
+
+  ```bash
+  .venv/bin/pytest tests/test_action_security_release.py -q -rs
+  .venv/bin/pytest --ignore=tests/test_action_security_release.py -q -rs
+  ```
+
+- Frontend **304 tests in 49 files**, ESLint, both TypeScript checks and build
+  passed. Four visualization regressions failed before implementation and passed
+  after correction; download tests distinguish fresh export states from earlier
+  source state and treat missing/invalid metadata conservatively.
+- Chromium passed **33 flows**: new actual-PostgreSQL scoped Evaluation 9 and
+  delivery 8, plus existing actions 2, access/workflow 2 and general 12. The new
+  flows use real backend APIs with no route mocks; the existing general
+  Evaluation UI fixtures remain UI-only evidence. Delivery tests inspect the
+  downloaded CSV data/counts/filename, response headers and browser notices, and
+  access row 11 at 390×844. The initial table-11 test assumed auto inference would
+  choose Table; it correctly chose Bar. The fixture now explicitly persists a
+  manual Table via the real API; no product behavior was changed to satisfy it.
+- Fresh Alembic upgrade/current/check reached `0010_disable_inactive_user`, with
+  no new operations/model diff. Ruff, zero-error/warning Pyright, compileall and
+  diff checks passed. No schema migration was introduced. The existing charts
+  chunk warning remains non-blocking.
+
+The guarded state-changing CI lane now runs actions → access → scoped Evaluation
+→ result delivery sequentially, preserving fixture isolation. Logs/JUnit and
+browser artifacts are temporary under `/tmp/queryops-delivery`; exact final PR
+CI evidence will be retained by GitHub. A fresh-context non-author reviewer
+examined the full `8cb9c8d..01fbc8a` diff and connected source/consumer paths,
+independently passed **46 backend/PostgreSQL tests and 50 frontend tests**, and
+found no actionable blocking or optional finding. The reviewer explicitly
+examined the product bounded-SQL delivery versus independent evaluator proof
+boundary. No review correction was required. Review notes/logs are under
+`/tmp/queryops-delivery/independent-review.md` and `independent-*.log`.
+Documentation-only reconciliation follows the reviewed runtime head; final PR
+CI is required before merge. No paid provider, Canary/Full40, release qualification, threshold or
+historical baseline change, W4/W5 implementation or deployment occurred.
+
+## 2026-10-31 — W2a + W3 authorized after W1 + W2 merge
+
+PR #63 merged into main on 2026-10-29 at
+`8cb9c8d55921454337316fb2e1ef9b8be4a6b1a2`.
+Before beginning the next batch, GitHub merge metadata, fetched `origin/main`,
+ancestor checks and the identical reviewed implementation tree were verified.
+This supersedes only the previous handoff's unmerged status; its evidence and
+limitations remain historical records.
+
+The owner authorized W2a + W3 only, on a clean branch
+`feature/m10-evaluation-reads-result-delivery` from that main. The tracked worktree
+was clean; ignored planning files remain untouched. The intended handoff is an
+unmerged PR after PostgreSQL/browser verification and a fresh independent review.
+No W4/W5 or paid provider/evaluation run is authorized by this batch.
+
 ## 2026-10-29 — W1 + W2 implementation and local V3 evidence
 
 Integration branch `feature/m10-access-workflow-integrity` starts at main

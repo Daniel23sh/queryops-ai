@@ -1,4 +1,5 @@
 import type { PermissionKey } from "../../auth/types";
+import type { DeliveryCompleteness } from "../../lib/resultDelivery";
 import type { ActionSuggestion } from "../actions/types";
 
 export type JsonPrimitive = string | number | boolean | null;
@@ -79,7 +80,7 @@ export type QueryExecutionMetadata = {
   row_count: number | null;
   duration_ms: number | null;
   truncated: boolean | null;
-  delivery_completeness: "complete" | "safety_limited" | "unknown" | null;
+  delivery_completeness: DeliveryCompleteness | null;
 };
 
 export type QuerySelfCorrectionMetadata = {
