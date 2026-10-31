@@ -1,5 +1,19 @@
 # QueryOps AI — Development History
 
+## 2026-10-31 — W2a + W3 merged; W4 + W5 authorized
+
+PR #64 merged into main at `e20fa7c9193efdb7ab5de6b01a80a3f39b4e30d3`. GitHub
+merge metadata, fetched origin/main, reviewed-head ancestry and identical merged
+implementation were verified before the next batch. This supersedes only the
+previous unmerged handoff status; its evidence and limitations remain historical.
+
+The owner authorized W4 + W5 only on clean branch
+`feature/m10-dashboard-evaluation-integrity` from that main. Separate owners will
+handle frontend editing/values and backend qualification identity/telemetry, with
+combined validation and a fresh non-author final review. No W6, paid provider,
+qualifying Canary/Full40 or automatic merge is authorized. The tracked worktree
+was clean; ignored private planning files remain untouched.
+
 ## 2026-10-31 — W2a + W3 implementation and combined verification
 
 Branch `feature/m10-evaluation-reads-result-delivery` starts at verified main

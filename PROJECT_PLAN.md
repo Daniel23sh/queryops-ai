@@ -28,44 +28,42 @@ and passing deterministic CI are recorded in
 [development history](docs/history/development-history.md); this is not V1 release
 qualification.
 
-**W2a + W3 — Scoped Evaluation & Reliable Result Delivery** is the active batch,
-explicitly authorized by the owner on 2026-10-31. Work on
-`feature/m10-evaluation-reads-result-delivery`, from verified main `8cb9c8d`.
-W2a `4f6cf80`, W3 backend `6623d04` and frontend integration `01fbc8a` are
-implemented on this branch. Combined local verification passed 1,876 PostgreSQL
-backend tests plus 20 action-security cases without skips, 304 frontend tests and
-33 browser flows, including 17 new real-API flows. A fresh non-author review found
-no actionable issue and independently passed 46 backend/PostgreSQL and 50 frontend
-cases. [PR #64](https://github.com/Daniel23sh/queryops-ai/pull/64) is open and
-**unmerged** for final approval. CI on its final revision must pass before merge.
-This is implementation evidence, not V1 release qualification.
+**W2a + W3 are merged.** [PR #64](https://github.com/Daniel23sh/queryops-ai/pull/64)
+merged at `e20fa7c9193efdb7ab5de6b01a80a3f39b4e30d3`. Its reviewed implementation
+and passing deterministic CI are recorded in development history. This remains
+implementation evidence, not V1 release qualification.
 
-W2a: replace the scoped latest-run `DISTINCT` over JSON without expanding access.
-Preserve ordering, candidate limits, dataset identity, visible-result projections
-and hidden-run/count/evidence nondisclosure. Verify empty/visible/inaccessible
-Manager/Analyst states and Admin/global controls on actual PostgreSQL and browser
-APIs, without route mocks or a speculative migration.
+**W4 + W5 — Product Correctness & Evaluation Integrity** is the active batch,
+explicitly authorized by the owner on 2026-10-31. Implement on
+`feature/m10-dashboard-evaluation-integrity` from verified main `e20fa7c`.
+Keep the resulting PR unmerged for owner approval.
 
-W3: preserve trusted delivery completeness and bound origin through Query Run,
-Saved Query, Card refresh, visualization and CSV. Distinguish requested top-N from
-safety bounds, and database delivery from visual clipping. Disclose partial or
-unknown delivery without inventing population totals or adding non-data rows to
-CSV. Preserve current-viewer authorization, RLS, SQL validation, safety caps,
-restricted export policy, CSV sanitization and audit; persist no result rows or
-evaluator auxiliary evidence. Exercise above-cap and intact top-N cases on
-disposable PostgreSQL, frontend and real browser flows.
+W4: preserve unsaved Dashboard layout edits through non-conflicting metadata/Card
+operations, reconcile or explicitly resolve conflicts, and keep layout versions,
+save/cancel/failure and navigation behavior consistent. Correct numeric KPI and
+chart mappings without treating total/target-like names as an automatic exclusion
+from primary measures. Preserve legitimate gauges and manual overrides. Use
+compositional component tests and actual PostgreSQL-backed browser workflows.
 
-Separate implementation ownership and identifiable commits are required, followed
-by combined V3 verification and a fresh-context independent non-author review.
+W5: version and persist one deterministic, secret-free provider/runtime identity
+covering behavior-affecting settings and installed dependency versions. Manifest
+creation/validation, persistence, stability and readiness must share this contract;
+old/malformed/missing identity is incomplete, never upgraded through defaults.
+Separate logical calls, measured HTTP attempts or explicitly unknown attempts,
+and observed versus unavailable usage on retry/failure paths. Keep provider safety,
+historical baselines, thresholds and fail-closed qualification unchanged.
+
+Use separate implementation ownership and identifiable commits, combined V3
+verification and a fresh independent reviewer who authored neither package.
 
 ## Constraints and Remaining Work
 
-- Follow the [M10 roadmap](docs/development/m10-completion-roadmap.md) for W2a–W9
+- Follow the [M10 roadmap](docs/development/m10-completion-roadmap.md) for W4–W9
   dependencies/acceptance; W10 cleanup is optional. W6a diagnosis, W6b targeted
   correction and W6c independent validation are separate packages.
-- Scoped Evaluation reads and derived delivery have branch-level implementation
-  and executable evidence; main integration is pending. Dashboard editing/value
-  mapping, semantic reliability and complete provider/config identity remain open.
+- Dashboard editing/value mapping and provider/config identity are this batch's
+  work, not completed claims. Semantic diagnosis/correction/independent validation,
+  explicit local auth boundary, reproducible validation and final V1 QA remain open.
   The audit's hard-004 case passed its diagnostic canary; blanket historical
   failure claims are not accepted without new evidence.
 - Preserve authorization, RLS, safety caps, historical V1 baselines, semantic
@@ -78,11 +76,8 @@ by combined V3 verification and a fresh-context independent non-author review.
 
 ## Next Approved Work
 
-Hand off W2a + W3 in PR #64 and keep it **unmerged**. No further implementation
-is approved in this task. After approval/merge, the recommended next package is
-W4 — Dashboard Editing and Values (draft preservation and faithful numeric
-mapping), subject to a separate owner instruction. Do not begin W4/W5 or later
-packages. No paid provider, Canary or Full40 run is authorized.
+Complete and hand off W4 + W5 only. Keep the PR **unmerged**; do not begin W6 or
+later packages. No paid provider calls, qualifying Canary or Full40 run is authorized.
 
 ## References
 
