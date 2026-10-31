@@ -381,6 +381,8 @@ def test_analyst_restricted_query_and_card_exports_are_denied_before_execution(
 
     for response in (query_export_response, card_export_response):
         assert response.status_code == 403
+        assert "X-QueryOps-Delivery-Completeness" not in response.headers
+        assert "X-QueryOps-Returned-Row-Count" not in response.headers
         assert response.json()["error"]["code"] == "CSV_EXPORT_NOT_ALLOWED"
     assert executor.calls == 0
 

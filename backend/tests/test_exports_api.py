@@ -428,6 +428,7 @@ def test_query_run_export_accepts_maximum_final_filename_length(
 
     assert response.status_code == 200
     expected_filename = filename if filename.endswith(".csv") else f"{filename}.csv"
+    expected_filename = f"{expected_filename[:-4][:230]}-completeness-unknown.csv"
     assert len(expected_filename) == 255
     assert response.headers["content-disposition"] == (
         f'attachment; filename="{expected_filename}"'
@@ -618,7 +619,7 @@ def test_query_run_export_returns_csv_response_with_attachment(
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/csv")
     assert response.headers["content-disposition"] == (
-        'attachment; filename="analyst-export.csv"'
+        'attachment; filename="analyst-export-completeness-unknown.csv"'
     )
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.text == "product_name,monthly_cost_usd\nMicrosoft 365 E3,32.00\n"
@@ -679,9 +680,10 @@ def test_query_run_export_creates_successful_audit_log(
     assert audit_log.audit_metadata == {
         "export_source": "query_run",
         "format": "csv",
-        "filename": "analyst-export.csv",
+        "filename": "analyst-export-completeness-unknown.csv",
         "include_headers": False,
         "row_count": 2,
+        "delivery_completeness": "unknown",
         "referenced_tables": ["licenses"],
         "export_policy_override": False,
         "restricted_tables": [],
@@ -720,7 +722,7 @@ def test_query_run_export_uses_default_filename(
 
     assert response.status_code == 200
     assert response.headers["content-disposition"] == (
-        f'attachment; filename="query-run-{query_run.id}.csv"'
+        f'attachment; filename="query-run-{query_run.id}-completeness-unknown.csv"'
     )
     assert response.text == "product_name\nJira\n"
 
@@ -1731,7 +1733,7 @@ def test_card_export_allows_owner_exporting_personal_dashboard_card(
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/csv")
     assert response.headers["content-disposition"] == (
-        f'attachment; filename="card-{card.id}.csv"'
+        f'attachment; filename="card-{card.id}-completeness-unknown.csv"'
     )
     assert response.text == "product_name,monthly_cost_usd\nJira,8.50\n"
     assert executor.calls
@@ -1813,9 +1815,10 @@ def test_card_export_creates_successful_audit_log(
     assert audit_log.audit_metadata == {
         "export_source": "dashboard_card",
         "format": "csv",
-        "filename": "card-export.csv",
+        "filename": "card-export-completeness-unknown.csv",
         "include_headers": True,
         "row_count": 1,
+        "delivery_completeness": "unknown",
         "referenced_tables": ["licenses"],
         "export_policy_override": False,
         "restricted_tables": [],
@@ -1915,7 +1918,7 @@ def test_card_export_allows_admin_exporting_global_dashboard_card(
 
     assert response.status_code == 200
     assert response.headers["content-disposition"] == (
-        'attachment; filename="global-departments.csv"'
+        'attachment; filename="global-departments-completeness-unknown.csv"'
     )
     assert response.text == "name\nIT\n"
     assert_no_sql_payload(response.text)

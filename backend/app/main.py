@@ -25,6 +25,11 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "X-CSRF-Token"],
+    expose_headers=[
+        "Content-Disposition",
+        "X-QueryOps-Delivery-Completeness",
+        "X-QueryOps-Returned-Row-Count",
+    ],
 )
 app.include_router(actions_router)
 app.include_router(approvals_router)

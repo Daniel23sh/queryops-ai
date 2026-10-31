@@ -463,24 +463,26 @@ def test_automatic_safety_limit_at_exact_cap_is_truthfully_partial(
     assert result.execution_metadata["delivery_completeness"] == "safety_limited"
 
 
-def test_input_limit_at_exact_bound_keeps_delivery_completeness_unknown(
+@pytest.mark.parametrize("limit", [0, 1, 100, 500])
+def test_input_limit_completes_the_bounded_query_including_zero(
     postgres_engine: Engine,
+    limit: int,
 ) -> None:
     with Session(postgres_engine) as session:
         admin = access_context_for(session, "demo.admin@queryops.local")
         validation = validate_for_user(
             session,
             admin,
-            "SELECT id FROM departments ORDER BY id LIMIT 1",
+            f"SELECT id FROM departments ORDER BY id LIMIT {limit}",
         )
 
     result = execute_validated_sql(postgres_engine, admin, validation)
 
     assert_success(result)
     assert validation.limit_source == "input"
-    assert result.row_count == 1
+    assert result.row_count <= limit
     assert result.truncated is False
-    assert result.execution_metadata["delivery_completeness"] == "unknown"
+    assert result.execution_metadata["delivery_completeness"] == "complete"
 
 
 def test_payload_budget_stops_row_acquisition_and_marks_delivery_unknown(

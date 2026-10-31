@@ -187,23 +187,18 @@ def execute_validated_sql(
             and getattr(validation_result, "effective_limit", None) is not None
             and result.row_count >= validation_result.effective_limit
         )
-        input_bound_reached = (
-            getattr(validation_result, "limit_source", None) == "input"
-            and getattr(validation_result, "effective_limit", None) is not None
-            and result.row_count >= validation_result.effective_limit
-        )
         return replace(
             result,
             execution_metadata={
                 **result.execution_metadata,
                 "delivery_completeness": (
-                    "safety_limited"
-                    if safety_bound_reached
-                    else "unknown"
-                    if input_bound_reached
-                    or result.truncated
-                    or result.execution_metadata.get("payload_limited") is True
+                    "unknown"
+                    if result.execution_metadata.get("payload_limited") is True
                     or result.execution_metadata.get("timeout") is True
+                    else "safety_limited"
+                    if safety_bound_reached or result.truncated
+                    else "unknown"
+                    if getattr(validation_result, "limit_source", None) is None
                     else "complete"
                 ),
             },

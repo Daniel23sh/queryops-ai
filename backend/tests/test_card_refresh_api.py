@@ -389,9 +389,10 @@ def test_card_refresh_returns_safe_preview_and_persists_viewer_query_run(
         "row_count": 1,
         "duration_ms": 8,
         "truncated": False,
+        "delivery_completeness": "unknown",
         "refreshed_at": data["refreshed_at"],
         "message": "Dashboard card refreshed successfully.",
-        "warnings": [],
+        "warnings": ["Result completeness is unknown. The returned rows may not be the full result."],
     }
     assert body["meta"]["request_id"]
     assert body["meta"]["timestamp"]
@@ -419,7 +420,10 @@ def test_card_refresh_returns_safe_preview_and_persists_viewer_query_run(
         "saved_query_id": str(card.saved_query_id),
         "refreshed_from_query_run_id": str(source_run.id),
         "referenced_tables": ["licenses"],
-        "validation": {"valid": True, "error_code": None},
+        "validation": {
+            "valid": True, "error_code": None, "input_limit": None,
+            "effective_limit": 100, "limit_source": None,
+        },
         "execution": {
             "status": "succeeded",
             "error_code": None,
@@ -427,6 +431,7 @@ def test_card_refresh_returns_safe_preview_and_persists_viewer_query_run(
             "duration_ms": 8,
             "truncated": False,
             "row_limit": 100,
+            "delivery_completeness": "unknown",
         },
     }
     assert "rows" not in refresh_run.query_metadata
