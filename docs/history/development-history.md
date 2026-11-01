@@ -1,5 +1,50 @@
 # QueryOps AI — Development History
 
+## 2026-11-01 — W6b Candidate Availability implementation candidate
+
+Implemented on `feature/m10-w6b-candidate-availability` from verified main
+`722e6a0`, after approval commit `bd93569`. The existing authorized ranked core,
+lexical evidence and intent metadata remain intact. A bounded authorized graph
+and atomic concept/metric/rule dependency bundles add optional availability;
+selection order reuses description scoring, including zero-score definitions,
+with deterministic ties and final canonical IDs. No prompt/model/catalog,
+dataset, thresholds, schema or RLS changes. Mock unsafe metadata now reports only
+lexical entity references rather than all available tables; its unchanged
+Evaluation expectation passes. This was a diagnosed integration correction,
+not an adjustment of expected answers or scores.
+
+Two specialized non-author implementation contributors independently compared
+retrieval/budgets and authored PostgreSQL/API adversarial regressions. One owner
+implemented production changes and reconciled contracts/tests/docs; their helper
+inspection is not the separate independent final acceptance review.
+
+Frozen known-corpus coverage: 40/69 → 69/69, entities 56/91 → 91/91,
+relationships 7/13 → 13/13, concepts 30/40 → 40/40, rules 3/6 → 6/6,
+metrics 3/3 unchanged. No positive regressions, maximum 16,000 bytes.
+Five legacy empty-entity controls fail literally as authorized options become
+available; all forbidden IDs and lexical negatives remain absent. See the
+[Hebrew decision](../audits/2026-11-01-candidate-availability-he.md) and
+[replay artifact](../audits/2026-11-01-candidate-availability-results.json).
+
+Local evidence: original focused regression 4 failed/3 passed before, then all
+7 passed; final focused semantic/ownership/candidate suite 161 passed. Actual
+PostgreSQL 16.14/API candidates 14 passed, zero skips; unchanged Mock evaluation
+plus these candidates 15 passed. Complete PostgreSQL backend suite (excluding the
+separate action release gate) **1,965 passed, zero skips**; exact action release
+gate **20 passed, zero skips**. Ruff, Pyright (zero
+errors), compilation, diff and changed Markdown target checks passed. The initial
+sandbox-blocked full run was aborted and is not valid test evidence. The first
+network-enabled full run found the Mock metadata defect (1,960 passed/1 failed);
+the corrected final run passed unchanged Evaluation expectations.
+
+CI and PR-head evidence are recorded in the PR handoff after execution. The
+existing full-pytest jobs collect both new files; the corpus regression explicitly
+forbids Git-history access so shallow CI works. Existing real PostgreSQL Chromium
+Ask Data free-query/save-card/export and governed flows provide browser regression
+coverage when their CI run passes. No paid provider, qualifying Canary/Full40,
+held-out/W6c validation or release qualification was performed. Independent final
+review remains pending and the branch must stay unmerged.
+
 ## 2026-11-01 — Output Identity merged; Candidate Availability authorized
 
 PR #67 merged at `722e6a092b53dd58b7f9779393273ed13cc70c33`. Local/fetched main,

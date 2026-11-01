@@ -63,13 +63,20 @@ prompt/model, thresholds, release-gate changes, paid runs, W6c or W7 are approve
 Commit/push a focused PR and leave it unmerged for independent final review. The
 known W6a corpus is regression material; the reviewer owns new unseen cases.
 
+Implementation is complete locally: authorized optional graph availability and
+atomic definition bundles retain the ranked core and 16,000-byte cap. Known W6a
+positive coverage is 40/69 → 69/69; five literal empty-context controls change
+without authorizing forbidden targets. See the [decision/evidence](docs/audits/2026-11-01-candidate-availability-he.md).
+The implementation is not merged or independently accepted. No claim of provider
+answer quality or release qualification follows from these availability metrics.
+
 ## Constraints and Remaining Work
 
 - Follow the [M10 roadmap](docs/development/m10-completion-roadmap.md) for W6a–W9
   dependencies/acceptance; W10 cleanup is optional. W6a diagnosis, W6b targeted
   correction and W6c independent validation are separate packages.
 - Old environment v1/missing-fingerprint evidence cannot qualify under environment
-  v2. Semantic diagnosis is merged; the narrowly approved output correction and independent validation,
+  v2. Semantic diagnosis and Output Identity are merged; Candidate Availability, independent validation,
   explicit local auth boundary, reproducible validation and final V1 QA remain open.
   The audit's hard-004 case passed its diagnostic canary; blanket historical
   failure claims are not accepted without new evidence.
@@ -83,8 +90,8 @@ known W6a corpus is regression material; the reviewer owns new unseen cases.
 
 ## Next Approved Work
 
-Implement and verify the narrow W6b Candidate Availability correction only,
-then hand off an unmerged PR for independent final review. Do not begin W6c,
+Complete the Candidate Availability verification/PR handoff, then obtain the
+separate independent final review on the unmerged combined diff. Do not begin W6c,
 W7 or prompt/model tuning; no paid evaluation is authorized.
 
 ## References
