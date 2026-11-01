@@ -155,8 +155,9 @@ The probe's assertions passed for all 19 contrasts. Existing
 `tests/test_relational_semantics.py` passed **33 tests, zero skipped** against
 this dedicated PostgreSQL instance. Its seven formerly skipped PostgreSQL cases
 use temporary tables and rollback, preserving the medium-plus-contrast data.
-Ruff and Python syntax checks passed for the new script. Commands and focused
-log hash are in the JSON; safe logs are `/tmp/queryops-w6a/algebra-probe.log`,
+Ruff and Python syntax checks passed for the new script. Commands are in the JSON;
+regression-test results are separate execution evidence, never fabricated by a
+probe replay or read from an obligatory temporary log. Safe logs are `/tmp/queryops-w6a/algebra-probe.log`,
 `algebra-migrate.log`, and `algebra-relational-tests.log`.
 
 No provider accuracy, provider-stage failure rate, qualifying Canary, Full40,

@@ -15,17 +15,10 @@
   "database": {
     "migration_head": "0010_disable_inactive_user",
     "timezone": "Etc/UTC",
-    "transaction_time": "2026-11-01 09:31:23.437639+00:00",
+    "transaction_time": "2026-11-01 14:02:44.920463+00:00",
     "version": "PostgreSQL 16.14 (Debian 16.14-1.pgdg13+1) on aarch64-unknown-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit"
   },
   "dataset_digest": "6ac164ab6c58c0b008a65afc01cd26aa434fecd3eaa402b5bdad9c89e6f6540f",
-  "focused_regression": {
-    "log_path": "/tmp/queryops-w6a/algebra-relational-tests.log",
-    "log_sha256": "face02f593ea57f2529b9ed11e43bb4a926d18113a7aa5f206effe0618c3288c",
-    "passed": 33,
-    "path": "backend/tests/test_relational_semantics.py",
-    "skipped": 0
-  },
   "held_out": false,
   "model_behavior_tested": false,
   "probes": [
@@ -87,9 +80,9 @@
         "isolation": "repeatable read",
         "read_only": "on",
         "role": "queryops_query_runtime",
-        "snapshot": "772:772:",
+        "snapshot": "779:779:",
         "timezone": "Etc/UTC",
-        "transaction_time": "2026-11-01 09:31:23.711627+00:00"
+        "transaction_time": "2026-11-01 14:02:45.163988+00:00"
       },
       "semantic_contract_diagnostic": {
         "aggregations_correct": true,
@@ -171,9 +164,9 @@
         "isolation": "repeatable read",
         "read_only": "on",
         "role": "queryops_query_runtime",
-        "snapshot": "772:772:",
+        "snapshot": "779:779:",
         "timezone": "Etc/UTC",
-        "transaction_time": "2026-11-01 09:31:23.763746+00:00"
+        "transaction_time": "2026-11-01 14:02:45.202831+00:00"
       },
       "semantic_contract_diagnostic": {
         "aggregations_correct": true,
@@ -255,9 +248,9 @@
         "isolation": "repeatable read",
         "read_only": "on",
         "role": "queryops_query_runtime",
-        "snapshot": "772:772:",
+        "snapshot": "779:779:",
         "timezone": "Etc/UTC",
-        "transaction_time": "2026-11-01 09:31:23.805894+00:00"
+        "transaction_time": "2026-11-01 14:02:45.239734+00:00"
       },
       "semantic_contract_diagnostic": {
         "aggregations_correct": true,
@@ -339,9 +332,9 @@
         "isolation": "repeatable read",
         "read_only": "on",
         "role": "queryops_query_runtime",
-        "snapshot": "772:772:",
+        "snapshot": "779:779:",
         "timezone": "Etc/UTC",
-        "transaction_time": "2026-11-01 09:31:23.850319+00:00"
+        "transaction_time": "2026-11-01 14:02:45.275845+00:00"
       },
       "semantic_contract_diagnostic": {
         "aggregations_correct": true,
@@ -423,9 +416,9 @@
         "isolation": "repeatable read",
         "read_only": "on",
         "role": "queryops_query_runtime",
-        "snapshot": "772:772:",
+        "snapshot": "779:779:",
         "timezone": "Etc/UTC",
-        "transaction_time": "2026-11-01 09:31:23.909462+00:00"
+        "transaction_time": "2026-11-01 14:02:45.338056+00:00"
       },
       "semantic_contract_diagnostic": {
         "aggregations_correct": true,
@@ -507,9 +500,9 @@
         "isolation": "repeatable read",
         "read_only": "on",
         "role": "queryops_query_runtime",
-        "snapshot": "772:772:",
+        "snapshot": "779:779:",
         "timezone": "Etc/UTC",
-        "transaction_time": "2026-11-01 09:31:23.951694+00:00"
+        "transaction_time": "2026-11-01 14:02:45.373923+00:00"
       },
       "semantic_contract_diagnostic": {
         "aggregations_correct": true,
@@ -591,9 +584,9 @@
         "isolation": "repeatable read",
         "read_only": "on",
         "role": "queryops_query_runtime",
-        "snapshot": "772:772:",
+        "snapshot": "779:779:",
         "timezone": "Etc/UTC",
-        "transaction_time": "2026-11-01 09:31:23.991929+00:00"
+        "transaction_time": "2026-11-01 14:02:45.407559+00:00"
       },
       "semantic_contract_diagnostic": {
         "aggregations_correct": true,
@@ -675,9 +668,9 @@
         "isolation": "repeatable read",
         "read_only": "on",
         "role": "queryops_query_runtime",
-        "snapshot": "772:772:",
+        "snapshot": "779:779:",
         "timezone": "Etc/UTC",
-        "transaction_time": "2026-11-01 09:31:24.024584+00:00"
+        "transaction_time": "2026-11-01 14:02:45.434563+00:00"
       },
       "semantic_contract_diagnostic": {
         "aggregations_correct": true,
@@ -761,9 +754,9 @@
         "isolation": "repeatable read",
         "read_only": "on",
         "role": "queryops_query_runtime",
-        "snapshot": "772:772:",
+        "snapshot": "779:779:",
         "timezone": "Etc/UTC",
-        "transaction_time": "2026-11-01 09:31:24.054595+00:00"
+        "transaction_time": "2026-11-01 14:02:45.461085+00:00"
       },
       "semantic_contract_diagnostic": {
         "aggregations_correct": true,
@@ -847,9 +840,9 @@
         "isolation": "repeatable read",
         "read_only": "on",
         "role": "queryops_query_runtime",
-        "snapshot": "772:772:",
+        "snapshot": "779:779:",
         "timezone": "Etc/UTC",
-        "transaction_time": "2026-11-01 09:31:24.082660+00:00"
+        "transaction_time": "2026-11-01 14:02:45.487706+00:00"
       },
       "semantic_contract_diagnostic": {
         "aggregations_correct": true,
@@ -934,9 +927,9 @@
         "isolation": "repeatable read",
         "read_only": "on",
         "role": "queryops_query_runtime",
-        "snapshot": "772:772:",
+        "snapshot": "779:779:",
         "timezone": "Etc/UTC",
-        "transaction_time": "2026-11-01 09:31:24.116585+00:00"
+        "transaction_time": "2026-11-01 14:02:45.521118+00:00"
       },
       "semantic_contract_diagnostic": {
         "aggregations_correct": true,
@@ -1018,9 +1011,9 @@
         "isolation": "repeatable read",
         "read_only": "on",
         "role": "queryops_query_runtime",
-        "snapshot": "772:772:",
+        "snapshot": "779:779:",
         "timezone": "Etc/UTC",
-        "transaction_time": "2026-11-01 09:31:24.141630+00:00"
+        "transaction_time": "2026-11-01 14:02:45.547320+00:00"
       },
       "semantic_contract_diagnostic": {
         "aggregations_correct": false,
@@ -1105,9 +1098,9 @@
         "isolation": "repeatable read",
         "read_only": "on",
         "role": "queryops_query_runtime",
-        "snapshot": "772:772:",
+        "snapshot": "779:779:",
         "timezone": "Etc/UTC",
-        "transaction_time": "2026-11-01 09:31:24.166395+00:00"
+        "transaction_time": "2026-11-01 14:02:45.573161+00:00"
       },
       "semantic_contract_diagnostic": {
         "aggregations_correct": false,
@@ -1183,9 +1176,9 @@
         "isolation": "repeatable read",
         "read_only": "on",
         "role": "queryops_query_runtime",
-        "snapshot": "772:772:",
+        "snapshot": "779:779:",
         "timezone": "Etc/UTC",
-        "transaction_time": "2026-11-01 09:31:24.191104+00:00"
+        "transaction_time": "2026-11-01 14:02:45.599964+00:00"
       },
       "semantic_contract_diagnostic": {
         "aggregations_correct": true,
@@ -1270,9 +1263,9 @@
         "isolation": "repeatable read",
         "read_only": "on",
         "role": "queryops_query_runtime",
-        "snapshot": "772:772:",
+        "snapshot": "779:779:",
         "timezone": "Etc/UTC",
-        "transaction_time": "2026-11-01 09:31:24.214391+00:00"
+        "transaction_time": "2026-11-01 14:02:45.625791+00:00"
       },
       "semantic_contract_diagnostic": {
         "aggregations_correct": true,
@@ -1354,9 +1347,9 @@
         "isolation": "repeatable read",
         "read_only": "on",
         "role": "queryops_query_runtime",
-        "snapshot": "772:772:",
+        "snapshot": "779:779:",
         "timezone": "Etc/UTC",
-        "transaction_time": "2026-11-01 09:31:24.240701+00:00"
+        "transaction_time": "2026-11-01 14:02:45.652727+00:00"
       },
       "semantic_contract_diagnostic": {
         "aggregations_correct": true,
@@ -1442,9 +1435,9 @@
         "isolation": "repeatable read",
         "read_only": "on",
         "role": "queryops_query_runtime",
-        "snapshot": "772:772:",
+        "snapshot": "779:779:",
         "timezone": "Etc/UTC",
-        "transaction_time": "2026-11-01 09:31:24.266640+00:00"
+        "transaction_time": "2026-11-01 14:02:45.679862+00:00"
       },
       "semantic_contract_diagnostic": {
         "aggregations_correct": true,
@@ -1526,9 +1519,9 @@
         "isolation": "repeatable read",
         "read_only": "on",
         "role": "queryops_query_runtime",
-        "snapshot": "772:772:",
+        "snapshot": "779:779:",
         "timezone": "Etc/UTC",
-        "transaction_time": "2026-11-01 09:31:24.290642+00:00"
+        "transaction_time": "2026-11-01 14:02:45.704905+00:00"
       },
       "semantic_contract_diagnostic": {
         "aggregations_correct": true,
@@ -1645,7 +1638,7 @@
       "user_permissions": 0
     }
   },
-  "source_sha": "36591a150528a654f30dc7cc8e48ca46ae5268dc",
+  "source_sha": "a31eb0d5966576960e88ce1336a743eef859425e",
   "sources": [
     {
       "id": "F11-runtime",

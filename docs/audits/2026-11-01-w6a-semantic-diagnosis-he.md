@@ -273,14 +273,27 @@ source/config וקריטריונים לפני חשיפה למממש. כשל חו
   repair/fallback/הרחבה אוטומטית. הגבול הוא 2048 output tokens לכל attempt;
   שמונה responses מצליחים הם עד 16,384, אך retries שנצרכו/חויבו יכולים להוסיף
   usage. אין כאן תקרת חיוב כספית מאומתת או הנחה שכשל transport היה חינם.
-- מקרים: `medium-009` המקורי; שתי paraphrases חדשות של base OR; contrast אחד
-  שמבקש narrowing במפורש; `hard-004`; `hard-005`; computers; laptops. נוסחי
-  contrasts יוקפאו בידי חוקר בלתי תלוי לפני ההרצה. אין קריאות qualification.
+- שמונה המקרים המוצעים מפורטים בטבלה להלן. אלה diagnostics גלויים, לא held-out.
+  שינוי בנוסחים או בתקציב יחייב הצעת ניסוי חדשה לפני אישור; אין קריאות qualification.
 - diagnostic value: candidate availability לעומת בחירה בפועל, extra narrowing,
   DISTINCT/grain ו־supported canonical plans. לשמור רק safe stage evidence,
   model/config identity ו־usage; לעצור בכשל auth/config/fatal, ללא retries ידניים.
 - 8 קריאות אינן אומדן יציבות או שיעור כשל. אין יתרון model מוכח ואין authorization
   לבצע את ההצעה הזאת במסגרת W6a.
+
+| מזהה ניסוי מוצע | Question קפוא לצורך בקשת אישור עתידית |
+| --- | --- |
+| P1 / medium-009 | Show distinct non-compliant devices that have outdated software. |
+| P2 / base OR paraphrase | List distinct devices with outdated software that meet our non-compliant device posture definition. |
+| P3 / base OR paraphrase | Which distinct devices have outdated software and are non-compliant by device posture? |
+| P4 / independent narrowing | Show distinct non-compliant devices with outdated software, restricted to devices whose compliance status is non_compliant. |
+| P5 / hard-004 | Which privileged-group users had more than 5 failed logins in the last 30 days? |
+| P6 / hard-005 | Which devices assigned to inactive users have unsupported high-risk software? |
+| P7 / entity recall | How many computers do we manage? |
+| P8 / entity plus subtype | Count all company laptops. |
+
+P2–P4 נוסחו לאחר האבחון לצורך ניסוי עתידי בלבד. ה־held-out העצמאי שתואר
+לעיל צריך להשתמש במקרים אחרים. טבלת שאלות זו אינה נשלחת ל־provider ב־W6a.
 
 ## 7. שחזור ואימות
 

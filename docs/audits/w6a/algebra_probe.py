@@ -118,6 +118,13 @@ def main():
     parser.add_argument("--add-contrast-fixture", action="store_true")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
+    frozen = json.loads((Path(__file__).parent / "baseline.json").read_text())
+    pack = load_it_operations_domain_pack()
+    dataset = load_it_operations_evaluation_v2_set()
+    assert evaluation_dataset_digest(dataset) == frozen["dataset"]["digest"]
+    assert semantic_catalog_identity(pack.semantic_catalog) == frozen["catalog"]
+    subprocess.run(["git", "diff", "--exit-code", frozen["source_commit"], "--",
+                    *frozen["source_tree_paths"]], cwd=ROOT, check=True, capture_output=True)
     url = validated_disposable_database_url(os.environ["POSTGRES_TEST_DATABASE_URL"])
     endpoint = make_url(url)
     assert endpoint.host == "127.0.0.1" and endpoint.port == 55448
@@ -132,8 +139,6 @@ def main():
             db.commit()
     if args.add_contrast_fixture:
         add_contrast_fixture(engine)
-    pack = load_it_operations_domain_pack()
-    dataset = load_it_operations_evaluation_v2_set()
     with Session(engine) as db:
         fingerprint, counts = evaluation_database_fingerprint(db)
         database = dict(db.execute(text("SELECT version() AS version, transaction_timestamp() AS transaction_time, current_setting('TimeZone') AS timezone, (SELECT version_num FROM alembic_version) AS migration_head")).mappings().one())
@@ -220,7 +225,6 @@ def main():
         ("F11-existing-corrections", "backend/tests/test_evaluation_semantic_corrections.py", "32-207"),
     )]
     report["commands"] = ["From backend with exact guarded disposable environment: PYTHONPATH=.:tests .venv/bin/python ../docs/audits/w6a/algebra_probe.py --initialize --add-contrast-fixture --out ../docs/audits/w6a/algebra-results.json (fresh EMPTY dedicated DB only)", "Read-only replay: PYTHONPATH=.:tests .venv/bin/python ../docs/audits/w6a/algebra_probe.py --out ../docs/audits/w6a/algebra-results.json", "PYTHONPATH=.:tests .venv/bin/pytest tests/test_relational_semantics.py -q -rs", ".venv/bin/ruff check ../docs/audits/w6a/algebra_probe.py", ".venv/bin/python -m py_compile ../docs/audits/w6a/algebra_probe.py"]
-    report["focused_regression"] = {"path": "backend/tests/test_relational_semantics.py", "passed": 33, "skipped": 0, "log_path": "/tmp/queryops-w6a/algebra-relational-tests.log", "log_sha256": hashlib.sha256(Path("/tmp/queryops-w6a/algebra-relational-tests.log").read_bytes()).hexdigest()}
     args.out.write_text(json.dumps(report, default=str, sort_keys=True, indent=2) + "\n")
     print(json.dumps({"probes": len(results), "provider_calls": 0, "output": str(args.out)}))
     engine.dispose()

@@ -138,6 +138,13 @@ def main():
     parser.add_argument("--initialize", action="store_true")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args()
+    dataset = load_it_operations_evaluation_v2_set()
+    pack = load_it_operations_domain_pack()
+    frozen = json.loads((Path(__file__).parent / "baseline.json").read_text())
+    assert evaluation_dataset_digest(dataset) == frozen["dataset"]["digest"]
+    assert semantic_catalog_identity(pack.semantic_catalog) == frozen["catalog"]
+    subprocess.run(["git", "diff", "--exit-code", frozen["source_commit"], "--",
+                    *frozen["source_tree_paths"]], cwd=ROOT, check=True, capture_output=True)
     url = validated_disposable_database_url(os.environ["POSTGRES_TEST_DATABASE_URL"])
     endpoint = make_url(url)
     assert endpoint.host == "127.0.0.1" and endpoint.port == 55447
@@ -146,13 +153,6 @@ def main():
         initialize(url)
     engine = create_engine(url)
     factory = sessionmaker(engine, expire_on_commit=False)
-    dataset = load_it_operations_evaluation_v2_set()
-    pack = load_it_operations_domain_pack()
-    frozen = json.loads((Path(__file__).parent / "baseline.json").read_text())
-    assert evaluation_dataset_digest(dataset) == frozen["dataset"]["digest"]
-    assert semantic_catalog_identity(pack.semantic_catalog) == frozen["catalog"]
-    subprocess.run(["git", "diff", "--exit-code", frozen["source_commit"], "--",
-                    *frozen["source_tree_paths"]], cwd=ROOT, check=True, capture_output=True)
     with factory() as db:
         seed_fingerprint, seed_counts = evaluation_database_fingerprint(db)
     with engine.connect() as connection:
