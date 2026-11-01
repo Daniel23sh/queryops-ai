@@ -887,7 +887,7 @@ def test_openai_provider_classifies_failures_without_raw_error_leakage(
     assert "secret" not in str(exc_info.value).lower()
 
 
-def _transport_provider(monkeypatch, handler, *, retries=2):
+def _transport_provider(monkeypatch, handler, *, retries=2, timeout=45.0):
     from app.query_engine import openai_provider
     real_http_client = openai.DefaultHttpxClient
     clients = []
@@ -899,7 +899,7 @@ def _transport_provider(monkeypatch, handler, *, retries=2):
 
     monkeypatch.setattr(openai_provider, "DefaultHttpxClient", http_client)
     monkeypatch.setattr("openai._base_client.time.sleep", lambda _seconds: None)
-    return OpenAIProvider(OpenAIProviderSettings(api_key="synthetic-key", max_retries=retries)), clients
+    return OpenAIProvider(OpenAIProviderSettings(api_key="synthetic-key", max_retries=retries, timeout_seconds=timeout)), clients
 
 
 def _http_response(*, malformed=False):
@@ -912,6 +912,23 @@ def _http_response(*, malformed=False):
         "usage": {"input_tokens": 100, "input_tokens_details": {"cached_tokens": 25},
                   "output_tokens": 20, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 120},
     }
+
+
+@pytest.mark.parametrize("timeout", [4.0, 5.0, 6.0, 45.0])
+def test_owned_transport_dispatch_uses_the_exact_configured_timeout(monkeypatch, timeout):
+    dispatched = []
+
+    def handler(request):
+        dispatched.append(request.extensions["timeout"])
+        return httpx.Response(200, json=_http_response())
+
+    provider, clients = _transport_provider(monkeypatch, handler, timeout=timeout)
+    try:
+        provider.generate_plan(QUESTION, SCHEMA_CONTEXT, USER_CONTEXT, {})
+    finally:
+        for client in clients:
+            client.close()
+    assert dispatched == [{phase: timeout for phase in ("connect", "read", "write", "pool")}]
 
 
 def test_real_sdk_retry_counts_http_dispatches_without_network(monkeypatch):

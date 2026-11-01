@@ -239,6 +239,7 @@ class OpenAIProvider:
             project="",
             webhook_secret="",
             base_url=OFFICIAL_OPENAI_BASE_URL,
+            timeout=settings.timeout_seconds,
             max_retries=settings.max_retries,
             http_client=DefaultHttpxClient(
                 timeout=settings.timeout_seconds,
