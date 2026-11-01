@@ -1,5 +1,15 @@
 # QueryOps AI — Development History
 
+## 2026-11-01 — Output Identity merged; Candidate Availability authorized
+
+PR #67 merged at `722e6a092b53dd58b7f9779393273ed13cc70c33`. Local/fetched main,
+remote merge metadata and ancestry were verified on a clean checkout. The
+independent re-review of corrected head `f43d630` closed the P2 browser-selection
+finding after checking both cases actually executed in CI and all required gates.
+The owner approved Candidate Availability only as a separate W6b follow-up; W6c,
+W7, prompt/model tuning and paid runs remain unapproved. Historical unmerged or
+pending-review statements below describe their dated handoffs.
+
 ## 2026-11-01 — W6b independent review and CI selection correction
 
 A fresh non-author review of [PR #67](https://github.com/Daniel23sh/queryops-ai/pull/67)
