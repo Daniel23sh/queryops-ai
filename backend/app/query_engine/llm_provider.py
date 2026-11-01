@@ -11,6 +11,8 @@ from app.query_engine.semantic_plan import SemanticPlan
 MAX_PROVIDER_MODEL_LABEL_LENGTH = 128
 MAX_PROVIDER_DURATION_MS = 86_400_000.0
 MAX_PROVIDER_USAGE_COUNT = 1_000_000_000
+# HTTPX redirects also dispatch requests; three SDK attempts can each redirect.
+MAX_PROVIDER_HTTP_ATTEMPTS = 64
 
 
 class PlanGenerationOutcome(str, Enum):
@@ -54,10 +56,11 @@ class LLMProvider(Protocol):
 
 
 class LLMProviderFailure(RuntimeError):
-    def __init__(self, code: str, *, fatal: bool = False) -> None:
+    def __init__(self, code: str, *, fatal: bool = False, measurement: Any = None) -> None:
         super().__init__("Semantic planning is unavailable.")
         self.code = code
         self.fatal = fatal
+        self.measurement = sanitize_provider_measurement(measurement)
         self.safe_message = "Semantic planning is unavailable."
 
 
@@ -75,16 +78,25 @@ def sanitize_provider_measurement(value: Any) -> dict[str, Any] | None:
         or not isinstance(duration_ms, int | float)
         or isinstance(duration_ms, bool)
         or not 0 <= float(duration_ms) <= MAX_PROVIDER_DURATION_MS
-        or not isinstance(attempt_count, int)
-        or isinstance(attempt_count, bool)
-        or not 1 <= attempt_count <= 3
+        or not isinstance(value.get("call_count"), int)
+        or value.get("call_count") != 1
+        or isinstance(value.get("call_count"), bool)
+        or not isinstance(value.get("usage_complete"), bool)
+        or (attempt_count is not None and (
+            not isinstance(attempt_count, int)
+            or isinstance(attempt_count, bool)
+            or not 1 <= attempt_count <= MAX_PROVIDER_HTTP_ATTEMPTS
+        ))
+        or "attempt_count" not in value
     ):
         return None
     safe: dict[str, Any] = {
         "provider": provider,
         "model_label": model_label,
         "duration_ms": round(float(duration_ms), 3),
+        "call_count": 1,
         "attempt_count": attempt_count,
+        "usage_complete": value["usage_complete"],
     }
     for key in (
         "input_tokens",
@@ -99,4 +111,38 @@ def sanitize_provider_measurement(value: Any) -> dict[str, Any] | None:
             and 0 <= count <= MAX_PROVIDER_USAGE_COUNT
         ):
             safe[key] = count
+    if safe["usage_complete"] and not all(
+        key in safe
+        for key in ("input_tokens", "cached_input_tokens", "output_tokens", "total_tokens")
+    ):
+        return None
     return safe
+
+
+def aggregate_provider_measurements(
+    measurements: list[dict[str, Any]],
+) -> dict[str, int | float | None]:
+    totals: dict[str, int | float | None] = {
+        "call_count": len(measurements),
+        "duration_ms": round(
+            min(
+                sum(float(item["duration_ms"]) for item in measurements),
+                MAX_PROVIDER_DURATION_MS,
+            ),
+            3,
+        ),
+    }
+    for key in (
+        "attempt_count", "input_tokens", "cached_input_tokens", "output_tokens", "total_tokens",
+    ):
+        total = (
+            sum(int(item[key]) for item in measurements)
+            if all(
+                item.get(key) is not None
+                and (key == "attempt_count" or item.get("usage_complete") is True)
+                for item in measurements
+            )
+            else None
+        )
+        totals[key] = total if total is not None and total <= MAX_PROVIDER_USAGE_COUNT else None
+    return totals

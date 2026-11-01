@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
+from app.query_engine.provider_config import current_openai_runtime_identity
 from app.evaluation.contracts import CaseType, ExpectedOutcome
 from app.evaluation.loader import load_it_operations_evaluation_v2_set
 from app.evaluation.selection import (
@@ -84,7 +85,7 @@ def test_mismatched_sha_or_model_does_not_form_a_stability_set() -> None:
         )
 
         assert assessment.status is StabilityStatus.INCOMPLETE
-        assert assessment.reason_code == "stability_identity_mismatch"
+        assert assessment.reason_code == ("stability_evidence_malformed" if mutation == "model" else "stability_identity_mismatch")
         assert len(assessment.run_ids) == 2
         assert assessment.source_git_sha == "a" * 40
 
@@ -332,7 +333,7 @@ def _run(*, index: int) -> StabilityRunEvidence:
                 load_it_operations_domain_pack().semantic_catalog
             ),
             "evaluation_environment": {
-                "manifest_version": "queryops-evaluation-environment-v1",
+                "manifest_version": "queryops-evaluation-environment-v2",
                 "seed_version": "it-operations-seed-v1",
                 "seed_profile": "medium",
                 "seed": 42,
@@ -342,6 +343,8 @@ def _run(*, index: int) -> StabilityRunEvidence:
                 "postgres_version": "16.9",
                 "database_fingerprint": "b" * 64,
                 "dependency_manifest_hash": "c" * 64,
+                "provider_runtime_version": current_openai_runtime_identity()["version"],
+                "provider_runtime_digest": current_openai_runtime_identity()["digest"],
             },
             "evaluation_suite": suite.as_safe_dict(),
             "filters": {
@@ -423,6 +426,8 @@ def _result(case) -> StabilityResultEvidence:
             "model_label": "gpt-5.6-terra",
             "duration_ms": 1.0,
             "attempt_count": 1,
+            "call_count": 1,
+            "usage_complete": True,
             "input_tokens": 1,
             "cached_input_tokens": 0,
             "output_tokens": 1,
@@ -649,3 +654,27 @@ def _planner_defect(
     planner_metrics[aggregate_key] = 1
     summary["planner_metrics"] = planner_metrics
     return replace(run, summary=summary, results=tuple(rows))
+
+
+def test_matching_canaries_cannot_qualify_after_current_runtime_changes(monkeypatch):
+    from app.query_engine import provider_config
+    runs = tuple(_run(index=index) for index in range(3))
+    versions = provider_config.installed_runtime_versions()
+    monkeypatch.setattr(provider_config, "installed_runtime_versions", lambda: {**versions, "httpx": "0.0.changed"})
+    assert _evaluate(load_it_operations_evaluation_v2_set(), runs).status is StabilityStatus.INCOMPLETE
+
+
+def test_matching_canaries_with_missing_or_malformed_runtime_are_incomplete():
+    for value in (None, "invalid"):
+        runs = []
+        for index in range(3):
+            run = _run(index=index)
+            summary = dict(run.summary)
+            environment = dict(summary["evaluation_environment"])
+            if value is None:
+                environment.pop("provider_runtime_digest")
+            else:
+                environment["provider_runtime_digest"] = value
+            summary["evaluation_environment"] = environment
+            runs.append(replace(run, summary=summary))
+        assert _evaluate(load_it_operations_evaluation_v2_set(), runs).status is StabilityStatus.INCOMPLETE

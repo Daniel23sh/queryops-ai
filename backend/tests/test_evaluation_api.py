@@ -11,6 +11,7 @@ from sqlalchemy import create_engine, event, func, select
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
+from app.query_engine.provider_config import current_openai_runtime_identity
 from app.db.base import Base
 from app.db.session import get_db
 from app.domains.it_operations.seed import seed_database
@@ -1331,7 +1332,7 @@ def _create_release_evidence(
     full_completion = completed_at or datetime.now(UTC)
     reference_time = full_completion - timedelta(hours=4)
     environment: dict[str, str | int] = {
-        "manifest_version": "queryops-evaluation-environment-v1",
+        "manifest_version": "queryops-evaluation-environment-v2",
         "seed_version": "it-operations-seed-v1",
         "seed_profile": "medium",
         "seed": 42,
@@ -1343,6 +1344,8 @@ def _create_release_evidence(
         "postgres_version": "16.9",
         "database_fingerprint": "b" * 64,
         "dependency_manifest_hash": "c" * 64,
+        "provider_runtime_version": current_openai_runtime_identity()["version"],
+        "provider_runtime_digest": current_openai_runtime_identity()["digest"],
     }
     for hours_before in (3, 2, 1):
         _create_run(
@@ -1392,7 +1395,7 @@ def _create_run(
         "selected_count": len(selected),
     }
     environment = environment_identity or {
-        "manifest_version": "queryops-evaluation-environment-v1",
+        "manifest_version": "queryops-evaluation-environment-v2",
         "seed_version": "it-operations-seed-v1",
         "seed_profile": "medium",
         "seed": 42,
@@ -1404,6 +1407,8 @@ def _create_run(
         "postgres_version": "16.9",
         "database_fingerprint": "b" * 64,
         "dependency_manifest_hash": "c" * 64,
+        "provider_runtime_version": current_openai_runtime_identity()["version"],
+        "provider_runtime_digest": current_openai_runtime_identity()["digest"],
     }
     run = EvaluationRun(
         requested_by_user_id=None,
@@ -1515,6 +1520,8 @@ def _create_run(
                                 "model_label": model_label or "gpt-5.6-terra",
                                 "duration_ms": 1.25,
                                 "attempt_count": 1,
+                                "call_count": 1,
+                                "usage_complete": True,
                                 "input_tokens": 1,
                                 "cached_input_tokens": 0,
                                 "output_tokens": 1,

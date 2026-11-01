@@ -8,6 +8,7 @@ from pathlib import Path
 from app.db.session import SessionLocal
 from app.domains.it_operations.seed import seed_database
 from app.domains.it_operations.seed_profiles import SEED_PROFILES
+from app.query_engine.provider_config import ProviderConfigurationError, load_provider_settings
 from app.evaluation.environment import (
     EvaluationEnvironmentError,
     build_evaluation_environment_manifest,
@@ -65,6 +66,7 @@ def main() -> int:
     session = SessionLocal()
     manifest = None
     try:
+        provider_settings = load_provider_settings() if args.manifest_out else None
         options = {"reference_now": reference_time} if reference_time else {}
         summary = seed_database(
             session,
@@ -73,9 +75,9 @@ def main() -> int:
             **options,
         )
         if args.manifest_out:
-            manifest = build_evaluation_environment_manifest(session, summary)
+            manifest = build_evaluation_environment_manifest(session, summary, provider_settings=provider_settings)
         session.commit()
-    except EvaluationEnvironmentError as exc:
+    except (EvaluationEnvironmentError, ProviderConfigurationError) as exc:
         session.rollback()
         print(f"Seed failed: {exc.code}", file=sys.stderr)
         return 2

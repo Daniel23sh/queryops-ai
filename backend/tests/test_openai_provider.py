@@ -259,7 +259,9 @@ def test_openai_client_disables_ambient_sdk_routing(
     assert client_arguments["organization"] == ""
     assert client_arguments["project"] == ""
     assert client_arguments["max_retries"] == 2
-    assert http_arguments == {"timeout": 45.0, "trust_env": False}
+    assert http_arguments["timeout"] == 45.0
+    assert http_arguments["trust_env"] is False
+    assert set(http_arguments["event_hooks"]) == {"request", "response"}
 
 
 def test_safe_prompt_projection_contains_only_explicit_authorized_fields() -> None:
@@ -309,7 +311,9 @@ def test_openai_provider_parses_plan_and_extracts_only_safe_usage() -> None:
         "provider": "openai",
         "model_label": "gpt-5.6-terra",
         "duration_ms": measurement["duration_ms"],
-        "attempt_count": 1,
+        "attempt_count": None,
+        "call_count": 1,
+        "usage_complete": False,
         "input_tokens": 100,
         "cached_input_tokens": 25,
         "output_tokens": 20,
@@ -881,3 +885,160 @@ def test_openai_provider_classifies_failures_without_raw_error_leakage(
     assert exc_info.value.fatal is fatal
     assert "raw" not in str(exc_info.value).lower()
     assert "secret" not in str(exc_info.value).lower()
+
+
+def _transport_provider(monkeypatch, handler, *, retries=2):
+    from app.query_engine import openai_provider
+    real_http_client = openai.DefaultHttpxClient
+    clients = []
+
+    def http_client(**kwargs):
+        client = real_http_client(transport=httpx.MockTransport(handler), **kwargs)
+        clients.append(client)
+        return client
+
+    monkeypatch.setattr(openai_provider, "DefaultHttpxClient", http_client)
+    monkeypatch.setattr("openai._base_client.time.sleep", lambda _seconds: None)
+    return OpenAIProvider(OpenAIProviderSettings(api_key="synthetic-key", max_retries=retries)), clients
+
+
+def _http_response(*, malformed=False):
+    return {
+        "id": "private-response-id", "object": "response", "created_at": 0,
+        "status": "completed", "model": "gpt-5.6-terra",
+        "output": [{"id": "private-message", "type": "message", "role": "assistant", "status": "completed",
+                    "content": [{"type": "output_text", "annotations": [],
+                                 "text": "malformed-private-payload" if malformed else json.dumps({"outcome": "plan", "semantic_plan": DEVICE_PLAN, "clarification_reason": None})}]}],
+        "usage": {"input_tokens": 100, "input_tokens_details": {"cached_tokens": 25},
+                  "output_tokens": 20, "output_tokens_details": {"reasoning_tokens": 0}, "total_tokens": 120},
+    }
+
+
+def test_real_sdk_retry_counts_http_dispatches_without_network(monkeypatch):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(500, json={"error": {"message": "private"}}) if len(requests) == 1 else httpx.Response(200, json=_http_response())
+
+    provider, clients = _transport_provider(monkeypatch, handler)
+    try:
+        result = provider.generate_plan(QUESTION, SCHEMA_CONTEXT, USER_CONTEXT, {})
+    finally:
+        clients[0].close()
+    measurement = result.generation_metadata["provider_measurement"]
+    assert len(requests) == measurement["attempt_count"] == 2
+    assert measurement["call_count"] == 1
+    assert measurement["input_tokens"] == 100
+    assert measurement["usage_complete"] is False  # The failed HTTP response had no usage.
+    assert "private" not in repr(measurement)
+
+
+@pytest.mark.parametrize("failure", ["http", "timeout", "malformed"])
+def test_real_sdk_failures_preserve_safe_observations(monkeypatch, failure):
+    from app.query_engine.openai_provider import _http_measurement
+    from app.query_engine.plan_generator import PlanGenerator
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        if failure == "timeout":
+            raise httpx.ReadTimeout("private-timeout", request=request)
+        return httpx.Response(503 if failure == "http" else 200, json=_http_response(malformed=failure == "malformed"))
+
+    provider, clients = _transport_provider(monkeypatch, handler)
+    try:
+        result = PlanGenerator(provider).generate_plan(QUESTION, SCHEMA_CONTEXT, USER_CONTEXT)
+    finally:
+        clients[0].close()
+    assert result.generation_failed
+    measurement = result.generation_metadata["provider_measurement"]
+    assert measurement["call_count"] == 1
+    assert measurement["attempt_count"] == len(calls) == (1 if failure == "malformed" else 3)
+    assert measurement["duration_ms"] >= 0
+    if failure == "timeout":
+        assert "input_tokens" not in measurement
+        assert measurement["usage_complete"] is False
+    else:
+        assert measurement["input_tokens"] == 100 * len(calls)
+        assert measurement["usage_complete"] is True
+    assert "private" not in repr(result.generation_metadata)
+    assert _http_measurement.get() is None
+
+
+def test_response_telemetry_parse_failure_does_not_fail_valid_provider_result(monkeypatch):
+    from app.query_engine import openai_provider
+    original = openai_provider._usage_counts
+    calls = []
+
+    def broken_usage(usage):
+        calls.append(True)
+        raise ValueError("telemetry-only")
+
+    provider, clients = _transport_provider(monkeypatch, lambda _request: httpx.Response(200, json=_http_response()))
+    monkeypatch.setattr(openai_provider, "_usage_counts", broken_usage)
+    try:
+        result = provider.generate_plan(QUESTION, SCHEMA_CONTEXT, USER_CONTEXT, {})
+    finally:
+        clients[0].close()
+        monkeypatch.setattr(openai_provider, "_usage_counts", original)
+    assert result.semantic_plan is not None
+    assert result.generation_metadata["provider_measurement"]["usage_complete"] is False
+    assert calls
+
+
+def test_response_stream_timeout_keeps_sdk_timeout_and_retry_behavior(monkeypatch):
+    from app.query_engine.plan_generator import PlanGenerator
+    requests = []
+
+    class TimeoutStream(httpx.SyncByteStream):
+        def __iter__(self):
+            raise httpx.ReadTimeout("private-stream-timeout")
+            yield b""  # The response must stream so read() observes the timeout.
+
+    def handler(request):
+        requests.append(request)
+        return httpx.Response(200, stream=TimeoutStream())
+
+    provider, clients = _transport_provider(monkeypatch, handler)
+    try:
+        result = PlanGenerator(provider).generate_plan(QUESTION, SCHEMA_CONTEXT, USER_CONTEXT)
+    finally:
+        clients[0].close()
+    assert result.generation_metadata["provider_failure_code"] == "provider_timeout"
+    measurement = result.generation_metadata["provider_measurement"]
+    assert measurement["attempt_count"] == len(requests) == 3
+    assert measurement["usage_complete"] is False
+    assert "total_tokens" not in measurement
+    assert "private" not in repr(result.generation_metadata)
+
+
+def test_observed_token_overflow_is_unavailable_rather_than_capped():
+    from app.query_engine.openai_provider import _HTTPMeasurement, _safe_response_metadata
+    observation = _HTTPMeasurement(attempts=2, usages=[{"input_tokens": 1_000_000_000}] * 2)
+    measurement = _safe_response_metadata(None, 1.0, "gpt-5.6-terra", observation)["provider_measurement"]
+    assert "input_tokens" not in measurement
+    assert measurement["usage_complete"] is False
+
+
+def test_redirects_and_sdk_retries_each_count_physical_dispatches(monkeypatch):
+    requests = []
+
+    def handler(request):
+        requests.append(request)
+        if len(requests) <= 2:
+            return httpx.Response(500, json={"error": {"message": "synthetic"}})
+        if len(requests) == 3:
+            return httpx.Response(307, headers={"location": "/v1/redirected"})
+        return httpx.Response(200, json=_http_response())
+
+    provider, clients = _transport_provider(monkeypatch, handler)
+    try:
+        result = provider.generate_plan(QUESTION, SCHEMA_CONTEXT, USER_CONTEXT, {})
+    finally:
+        clients[0].close()
+    from app.query_engine.llm_provider import sanitize_provider_measurement
+    measurement = result.generation_metadata["provider_measurement"]
+    assert measurement["call_count"] == 1
+    assert measurement["attempt_count"] == len(requests) == 4
+    assert sanitize_provider_measurement(measurement) == measurement

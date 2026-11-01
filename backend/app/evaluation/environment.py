@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from enum import Enum
-from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 from uuid import UUID
@@ -25,9 +24,18 @@ from app.evaluation.loader import load_it_operations_evaluation_v2_set
 from app.evaluation.selection import evaluation_dataset_digest
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.semantic_catalog import semantic_catalog_identity
+from app.query_engine.provider_config import (
+    PROVIDER_RUNTIME_VERSION,
+    ProviderConfigurationError,
+    ProviderSettings,
+    installed_runtime_versions,
+    current_openai_runtime_identity,
+    load_provider_settings,
+    provider_runtime_identity,
+)
 
 
-EVALUATION_ENVIRONMENT_MANIFEST_VERSION = "queryops-evaluation-environment-v1"
+EVALUATION_ENVIRONMENT_MANIFEST_VERSION = "queryops-evaluation-environment-v2"
 EVALUATION_SEED_VERSION = "it-operations-seed-v1"
 MAX_MANIFEST_BYTES = 64_000
 MAX_REFERENCE_AGE = timedelta(hours=24)
@@ -61,7 +69,6 @@ _FINGERPRINT_TABLES = (
     "user_group_memberships",
     "user_permissions",
 )
-_RUNTIME_PACKAGES = ("faker", "openai", "psycopg", "sqlalchemy")
 
 
 class EvaluationEnvironmentError(RuntimeError):
@@ -83,6 +90,8 @@ class EvaluationEnvironmentIdentity:
     postgres_version: str
     database_fingerprint: str
     dependency_manifest_hash: str
+    provider_runtime_version: str
+    provider_runtime_digest: str
 
     def as_dict(self) -> dict[str, str | int]:
         return {
@@ -96,6 +105,8 @@ class EvaluationEnvironmentIdentity:
             "postgres_version": self.postgres_version,
             "database_fingerprint": self.database_fingerprint,
             "dependency_manifest_hash": self.dependency_manifest_hash,
+            "provider_runtime_version": self.provider_runtime_version,
+            "provider_runtime_digest": self.provider_runtime_digest,
         }
 
 
@@ -104,6 +115,7 @@ def build_evaluation_environment_manifest(
     seed_summary: SeedSummary,
     *,
     source_git_sha: str | None = None,
+    provider_settings: ProviderSettings | None = None,
 ) -> dict[str, Any]:
     _require_release_database(db)
     if seed_summary.profile_name != "medium":
@@ -120,7 +132,12 @@ def build_evaluation_environment_manifest(
     evaluation_set = load_it_operations_evaluation_v2_set()
     catalog = load_it_operations_domain_pack().semantic_catalog
     database_digest, table_counts = evaluation_database_fingerprint(db)
+    runtime_identity = provider_runtime_identity(
+        provider_settings or load_provider_settings()
+    )
     identity = EvaluationEnvironmentIdentity(
+        provider_runtime_version=runtime_identity["version"],
+        provider_runtime_digest=runtime_identity["digest"],
         manifest_version=EVALUATION_ENVIRONMENT_MANIFEST_VERSION,
         seed_version=EVALUATION_SEED_VERSION,
         seed_profile=seed_summary.profile_name,
@@ -180,9 +197,18 @@ def validate_evaluation_environment_manifest(
     *,
     now: datetime | None = None,
     source_git_sha: str | None = None,
+    provider_settings: ProviderSettings | None = None,
 ) -> EvaluationEnvironmentIdentity:
     document = _load_manifest(path)
     identity = _parse_identity(document.get("identity"))
+    runtime_identity = provider_runtime_identity(
+        provider_settings or load_provider_settings()
+    )
+    if (
+        identity.provider_runtime_version != runtime_identity["version"]
+        or identity.provider_runtime_digest != runtime_identity["digest"]
+    ):
+        raise EvaluationEnvironmentError("evaluation_provider_runtime_mismatch")
     expected_sha = source_git_sha or _clean_source_git_sha()
     if identity.source_git_sha != expected_sha:
         raise EvaluationEnvironmentError("evaluation_source_revision_mismatch")
@@ -328,6 +354,8 @@ def _parse_identity(value: Any) -> EvaluationEnvironmentIdentity:
         "postgres_version",
         "database_fingerprint",
         "dependency_manifest_hash",
+        "provider_runtime_version",
+        "provider_runtime_digest",
     }
     mapping = _exact_mapping(value, fields)
     if mapping is None:
@@ -344,9 +372,13 @@ def _parse_identity(value: Any) -> EvaluationEnvironmentIdentity:
         postgres_version=_safe_text(mapping.get("postgres_version")),
         database_fingerprint=_safe_text(mapping.get("database_fingerprint")),
         dependency_manifest_hash=_safe_text(mapping.get("dependency_manifest_hash")),
+        provider_runtime_version=_safe_text(mapping.get("provider_runtime_version")),
+        provider_runtime_digest=_safe_text(mapping.get("provider_runtime_digest")),
     )
     if (
         identity.manifest_version != EVALUATION_ENVIRONMENT_MANIFEST_VERSION
+        or identity.provider_runtime_version != PROVIDER_RUNTIME_VERSION
+        or _SAFE_DIGEST.fullmatch(identity.provider_runtime_digest) is None
         or identity.seed_version != EVALUATION_SEED_VERSION
         or identity.seed_profile != "medium"
         or not 0 <= identity.seed <= 2_147_483_647
@@ -414,13 +446,7 @@ def _dependency_manifest_hash() -> str:
 
 
 def _runtime_versions() -> dict[str, str]:
-    result: dict[str, str] = {}
-    for package in _RUNTIME_PACKAGES:
-        try:
-            result[package] = _safe_text(version(package))
-        except PackageNotFoundError as exc:
-            raise EvaluationEnvironmentError("evaluation_environment_invalid") from exc
-    return result
+    return installed_runtime_versions()
 
 
 def _clean_source_git_sha() -> str:
@@ -493,4 +519,18 @@ def _valid_counts(value: Any) -> bool:
             and 0 <= count <= 10_000_000
             for key, count in value.items()
         )
+    )
+
+
+def matches_current_provider_runtime(
+    identity: EvaluationEnvironmentIdentity,
+    model_label: str,
+) -> bool:
+    try:
+        current = current_openai_runtime_identity(model_label)
+    except ProviderConfigurationError:
+        return False
+    return (
+        identity.provider_runtime_version == current["version"]
+        and identity.provider_runtime_digest == current["digest"]
     )

@@ -109,7 +109,7 @@ def run_cli(
         )
         environment = None
         if args.environment_manifest:
-            loader = environment_loader or _load_environment
+            loader = environment_loader or (lambda path: _load_environment(path, settings))
             environment = loader(args.environment_manifest)
         factory = runner_factory or _runner_for_settings
         summary = factory(settings, environment).run(
@@ -210,15 +210,18 @@ def _print_summary(summary: EvaluationRunSummary) -> None:
         "contract_rate="
         f"{_format_optional_rate(planner.get('semantic_contract_pass_rate'))}"
     )
-    usage = summary.provider_usage
+    usage = {
+        key: value if value is not None else "unknown"
+        for key, value in summary.provider_usage.items()
+    }
     print(
         "Provider usage: "
-        f"calls={int(usage.get('call_count', 0))} "
-        f"attempts={int(usage.get('attempt_count', 0))} "
-        f"input_tokens={int(usage.get('input_tokens', 0))} "
-        f"cached_input_tokens={int(usage.get('cached_input_tokens', 0))} "
-        f"output_tokens={int(usage.get('output_tokens', 0))} "
-        f"total_tokens={int(usage.get('total_tokens', 0))}"
+        f"calls={usage.get('call_count', 0)} "
+        f"attempts={usage.get('attempt_count', 'unknown')} "
+        f"input_tokens={usage.get('input_tokens', 'unknown')} "
+        f"cached_input_tokens={usage.get('cached_input_tokens', 'unknown')} "
+        f"output_tokens={usage.get('output_tokens', 'unknown')} "
+        f"total_tokens={usage.get('total_tokens', 'unknown')}"
     )
     _print_breakdown("Difficulty", summary.by_difficulty)
     _print_breakdown("Category", summary.by_category)
@@ -263,9 +266,9 @@ def _runner_for_settings(
     )
 
 
-def _load_environment(path: str) -> EvaluationEnvironmentIdentity:
+def _load_environment(path: str, settings: ProviderSettings) -> EvaluationEnvironmentIdentity:
     with SessionLocal() as db:
-        return validate_evaluation_environment_manifest(db, path)
+        return validate_evaluation_environment_manifest(db, path, provider_settings=settings)
 
 
 if __name__ == "__main__":

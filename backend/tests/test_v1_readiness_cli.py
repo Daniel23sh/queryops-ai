@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from app.query_engine.provider_config import current_openai_runtime_identity
 from app.evaluation.readiness import (
     GateStatus,
     ReadinessAssessment,
@@ -143,7 +144,7 @@ def _assessment(verdict: ReadinessVerdict) -> ReadinessAssessment:
             "catalog_hash": "b" * 64,
         },
         evaluation_environment={
-            "manifest_version": "queryops-evaluation-environment-v1",
+            "manifest_version": "queryops-evaluation-environment-v2",
             "seed_version": "it-operations-seed-v1",
             "seed_profile": "medium",
             "seed": 42,
@@ -153,6 +154,8 @@ def _assessment(verdict: ReadinessVerdict) -> ReadinessAssessment:
             "postgres_version": "16.9",
             "database_fingerprint": "c" * 64,
             "dependency_manifest_hash": "d" * 64,
+            "provider_runtime_version": current_openai_runtime_identity()["version"],
+            "provider_runtime_digest": current_openai_runtime_identity()["digest"],
         },
         selected_count=40,
         completed_count=40,
@@ -192,7 +195,7 @@ def _assessment(verdict: ReadinessVerdict) -> ReadinessAssessment:
                 "catalog_hash": "b" * 64,
             },
             evaluation_environment={
-                "manifest_version": "queryops-evaluation-environment-v1",
+                "manifest_version": "queryops-evaluation-environment-v2",
                 "seed_version": "it-operations-seed-v1",
                 "seed_profile": "medium",
                 "seed": 42,
@@ -202,6 +205,8 @@ def _assessment(verdict: ReadinessVerdict) -> ReadinessAssessment:
                 "postgres_version": "16.9",
                 "database_fingerprint": "c" * 64,
                 "dependency_manifest_hash": "d" * 64,
+                "provider_runtime_version": current_openai_runtime_identity()["version"],
+                "provider_runtime_digest": current_openai_runtime_identity()["digest"],
             },
             suite_id="it_operations_v2_stability_canary",
             suite_version="1",

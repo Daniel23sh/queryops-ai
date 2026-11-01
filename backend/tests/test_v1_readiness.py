@@ -7,6 +7,7 @@ from uuid import uuid4
 
 import pytest
 
+from app.query_engine.provider_config import current_openai_runtime_identity
 from app.evaluation.contracts import (
     ActualOutcome,
     CaseType,
@@ -716,7 +717,7 @@ def _evidence(dataset=None) -> ReadinessRunEvidence:
                 load_it_operations_domain_pack().semantic_catalog
             ),
             "evaluation_environment": {
-                "manifest_version": "queryops-evaluation-environment-v1",
+                "manifest_version": "queryops-evaluation-environment-v2",
                 "seed_version": "it-operations-seed-v1",
                 "seed_profile": "medium",
                 "seed": 42,
@@ -726,6 +727,8 @@ def _evidence(dataset=None) -> ReadinessRunEvidence:
                 "postgres_version": "16.9",
                 "database_fingerprint": "b" * 64,
                 "dependency_manifest_hash": "c" * 64,
+                "provider_runtime_version": current_openai_runtime_identity()["version"],
+                "provider_runtime_digest": current_openai_runtime_identity()["digest"],
             },
             "selected_count": 40,
             "completed_count": 40,
@@ -782,6 +785,8 @@ def _result(case) -> ReadinessResultEvidence:
             "model_label": "gpt-5.6-terra",
             "duration_ms": 1.0,
             "attempt_count": 1,
+            "call_count": 1,
+            "usage_complete": True,
             "input_tokens": 1,
             "cached_input_tokens": 0,
             "output_tokens": 1,
@@ -1044,3 +1049,32 @@ def _fail_security(rows):
             )
             break
     return tuple(rows)
+
+
+@pytest.mark.parametrize("key,value", [
+    ("OPENAI_MODEL", "gpt-5.6-luna"), ("OPENAI_TIMEOUT_SECONDS", "44"),
+    ("OPENAI_MAX_RETRIES", "1"), ("OPENAI_REASONING_EFFORT", "medium"),
+    ("OPENAI_MAX_OUTPUT_TOKENS", "2049"),
+])
+def test_readiness_rejects_matching_historical_config_after_current_config_changes(monkeypatch, key, value):
+    evidence = _evidence()
+    stability = _passing_stability(load_it_operations_evaluation_v2_set(), evidence)
+    monkeypatch.setenv(key, value)
+    assessment = evaluate_v1_readiness(load_it_operations_evaluation_v2_set(), evidence, deterministic_evidence_passed=True, stability_canary=stability)
+    assert assessment.verdict is ReadinessVerdict.INCOMPLETE
+    assert assessment.gates[0].reason_code == "evaluation_environment_mismatch"
+
+
+@pytest.mark.parametrize("field,value", [("provider_runtime_version", None), ("provider_runtime_digest", None), ("provider_runtime_digest", "malformed")])
+def test_readiness_rejects_old_or_malformed_config_even_when_canaries_match(field, value):
+    evidence = _evidence()
+    summary = dict(evidence.summary)
+    environment = dict(summary["evaluation_environment"])
+    if value is None:
+        environment.pop(field)
+    else:
+        environment[field] = value
+    summary["evaluation_environment"] = environment
+    evidence = replace(evidence, summary=summary)
+    assessment = evaluate_v1_readiness(load_it_operations_evaluation_v2_set(), evidence, deterministic_evidence_passed=True)
+    assert assessment.verdict is ReadinessVerdict.INCOMPLETE

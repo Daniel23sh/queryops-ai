@@ -178,3 +178,38 @@ def test_openai_settings_normalize_key_without_exposing_it() -> None:
     assert settings.openai is not None
     assert settings.openai.api_key == "test-key"
     assert "test-key" not in repr(settings)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("model", "gpt-5.6-luna"), ("timeout_seconds", 44.0), ("max_retries", 1),
+    ("reasoning_effort", "medium"), ("max_output_tokens", 2049),
+])
+def test_provider_runtime_identity_changes_for_every_behavior_setting(field, value):
+    from dataclasses import replace
+    from app.query_engine.provider_config import OpenAIProviderSettings, ProviderSettings, provider_runtime_identity
+    settings = ProviderSettings(ProviderId.OPENAI, OpenAIProviderSettings(api_key="private-key"))
+    changed = replace(settings, openai=replace(settings.openai, **{field: value}))
+    assert provider_runtime_identity(settings) != provider_runtime_identity(changed)
+    assert "private-key" not in repr(provider_runtime_identity(settings))
+    assert provider_runtime_identity(settings) == provider_runtime_identity(replace(settings, openai=replace(settings.openai, api_key="different-secret")))
+
+
+def test_provider_runtime_identity_uses_installed_versions_and_normalized_settings(monkeypatch):
+    from app.query_engine import provider_config as config
+    from dataclasses import replace
+    settings = config.ProviderSettings(config.ProviderId.OPENAI, config.OpenAIProviderSettings(api_key="synthetic"))
+    baseline = config.provider_runtime_identity(settings)
+    assert baseline == config.provider_runtime_identity(replace(settings, openai=replace(settings.openai, timeout_seconds=45)))
+    versions = config.installed_runtime_versions()
+    assert {"httpx", "httpcore", "openai", "pydantic", "sqlglot", "psycopg-binary"} <= versions.keys()
+    for package in versions:
+        monkeypatch.setattr(config, "installed_runtime_versions", lambda package=package: {**versions, package: "0.0.synthetic"})
+        assert baseline != config.provider_runtime_identity(settings), package
+
+
+def test_provider_runtime_identity_changes_with_python_runtime(monkeypatch):
+    from app.query_engine import provider_config as config
+    settings = config.ProviderSettings()
+    before = config.provider_runtime_identity(settings)
+    monkeypatch.setattr(config.platform, "python_version", lambda: "0.0.changed")
+    assert config.provider_runtime_identity(settings) != before

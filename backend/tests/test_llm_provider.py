@@ -133,3 +133,30 @@ def test_mock_provider_makes_no_network_calls(monkeypatch) -> None:
     )
 
     assert result.semantic_plan is not None
+
+
+def test_unknown_attempts_and_usage_never_aggregate_as_zero():
+    from app.query_engine.llm_provider import aggregate_provider_measurements, sanitize_provider_measurement
+    base = {"provider": "openai", "model_label": "gpt-5.6-terra", "duration_ms": 1.5,
+            "call_count": 1, "attempt_count": None, "usage_complete": False, "input_tokens": 5}
+    measurement = sanitize_provider_measurement(base)
+    assert measurement == base
+    totals = aggregate_provider_measurements([measurement])
+    assert totals == {"call_count": 1, "attempt_count": None, "duration_ms": 1.5,
+                      "input_tokens": None, "cached_input_tokens": None,
+                      "output_tokens": None, "total_tokens": None}
+    complete = {**base, "attempt_count": 1, "usage_complete": True, "cached_input_tokens": 0, "output_tokens": 2, "total_tokens": 7}
+    assert aggregate_provider_measurements([complete])["cached_input_tokens"] == 0
+    assert aggregate_provider_measurements([complete, measurement])["attempt_count"] is None
+    assert aggregate_provider_measurements([complete, measurement])["total_tokens"] is None
+
+
+def test_usage_total_overflow_is_unavailable_rather_than_capped():
+    from app.query_engine.llm_provider import aggregate_provider_measurements
+    measurement = {"duration_ms": 1.0, "attempt_count": 1, "usage_complete": True,
+                   "input_tokens": 1_000_000_000, "cached_input_tokens": 0,
+                   "output_tokens": 0, "total_tokens": 1_000_000_000}
+    totals = aggregate_provider_measurements([measurement, measurement])
+    assert totals["input_tokens"] is None
+    assert totals["total_tokens"] is None
+    assert totals["cached_input_tokens"] == 0
