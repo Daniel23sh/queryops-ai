@@ -47,7 +47,7 @@ export function DashboardVisualization({
     rows: result.rows,
     currentConfig: config
   });
-  const mapping = validMapping(config.mapping, recommendation.renderType, result.columns)
+  const mapping = config.mode === "manual" && validMapping(config.mapping, recommendation.renderType, result.columns)
     ? config.mapping
     : mappingForType(recommendation.renderType, recommendation.profiles);
   const type = recommendation.renderType;

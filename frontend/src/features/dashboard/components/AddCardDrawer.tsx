@@ -22,7 +22,7 @@ export function AddCardDrawer({
   csrfToken: string;
   dashboardId: string;
   onClose: () => void;
-  onDashboardReload: (message: string) => Promise<void>;
+  onDashboardReload: (message: string, layoutVersion?: number) => Promise<void>;
 }) {
   const [templates, setTemplates] = useState<QueryTemplate[]>([]);
   const [recent, setRecent] = useState<QueryHistoryItem[]>([]);
@@ -118,11 +118,11 @@ export function AddCardDrawer({
     setStage("visualization");
     try {
       const recommendation = inferVisualization({ columns: result.columns, rows: result.rows });
-      await updateDashboardCard(card.id, { visualization: recommendedConfig(recommendation) }, csrfToken);
+      const updated = await updateDashboardCard(card.id, { visualization: recommendedConfig(recommendation) }, csrfToken);
+      await onDashboardReload("Card added with its recommended visualization.", updated.layout_version);
     } catch { throw new StageError("visualization"); }
 
     setStage("success");
-    await onDashboardReload("Card added with its recommended visualization.");
     onClose();
   }
 

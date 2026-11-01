@@ -178,6 +178,13 @@ Setting `OPENAI_API_KEY` alone does not activate OpenAI. Real-provider requests 
 
 The OpenAI provider returns only a structured `SemanticPlan` in one request. QueryOps validates the plan, renders SQL deterministically in the backend, and makes no repair or fallback provider call.
 
+Evaluation environment v2 binds evidence to the exact provider behavior settings
+and installed runtime versions. Manifest preparation and evaluation must use the
+same configuration; read-only readiness checks the current OpenAI candidate
+settings without requiring a key. Old or missing identity evidence is incomplete.
+Logical calls, measured HTTP attempts and unavailable usage are reported separately.
+See the [identity and qualification contract](docs/evaluation/v1-quality-gates.md#environment-identity-and-invalidation).
+
 ## Testing
 
 Install dependencies once before running the local quality gates.

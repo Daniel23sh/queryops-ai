@@ -29,7 +29,7 @@ export function inferVisualization(input: VisualizationInput): VisualizationReco
     recommendedType = "kpi";
     confidence = "high";
     reason = "A single row with a primary numeric value is best summarized as a KPI.";
-    if (hasGaugeSemantics(numeric, profiles)) {
+    if (hasGaugeSemantics(numeric)) {
       compatible.add("semicircle_gauge");
       recommendedType = "semicircle_gauge";
       reason = "The result contains a bounded percentage or value-and-target pair.";
@@ -134,7 +134,7 @@ export function mappingForType(type: DashboardCardType, profiles: ColumnProfile[
   const temporal = profiles.find((profile) => profile.kind === "temporal");
   const category = temporal ?? profiles.find((profile) => profile.kind === "categorical" || profile.kind === "status");
   const series = profiles.find((profile) => profile !== category && (profile.kind === "categorical" || profile.kind === "status"));
-  const target = numeric.find((profile) => /(target|total|max|limit|capacity)/i.test(profile.name));
+  const target = type === "semicircle_gauge" ? gaugeTarget(numeric) : undefined;
   return {
     category_column: ["bar", "line", "area", "donut", "stacked_bar"].includes(type) ? category?.name ?? null : null,
     value_columns: numeric.filter((profile) => profile !== target).slice(0, 4).map((profile) => profile.name),
@@ -144,10 +144,15 @@ export function mappingForType(type: DashboardCardType, profiles: ColumnProfile[
   };
 }
 
-function hasGaugeSemantics(numeric: ColumnProfile[], profiles: ColumnProfile[]): boolean {
+function gaugeTarget(numeric: ColumnProfile[]): ColumnProfile | undefined {
+  const target = numeric.find((profile) => /(target|total|max|limit|capacity)/i.test(profile.name));
+  return target && numeric.some((profile) => profile !== target &&
+    !/(target|total|max|limit|capacity)/i.test(profile.name) && /(current|value|count|used)/i.test(profile.name))
+    ? target : undefined;
+}
+function hasGaugeSemantics(numeric: ColumnProfile[]): boolean {
   return numeric.some((profile) => /(percent|percentage|rate|ratio|progress|utilization)/i.test(profile.name)) ||
-    (numeric.some((profile) => /(current|value|count)/i.test(profile.name)) &&
-      profiles.some((profile) => /(target|total|max|limit|capacity)/i.test(profile.name)));
+    gaugeTarget(numeric) !== undefined;
 }
 function hasVolumeSemantics(numeric: ColumnProfile[]): boolean {
   return numeric.some((profile) => /(cumulative|volume|usage|traffic|total_over_time)/i.test(profile.name));

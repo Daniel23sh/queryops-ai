@@ -60,6 +60,16 @@ export function EvaluationReadinessPanel({
         <Detail label="Stability canary" value={`${gateLabels[data.stability_canary.status]} · ${data.stability_canary.run_count}/3 runs`} />
         <Detail label="Measurement" value={data.completed_count === null ? "Incomplete" : `${data.completed_count}/40 completed`} />
       </dl>
+      {data.technical?.usage ? (
+        <dl className="m-0 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3" aria-label="Provider usage">
+          <Detail label="Logical calls" value={usageCount(data.technical.usage.call_count, 40)} />
+          <Detail label="HTTP attempts" value={usageCount(data.technical.usage.attempt_count, 2560)} />
+          <Detail label="Input tokens" value={usageCount(data.technical.usage.input_tokens)} />
+          <Detail label="Cached input tokens" value={usageCount(data.technical.usage.cached_input_tokens)} />
+          <Detail label="Output tokens" value={usageCount(data.technical.usage.output_tokens)} />
+          <Detail label="Total tokens" value={usageCount(data.technical.usage.total_tokens)} />
+        </dl>
+      ) : null}
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3" aria-label="V1 readiness gates">
         {data.gates.map((gate) => {
           const status = isGateStatus(gate.status) ? gate.status : "incomplete";
@@ -80,6 +90,12 @@ export function EvaluationReadinessPanel({
 
 function Detail({ label, value }: { label: string; value: string }) {
   return <div><dt className="text-xs font-bold uppercase tracking-wide text-app-faint">{label}</dt><dd className="m-0 mt-1 break-words text-app-text">{value}</dd></div>;
+}
+
+function usageCount(value: unknown, maximum = 1_000_000_000): string {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= maximum
+    ? String(value)
+    : "Not available";
 }
 
 function isVerdict(value: string): value is ReadinessVerdict {

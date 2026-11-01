@@ -105,12 +105,12 @@ export type EvaluationReadiness = {
     average_latency_ms: number | null;
     usage: {
       call_count: number;
-      attempt_count: number;
+      attempt_count: number | null;
       duration_ms: number;
-      input_tokens: number;
-      cached_input_tokens: number;
-      output_tokens: number;
-      total_tokens: number;
+      input_tokens: number | null;
+      cached_input_tokens: number | null;
+      output_tokens: number | null;
+      total_tokens: number | null;
     } | null;
   } | null;
 };

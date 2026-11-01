@@ -5,6 +5,12 @@ import type { DashboardCardRefreshResult, VisualizationConfig } from "../types";
 import { DashboardVisualization } from "./DashboardVisualization";
 
 describe("DashboardVisualization", () => {
+  it("renders total_licenses as 42 even for a legacy empty auto mapping", () => {
+    render(<DashboardVisualization config={config("kpi")} result={result(["total_licenses"], [{ total_licenses: 42 }])} title="Licenses" />);
+    expect(screen.getByText("42")).toBeInTheDocument();
+    expect(screen.queryByText("—")).not.toBeInTheDocument();
+  });
+
   it("discloses the actual table preview and makes row 11 accessible", () => {
     const rows = Array.from({ length: 24 }, (_, index) => ({ item: `Item ${index + 1}` }));
     render(<DashboardVisualization config={config("table", "manual")} result={result(["item"], rows)} title="Items" />);

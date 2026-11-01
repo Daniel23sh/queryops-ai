@@ -26,6 +26,7 @@ from app.evaluation.environment import (
     EvaluationEnvironmentIdentity,
     reference_time_is_eligible,
     validate_persisted_environment_identity,
+    matches_current_provider_runtime,
 )
 from app.evaluation.readiness_policy import (
     V1_CLARIFICATION_THRESHOLD,
@@ -405,6 +406,7 @@ def _parse_envelope(
     )
     if (
         environment is None
+        or not matches_current_provider_runtime(environment, str(summary.get("model_label")))
         or not reference_time_is_eligible(environment, evidence.started_at)
     ):
         return None

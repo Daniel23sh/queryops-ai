@@ -5,6 +5,10 @@ import re
 import time
 from collections.abc import Mapping
 from enum import Enum
+from contextvars import ContextVar
+from dataclasses import dataclass, field
+
+import httpx
 from typing import Any, Literal, Protocol, cast
 
 import openai
@@ -138,8 +142,8 @@ class ProviderFailureCode(str, Enum):
 
 
 class ProviderFailure(LLMProviderFailure):
-    def __init__(self, code: ProviderFailureCode, *, fatal: bool = False) -> None:
-        super().__init__(code.value, fatal=fatal)
+    def __init__(self, code: ProviderFailureCode, *, fatal: bool = False, measurement: Any = None) -> None:
+        super().__init__(code.value, fatal=fatal, measurement=measurement)
 
 
 class _ResponsesProtocol(Protocol):
@@ -184,6 +188,38 @@ class _StructuredProviderOutput(BaseModel):
         return self
 
 
+@dataclass
+class _HTTPMeasurement:
+    attempts: int = 0
+    usages: list[dict[str, int]] = field(default_factory=list)
+
+
+_http_measurement: ContextVar[_HTTPMeasurement | None] = ContextVar(
+    "provider_http_measurement", default=None,
+)
+
+
+def _observe_request(_request: httpx.Request) -> None:
+    measurement = _http_measurement.get()
+    if measurement is not None:
+        measurement.attempts += 1
+
+
+def _observe_response(response: httpx.Response) -> None:
+    measurement = _http_measurement.get()
+    if measurement is None:
+        return
+    # Keep only bounded counters; malformed telemetry cannot change provider behavior.
+    usage: dict[str, int] = {}
+    response.read()
+    try:
+        if len(response.content) <= 1_000_000:
+            usage = _usage_counts(response.json().get("usage"))
+    except (ValueError, TypeError, AttributeError):
+        pass
+    measurement.usages.append(usage)
+
+
 class OpenAIProvider:
     provider_name = "openai"
 
@@ -195,6 +231,7 @@ class OpenAIProvider:
     ) -> None:
         self._settings = settings
         self.model_name = settings.model
+        self._owns_client = client is None
         self._client = client or OpenAI(
             api_key=settings.api_key,
             admin_api_key="",
@@ -202,10 +239,12 @@ class OpenAIProvider:
             project="",
             webhook_secret="",
             base_url=OFFICIAL_OPENAI_BASE_URL,
+            timeout=settings.timeout_seconds,
             max_retries=settings.max_retries,
             http_client=DefaultHttpxClient(
                 timeout=settings.timeout_seconds,
                 trust_env=False,
+                event_hooks={"request": [_observe_request], "response": [_observe_response]},
             ),
         )
 
@@ -237,6 +276,8 @@ class OpenAIProvider:
             )
 
         started = time.perf_counter()
+        observation = _HTTPMeasurement() if self._owns_client else None
+        token = _http_measurement.set(observation)
         try:
             response = self._client.responses.parse(
                 model=self._settings.model,
@@ -251,25 +292,29 @@ class OpenAIProvider:
                 store=False,
             )
         except Exception as exc:
-            raise _safe_provider_failure(exc) from None
+            failure = _safe_provider_failure(exc)
+            failure.measurement = _safe_response_metadata(
+                getattr(exc, "body", None), _duration_ms(started), self.model_name, observation,
+            )["provider_measurement"]
+            raise failure from None
+        finally:
+            _http_measurement.reset(token)
 
-        duration_ms = min(
-            max((time.perf_counter() - started) * 1000.0, 0.0),
-            MAX_DURATION_MS,
+        metadata = _safe_response_metadata(
+            response, _duration_ms(started), self.model_name, observation,
         )
-        metadata = _safe_response_metadata(response, duration_ms, self.model_name)
         if semantic_projection is not None:
             metadata["semantic_catalog"] = semantic_projection.as_observation()
         model_name = str(metadata["provider_measurement"]["model_label"])
 
         if _response_contains_refusal(response):
-            raise ProviderFailure(ProviderFailureCode.REFUSAL)
+            raise ProviderFailure(ProviderFailureCode.REFUSAL, measurement=metadata["provider_measurement"])
 
         if getattr(response, "status", None) not in (None, "completed"):
-            raise ProviderFailure(ProviderFailureCode.RESPONSE_INVALID)
+            raise ProviderFailure(ProviderFailureCode.RESPONSE_INVALID, measurement=metadata["provider_measurement"])
         parsed = getattr(response, "output_parsed", None)
         if not isinstance(parsed, _StructuredProviderOutput):
-            raise ProviderFailure(ProviderFailureCode.RESPONSE_INVALID)
+            raise ProviderFailure(ProviderFailureCode.RESPONSE_INVALID, measurement=metadata["provider_measurement"])
 
         if parsed.outcome == "clarification":
             return PlanGenerationResult(
@@ -430,6 +475,7 @@ def _safe_provider_failure(exc: Exception) -> ProviderFailure:
         exc,
         (
             ValidationError,
+            json.JSONDecodeError,
             openai.LengthFinishReasonError,
             openai.ContentFilterFinishReasonError,
         ),
@@ -449,31 +495,60 @@ def _safe_provider_failure(exc: Exception) -> ProviderFailure:
     return ProviderFailure(ProviderFailureCode.UNAVAILABLE)
 
 
+def _duration_ms(started: float) -> float:
+    return min(max((time.perf_counter() - started) * 1000.0, 0.0), MAX_DURATION_MS)
+
+
+def _usage_counts(usage: Any) -> dict[str, int]:
+    result = {}
+    for key, value in (
+        ("input_tokens", _field(usage, "input_tokens")),
+        ("cached_input_tokens", _field(_field(usage, "input_tokens_details"), "cached_tokens")),
+        ("output_tokens", _field(usage, "output_tokens")),
+        ("total_tokens", _field(usage, "total_tokens")),
+    ):
+        count = _bounded_count(value)
+        if count is not None:
+            result[key] = count
+    return result
+
+
 def _safe_response_metadata(
     response: Any,
     duration_ms: float,
     configured_model: str,
+    observation: _HTTPMeasurement | None = None,
 ) -> dict[str, Any]:
-    usage = getattr(response, "usage", None)
-    input_tokens = _bounded_count(_field(usage, "input_tokens"))
-    output_tokens = _bounded_count(_field(usage, "output_tokens"))
-    total_tokens = _bounded_count(_field(usage, "total_tokens"))
-    input_details = _field(usage, "input_tokens_details")
-    cached_tokens = _bounded_count(_field(input_details, "cached_tokens"))
+    usages = (
+        observation.usages
+        if observation is not None
+        else [_usage_counts(_field(response, "usage"))]
+    )
     measurement: dict[str, Any] = {
         "provider": "openai",
         "model_label": configured_model,
         "duration_ms": round(duration_ms, 3),
-        "attempt_count": 1,
+        "call_count": 1,
+        "attempt_count": (
+            observation.attempts
+            if observation is not None and observation.attempts
+            else None
+        ),
+        "usage_complete": bool(
+            observation is not None
+            and observation.attempts == len(usages)
+            and usages
+            and all(len(usage) == 4 for usage in usages)
+        ),
     }
-    for key, value in (
-        ("input_tokens", input_tokens),
-        ("cached_input_tokens", cached_tokens),
-        ("output_tokens", output_tokens),
-        ("total_tokens", total_tokens),
-    ):
-        if value is not None:
-            measurement[key] = value
+    for key in ("input_tokens", "cached_input_tokens", "output_tokens", "total_tokens"):
+        observed = [usage[key] for usage in usages if key in usage]
+        if observed:
+            total = sum(observed)
+            if total <= MAX_USAGE_COUNT:
+                measurement[key] = total
+            else:
+                measurement["usage_complete"] = False
     return {"provider_measurement": measurement}
 
 

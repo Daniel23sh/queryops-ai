@@ -24,7 +24,10 @@ from app.evaluation.context import (
     EvaluationSetupError,
     resolve_evaluation_identity,
 )
-from app.evaluation.environment import EvaluationEnvironmentIdentity
+from app.evaluation.environment import (
+    EvaluationEnvironmentIdentity,
+    validate_persisted_environment_identity,
+)
 from app.evaluation.contracts import (
     ActualOutcome,
     CaseType,
@@ -78,7 +81,11 @@ from app.models.product import (
 )
 from app.query_engine.domain_pack import DomainPack
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
-from app.query_engine.llm_provider import LLMProvider, sanitize_provider_measurement
+from app.query_engine.llm_provider import (
+    LLMProvider,
+    aggregate_provider_measurements,
+    sanitize_provider_measurement,
+)
 from app.query_engine.mock_llm_provider import MockLLMProvider
 from app.query_engine.provider_config import ProviderDescriptor, ProviderId
 from app.query_engine.request_authorization import authorize_query_request
@@ -194,7 +201,7 @@ class EvaluationRunSummary:
     by_category: dict[str, dict[str, int | float]]
     by_case_type: dict[str, dict[str, int | float]]
     cases: tuple[EvaluationCaseSummary, ...]
-    provider_usage: dict[str, int | float] = field(default_factory=dict)
+    provider_usage: dict[str, int | float | None] = field(default_factory=dict)
     planner_metrics: dict[str, int | float | None] = field(default_factory=dict)
     semantic_catalog: dict[str, str] = field(default_factory=dict)
     evaluation_environment: dict[str, str | int] = field(default_factory=dict)
@@ -300,6 +307,18 @@ class EvaluationRunner:
             raise EvaluationRunnerError(
                 "evaluation_environment_missing",
                 "OpenAI evaluation requires verified environment evidence.",
+            )
+        if self._provider_descriptor.provider is ProviderId.OPENAI and (
+            self._evaluation_environment is None
+            or validate_persisted_environment_identity(
+                self._evaluation_environment.as_dict()
+            ) is None
+            or self._evaluation_environment.provider_runtime_digest
+            != self._provider_descriptor.runtime_digest
+        ):
+            raise EvaluationRunnerError(
+                "evaluation_provider_runtime_mismatch",
+                "Evaluation provider runtime does not match verified environment evidence.",
             )
         self._verify_prerequisites(cases)
         query_service = self._query_service_factory(domain_pack)
@@ -1802,36 +1821,13 @@ def _group_metrics(
 
 def _aggregate_provider_usage(
     completed: Sequence[_CompletedCase],
-) -> dict[str, int | float]:
+) -> dict[str, int | float | None]:
     measurements = [
         item.execution.provider_measurement
         for item in completed
         if item.execution.provider_measurement is not None
     ]
-    totals: dict[str, int | float] = {
-        "call_count": len(measurements),
-        "attempt_count": sum(
-            int(item.get("attempt_count", 0)) for item in measurements
-        ),
-        "duration_ms": round(
-            min(
-                sum(float(item.get("duration_ms", 0.0)) for item in measurements),
-                86_400_000.0,
-            ),
-            3,
-        ),
-    }
-    for key in (
-        "input_tokens",
-        "cached_input_tokens",
-        "output_tokens",
-        "total_tokens",
-    ):
-        totals[key] = min(
-            sum(int(item.get(key, 0)) for item in measurements),
-            1_000_000_000,
-        )
-    return totals
+    return aggregate_provider_measurements(measurements)
 
 
 def _summary_for_persistence(

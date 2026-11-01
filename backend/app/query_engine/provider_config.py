@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import math
 import os
+import platform
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from enum import Enum
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any, Literal, cast
 
 from app.query_engine.domain_pack import DomainPack
@@ -32,6 +36,27 @@ UNSUPPORTED_OPENAI_ENVIRONMENT_KEYS = frozenset(
         "OPENAI_PROJECT_ID",
         "OPENAI_WEBHOOK_SECRET",
     }
+)
+
+
+PROVIDER_RUNTIME_VERSION = "queryops-provider-runtime-v1"
+RUNTIME_PACKAGES = (
+    "alembic",
+    "anyio",
+    "faker",
+    "fastapi",
+    "httpx",
+    "httpcore",
+    "jiter",
+    "openai",
+    "psycopg",
+    "psycopg-binary",
+    "pydantic",
+    "pydantic-core",
+    "sqlalchemy",
+    "sqlglot",
+    "starlette",
+    "typing-extensions",
 )
 
 
@@ -109,6 +134,7 @@ class ProviderSettings:
 class ProviderDescriptor:
     provider: ProviderId
     model_label: str
+    runtime_digest: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.provider, ProviderId) or not valid_model_label(
@@ -120,6 +146,11 @@ class ProviderDescriptor:
             and self.model_label != MockLLMProvider.model_name
         ):
             raise ProviderConfigurationError("provider_model_mismatch")
+        if self.runtime_digest is not None and (
+            not isinstance(self.runtime_digest, str)
+            or re.fullmatch(r"[0-9a-f]{64}", self.runtime_digest) is None
+        ):
+            raise ProviderConfigurationError("provider_runtime_invalid")
 
 
 def load_provider_settings(
@@ -200,7 +231,55 @@ def provider_descriptor(settings: ProviderSettings) -> ProviderDescriptor:
     return ProviderDescriptor(
         provider=settings.provider,
         model_label=settings.model_label,
+        runtime_digest=provider_runtime_identity(settings)["digest"],
     )
+
+
+def installed_runtime_versions() -> dict[str, str]:
+    try:
+        versions = {package: version(package) for package in RUNTIME_PACKAGES}
+    except PackageNotFoundError as exc:
+        raise ProviderConfigurationError("provider_runtime_unavailable") from exc
+    if any(
+        not re.fullmatch(r"[A-Za-z0-9.!+_-]{1,128}", value)
+        for value in versions.values()
+    ):
+        raise ProviderConfigurationError("provider_runtime_unavailable")
+    return versions
+
+
+def provider_runtime_identity(settings: ProviderSettings) -> dict[str, str]:
+    """Fingerprint only allowlisted behavior, never credentials or ambient environment."""
+    configuration: dict[str, Any] = {
+        "version": PROVIDER_RUNTIME_VERSION,
+        "provider": settings.provider.value,
+        "model": settings.model_label,
+        "python": platform.python_version(),
+        "packages": installed_runtime_versions(),
+    }
+    if settings.openai is not None:
+        configuration["openai"] = {
+            "endpoint": OFFICIAL_OPENAI_BASE_URL,
+            "timeout_seconds": float(settings.openai.timeout_seconds),
+            "max_retries": settings.openai.max_retries,
+            "reasoning_effort": settings.openai.reasoning_effort,
+            "max_output_tokens": settings.openai.max_output_tokens,
+        }
+    payload = json.dumps(configuration, sort_keys=True, separators=(",", ":"))
+    return {
+        "version": PROVIDER_RUNTIME_VERSION,
+        "digest": hashlib.sha256(payload.encode()).hexdigest(),
+    }
+
+
+def current_openai_runtime_identity(model_label: str | None = None) -> dict[str, str]:
+    # Credentials do not affect behavior and must not be needed for read-only qualification.
+    settings = load_provider_settings(
+        {**os.environ, "OPENAI_API_KEY": "identity-only"}, provider_override="openai",
+    )
+    if model_label is not None and model_label != settings.model_label:
+        raise ProviderConfigurationError("provider_model_mismatch")
+    return provider_runtime_identity(settings)
 
 
 def create_provider(

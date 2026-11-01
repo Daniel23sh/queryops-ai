@@ -122,6 +122,7 @@ npx playwright test e2e/m8-workflow.spec.ts --project=chromium
 npx playwright test e2e/access-workflow.spec.ts --project=chromium
 npx playwright test e2e/evaluation-scoped.spec.ts --project=chromium
 npx playwright test e2e/result-delivery.spec.ts --project=chromium
+npx playwright test e2e/dashboard-integrity.spec.ts --project=chromium
 ```
 
 These commands require the guarded `M8_E2E_DATABASE_URL` and `M8_E2E_DATABASE_DISPOSABLE=1` environment plus separately running backend/frontend services. The specs invoke their guarded synthetic preparation scripts through `M8_E2E_PYTHON` (default: local backend `.venv/bin/python`; CI: `python`). Access covers revocation, secondary/global assignments and competing decisions; scoped Evaluation covers persisted empty/hidden/visible runs; result delivery covers above-cap, intact top-N, legacy provenance, table expansion and actual CSV downloads. These flows use real backend APIs without route mocks. Their resets require the shown sequential order. Follow the `M8 Primary E2E` CI job rather than improvising against a normal database.

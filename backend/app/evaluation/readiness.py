@@ -24,6 +24,7 @@ from app.evaluation.evidence import (
 from app.evaluation.environment import (
     reference_time_is_eligible,
     validate_persisted_environment_identity,
+    matches_current_provider_runtime,
 )
 from app.evaluation.readiness_policy import (
     V1_CLARIFICATION_THRESHOLD,
@@ -41,7 +42,10 @@ from app.evaluation.selection import (
 )
 from app.evaluation.scoring import SAFE_FAILURE_REASONS
 from app.evaluation.stability import StabilityCanaryAssessment, StabilityStatus
-from app.query_engine.llm_provider import sanitize_provider_measurement
+from app.query_engine.llm_provider import (
+    aggregate_provider_measurements,
+    sanitize_provider_measurement,
+)
 from app.query_engine.provider_config import valid_model_label
 
 
@@ -85,12 +89,12 @@ class ReadinessRunEvidence:
 @dataclass(frozen=True)
 class ReadinessUsage:
     call_count: int
-    attempt_count: int
+    attempt_count: int | None
     duration_ms: float
-    input_tokens: int
-    cached_input_tokens: int
-    output_tokens: int
-    total_tokens: int
+    input_tokens: int | None
+    cached_input_tokens: int | None
+    output_tokens: int | None
+    total_tokens: int | None
 
 
 @dataclass(frozen=True)
@@ -183,6 +187,8 @@ _MEASUREMENT_FIELDS = frozenset(
         "provider",
         "model_label",
         "duration_ms",
+        "call_count",
+        "usage_complete",
         "attempt_count",
         "input_tokens",
         "cached_input_tokens",
@@ -514,6 +520,7 @@ def _validate_evidence(
     )
     if (
         environment is None
+        or not matches_current_provider_runtime(environment, str(summary.get("model_label")))
         or evidence.started_at is None
         or not reference_time_is_eligible(environment, evidence.started_at)
     ):
@@ -747,18 +754,8 @@ def _parse_result(
 
 
 def _usage(measurements: list[dict[str, Any]]) -> ReadinessUsage | None:
-    try:
-        return ReadinessUsage(
-            call_count=len(measurements),
-            attempt_count=sum(int(item["attempt_count"]) for item in measurements),
-            duration_ms=round(sum(float(item["duration_ms"]) for item in measurements), 3),
-            input_tokens=sum(int(item.get("input_tokens", 0)) for item in measurements),
-            cached_input_tokens=sum(int(item.get("cached_input_tokens", 0)) for item in measurements),
-            output_tokens=sum(int(item.get("output_tokens", 0)) for item in measurements),
-            total_tokens=sum(int(item.get("total_tokens", 0)) for item in measurements),
-        )
-    except (KeyError, TypeError, ValueError, OverflowError):
-        return None
+    totals = aggregate_provider_measurements(measurements)
+    return ReadinessUsage(**totals)  # type: ignore[arg-type]
 
 
 def _usage_matches(value: Any, usage: ReadinessUsage) -> bool:

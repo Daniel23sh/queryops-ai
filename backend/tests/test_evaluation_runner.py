@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.query_engine.provider_config import current_openai_runtime_identity
 from app.auth.access_context import AccessScopeContext, UserAccessContext
 from app.db.base import Base
 from app.domains.it_operations.seed import seed_database
@@ -116,6 +117,7 @@ def test_openai_runner_requires_environment_before_service_or_persistence() -> N
         provider_descriptor=ProviderDescriptor(
             provider=ProviderId.OPENAI,
             model_label="gpt-5.6-terra",
+            runtime_digest=current_openai_runtime_identity()["digest"],
         ),
     )
 
@@ -968,6 +970,8 @@ def test_runner_persists_real_provider_identity_and_aggregates_safe_usage(
                         "model_label": "gpt-5.6-terra",
                         "duration_ms": 12.5,
                         "attempt_count": 1,
+                        "call_count": 1,
+                        "usage_complete": True,
                         "input_tokens": 100,
                         "cached_input_tokens": 25,
                         "output_tokens": 20,
@@ -987,6 +991,7 @@ def test_runner_persists_real_provider_identity_and_aggregates_safe_usage(
         provider_descriptor=ProviderDescriptor(
             provider=ProviderId.OPENAI,
             model_label="gpt-5.6-terra",
+            runtime_digest=current_openai_runtime_identity()["digest"],
         ),
         evaluation_environment=_environment_identity(),
     )
@@ -1069,6 +1074,7 @@ def test_fatal_provider_authentication_failure_stops_and_finalizes_run(
         provider_descriptor=ProviderDescriptor(
             provider=ProviderId.OPENAI,
             model_label="gpt-5.6-terra",
+            runtime_digest=current_openai_runtime_identity()["digest"],
         ),
         evaluation_environment=_environment_identity(),
     )
@@ -1105,7 +1111,7 @@ class _Baseline:
 
 def _environment_identity() -> EvaluationEnvironmentIdentity:
     return EvaluationEnvironmentIdentity(
-        manifest_version="queryops-evaluation-environment-v1",
+        manifest_version="queryops-evaluation-environment-v2",
         seed_version="it-operations-seed-v1",
         seed_profile="medium",
         seed=42,
@@ -1115,6 +1121,8 @@ def _environment_identity() -> EvaluationEnvironmentIdentity:
         postgres_version="16.9",
         database_fingerprint="b" * 64,
         dependency_manifest_hash="c" * 64,
+        provider_runtime_version=current_openai_runtime_identity()["version"],
+        provider_runtime_digest=current_openai_runtime_identity()["digest"],
     )
 
 
@@ -1204,3 +1212,33 @@ def _identity(role: RequestingRole):
         access_context=context,
         target_scope=EvaluationTargetScope(scope.type, scope.key),
     )
+
+
+@pytest.mark.parametrize("mutation", ["historical", "malformed", "mismatch"])
+def test_openai_runner_rejects_invalid_runtime_identity_before_provider_or_persistence(mutation):
+    from dataclasses import replace
+    session_factory = _sqlite_session_factory()
+    calls = []
+    environment = _environment_identity()
+    if mutation == "historical":
+        environment = replace(environment, manifest_version="queryops-evaluation-environment-v1")
+    elif mutation == "malformed":
+        environment = replace(environment, provider_runtime_digest="invalid")
+    else:
+        environment = replace(environment, provider_runtime_digest="d" * 64)
+    runner = EvaluationRunner(
+        session_factory,
+        query_service_factory=lambda _pack: calls.append(True),
+        provider_descriptor=ProviderDescriptor(
+            provider=ProviderId.OPENAI,
+            model_label="gpt-5.6-terra",
+            runtime_digest=current_openai_runtime_identity()["digest"],
+        ),
+        evaluation_environment=environment,
+    )
+    with pytest.raises(EvaluationRunnerError) as caught:
+        runner.run(EvaluationFilters(case_id="itops-easy-005"))
+    assert caught.value.code == "evaluation_provider_runtime_mismatch"
+    assert calls == []
+    with session_factory() as db:
+        assert db.scalar(select(EvaluationRun)) is None

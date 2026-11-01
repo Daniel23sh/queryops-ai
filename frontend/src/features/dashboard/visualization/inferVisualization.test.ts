@@ -8,6 +8,25 @@ import {
 } from ".";
 
 describe("inferVisualization", () => {
+  it.each(["total_licenses", "max_cost", "target_count", "capacity", "limit"])("keeps %s as a primary KPI measure", (column) => {
+    const result = inferVisualization({ columns: [column], rows: [{ [column]: 42 }] });
+    expect(result.recommendedType).toBe("kpi");
+    expect(result.mapping.value_columns).toEqual([column]);
+    expect(result.mapping.target_column).toBeNull();
+  });
+
+  it("keeps target-like chart measures and reserves denominators for gauge pairs", () => {
+    const chart = inferVisualization({ columns: ["department", "total_licenses", "max_cost", "target_count"], rows: [
+      { department: "IT", total_licenses: 42, max_cost: 99, target_count: 50 },
+      { department: "Sales", total_licenses: 10, max_cost: 70, target_count: 20 }
+    ] });
+    expect(chart.mapping.value_columns).toEqual(["total_licenses", "max_cost", "target_count"]);
+    const gauge = inferVisualization({ columns: ["total_licenses", "current_count"], rows: [{ total_licenses: 42, current_count: 21 }] });
+    expect(gauge.recommendedType).toBe("semicircle_gauge");
+    expect(gauge.mapping).toMatchObject({ value_columns: ["current_count"], target_column: "total_licenses" });
+    expect(manualConfig("kpi", gauge).mapping).toMatchObject({ value_columns: ["total_licenses", "current_count"], target_column: null });
+  });
+
   it("recommends KPI for one numeric result", () => {
     const result = inferVisualization({ columns: ["active_users"], rows: [{ active_users: 84 }] });
     expect(result.recommendedType).toBe("kpi");

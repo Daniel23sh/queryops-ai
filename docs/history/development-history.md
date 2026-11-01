@@ -1,5 +1,141 @@
 # QueryOps AI — Development History
 
+## 2026-11-01 — W4 + W5 implementation and independent review
+
+Branch `feature/m10-dashboard-evaluation-integrity` starts at verified main
+`e20fa7c9193efdb7ab5de6b01a80a3f39b4e30d3`, after PR #64 merged. Scope approval
+was recorded at `5436c25` before implementation. Separate owners implemented W4
+frontend/editor/mapping and W5 backend identity/telemetry; the coordinator reviewed
+and integrated them, implemented the nullable-usage UI and maintained CI/docs.
+Commits: W5 `515e057`, W4 `f13c4ad`, UI/CI `5acfb1e`, timeout correction
+`178f132`. [PR #65](https://github.com/Daniel23sh/queryops-ai/pull/65) is open
+against main and intentionally unmerged. This is a reliability handoff, not V1
+release qualification. Current approval/status belongs in PROJECT_PLAN.md.
+
+### W4 decisions
+
+- A narrow layout-draft hook owns the server baseline, unsaved layout and expected
+  layout version separately from refreshed Dashboard/Card metadata. Known own
+  mutations reconcile the current card set without discarding retained positions;
+  new cards are placed below the draft. Unexpected version changes, collisions
+  and incompatible edited sizes retain the draft and require explicit resolution.
+  Save uses the draft baseline for the existing backend CAS contract.
+- Save/cancel, transient refresh/save failure, explicit discard and navigation
+  have composition coverage. Failed metadata refresh keeps the draft; access
+  denial/not-found clears protected Dashboard metadata. A delegating popstate
+  guard is registered before BrowserRouter and is active only for a dirty editor,
+  so rejecting Back does not unmount/remount and erase it. Same-page skip/hash
+  navigation preserves focus/draft without a discard prompt. No router or state-
+  management framework replacement was introduced.
+- Numeric primary values are retained for KPI/charts regardless of aliases such
+  as total/max/target. Only a genuine gauge value/target pair excludes its
+  denominator from primary measures. Exact-42 aliases, percentages, gauges,
+  compatible/incompatible manual choices and auto mappings have regressions.
+  Layout/config contain no raw result-row snapshots.
+
+### W5 decisions and qualification invalidation
+
+- Environment identity is now `queryops-evaluation-environment-v2`. One shared
+  `queryops-provider-runtime-v1` digest covers allowlisted exact provider/model,
+  official endpoint, reasoning effort, output cap, timeout, retries, actual Python
+  and installed provider/HTTP, validation, SQL/database and seed dependency
+  versions. It excludes credentials, arbitrary environment values, prompts and
+  rows. No new schema or historical evidence migration/backfill was required.
+- Manifest creation captures settings without constructing/calling a provider;
+  validation, frozen descriptors, persistence, stability and readiness use the
+  same identity. Read-only checks compare current OpenAI candidate configuration
+  and installed versions without needing an API key. Historical v1/missing or
+  malformed identity is incomplete/ineligible. Matching old canary/full evidence
+  cannot qualify a changed current configuration. Dataset versions, baselines,
+  quality thresholds, source/data/catalog checks and fail-closed rules remain.
+- Production-owned HTTP hooks count dispatches, including retries/redirects, in a
+  per-call ContextVar reset in finally. Injected clients lacking observation
+  report unknown physical attempts. Logical calls and safe failure latency/
+  observed token counters are distinct; incomplete or overflowing totals remain
+  null, never fabricated zero or clipped exact counts. No response body is
+  retained. The 64/call and 2,560/full-run representation bounds accommodate
+  existing redirects and do not change retry configuration or HTTP behavior.
+- Authorized usage API fields are nullable. UI shows unavailable counts as
+  `Not available`, keeps measured zero, and exposes only API-returned projections.
+  It also handles legitimate attempt counts above the previous 120/run bound.
+
+### Independent findings and corrections
+
+The fresh non-author reviewer inspected the full combined diff and connected
+paths. The review found an **inherited P2 timeout defect**: when configured to
+5 seconds, the installed SDK could substitute 600-second read/write/pool defaults
+because the explicit timeout was supplied only to its HTTPX client. A new actual-
+dispatch test failed for 5 seconds while adjacent 4/6/45 cases passed. Commit
+`178f132` restores the explicit SDK argument; all four phases now match the frozen
+configuration. Independent re-review and a repeated 161-case focused backend
+selection passed. The reviewer also identified the living quality-gate document's
+stale environment-v1 requirement, now aligned to v2 and explicit old-evidence
+invalidation. No unresolved finding remained.
+
+During coordinator review, response-stream timeouts were kept outside the
+telemetry JSON catch to preserve SDK failure/retry semantics, and token overflow
+was made unavailable rather than silently capped. Controlled stream/overflow
+regressions passed before final review. No provider or retry budget was increased.
+
+### Verification and limits
+
+- W4 red tests reproduced eight draft/mapping failures. Full frontend validation
+  passed **318 tests in 49 files**, ESLint, both TypeScript checks and build.
+  The usage-UI test failed before the unavailable-versus-zero presentation change.
+- W5 broad PostgreSQL subsystem selection passed **540 tests, zero skips**;
+  dedicated manifest/failed-usage persistence selection passed **48, zero skips**.
+  Actual installed-SDK local transports cover 500→success, terminal failure,
+  timeout (including response-stream failure), malformed structured output and
+  redirects. Settings/dependency changes, identical configurations, strict old/
+  malformed identity rejection and current-model binding are covered.
+- After the timeout correction, CI-equivalent disposable PostgreSQL selections
+  passed **1,921 backend tests + the exact 20 action-security cases**, zero skips,
+  failures or errors. From `backend/`, with the guarded disposable URL/opt-in:
+
+  ```bash
+  .venv/bin/pytest tests/test_action_security_release.py -q -rs
+  .venv/bin/pytest --ignore=tests/test_action_security_release.py -q -rs
+  ```
+
+- Chromium passed **36 flows**: three new composed desktop/numeric/mobile editor
+  cases, existing actions 2, access 2, scoped Evaluation 9, result delivery 8 and
+  general 12. New W4 flows use real APIs/PostgreSQL, exact synthetic 42-value
+  fixtures, competing layout versions, offline retry, rejected/accepted Back and
+  skip-link/hash navigation. Existing general Evaluation fixtures remain UI-only
+  evidence. The final SDK-only correction does not alter Mock browser behavior;
+  exact-final-revision CI reruns the complete graph.
+- Fresh Alembic upgrade/current/check reached `0010_disable_inactive_user` with
+  no model diff/new operations. Ruff, zero-error/warning Pyright, compilation,
+  Markdown-link and diff checks passed. The known chart chunk-size warning remains
+  non-blocking. Three task-owned disposable PostgreSQL clusters isolated W5,
+  combined regression and browser data from normal application resources.
+- Independently executed evidence: **161 backend tests, 80 frontend tests, one
+  PostgreSQL persistence case**, plus the actual timeout dispatch probe. The
+  reviewer inspected broader results but did not independently rerun every
+  browser/security suite. Notes: `/tmp/queryops-integrity/independent-review.md`.
+
+Logs/JUnit/browser evidence are temporary under `/tmp/queryops-integrity`; final
+PR CI provides retained exact-revision evidence. Documentation follows the reviewed
+runtime commit. No paid calls, qualifying live Canary/Full40 sequence, W6 work,
+deployment or completed manual release QA occurred. Historical evaluations remain
+readable but cannot bypass the new qualification identity. V1 stays incomplete;
+the recommended next package after owner approval/merge is separately scoped W6a
+semantic diagnosis, not automatic implementation or a paid release sequence.
+
+## 2026-10-31 — W2a + W3 merged; W4 + W5 authorized
+
+PR #64 merged into main at `e20fa7c9193efdb7ab5de6b01a80a3f39b4e30d3`. GitHub
+merge metadata, fetched origin/main, reviewed-head ancestry and identical merged
+implementation were verified before the next batch. This supersedes only the
+previous unmerged handoff status; its evidence and limitations remain historical.
+
+The owner authorized W4 + W5 only on clean branch
+`feature/m10-dashboard-evaluation-integrity` from that main. Separate owners will
+handle frontend editing/values and backend qualification identity/telemetry, with
+combined validation and a fresh non-author final review. No W6, paid provider,
+qualifying Canary/Full40 or automatic merge is authorized. The tracked worktree
+was clean; ignored private planning files remain untouched.
+
 ## 2026-10-31 — W2a + W3 implementation and combined verification
 
 Branch `feature/m10-evaluation-reads-result-delivery` starts at verified main

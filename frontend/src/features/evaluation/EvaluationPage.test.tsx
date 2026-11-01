@@ -20,6 +20,27 @@ import {
 afterEach(resetAppTestState);
 
 describe("Evaluation workspace", () => {
+  it.each([null, 130, "private-invalid-value"])("preserves safe usage counts without turning unavailable values into zero (%s)", async (attempts) => {
+    const readiness = backendEvaluationReadiness();
+    installApiMock(authenticatedRoutes(demoAnalyst, {
+      "GET /api/v1/evaluation/overview": successResponse(backendEvaluationOverview()),
+      "GET /api/v1/evaluation/readiness": successResponse({
+        ...readiness,
+        technical: { ...readiness.technical, usage: {
+          call_count: 1, attempt_count: attempts, duration_ms: 10,
+          input_tokens: null, cached_input_tokens: 0, output_tokens: null, total_tokens: null
+        } }
+      })
+    }));
+    renderAppAt("/evaluation");
+    const usage = await screen.findByLabelText("Provider usage");
+    expect(within(usage).getByText("Logical calls").closest("div")).toHaveTextContent("1");
+    expect(within(usage).getByText("HTTP attempts").closest("div")).toHaveTextContent(attempts === 130 ? "130" : "Not available");
+    expect(within(usage).getByText("Input tokens").closest("div")).toHaveTextContent("Not available");
+    expect(within(usage).getByText("Cached input tokens").closest("div")).toHaveTextContent("0");
+    expect(screen.queryByText("private-invalid-value")).not.toBeInTheDocument();
+  });
+
   it.each([
     ["ready", "V1 readiness: Ready"],
     ["not_ready", "V1 readiness: Not ready"],
@@ -165,6 +186,7 @@ describe("Evaluation workspace", () => {
     expect(screen.queryByText(/Measured 100/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Threshold/)).not.toBeInTheDocument();
     expect(screen.getByText("Status: Ready")).not.toHaveTextContent("gpt-5.6-terra");
+    expect(screen.queryByLabelText("Provider usage")).not.toBeInTheDocument();
   });
 
   it("uses the overview-selected run for tab requests and preserves deep links", async () => {

@@ -21,6 +21,7 @@ import type { CardMenuAction } from "./components/CardContextMenu";
 import { DashboardEditorGrid } from "./components/DashboardEditorGrid";
 import { EditorDialog } from "./components/EditorDialog";
 import { useDashboardDetail } from "./hooks/useDashboardDetail";
+import { useDashboardLayoutDraft } from "./hooks/useDashboardLayoutDraft";
 import { DashboardVisualization } from "./visualization/DashboardVisualization";
 import type {
   CardSource,
@@ -38,6 +39,10 @@ import {
 } from "./visualization";
 
 type EditorMode = "view" | "edit";
+let dashboardHistoryGuard: ((event: PopStateEvent) => void) | null = null;
+// Window target listeners run in registration order; guard before BrowserRouter mounts.
+window.addEventListener("popstate", (event) => dashboardHistoryGuard?.(event), true);
+
 type DialogState =
   | { kind: "dashboard-rename" }
   | { kind: "dashboard-archive" }
@@ -55,14 +60,20 @@ export function DashboardDetailPage({
   user: AuthUser;
 }) {
   const { dashboardId } = useParams<{ dashboardId: string }>();
+  return <DashboardEditorPage csrfToken={csrfToken} dashboardId={dashboardId} key={dashboardId} />;
+}
+
+function DashboardEditorPage({
+  dashboardId,
+  csrfToken
+}: {
+  dashboardId: string | undefined;
+  csrfToken: string | null;
+}) {
   const detail = useDashboardDetail(dashboardId);
   const navigate = useNavigate();
   const [mode, setMode] = useState<EditorMode>("view");
-  const [draftLayouts, setDraftLayouts] = useState<Record<string, DashboardCardLayout>>({});
-  const [serverLayouts, setServerLayouts] = useState<Record<string, DashboardCardLayout>>({});
-  const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [conflict, setConflict] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dialog, setDialog] = useState<DialogState>(null);
@@ -71,21 +82,10 @@ export function DashboardDetailPage({
   const [source, setSource] = useState<{ loading: boolean; data: CardSource | null; error: string | null }>({ loading: false, data: null, error: null });
   const sourceRequestRef = useRef<AbortController | null>(null);
   const dashboard = detail.dashboard;
-  const effectiveLayouts = useMemo(
-    () => dashboard
-      ? Object.fromEntries(dashboard.cards.map((card) => [card.id, draftLayouts[card.id] ?? cloneLayout(card.layout)]))
-      : {},
-    [dashboard, draftLayouts]
-  );
-
-  useEffect(() => {
-    if (!dashboard) return;
-    const next = Object.fromEntries(dashboard.cards.map((card) => [card.id, cloneLayout(card.layout)]));
-    setServerLayouts(next);
-    setDraftLayouts(next);
-    setDirty(false);
-    setConflict(false);
-  }, [dashboard]);
+  const layoutDraft = useDashboardLayoutDraft(dashboard);
+  const { dirty, conflict, layouts: draftLayouts } = layoutDraft;
+  const [mutating, setMutating] = useState(false);
+  const busy = saving || mutating || detail.status === "loading";
 
   useEffect(() => {
     sourceRequestRef.current?.abort();
@@ -103,20 +103,36 @@ export function DashboardDetailPage({
     if (!dirty) return;
     const beforeUnload = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
     const links = (event: MouseEvent) => {
-      const anchor = (event.target as Element).closest("a[href]");
-      if (anchor && !window.confirm("Discard unsaved dashboard layout changes?")) event.preventDefault();
+      const anchor = (event.target as Element).closest<HTMLAnchorElement>("a[href]");
+      if (!anchor || anchor.target === "_blank" || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      const destination = new URL(anchor.href);
+      if (destination.origin === window.location.origin && destination.pathname === window.location.pathname && destination.search === window.location.search) return;
+      if (!window.confirm("Discard unsaved dashboard layout changes?")) {
+        event.preventDefault(); event.stopPropagation();
+      }
     };
-    const historyNavigation = () => {
-      if (!window.confirm("Discard unsaved dashboard layout changes?")) window.history.forward();
-      else setDirty(false);
+    const currentIndex = window.history.state?.idx;
+    const currentPath = window.location.pathname + window.location.search;
+    let restoring = false;
+    const historyNavigation = (event: PopStateEvent) => {
+      if (restoring) { restoring = false; event.stopImmediatePropagation(); return; }
+      if (window.location.pathname + window.location.search === currentPath) return;
+      if (!window.confirm("Discard unsaved dashboard layout changes?")) {
+        const nextIndex = event.state?.idx;
+        if (typeof currentIndex === "number" && typeof nextIndex === "number") {
+          event.stopImmediatePropagation();
+          restoring = true;
+          window.history.go(currentIndex - nextIndex);
+        }
+      }
     };
     window.addEventListener("beforeunload", beforeUnload);
     document.addEventListener("click", links, true);
-    window.addEventListener("popstate", historyNavigation);
+    dashboardHistoryGuard = historyNavigation;
     return () => {
       window.removeEventListener("beforeunload", beforeUnload);
       document.removeEventListener("click", links, true);
-      window.removeEventListener("popstate", historyNavigation);
+      if (dashboardHistoryGuard === historyNavigation) dashboardHistoryGuard = null;
     };
   }, [dirty]);
 
@@ -124,27 +140,23 @@ export function DashboardDetailPage({
     setResults((current) => current[cardId] === result ? current : { ...current, [cardId]: result });
   }, []);
 
-  const updateDraft = useCallback((next: Record<string, DashboardCardLayout>) => {
-    setDraftLayouts(next);
-    setDirty(layoutFingerprint(next) !== layoutFingerprint(serverLayouts));
-    setConflict(false);
-  }, [serverLayouts]);
+  const updateDraft = layoutDraft.update;
   const closeAddCard = useCallback(() => setAddCardOpen(false), []);
 
   if (detail.status === "loading" && !dashboard) {
     return <section className="dashboard-detail dashboard-detail--state" aria-live="polite">Loading dashboard…</section>;
   }
   if (detail.status === "not-found") return <DashboardUnavailable title="Dashboard not found" />;
-  if (detail.status === "error" || !dashboard) {
+  if (!dashboard) {
     return <DashboardUnavailable onRetry={() => void detail.reload()} title="Dashboard unavailable" />;
   }
 
   async function saveLayout() {
-    if (!dashboard || !csrfToken || saving) return;
+    if (!dashboard || !csrfToken || busy || conflict) return;
     setSaving(true); setError(null); setStatus(null);
     try {
-      await updateDashboardEditorLayout(dashboard.id, {
-        expected_layout_version: dashboard.layout_version,
+      const saved = await updateDashboardEditorLayout(dashboard.id, {
+        expected_layout_version: layoutDraft.version,
         items: dashboard.cards.map((card) => ({
           card_id: card.id,
           desktop: { ...draftLayouts[card.id].desktop },
@@ -153,20 +165,20 @@ export function DashboardDetailPage({
         }))
       }, csrfToken);
       setStatus("Dashboard layout saved.");
-      setDirty(false);
+      layoutDraft.saved(saved);
       setMode("view");
       await detail.reload();
     } catch (caught: unknown) {
       if (caught instanceof ApiError && caught.code === "DASHBOARD_LAYOUT_CONFLICT") {
-        setConflict(true);
+        layoutDraft.markConflict();
         setError("This dashboard changed in another session. Your draft is still here; reload the latest layout before editing again.");
       } else setError("Dashboard changes could not be saved. Try again.");
     } finally { setSaving(false); }
   }
 
   function cancelEditing() {
-    setDraftLayouts(cloneLayouts(serverLayouts));
-    setDirty(false); setConflict(false); setError(null); setMode("view");
+    layoutDraft.reset();
+    setError(null); setMode("view");
   }
 
   function openCardAction(action: CardMenuAction, card: EditorDashboardCard, breakpoint: DashboardBreakpoint) {
@@ -182,13 +194,16 @@ export function DashboardDetailPage({
   }
 
   async function duplicateCard(card: EditorDashboardCard) {
-    if (!csrfToken) return;
+    if (!csrfToken || busy) return;
+    setMutating(true);
     setError(null);
     try {
-      await duplicateDashboardCard(card.id, csrfToken);
+      const result = await duplicateDashboardCard(card.id, csrfToken);
+      layoutDraft.expectMutation(1, result.layout_version);
       setStatus(`${card.title} duplicated.`);
       await detail.reload();
     } catch { setError("The card could not be duplicated. Try again."); }
+    finally { setMutating(false); }
   }
 
   async function loadSource(card: EditorDashboardCard) {
@@ -214,6 +229,7 @@ export function DashboardDetailPage({
     if (action === "rename") setDialog({ kind: "dashboard-rename" });
     else if (action === "archive") setDialog({ kind: "dashboard-archive" });
     else {
+      if (dirty && !window.confirm("Discard unsaved dashboard layout changes and duplicate the saved dashboard?")) return;
       setError(null);
       try {
         const copy = await duplicateDashboard(dashboard!.id, csrfToken);
@@ -246,11 +262,11 @@ export function DashboardDetailPage({
         <div className="dashboard-editor__header-actions">
           {dashboard.capabilities.can_manage ? (
             <div className="dashboard-editor__mode" aria-label="Dashboard mode" role="group">
-              <button aria-pressed={mode === "view"} onClick={() => mode === "edit" ? cancelEditing() : setMode("view")} type="button">View</button>
-              <button aria-pressed={mode === "edit"} onClick={() => { setMode("edit"); setStatus(null); }} type="button"><Edit3 aria-hidden="true" size={16} />Edit</button>
+              <button aria-pressed={mode === "view"} disabled={busy} onClick={() => { if (mode !== "edit") setMode("view"); else if (!dirty || window.confirm("Discard unsaved dashboard layout changes?")) cancelEditing(); }} type="button">View</button>
+              <button aria-pressed={mode === "edit"} disabled={busy} onClick={() => { setMode("edit"); setStatus(null); }} type="button"><Edit3 aria-hidden="true" size={16} />Edit</button>
             </div>
           ) : null}
-          <DashboardActionMenu canDuplicate={dashboard.capabilities.can_duplicate} canManage={dashboard.capabilities.can_manage} onSelect={(action) => void dashboardAction(action)} />
+          <DashboardActionMenu canDuplicate={!busy && dashboard.capabilities.can_duplicate} canManage={!busy && dashboard.capabilities.can_manage} onSelect={(action) => void dashboardAction(action)} />
         </div>
       </header>
 
@@ -258,14 +274,15 @@ export function DashboardDetailPage({
         <div className="dashboard-editor__toolbar" aria-label="Dashboard editing controls">
           <div><strong>Edit dashboard</strong><span>{dirty ? "Unsaved layout changes" : "No unsaved layout changes"}</span></div>
           <div>
-            {dashboard.capabilities.can_create_cards ? <button className="qops-button-secondary" onClick={() => setAddCardOpen(true)} type="button"><Plus aria-hidden="true" size={17} />Add Card</button> : null}
-            <button className="qops-button-secondary" disabled={saving} onClick={cancelEditing} type="button"><X aria-hidden="true" size={17} />Cancel</button>
-            <button className="qops-button-primary" disabled={!dirty || saving || !csrfToken} onClick={() => void saveLayout()} type="button"><Save aria-hidden="true" size={17} />{saving ? "Saving…" : "Save changes"}</button>
+            {dashboard.capabilities.can_create_cards ? <button className="qops-button-secondary" disabled={busy} onClick={() => setAddCardOpen(true)} type="button"><Plus aria-hidden="true" size={17} />Add Card</button> : null}
+            <button className="qops-button-secondary" disabled={busy} onClick={cancelEditing} type="button"><X aria-hidden="true" size={17} />Cancel</button>
+            <button className="qops-button-primary" disabled={!dirty || busy || conflict || !csrfToken} onClick={() => void saveLayout()} type="button"><Save aria-hidden="true" size={17} />{saving ? "Saving…" : "Save changes"}</button>
           </div>
         </div>
       ) : null}
 
-      {conflict ? <div className="dashboard-editor__conflict" role="alert"><p>{error}</p><button className="qops-button-secondary" onClick={() => { setDirty(false); void detail.reload(); }} type="button"><RotateCcw aria-hidden="true" size={16} />Reload latest layout</button></div> : error ? <p className="dashboard-editor__error" role="alert">{error}</p> : null}
+      {detail.status === "error" ? <p role="alert">Dashboard details could not be refreshed. Your layout draft is still here. <button onClick={() => void detail.reload()} type="button">Retry refresh</button></p> : null}
+      {conflict ? <div className="dashboard-editor__conflict" role="alert"><p>This dashboard layout changed or its card sizes are no longer compatible. Your draft is still here; reload the latest layout to discard it before editing again.</p><button className="qops-button-secondary" onClick={() => { if (window.confirm("Discard your draft and reload the latest dashboard layout?")) void detail.reload().then((latest) => { if (latest) { layoutDraft.reset(latest); setError(null); } }); }} type="button"><RotateCcw aria-hidden="true" size={16} />Reload latest layout</button></div> : error ? <p className="dashboard-editor__error" role="alert">{error}</p> : null}
       {status ? <p className="dashboard-editor__status" role="status">{status}</p> : null}
 
       <DashboardEditorGrid
@@ -274,21 +291,21 @@ export function DashboardDetailPage({
         canViewSource={dashboard.capabilities.can_view_source}
         cards={dashboard.cards}
         csrfToken={csrfToken}
-        editMode={mode === "edit"}
-        layouts={effectiveLayouts}
+        editMode={mode === "edit" && !busy && !conflict}
+        layouts={draftLayouts}
         onAction={openCardAction}
         onLayoutsChange={updateDraft}
         onResult={onResult}
       />
 
-      {dialog?.kind === "dashboard-rename" ? <RenameDashboardDialog dashboard={dashboard} onClose={() => setDialog(null)} onSaved={async (title, description) => { if (!csrfToken) return; await updateDashboard(dashboard.id, { title, description }, csrfToken); setDialog(null); setStatus("Dashboard renamed."); await detail.reload(); }} /> : null}
-      {dialog?.kind === "dashboard-archive" ? <ConfirmDialog confirmLabel="Archive dashboard" description="This removes the dashboard from active views. Its saved cards and query history are preserved." onClose={() => setDialog(null)} onConfirm={async () => { if (!csrfToken) return; await archiveDashboard(dashboard.id, csrfToken); setDirty(false); navigate(APP_ROUTES.home); }} title="Archive dashboard?" /> : null}
-      {dialog?.kind === "card-rename" ? <RenameCardDialog card={dialog.card} onClose={() => setDialog(null)} onSaved={async (title, description) => { if (!csrfToken) return; await updateDashboardCard(dialog.card.id, { title, description }, csrfToken); setDialog(null); setStatus("Card updated."); await detail.reload(); }} /> : null}
-      {dialog?.kind === "card-remove" ? <ConfirmDialog confirmLabel="Remove card" description="Only this dashboard card will be removed. The saved query and all query-run history are preserved." onClose={() => setDialog(null)} onConfirm={async () => { if (!csrfToken) return; await removeDashboardCard(dialog.card.id, csrfToken); setDialog(null); setStatus("Card removed; query history was preserved."); await detail.reload(); }} title={`Remove ${dialog.card.title}?`} /> : null}
+      {dialog?.kind === "dashboard-rename" ? <RenameDashboardDialog dashboard={dashboard} onClose={() => setDialog(null)} onSaved={async (title, description) => { if (!csrfToken) return; const result = await updateDashboard(dashboard.id, { title, description }, csrfToken); layoutDraft.expectMutation(0, result.layout_version); setDialog(null); setStatus("Dashboard renamed."); await detail.reload(); }} /> : null}
+      {dialog?.kind === "dashboard-archive" ? <ConfirmDialog confirmLabel="Archive dashboard" description={`This removes the dashboard from active views. Its saved cards and query history are preserved.${dirty ? " Your unsaved layout changes will be discarded." : ""}`} onClose={() => setDialog(null)} onConfirm={async () => { if (!csrfToken) return; await archiveDashboard(dashboard.id, csrfToken); navigate(APP_ROUTES.home); }} title="Archive dashboard?" /> : null}
+      {dialog?.kind === "card-rename" ? <RenameCardDialog card={dialog.card} onClose={() => setDialog(null)} onSaved={async (title, description) => { if (!csrfToken) return; const result = await updateDashboardCard(dialog.card.id, { title, description }, csrfToken); layoutDraft.expectMutation(0, result.layout_version); setDialog(null); setStatus("Card updated."); await detail.reload(); }} /> : null}
+      {dialog?.kind === "card-remove" ? <ConfirmDialog confirmLabel="Remove card" description="Only this dashboard card will be removed. The saved query and all query-run history are preserved." onClose={() => setDialog(null)} onConfirm={async () => { if (!csrfToken) return; const result = await removeDashboardCard(dialog.card.id, csrfToken); layoutDraft.expectMutation(1, result.layout_version); setDialog(null); setStatus("Card removed; query history was preserved."); await detail.reload(); }} title={`Remove ${dialog.card.title}?`} /> : null}
       {dialog?.kind === "card-source" ? <SourceDialog card={dialog.card} onClose={closeSourceDialog} source={source} /> : null}
       {dialog?.kind === "card-resize" ? <ResizeDialog breakpoint={dialog.breakpoint} card={dialog.card} onClose={() => setDialog(null)} onSelect={(w, h) => applySize(dialog.card, dialog.breakpoint, w, h)} /> : null}
-      {dialog?.kind === "card-visualization" ? <VisualizationDialog card={dialog.card} onClose={() => setDialog(null)} onSave={async (visualization) => { if (!csrfToken) return; await updateDashboardCard(dialog.card.id, { visualization }, csrfToken); setDialog(null); setStatus("Visualization preference saved."); await detail.reload(); }} result={results[dialog.card.id] ?? null} /> : null}
-      {addCardOpen && csrfToken ? <AddCardDrawer csrfToken={csrfToken} dashboardId={dashboard.id} onClose={closeAddCard} onDashboardReload={async (message) => { setStatus(message); await detail.reload(); }} /> : null}
+      {dialog?.kind === "card-visualization" ? <VisualizationDialog card={dialog.card} onClose={() => setDialog(null)} onSave={async (visualization) => { if (!csrfToken) return; const result = await updateDashboardCard(dialog.card.id, { visualization }, csrfToken); layoutDraft.expectMutation(1, result.layout_version); setDialog(null); setStatus("Visualization preference saved."); await detail.reload(); }} result={results[dialog.card.id] ?? null} /> : null}
+      {addCardOpen && csrfToken ? <AddCardDrawer csrfToken={csrfToken} dashboardId={dashboard.id} onClose={closeAddCard} onDashboardReload={async (message, version) => { layoutDraft.expectMutation(1, version); setStatus(message); await detail.reload(); }} /> : null}
     </article>
   );
 }
@@ -336,7 +353,6 @@ function DashboardUnavailable({ onRetry, title }: { onRetry?: () => void; title:
 }
 function cloneLayout(layout: DashboardCardLayout): DashboardCardLayout { return { version: 1, desktop: { ...layout.desktop }, tablet: { ...layout.tablet }, mobile: { ...layout.mobile } }; }
 function cloneLayouts(layouts: Record<string, DashboardCardLayout>) { return Object.fromEntries(Object.entries(layouts).map(([id, layout]) => [id, cloneLayout(layout)])); }
-function layoutFingerprint(layouts: Record<string, DashboardCardLayout>): string { return JSON.stringify(Object.entries(layouts).sort(([left], [right]) => left.localeCompare(right))); }
 function repack(layouts: Record<string, DashboardCardLayout>, cards: EditorDashboardCard[], breakpoint: DashboardBreakpoint) {
   const columns = breakpoint === "desktop" ? 12 : breakpoint === "tablet" ? 6 : 1;
   const ordered = [...cards].sort((left, right) => layouts[left.id][breakpoint].y - layouts[right.id][breakpoint].y || layouts[left.id][breakpoint].x - layouts[right.id][breakpoint].x);

@@ -104,6 +104,8 @@ class PlanGenerator:
                 "provider_failure_code": exc.code,
                 "provider_failure_fatal": exc.fatal,
             }
+            if exc.measurement is not None:
+                metadata["provider_measurement"] = exc.measurement
             unsupported_reason = exc.code
         else:
             metadata = {"provider_failure_code": "provider_unavailable"}

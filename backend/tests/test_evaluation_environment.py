@@ -7,6 +7,7 @@ import pytest
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
+from app.query_engine.provider_config import current_openai_runtime_identity
 from app.domains.it_operations.seed import SeedSummary, expected_seed_table_counts
 from app.evaluation import environment
 from app.db.base import Base
@@ -199,7 +200,7 @@ def test_persisted_environment_identity_is_strict_and_time_bounded() -> None:
 
 def _identity() -> EvaluationEnvironmentIdentity:
     return EvaluationEnvironmentIdentity(
-        manifest_version="queryops-evaluation-environment-v1",
+        manifest_version="queryops-evaluation-environment-v2",
         seed_version="it-operations-seed-v1",
         seed_profile="medium",
         seed=42,
@@ -209,6 +210,8 @@ def _identity() -> EvaluationEnvironmentIdentity:
         postgres_version="16.9",
         database_fingerprint="b" * 64,
         dependency_manifest_hash="c" * 64,
+        provider_runtime_version=current_openai_runtime_identity()["version"],
+        provider_runtime_digest=current_openai_runtime_identity()["digest"],
     )
 
 
@@ -257,3 +260,39 @@ def _as_utc(value: datetime) -> datetime:
     if value.tzinfo is None:
         return value.replace(tzinfo=UTC)
     return value.astimezone(UTC)
+
+
+@pytest.mark.parametrize("field,value", [
+    ("model", "gpt-5.6-luna"), ("timeout_seconds", 44.0), ("max_retries", 1),
+    ("reasoning_effort", "medium"), ("max_output_tokens", 2049),
+])
+def test_manifest_rejects_provider_configuration_drift(tmp_path, monkeypatch, field, value):
+    from dataclasses import replace
+    from app.query_engine.provider_config import OpenAIProviderSettings, ProviderSettings, ProviderId
+    _stub_release_environment(monkeypatch)
+    settings = ProviderSettings(ProviderId.OPENAI, OpenAIProviderSettings(api_key="synthetic"))
+    manifest = build_evaluation_environment_manifest(object(), _release_seed_summary(), source_git_sha="a" * 40, provider_settings=settings)
+    path = tmp_path / "manifest.json"
+    path.write_text(json.dumps(manifest))
+    identity = validate_evaluation_environment_manifest(object(), path, now=REFERENCE_TIME, source_git_sha="a" * 40, provider_settings=settings)
+    assert validate_persisted_environment_identity(identity.as_dict()) == identity
+    changed = replace(settings, openai=replace(settings.openai, **{field: value}))
+    with pytest.raises(EvaluationEnvironmentError, match="Evaluation environment") as caught:
+        validate_evaluation_environment_manifest(object(), path, now=REFERENCE_TIME, source_git_sha="a" * 40, provider_settings=changed)
+    assert caught.value.code == "evaluation_provider_runtime_mismatch"
+
+
+@pytest.mark.parametrize("mutation", ["historical", "missing_version", "missing_digest", "malformed_digest", "wrong_version"])
+def test_old_or_malformed_provider_runtime_is_never_defaulted(mutation):
+    identity = _identity().as_dict()
+    if mutation == "historical":
+        identity["manifest_version"] = "queryops-evaluation-environment-v1"
+        identity.pop("provider_runtime_version")
+        identity.pop("provider_runtime_digest")
+    elif mutation.startswith("missing_"):
+        identity.pop("provider_runtime_" + mutation.removeprefix("missing_"))
+    elif mutation == "wrong_version":
+        identity["provider_runtime_version"] = "queryops-provider-runtime-v0"
+    else:
+        identity["provider_runtime_digest"] = "invalid"
+    assert validate_persisted_environment_identity(identity) is None

@@ -288,12 +288,12 @@ class ReadinessGateView(StrictModel):
 
 class ReadinessUsageView(StrictModel):
     call_count: int = Field(ge=0, le=40)
-    attempt_count: int = Field(ge=0, le=120)
+    attempt_count: int | None = Field(ge=0, le=2560)
     duration_ms: float = Field(ge=0, le=86_400_000)
-    input_tokens: int = Field(ge=0, le=1_000_000_000)
-    cached_input_tokens: int = Field(ge=0, le=1_000_000_000)
-    output_tokens: int = Field(ge=0, le=1_000_000_000)
-    total_tokens: int = Field(ge=0, le=1_000_000_000)
+    input_tokens: int | None = Field(ge=0, le=1_000_000_000)
+    cached_input_tokens: int | None = Field(ge=0, le=1_000_000_000)
+    output_tokens: int | None = Field(ge=0, le=1_000_000_000)
+    total_tokens: int | None = Field(ge=0, le=1_000_000_000)
 
 
 class ReadinessTechnicalView(StrictModel):

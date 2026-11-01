@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+from app.query_engine.provider_config import current_openai_runtime_identity
 from app.evaluation.environment import EvaluationEnvironmentIdentity
 from app.evaluation.environment import EvaluationEnvironmentError
 from app.evaluation.runner import (
@@ -358,7 +359,7 @@ def _summary(
 
 def _environment_identity() -> EvaluationEnvironmentIdentity:
     return EvaluationEnvironmentIdentity(
-        manifest_version="queryops-evaluation-environment-v1",
+        manifest_version="queryops-evaluation-environment-v2",
         seed_version="it-operations-seed-v1",
         seed_profile="medium",
         seed=42,
@@ -368,4 +369,6 @@ def _environment_identity() -> EvaluationEnvironmentIdentity:
         postgres_version="16.9",
         database_fingerprint="c" * 64,
         dependency_manifest_hash="d" * 64,
+        provider_runtime_version=current_openai_runtime_identity()["version"],
+        provider_runtime_digest=current_openai_runtime_identity()["digest"],
     )
