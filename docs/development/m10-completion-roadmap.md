@@ -80,6 +80,11 @@ as the next batch on 2026-10-31. Batching does not change package boundaries or
 release criteria. Each handoff requires independent review and an unmerged PR;
 actual merge status and further authorization belong only in PROJECT_PLAN.md.
 
+W4 + W5 were authorized together on 2026-10-31. W5 deliberately invalidates old
+qualification evidence through environment v2 and a provider/runtime fingerprint;
+it does not change the frozen dataset, thresholds or the separate W6a/W6b/W6c
+semantic sequence. See the [identity/usage contract](../evaluation/v1-quality-gates.md#environment-identity-and-invalidation).
+
 ## Definition of Done for local synthetic IT Operations V1
 
 1. Supported scope and demo boundary are explicit; unsupported auth modes fail

@@ -36,7 +36,13 @@ implementation evidence, not V1 release qualification.
 **W4 + W5 — Product Correctness & Evaluation Integrity** is the active batch,
 explicitly authorized by the owner on 2026-10-31. Implement on
 `feature/m10-dashboard-evaluation-integrity` from verified main `e20fa7c`.
-Keep the resulting PR unmerged for owner approval.
+W5 `515e057`, W4 `f13c4ad`, UI/CI integration `5acfb1e` and reviewed timeout
+correction `178f132` are implemented. Final local V3 verification passed 1,921
+PostgreSQL backend tests plus 20 action-security cases without skips, 318 frontend
+tests and 36 Chromium flows. Independent review/re-review has no unresolved
+findings. [PR #65](https://github.com/Daniel23sh/queryops-ai/pull/65) is open and
+**unmerged** for owner approval; final-head CI must pass before merge.
+This does not qualify V1. Decisions/evidence are in development history.
 
 W4: preserve unsaved Dashboard layout edits through non-conflicting metadata/Card
 operations, reconcile or explicitly resolve conflicts, and keep layout versions,
@@ -61,8 +67,10 @@ verification and a fresh independent reviewer who authored neither package.
 - Follow the [M10 roadmap](docs/development/m10-completion-roadmap.md) for W4–W9
   dependencies/acceptance; W10 cleanup is optional. W6a diagnosis, W6b targeted
   correction and W6c independent validation are separate packages.
-- Dashboard editing/value mapping and provider/config identity are this batch's
-  work, not completed claims. Semantic diagnosis/correction/independent validation,
+- Dashboard editing/value mapping and provider/runtime identity have reviewed
+  implementation and executable evidence on the branch; main integration is
+  pending. Old environment v1/missing-fingerprint evidence cannot qualify under
+  environment v2. Semantic diagnosis/correction/independent validation,
   explicit local auth boundary, reproducible validation and final V1 QA remain open.
   The audit's hard-004 case passed its diagnostic canary; blanket historical
   failure claims are not accepted without new evidence.
@@ -76,8 +84,11 @@ verification and a fresh independent reviewer who authored neither package.
 
 ## Next Approved Work
 
-Complete and hand off W4 + W5 only. Keep the PR **unmerged**; do not begin W6 or
-later packages. No paid provider calls, qualifying Canary or Full40 run is authorized.
+Hand off W4 + W5 in PR #65 and keep it **unmerged**. No further implementation
+is approved in this task. After approval/merge, the recommended next package is
+W6a — Semantic Diagnosis, subject to a separate owner instruction; do not begin
+W6b corrections or later packages automatically. No paid provider calls,
+qualifying Canary or Full40 run is authorized by this batch.
 
 ## References
 

@@ -58,7 +58,32 @@ The full run must pass every metric threshold, every deterministic release gate,
 
 ## Environment identity and invalidation
 
-Release evidence must contain the bounded `queryops-evaluation-environment-v1` identity produced from a clean source revision and a freshly reset deterministic `medium` seed. The release-manifest boundary explicitly freezes `it_operations_v2` version `2` and its exact digest; a historical V1 dataset identity cannot validate current V2 release evidence. Before provider construction, the runner verifies source SHA, Alembic revision, PostgreSQL/runtime versions, dependency-manifest hash, V2 dataset/catalog identities, table/anomaly counts, and the canonical digest of evaluation-relevant seeded state. The explicit UTC reference time may be at most 24 hours old when a run starts. The persisted identity contains no database URL or rows.
+Release evidence must contain the bounded `queryops-evaluation-environment-v2` identity produced from a clean source revision and a freshly reset deterministic `medium` seed. The release-manifest boundary explicitly freezes `it_operations_v2` version `2` and its exact digest; a historical V1 dataset identity cannot validate current V2 release evidence. Before provider construction, the runner verifies source SHA, Alembic revision, PostgreSQL/runtime versions, dependency-manifest hash, provider/runtime fingerprint, V2 dataset/catalog identities, table/anomaly counts, and the canonical digest of evaluation-relevant seeded state. The explicit UTC reference time may be at most 24 hours old when a run starts. The persisted identity contains no database URL or rows.
+
+The shared `queryops-provider-runtime-v1` fingerprint hashes a canonical allowlist:
+provider, exact model, official endpoint, reasoning effort, output token cap,
+timeout, retry setting, actual Python version and installed behavior-relevant
+package versions. The runtime package allowlist is maintained in
+[`provider_config.py`](../../backend/app/query_engine/provider_config.py), covering
+the provider/HTTP stack, validation, SQL/database and seed dependencies. It is an
+installed-version fingerprint, not just a hash of dependency ranges. API keys,
+credentials, prompts, rows and arbitrary environment variables are excluded.
+Environment identity stores only the fingerprint version/digest.
+
+Manifest generation, validation, the frozen provider descriptor, persisted runs,
+stability and readiness use the same contract. Capture the same `LLM_PROVIDER`,
+`OPENAI_MODEL`, reasoning/output/timeout/retry settings for manifest preparation
+and evaluation. A default Mock manifest cannot validate an OpenAI run. Preparation
+captures settings without constructing/calling a provider. Read-only qualification
+checks current candidate `OPENAI_MODEL` and `OPENAI_*` behavior settings and installed
+versions without needing credentials or constructing a provider. The matching
+OpenAI settings must therefore remain configured when inspecting readiness.
+
+Environment v1, missing fingerprint fields, malformed evidence or configuration
+mismatches are **incomplete/ineligible**. Existing stored runs remain historical;
+there is no migration, backfill or default-based upgrade to qualification. Even
+matching historical canary/full v2 digests cannot qualify changed current candidate
+settings or dependencies. Provider keys can change without entering this identity.
 
 Any source SHA, provider/model, dataset, canary membership or digest, semantic catalog, seed state, dependency manifest, environment identity, provider/Query Engine behavior, grounding, plan validation, SQL renderer, safety validator, semantic conformance, scorer, runner, stability assessment, readiness logic, or behavior-affecting configuration change invalidates live evidence. A new deterministic freeze and a separately authorized three-run canary plus full run are then required. Documentation-only evidence recording does not invalidate an otherwise unchanged measurement.
 
@@ -101,6 +126,30 @@ Shared/production deployment is separate future scope. See the
 - Thresholds, questions, baselines, templates, semantic contracts, prompts, and canary membership must not be weakened or case-tuned after observing results.
 - Reports record only safe call, attempt, token, and latency totals. Volatile monetary prices are not embedded in product code.
 - There is no scheduled, nightly, recurring, fallback, browser-triggered, or CI live evaluation, and no GitHub OpenAI secret.
+
+### Usage and retry evidence
+
+One logical SDK call is distinct from physical HTTP dispatch attempts. The
+production-owned HTTP client counts dispatches, including SDK retries and HTTP
+redirects, in a per-call context. Injected/uninstrumented clients report physical
+attempts as `null`, not an invented one. Attempt representation is bounded to 64
+per call and 2,560 per full run to accommodate the existing redirect behavior;
+this does not change retry configuration, HTTP behavior or quality thresholds.
+
+Only bounded token counters and elapsed duration are retained, including safe
+failure paths. Per-call `call_count=1` and `usage_complete` accompany measurements.
+Unknown/incomplete or overflowing token totals are `null`; observed bounded
+per-call counters remain available without pretending they are complete totals.
+Aggregated attempts are `null` when any contributing attempt count is unknown.
+Historical measurement shapes missing the required new fields are not upgraded.
+Authorized API/UI consumers preserve `null` as unavailable and retain measured
+zero as zero. No provider payload, response body, secret or raw failure text is
+persisted by this telemetry.
+
+The [official OpenAI Python SDK documentation](https://developers.openai.com/api/reference/python#retries)
+describes automatic retries. Controlled tests exercise the installed SDK and
+local mock transport, including retry, redirect, malformed output and response-
+stream timeout behavior; they make no live provider calls.
 
 ## Quality-tool baseline
 

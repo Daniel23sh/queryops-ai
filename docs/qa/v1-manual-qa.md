@@ -35,6 +35,12 @@ release checklist. Shared/production identity and deployment are future scope.
 - [ ] Trigger and complete clarification without an SQL execution.
 - [ ] Save a successful result as a Card.
 - [ ] Open and refresh the saved Dashboard card.
+- [ ] Resize/move an unsaved draft, then rename, add/remove/duplicate a Card and
+  change its visualization; save/cancel preserves the intended layout. Verify
+  stale/incompatible conflicts require explicit resolution and a failed refresh
+  keeps the draft. Check rejected/accepted Back navigation and skip-link focus.
+- [ ] Verify single numeric aliases (including `total_licenses`) show their
+  actual values; gauges distinguish value/target and manual chart mappings work.
 - [ ] Export CSV and verify audit evidence and formula-injection sanitization.
 
 ## Actions, approvals, notifications, and audit
@@ -52,6 +58,11 @@ release checklist. Shared/production identity and deployment are future scope.
 - [ ] Confirm Manager sees only business-safe Evaluation and readiness fields.
 - [ ] Confirm Analyst sees only the existing assigned-scope technical projection.
 - [ ] Confirm Admin sees bounded global readiness gate values and safe usage totals.
+- [ ] Confirm unknown HTTP attempts/tokens display as unavailable, measured zero
+  remains zero, and scoped users receive only their authorized usage projection.
+- [ ] Confirm old environment v1/missing identity is incomplete; changing current
+  reasoning/output/timeout/retry/model or installed runtime versions invalidates
+  previously matching canary/full evidence without starting a provider call.
 - [ ] Confirm readiness shows the three-run canary status and count without exposing run history or arbitrary identifiers.
 - [ ] Confirm a full V2 run cannot produce `ready` unless it matches the stable canary candidate and all 40 cases are complete.
 - [ ] Confirm Ready, Not ready, and Incomplete include text labels and are not color-only.
