@@ -62,6 +62,12 @@ change was needed. Evidence and compatibility limits are recorded in
 [development history](docs/history/development-history.md) and the
 [output contract](docs/development/semantic-ownership-migration.md#deterministic-output-identity--m10-w6b-contract).
 
+An independent review of `8fc585a` found that CI did not select the two new
+output-identity browser tests. The approved correction adds them to the existing
+M8 Primary E2E sequence. Local Chromium, ordering and failure-propagation checks
+passed; exact-head CI evidence is recorded on PR #67. Independent re-review of
+the corrected head remains required before acceptance.
+
 Only this correction is approved: no provider aliases, algebra expansion,
 candidate/context improvements, prompt/model tuning, W6c, W7 or paid calls.
 Commit/push a focused unmerged PR. This implementation is a candidate only;

@@ -1,12 +1,37 @@
 # QueryOps AI — Development History
 
+## 2026-11-01 — W6b independent review and CI selection correction
+
+A fresh non-author review of [PR #67](https://github.com/Daniel23sh/queryops-ai/pull/67)
+at `8fc585a` returned **CHANGES REQUIRED** for one P2: the two new
+`output-identity.spec.ts` cases inherited `@m8-primary`, were excluded from the
+general E2E job and were absent from the five explicit M8 Primary commands.
+The original six green jobs therefore did not prove those two cases ran in CI.
+The reviewer independently ran focused PostgreSQL/security checks and both real
+Chromium cases, and reported no additional runtime or security finding in scope.
+
+The correction adds the existing Chromium spec as the sixth sequential command
+in M8 Primary, after `dashboard-integrity`; it changes no application behavior,
+fixture guard, authorization or release threshold. Locally, Playwright collected
+exactly two output-identity cases; the preceding dashboard suite passed three
+cases and then both output cases passed against a fresh disposable PostgreSQL
+instance. A GitHub-style `bash -e -o pipefail` simulation verified that a failing
+sixth command propagates failure, and the existing aggregate gate rejects a
+failed M8 result. These checks are not a substitute for CI execution.
+
+The corrected head must show both named cases actually executed and passed in
+[PR #67 checks](https://github.com/Daniel23sh/queryops-ai/pull/67/checks), together
+with all required gates. The PR description records the exact-head run and test
+evidence after verification. Independent re-review remains a separate pending gate;
+the PR is intentionally unmerged and V1 release qualification remains incomplete.
+
 ## 2026-11-01 — W6b deterministic output identity candidate
 
 Implementation `1667afc` on `feature/m10-w6b-deterministic-output-identity`
 starts from verified PR #66 merge `dac8031`; scope approval is `b73ec48`.
 [Draft PR #67](https://github.com/Daniel23sh/queryops-ai/pull/67) is an unmerged
-implementation candidate. No independent final acceptance
-review has been performed: the owner reserved it as a separate approval gate.
+implementation candidate. At its initial handoff, no independent final acceptance
+review had been performed; the later review and correction are recorded above.
 Current PR/review status belongs in PROJECT_PLAN.md.
 
 ### Design, compatibility and boundaries
