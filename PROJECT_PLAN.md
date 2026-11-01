@@ -38,25 +38,40 @@ merged at `b1f03a4790c7569f7da0ef8d9be57ddd6da023c5`. Reviewed implementations,
 independent findings/corrections and deterministic evidence are recorded in
 [development history](docs/history/development-history.md). V1 remains unreleased.
 
-**W6a diagnosis is complete on its review branch**, approved on 2026-11-01.
-[PR #66](https://github.com/Daniel23sh/queryops-ai/pull/66) is open and intentionally
-unmerged, from `investigation/m10-w6a-semantic-diagnosis` on verified main `b1f03a4`.
-The [Hebrew diagnostic report](docs/audits/2026-11-01-w6a-semantic-diagnosis-he.md)
-freezes source/data/catalog/runtime identities and separates candidate availability,
-historical/current-unverified provider interpretation, supported encodings,
-deterministic delivery and evaluator proof. Production behavior, tests, frozen
-datasets, prompts and release gates are unchanged; no paid call was made.
+**W6a is merged.** [PR #66](https://github.com/Daniel23sh/queryops-ai/pull/66)
+merged at `dac8031bd368f0d17fb94818369cd3071bf8160e`; remote metadata, ancestry
+and the diagnostic findings were verified before this task. Its dated findings
+remain in the [Hebrew report](docs/audits/2026-11-01-w6a-semantic-diagnosis-he.md).
 
-Three diagnostic specialists, coordinator replays and a fresh non-author review
-are complete. Two diagnostic reproducibility issues were corrected and re-reviewed
-at `b1852b8`; no unresolved blocking review finding remains. Detailed evidence and
-limitations are in the report/history. This does not qualify V1 or establish
-current live-model quality.
+**W6b — Deterministic Output Identity** is explicitly approved by the owner on
+2026-11-01, on `feature/m10-w6b-deterministic-output-identity` from verified main
+`dac8031`. Preserve every selected value under unique, deterministic backend-owned
+keys; retain compatible unique labels; fail safely for ambiguous legacy SQL.
+Cover rendering/conformance/execution/provenance, unchanged hard-005 contracts,
+saved results, Dashboard refresh/visualization and CSV with V3 PostgreSQL/API/
+browser evidence. Preserve authorization, RLS, limits and export protection.
 
-The first proposed W6b correction is **deterministic output identity**: joined
-fields with duplicate labels can lose a required value during JSON mapping.
-Candidate/context coverage remains a separate next decision; broad algebra or
-prompt/model changes are not established remedies. **W6b is not approved**.
+Implementation and local V3 verification are complete in
+[Draft PR #67](https://github.com/Daniel23sh/queryops-ai/pull/67), implementation
+commit `1667afc`, on the feature branch;
+the candidate is not merged and has not received independent final approval.
+The renderer preserves compatible labels and qualifies collisions with stable
+backend names; the executor rejects duplicate cursor labels before mapping rows,
+including empty/legacy SQL. No schema, provider-plan, evaluator or frozen-data
+change was needed. Evidence and compatibility limits are recorded in
+[development history](docs/history/development-history.md) and the
+[output contract](docs/development/semantic-ownership-migration.md#deterministic-output-identity--m10-w6b-contract).
+
+An independent review of `8fc585a` found that CI did not select the two new
+output-identity browser tests. The approved correction adds them to the existing
+M8 Primary E2E sequence. Local Chromium, ordering and failure-propagation checks
+passed; exact-head CI evidence is recorded on PR #67. Independent re-review of
+the corrected head remains required before acceptance.
+
+Only this correction is approved: no provider aliases, algebra expansion,
+candidate/context improvements, prompt/model tuning, W6c, W7 or paid calls.
+Commit/push a focused unmerged PR. This implementation is a candidate only;
+independent final review remains a separate approval gate.
 
 ## Constraints and Remaining Work
 
@@ -64,7 +79,7 @@ prompt/model changes are not established remedies. **W6b is not approved**.
   dependencies/acceptance; W10 cleanup is optional. W6a diagnosis, W6b targeted
   correction and W6c independent validation are separate packages.
 - Old environment v1/missing-fingerprint evidence cannot qualify under environment
-  v2. Semantic diagnosis is complete in the unmerged PR; correction and independent validation,
+  v2. Semantic diagnosis is merged; the narrowly approved output correction and independent validation,
   explicit local auth boundary, reproducible validation and final V1 QA remain open.
   The audit's hard-004 case passed its diagnostic canary; blanket historical
   failure claims are not accepted without new evidence.
@@ -78,10 +93,9 @@ prompt/model changes are not established remedies. **W6b is not approved**.
 
 ## Next Approved Work
 
-Owner review of W6a PR #66 only; keep it **unmerged** until separately approved.
-No new implementation is approved. The next decision is the narrow W6b output-
-identity proposal and its acceptance criteria. Any live experiment also requires
-separate exact-model/case/call-budget approval; do not begin later packages.
+Review the unmerged W6b candidate PR through a separately approved independent
+final review. No further implementation, candidate retrieval changes, W6c, W7 or
+paid evaluation is approved. Do not merge automatically.
 
 ## References
 

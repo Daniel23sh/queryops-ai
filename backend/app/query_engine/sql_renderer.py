@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from collections.abc import Iterable
 from math import isfinite
 from typing import Any
@@ -143,18 +144,57 @@ def _render_select_items(
         ):
             raise SemanticSQLRenderError("metric_unsupported")
         if validated_plan.metric_aggregation_function == "count":
-            return (f"COUNT(*) AS {plan.metric_id}",)
+            return (f"COUNT(*) AS {plan.metric_id.lower()[:63]}",)
         raise SemanticSQLRenderError("metric_sum_target_missing")
 
+    labels = _output_labels(validated_plan)
     items = tuple(
-        _render_field(field, entity_tables) for field in plan.output_fields
+        _render_field(field, entity_tables)
+        + (
+            f" AS {labels[('field', field.entity_id, field.column)]}"
+            if labels[("field", field.entity_id, field.column)] != field.column else ""
+        )
+        for field in plan.output_fields
     ) + tuple(
-        f"{_render_aggregation(aggregation, entity_tables)} AS {aggregation.id}"
+        f"{_render_aggregation(aggregation, entity_tables)} AS "
+        f"{labels[('aggregation', aggregation.id)]}"
         for aggregation in plan.aggregations
     )
     if not items:
         raise SemanticSQLRenderError("output_missing")
     return items
+
+
+def _output_labels(validated_plan: ValidatedSemanticPlan) -> dict[tuple[str, ...], str]:
+    plan = validated_plan.plan
+    # PostgreSQL folds unquoted ASCII identifiers and truncates them to 63 bytes.
+    preferred = {
+        **{
+            ("field", item.entity_id, item.column): item.column.lower()[:63]
+            for item in plan.output_fields
+        },
+        **{
+            ("aggregation", item.id): item.id.lower()[:63]
+            for item in plan.aggregations
+        },
+    }
+    counts = Counter(preferred.values())
+    labels = {key: name for key, name in preferred.items() if counts[name] == 1}
+    used = set(preferred.values())
+    # Semantic identity order keeps suffix allocation independent of SELECT order.
+    for key in sorted(preferred):
+        if key in labels:
+            continue
+        base = "__".join(key[1:] if key[0] == "field" else key).lower()
+        name = base[:63]
+        suffix = 2
+        while name in used:
+            ending = f"__{suffix}"
+            name = base[: 63 - len(ending)] + ending
+            suffix += 1
+        labels[key] = name
+        used.add(name)
+    return labels
 
 
 def _render_predicates(

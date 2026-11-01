@@ -1,5 +1,104 @@
 # QueryOps AI — Development History
 
+## 2026-11-01 — W6b independent review and CI selection correction
+
+A fresh non-author review of [PR #67](https://github.com/Daniel23sh/queryops-ai/pull/67)
+at `8fc585a` returned **CHANGES REQUIRED** for one P2: the two new
+`output-identity.spec.ts` cases inherited `@m8-primary`, were excluded from the
+general E2E job and were absent from the five explicit M8 Primary commands.
+The original six green jobs therefore did not prove those two cases ran in CI.
+The reviewer independently ran focused PostgreSQL/security checks and both real
+Chromium cases, and reported no additional runtime or security finding in scope.
+
+The correction adds the existing Chromium spec as the sixth sequential command
+in M8 Primary, after `dashboard-integrity`; it changes no application behavior,
+fixture guard, authorization or release threshold. Locally, Playwright collected
+exactly two output-identity cases; the preceding dashboard suite passed three
+cases and then both output cases passed against a fresh disposable PostgreSQL
+instance. A GitHub-style `bash -e -o pipefail` simulation verified that a failing
+sixth command propagates failure, and the existing aggregate gate rejects a
+failed M8 result. These checks are not a substitute for CI execution.
+
+The corrected head must show both named cases actually executed and passed in
+[PR #67 checks](https://github.com/Daniel23sh/queryops-ai/pull/67/checks), together
+with all required gates. The PR description records the exact-head run and test
+evidence after verification. Independent re-review remains a separate pending gate;
+the PR is intentionally unmerged and V1 release qualification remains incomplete.
+
+## 2026-11-01 — W6b deterministic output identity candidate
+
+Implementation `1667afc` on `feature/m10-w6b-deterministic-output-identity`
+starts from verified PR #66 merge `dac8031`; scope approval is `b73ec48`.
+[Draft PR #67](https://github.com/Daniel23sh/queryops-ai/pull/67) is an unmerged
+implementation candidate. At its initial handoff, no independent final acceptance
+review had been performed; the later review and correction are recorded above.
+Current PR/review status belongs in PROJECT_PLAN.md.
+
+### Design, compatibility and boundaries
+
+The renderer retains unique PostgreSQL labels and qualifies only collisions as
+`entity_id__column` / `aggregation__id`. It reserves compatible labels, applies
+ASCII folding/63-byte limits and allocates bounded suffixes in semantic-identity
+order, so row values and selection reordering cannot change a field's assigned
+label within the same selected output set. Long/case-varying aggregation labels
+match cursor and provenance names. No provider alias field, new plan algebra,
+generalized naming framework, migration or persisted result rows were added.
+
+The shared executor checks cursor labels before mapping records, even when empty.
+Ambiguous saved SQL now fails safely with a generic public error, empty output,
+no successful refresh run and no successful export audit. Such Cards must be
+regenerated from an authorized fresh query; SQL is not guessed or rewritten.
+Existing conformance, provenance and result comparison support the generated
+aliases without code or scoring changes. See the
+[output contract](../development/semantic-ownership-migration.md#deterministic-output-identity--m10-w6b-contract).
+
+The coordinator owned production code and renderer/core PostgreSQL regressions.
+A separate agent independently designed consumer coverage and owned only the
+new guarded synthetic fixture, API tests and browser spec. Its contribution
+verifies consumers; it is not the reserved independent final review.
+
+### Evidence
+
+- Four renderer regressions failed before implementation on the baseline:
+  duplicate ID/name fields, generated-name reservation/aggregation collisions,
+  case folding and 63-byte truncation. The canonical hard-005 PG regression also
+  failed against an archived, unmodified `dac8031` backend (`id,id`). The corrected
+  runtime preserves unequal device/user IDs and passes the unchanged V2 semantic
+  and result contracts on the same governed snapshot. No provider was called.
+- Complete disposable-PostgreSQL backend suite: **1,940 passed, zero skipped**
+  (`/tmp/queryops-w6b-backend.xml`); exact action security suite separately:
+  **20 passed, zero skipped** (`/tmp/queryops-w6b-actions.xml`). Focused 142-test,
+  nine-case core PG and six-case consumer runs are included/overlap these totals.
+- Frontend: **318 tests / 49 files passed**. Two new Chromium flows passed against
+  actual isolated APIs/PostgreSQL, without route mocks. They check both IDs,
+  NULL/fanout, table headers, inferred aggregate bar values, persisted manual table
+  mode after reload, real CSV content/formula protection and absence of browser
+  result snapshots. Unexpected browser/page errors are test failures.
+- Consumer API tests cover duplicate names and field/aggregate collisions,
+  source→save→reload→repeated refresh→CSV, administrator versus current scoped
+  viewer, restricted export denial and ambiguous legacy failure without data or
+  successful side effects. Core tests cover empty results, quoted unique legacy
+  labels, explicit NULL extension, actual cursor/provenance normalization,
+  output reordering and field/aggregate ORDER BY with colliding labels.
+- Ruff, Pyright (zero errors/warnings), compilation, browser-spec ESLint and Node
+  type check passed. Fresh migrations reached `0010_disable_inactive_user` and
+  Alembic check found no new upgrade operations. Validation used three task-owned
+  PostgreSQL 16.14 clusters only; no normal application database was reset.
+
+No paid calls, Canary/Full40, blind held-out model-quality claim, W6c, candidate
+retrieval improvement, prompt/model tuning or W7 work is included. Full manual
+release QA and independent final approval remain open; passing CI does not qualify
+V1. Existing source-based evidence invalidation remains in force.
+
+## 2026-11-01 — W6a merged; narrow W6b authorized
+
+PR #66 merged at `dac8031bd368f0d17fb94818369cd3071bf8160e`. Remote merge metadata,
+fetched main and diagnostic ancestry were verified on a clean checkout. The owner
+approved deterministic output identity only for W6b, with V3 evidence and an
+unmerged candidate PR; independent final review is a separate approval gate.
+Candidate retrieval, prompt/model tuning, W6c, W7 and paid evaluations remain
+out of scope. Historical W6a unmerged statements below describe its handoff.
+
 ## 2026-11-01 — W6a semantic diagnosis and independent review
 
 [PR #66](https://github.com/Daniel23sh/queryops-ai/pull/66) contains the completed,

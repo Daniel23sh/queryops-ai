@@ -22,6 +22,39 @@ V2 assets and readiness policy are unchanged. Legal-plan acceptance is not proof
 of correct English interpretation. Live evidence and manual QA remain separately
 required; no provider run is authorized. PR58 is not included.
 
+## Deterministic output identity — M10 W6b contract
+
+The backend owns result labels; SemanticPlan still contains field identities and
+aggregation IDs, with no provider-controlled alias extension. The renderer keeps
+existing unique PostgreSQL labels. For collisions it qualifies fields as
+`entity_id__column` and aggregates as `aggregation__id`. It reserves existing
+labels first and allocates any necessary `__2`, `__3`, … suffixes by sorted
+semantic identity, independent of SELECT order or row values. Existing canonical
+plan ordering remains unchanged. Unquoted ASCII identifier folding and the
+PostgreSQL 63-byte limit apply before collision detection and suffix allocation.
+The emitted aliases match the actual cursor labels, including long/case-varying
+aggregation IDs. Unique quoted labels in stored SQL remain intact.
+
+Aliases do not change selected expressions, grain, joins, DISTINCT, grouping,
+HAVING or ordering. Existing conformance and evaluator provenance resolve aliases
+to their original semantic expressions; no scoring, algebra, dataset or threshold
+relaxation is needed. Result consumers use the same unique `columns` and row keys.
+
+The shared executor checks actual cursor-label uniqueness before mapping any
+record, including empty results. Ambiguous legacy SQL fails safely with no columns
+or rows; public errors remain generic. It is not automatically rewritten, and no
+migration or result snapshot is introduced. Affected saved queries/cards must be
+regenerated and saved from an authorized fresh query before reuse. Refresh and
+CSV retain SQL revalidation, current-viewer authorization/RLS, safety budgets,
+formula protection and successful-export-only audit behavior. Naming does not
+certify natural-language correctness or population completeness.
+
+Focused regressions are in [renderer tests](../../backend/tests/test_sql_renderer.py),
+[governed PostgreSQL tests](../../backend/tests/test_output_identity_postgres.py),
+[consumer API tests](../../backend/tests/test_output_identity_consumers_postgres.py)
+and [real browser flows](../../frontend/e2e/output-identity.spec.ts). Current
+implementation/review approval belongs in [PROJECT_PLAN.md](../../PROJECT_PLAN.md).
+
 ## Versioned diagnostic reruns
 
 The PR53 evidence below records the original experiment, not current production.

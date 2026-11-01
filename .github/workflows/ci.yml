@@ -354,6 +354,7 @@ jobs:
           npx playwright test e2e/evaluation-scoped.spec.ts --project=chromium
           npx playwright test e2e/result-delivery.spec.ts --project=chromium
           npx playwright test e2e/dashboard-integrity.spec.ts --project=chromium
+          npx playwright test e2e/output-identity.spec.ts --project=chromium
 
       - name: Upload M8 Playwright failure artifacts
         if: failure()
