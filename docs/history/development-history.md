@@ -1,5 +1,20 @@
 # QueryOps AI — Development History
 
+## 2026-11-01 — W4 + W5 merged; W6a diagnosis authorized
+
+PR #65 merged into main at `b1f03a4790c7569f7da0ef8d9be57ddd6da023c5`. GitHub
+merge metadata, fetched origin/main, ancestry and identical reviewed implementation
+were verified before the next task. This supersedes only the prior unmerged
+handoff status; its evidence and limitations remain historical.
+
+The owner approved W6a investigation only, on clean branch
+`investigation/m10-w6a-semantic-diagnosis` from that main. Production semantics,
+frozen evaluations and quality gates must remain unchanged. Three independent
+specialists investigate retrieval, interpretation/composition and algebra/runtime/
+comparison, followed by fresh review of the consolidated decision. No paid calls
+or W6b implementation is approved. Tracked worktree was clean and ignored planning
+files remain untouched.
+
 ## 2026-11-01 — W4 + W5 implementation and independent review
 
 Branch `feature/m10-dashboard-evaluation-integrity` starts at verified main

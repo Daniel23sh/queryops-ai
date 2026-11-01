@@ -33,44 +33,40 @@ merged at `e20fa7c9193efdb7ab5de6b01a80a3f39b4e30d3`. Its reviewed implementatio
 and passing deterministic CI are recorded in development history. This remains
 implementation evidence, not V1 release qualification.
 
-**W4 + W5 — Product Correctness & Evaluation Integrity** is the active batch,
-explicitly authorized by the owner on 2026-10-31. Implement on
-`feature/m10-dashboard-evaluation-integrity` from verified main `e20fa7c`.
-W5 `515e057`, W4 `f13c4ad`, UI/CI integration `5acfb1e` and reviewed timeout
-correction `178f132` are implemented. Final local V3 verification passed 1,921
-PostgreSQL backend tests plus 20 action-security cases without skips, 318 frontend
-tests and 36 Chromium flows. Independent review/re-review has no unresolved
-findings. [PR #65](https://github.com/Daniel23sh/queryops-ai/pull/65) is open and
-**unmerged** for owner approval; final-head CI must pass before merge.
-This does not qualify V1. Decisions/evidence are in development history.
+**W4 + W5 are merged.** [PR #65](https://github.com/Daniel23sh/queryops-ai/pull/65)
+merged at `b1f03a4790c7569f7da0ef8d9be57ddd6da023c5`. Reviewed implementations,
+independent findings/corrections and deterministic evidence are recorded in
+[development history](docs/history/development-history.md). V1 remains unreleased.
 
-W4: preserve unsaved Dashboard layout edits through non-conflicting metadata/Card
-operations, reconcile or explicitly resolve conflicts, and keep layout versions,
-save/cancel/failure and navigation behavior consistent. Correct numeric KPI and
-chart mappings without treating total/target-like names as an automatic exclusion
-from primary measures. Preserve legitimate gauges and manual overrides. Use
-compositional component tests and actual PostgreSQL-backed browser workflows.
+**W6a — Semantic Reliability Diagnosis** is the active investigation, explicitly
+approved by the owner on 2026-11-01. Work on
+`investigation/m10-w6a-semantic-diagnosis` from verified main `b1f03a4`.
 
-W5: version and persist one deterministic, secret-free provider/runtime identity
-covering behavior-affecting settings and installed dependency versions. Manifest
-creation/validation, persistence, stability and readiness must share this contract;
-old/malformed/missing identity is incomplete, never upgraded through defaults.
-Separate logical calls, measured HTTP attempts or explicitly unknown attempts,
-and observed versus unavailable usage on retry/failure paths. Keep provider safety,
-historical baselines, thresholds and fail-closed qualification unchanged.
+Investigate F14 candidate recall/catalog coverage, F3 interpretation/business
+composition and F11 supported plan algebra/rendering/conformance/comparison.
+Freeze exact source, V2 dataset, semantic catalog, provider configuration and
+runtime identities. Separate offline deterministic reproduction from historical
+provider observations and current unverified model behavior. Use independent
+specialists, contrast cases and counter-evidence, then a fresh non-author review.
 
-Use separate implementation ownership and identifiable commits, combined V3
-verification and a fresh independent reviewer who authored neither package.
+Deliver a tracked diagnostic report with reproducible probes/coverage matrix,
+root-cause attribution/confidence, alternatives, the smallest justified W6b scope,
+acceptance/regression/held-out verification and a bounded proposal for any live
+experiments needing separate approval. Keep diagnostic and held-out material
+separate; no tuning from held-out outcomes.
+
+This is investigation only. Do not change production semantics, prompts, candidate
+rules, renderer, conformance, scoring, datasets/baselines, thresholds or gates.
+No paid provider calls, qualifying Canary or Full40 sequence is authorized. Commit
+and push the report/planning work in an unmerged PR; W6b is not approved.
 
 ## Constraints and Remaining Work
 
-- Follow the [M10 roadmap](docs/development/m10-completion-roadmap.md) for W4–W9
+- Follow the [M10 roadmap](docs/development/m10-completion-roadmap.md) for W6a–W9
   dependencies/acceptance; W10 cleanup is optional. W6a diagnosis, W6b targeted
   correction and W6c independent validation are separate packages.
-- Dashboard editing/value mapping and provider/runtime identity have reviewed
-  implementation and executable evidence on the branch; main integration is
-  pending. Old environment v1/missing-fingerprint evidence cannot qualify under
-  environment v2. Semantic diagnosis/correction/independent validation,
+- Old environment v1/missing-fingerprint evidence cannot qualify under environment
+  v2. Semantic diagnosis is active; correction and independent validation,
   explicit local auth boundary, reproducible validation and final V1 QA remain open.
   The audit's hard-004 case passed its diagnostic canary; blanket historical
   failure claims are not accepted without new evidence.
@@ -84,11 +80,9 @@ verification and a fresh independent reviewer who authored neither package.
 
 ## Next Approved Work
 
-Hand off W4 + W5 in PR #65 and keep it **unmerged**. No further implementation
-is approved in this task. After approval/merge, the recommended next package is
-W6a — Semantic Diagnosis, subject to a separate owner instruction; do not begin
-W6b corrections or later packages automatically. No paid provider calls,
-qualifying Canary or Full40 run is authorized by this batch.
+Complete W6a diagnosis and propose the next bounded decision only. Keep the PR
+**unmerged**; do not implement W6b or later packages. Any live experiment requires
+separate exact-model/case/call-budget approval after feasible offline work.
 
 ## References
 
