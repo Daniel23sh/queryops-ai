@@ -1,0 +1,1540 @@
+{
+  "schema_version": 1,
+  "classification": "exploratory_not_blinded_holdout",
+  "authored_before_first_probe_run": true,
+  "baseline_source": "b1f03a4790c7569f7da0ef8d9be57ddd6da023c5",
+  "seed_reference_time": "2026-11-01T09:20:36+00:00",
+  "methodology": "Expected semantic IDs are researcher-authored catalog targets, not evaluation answers. Vocabulary alternatives include explicitly marked ambiguous domain hypotheses. Literal requirements, interpretation, selection, SQL and final answer correctness are not scored.",
+  "cases": [
+    {
+      "id": "devices-canonical",
+      "family": "devices",
+      "kind": "vocabulary",
+      "variant": "canonical",
+      "question": "How many devices do we manage?",
+      "expected": {
+        "entities": [
+          "devices"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "interpretation_note": "Laptop/desktop wording also requires an authorized device_type filter; entity recall alone cannot establish correctness.",
+      "context": "global"
+    },
+    {
+      "id": "devices-endpoint",
+      "family": "devices",
+      "kind": "vocabulary",
+      "variant": "endpoint",
+      "question": "List all endpoints.",
+      "expected": {
+        "entities": [
+          "devices"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "interpretation_note": "Laptop/desktop wording also requires an authorized device_type filter; entity recall alone cannot establish correctness.",
+      "context": "global"
+    },
+    {
+      "id": "devices-computer",
+      "family": "devices",
+      "kind": "vocabulary",
+      "variant": "computer",
+      "question": "How many computers do we manage?",
+      "expected": {
+        "entities": [
+          "devices"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "interpretation_note": "Laptop/desktop wording also requires an authorized device_type filter; entity recall alone cannot establish correctness.",
+      "context": "global"
+    },
+    {
+      "id": "devices-laptop",
+      "family": "devices",
+      "kind": "vocabulary",
+      "variant": "laptop",
+      "question": "Count all company laptops.",
+      "expected": {
+        "entities": [
+          "devices"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "interpretation_note": "Laptop/desktop wording also requires an authorized device_type filter; entity recall alone cannot establish correctness.",
+      "context": "global"
+    },
+    {
+      "id": "devices-desktop",
+      "family": "devices",
+      "kind": "vocabulary",
+      "variant": "desktop",
+      "question": "List managed desktops.",
+      "expected": {
+        "entities": [
+          "devices"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "interpretation_note": "Laptop/desktop wording also requires an authorized device_type filter; entity recall alone cannot establish correctness.",
+      "context": "global"
+    },
+    {
+      "id": "devices-server",
+      "family": "devices",
+      "kind": "vocabulary",
+      "variant": "server",
+      "question": "List servers.",
+      "expected": {
+        "entities": [
+          "devices"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "interpretation_note": "Laptop/desktop wording also requires an authorized device_type filter; entity recall alone cannot establish correctness.",
+      "context": "global"
+    },
+    {
+      "id": "devices-description",
+      "family": "devices",
+      "kind": "vocabulary",
+      "variant": "description",
+      "question": "Summarize managed server inventory.",
+      "expected": {
+        "entities": [
+          "devices"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "interpretation_note": "Laptop/desktop wording also requires an authorized device_type filter; entity recall alone cannot establish correctness.",
+      "context": "global"
+    },
+    {
+      "id": "directory-users-canonical",
+      "family": "directory-users",
+      "kind": "vocabulary",
+      "variant": "canonical",
+      "question": "List directory users.",
+      "expected": {
+        "entities": [
+          "directory_users"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "directory-users-employee",
+      "family": "directory-users",
+      "kind": "vocabulary",
+      "variant": "employee",
+      "question": "List employees.",
+      "expected": {
+        "entities": [
+          "directory_users"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "directory-users-personnel",
+      "family": "directory-users",
+      "kind": "vocabulary",
+      "variant": "personnel",
+      "question": "List company personnel.",
+      "expected": {
+        "entities": [
+          "directory_users"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "directory-users-description",
+      "family": "directory-users",
+      "kind": "vocabulary",
+      "variant": "description",
+      "question": "List human identities.",
+      "expected": {
+        "entities": [
+          "directory_users"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "departments-canonical",
+      "family": "departments",
+      "kind": "vocabulary",
+      "variant": "canonical",
+      "question": "List departments.",
+      "expected": {
+        "entities": [
+          "departments"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "departments-unit",
+      "family": "departments",
+      "kind": "vocabulary",
+      "variant": "unit",
+      "question": "List business units.",
+      "expected": {
+        "entities": [
+          "departments"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "departments-division",
+      "family": "departments",
+      "kind": "vocabulary",
+      "variant": "division",
+      "question": "List organizational divisions.",
+      "expected": {
+        "entities": [
+          "departments"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "groups-canonical",
+      "family": "groups",
+      "kind": "vocabulary",
+      "variant": "canonical",
+      "question": "List access groups.",
+      "expected": {
+        "entities": [
+          "groups"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "interpretation_note": "Access-control roles is exploratory domain vocabulary; no claim of universal equivalence to group membership.",
+      "context": "global"
+    },
+    {
+      "id": "groups-security",
+      "family": "groups",
+      "kind": "vocabulary",
+      "variant": "security",
+      "question": "List security groups.",
+      "expected": {
+        "entities": [
+          "groups"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "interpretation_note": "Access-control roles is exploratory domain vocabulary; no claim of universal equivalence to group membership.",
+      "context": "global"
+    },
+    {
+      "id": "groups-role",
+      "family": "groups",
+      "kind": "vocabulary",
+      "variant": "role",
+      "question": "List access control roles.",
+      "expected": {
+        "entities": [
+          "groups"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "interpretation_note": "Access-control roles is exploratory domain vocabulary; no claim of universal equivalence to group membership.",
+      "context": "global"
+    },
+    {
+      "id": "license-products-canonical",
+      "family": "license-products",
+      "kind": "vocabulary",
+      "variant": "canonical",
+      "question": "List license products.",
+      "expected": {
+        "entities": [
+          "licenses"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "misleading_if_only": [
+        "software_installs"
+      ],
+      "context": "global"
+    },
+    {
+      "id": "license-products-subscription",
+      "family": "license-products",
+      "kind": "vocabulary",
+      "variant": "subscription",
+      "question": "List subscriptions.",
+      "expected": {
+        "entities": [
+          "licenses"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "misleading_if_only": [
+        "software_installs"
+      ],
+      "context": "global"
+    },
+    {
+      "id": "license-products-software-subscription",
+      "family": "license-products",
+      "kind": "vocabulary",
+      "variant": "software-subscription",
+      "question": "List software subscriptions.",
+      "expected": {
+        "entities": [
+          "licenses"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "misleading_if_only": [
+        "software_installs"
+      ],
+      "context": "global"
+    },
+    {
+      "id": "license-assignments-canonical",
+      "family": "license-assignments",
+      "kind": "vocabulary",
+      "variant": "canonical",
+      "question": "List license assignments.",
+      "expected": {
+        "entities": [
+          "license_assignments"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "misleading_if_only": [
+        "software_installs",
+        "licenses"
+      ],
+      "context": "global"
+    },
+    {
+      "id": "license-assignments-paid",
+      "family": "license-assignments",
+      "kind": "vocabulary",
+      "variant": "paid",
+      "question": "List paid licenses.",
+      "expected": {
+        "entities": [
+          "license_assignments"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "misleading_if_only": [
+        "software_installs",
+        "licenses"
+      ],
+      "context": "global"
+    },
+    {
+      "id": "license-assignments-seat",
+      "family": "license-assignments",
+      "kind": "vocabulary",
+      "variant": "seat",
+      "question": "List allocated software seats.",
+      "expected": {
+        "entities": [
+          "license_assignments"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "misleading_if_only": [
+        "software_installs",
+        "licenses"
+      ],
+      "context": "global"
+    },
+    {
+      "id": "login-events-canonical",
+      "family": "login-events",
+      "kind": "vocabulary",
+      "variant": "canonical",
+      "question": "List login events.",
+      "expected": {
+        "entities": [
+          "login_events"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "login-events-description",
+      "family": "login-events",
+      "kind": "vocabulary",
+      "variant": "description",
+      "question": "List authentication attempts.",
+      "expected": {
+        "entities": [
+          "login_events"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "login-events-sign-in",
+      "family": "login-events",
+      "kind": "vocabulary",
+      "variant": "sign-in",
+      "question": "List sign-in attempts.",
+      "expected": {
+        "entities": [
+          "login_events"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "security-events-canonical",
+      "family": "security-events",
+      "kind": "vocabulary",
+      "variant": "canonical",
+      "question": "List security findings.",
+      "expected": {
+        "entities": [
+          "security_events"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "security-events-incident",
+      "family": "security-events",
+      "kind": "vocabulary",
+      "variant": "incident",
+      "question": "List security incidents.",
+      "expected": {
+        "entities": [
+          "security_events"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "security-events-alert",
+      "family": "security-events",
+      "kind": "vocabulary",
+      "variant": "alert",
+      "question": "List security alerts.",
+      "expected": {
+        "entities": [
+          "security_events"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "software-installs-canonical",
+      "family": "software-installs",
+      "kind": "vocabulary",
+      "variant": "canonical",
+      "question": "List software installs.",
+      "expected": {
+        "entities": [
+          "software_installs"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "software-installs-application",
+      "family": "software-installs",
+      "kind": "vocabulary",
+      "variant": "application",
+      "question": "List installed applications.",
+      "expected": {
+        "entities": [
+          "software_installs"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "software-installs-package",
+      "family": "software-installs",
+      "kind": "vocabulary",
+      "variant": "package",
+      "question": "List deployed packages.",
+      "expected": {
+        "entities": [
+          "software_installs"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "support-tickets-canonical",
+      "family": "support-tickets",
+      "kind": "vocabulary",
+      "variant": "canonical",
+      "question": "List support tickets.",
+      "expected": {
+        "entities": [
+          "support_tickets"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "support-tickets-helpdesk-request",
+      "family": "support-tickets",
+      "kind": "vocabulary",
+      "variant": "helpdesk-request",
+      "question": "List helpdesk requests.",
+      "expected": {
+        "entities": [
+          "support_tickets"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "support-tickets-helpdesk-case",
+      "family": "support-tickets",
+      "kind": "vocabulary",
+      "variant": "helpdesk-case",
+      "question": "List helpdesk cases.",
+      "expected": {
+        "entities": [
+          "support_tickets"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "memberships-canonical",
+      "family": "memberships",
+      "kind": "vocabulary",
+      "variant": "canonical",
+      "question": "List group memberships.",
+      "expected": {
+        "entities": [
+          "user_group_memberships"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "memberships-member",
+      "family": "memberships",
+      "kind": "vocabulary",
+      "variant": "member",
+      "question": "List group members.",
+      "expected": {
+        "entities": [
+          "user_group_memberships"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "memberships-entitlement",
+      "family": "memberships",
+      "kind": "vocabulary",
+      "variant": "entitlement",
+      "question": "List access entitlements.",
+      "expected": {
+        "entities": [
+          "user_group_memberships"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "stale-device-canonical",
+      "family": "stale-device",
+      "kind": "business-definition",
+      "variant": "canonical",
+      "question": "Show stale devices.",
+      "expected": {
+        "entities": [
+          "devices"
+        ],
+        "concepts": [
+          "stale_device"
+        ],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "stale-device-rephrase",
+      "family": "stale-device",
+      "kind": "business-definition",
+      "variant": "rephrase",
+      "question": "Show endpoints not seen for over 30 days.",
+      "expected": {
+        "entities": [
+          "devices"
+        ],
+        "concepts": [
+          "stale_device"
+        ],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "stale-device-unanchored",
+      "family": "stale-device",
+      "kind": "business-definition",
+      "variant": "unanchored",
+      "question": "Show computers that have not checked in for over 30 days.",
+      "expected": {
+        "entities": [
+          "devices"
+        ],
+        "concepts": [
+          "stale_device"
+        ],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "unused-license-canonical",
+      "family": "unused-license",
+      "kind": "business-definition",
+      "variant": "canonical",
+      "question": "Show unused licenses.",
+      "expected": {
+        "entities": [
+          "license_assignments"
+        ],
+        "concepts": [
+          "unused_license_assignment"
+        ],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "interpretation_note": "Expected named definition also requires active/non-mandatory policy, not just inactivity.",
+      "context": "global"
+    },
+    {
+      "id": "unused-license-rephrase",
+      "family": "unused-license",
+      "kind": "business-definition",
+      "variant": "rephrase",
+      "question": "Show license assignments with no use for more than 60 days.",
+      "expected": {
+        "entities": [
+          "license_assignments"
+        ],
+        "concepts": [
+          "unused_license_assignment"
+        ],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "interpretation_note": "Expected named definition also requires active/non-mandatory policy, not just inactivity.",
+      "context": "global"
+    },
+    {
+      "id": "unused-license-unanchored",
+      "family": "unused-license",
+      "kind": "business-definition",
+      "variant": "unanchored",
+      "question": "Show reclaimable allocated seats unused for more than 60 days.",
+      "expected": {
+        "entities": [
+          "license_assignments"
+        ],
+        "concepts": [
+          "unused_license_assignment"
+        ],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "interpretation_note": "Expected named definition also requires active/non-mandatory policy, not just inactivity.",
+      "context": "global"
+    },
+    {
+      "id": "high-confidence-unused-canonical",
+      "family": "high-confidence-unused",
+      "kind": "business-definition",
+      "variant": "canonical",
+      "question": "Show high-confidence unused licenses.",
+      "expected": {
+        "entities": [
+          "license_assignments"
+        ],
+        "concepts": [
+          "high_confidence_unused_license_assignment"
+        ],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "high-confidence-unused-rephrase",
+      "family": "high-confidence-unused",
+      "kind": "business-definition",
+      "variant": "rephrase",
+      "question": "Show active non-mandatory non-exception license assignments unused for more than 90 days.",
+      "expected": {
+        "entities": [
+          "license_assignments"
+        ],
+        "concepts": [
+          "high_confidence_unused_license_assignment"
+        ],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "high-confidence-unused-unanchored",
+      "family": "high-confidence-unused",
+      "kind": "business-definition",
+      "variant": "unanchored",
+      "question": "Show reclaimable allocated seats with no use for more than 90 days, excluding mandatory seats and exceptions.",
+      "expected": {
+        "entities": [
+          "license_assignments"
+        ],
+        "concepts": [
+          "high_confidence_unused_license_assignment"
+        ],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "active-human-metric-canonical",
+      "family": "active-human-metric",
+      "kind": "business-definition",
+      "variant": "canonical",
+      "question": "How many active users are there?",
+      "expected": {
+        "entities": [
+          "directory_users"
+        ],
+        "concepts": [
+          "active_human_directory_user"
+        ],
+        "metrics": [
+          "active_human_users"
+        ],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "active-human-metric-rephrase",
+      "family": "active-human-metric",
+      "kind": "business-definition",
+      "variant": "rephrase",
+      "question": "Count active human directory users.",
+      "expected": {
+        "entities": [
+          "directory_users"
+        ],
+        "concepts": [
+          "active_human_directory_user"
+        ],
+        "metrics": [
+          "active_human_users"
+        ],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "active-human-metric-unanchored",
+      "family": "active-human-metric",
+      "kind": "business-definition",
+      "variant": "unanchored",
+      "question": "Count current staff with enabled human identities.",
+      "expected": {
+        "entities": [
+          "directory_users"
+        ],
+        "concepts": [
+          "active_human_directory_user"
+        ],
+        "metrics": [
+          "active_human_users"
+        ],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "open-support-canonical",
+      "family": "open-support",
+      "kind": "business-definition",
+      "variant": "canonical",
+      "question": "Show open support tickets.",
+      "expected": {
+        "entities": [
+          "support_tickets"
+        ],
+        "concepts": [
+          "open_support_ticket"
+        ],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "open-support-rephrase",
+      "family": "open-support",
+      "kind": "business-definition",
+      "variant": "rephrase",
+      "question": "Show support requests still open or being worked.",
+      "expected": {
+        "entities": [
+          "support_tickets"
+        ],
+        "concepts": [
+          "open_support_ticket"
+        ],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "open-support-unanchored",
+      "family": "open-support",
+      "kind": "business-definition",
+      "variant": "unanchored",
+      "question": "Show helpdesk cases still open or being worked.",
+      "expected": {
+        "entities": [
+          "support_tickets"
+        ],
+        "concepts": [
+          "open_support_ticket"
+        ],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "failed-login-canonical",
+      "family": "failed-login",
+      "kind": "business-definition",
+      "variant": "canonical",
+      "question": "Show failed logins.",
+      "expected": {
+        "entities": [
+          "login_events"
+        ],
+        "concepts": [
+          "failed_login"
+        ],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "failed-login-rephrase",
+      "family": "failed-login",
+      "kind": "business-definition",
+      "variant": "rephrase",
+      "question": "Show unsuccessful authentication attempts.",
+      "expected": {
+        "entities": [
+          "login_events"
+        ],
+        "concepts": [
+          "failed_login"
+        ],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "failed-login-unanchored",
+      "family": "failed-login",
+      "kind": "business-definition",
+      "variant": "unanchored",
+      "question": "Show unsuccessful sign-in attempts.",
+      "expected": {
+        "entities": [
+          "login_events"
+        ],
+        "concepts": [
+          "failed_login"
+        ],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global"
+    },
+    {
+      "id": "non-compliant-posture-canonical",
+      "family": "non-compliant-posture",
+      "kind": "business-definition",
+      "variant": "canonical",
+      "question": "Show non-compliant devices.",
+      "expected": {
+        "entities": [
+          "devices"
+        ],
+        "concepts": [
+          "non_compliant_device",
+          "antivirus_attention_device",
+          "unencrypted_device"
+        ],
+        "metrics": [],
+        "rules": [
+          "non_compliant_device_posture"
+        ],
+        "relationships": []
+      },
+      "interpretation_note": "Missing rule definition is measured separately from entity blocking; expanded Boolean meaning may be expressible by other supported plan forms.",
+      "context": "global"
+    },
+    {
+      "id": "non-compliant-posture-rephrase",
+      "family": "non-compliant-posture",
+      "kind": "business-definition",
+      "variant": "rephrase",
+      "question": "Show endpoints with non-compliant posture.",
+      "expected": {
+        "entities": [
+          "devices"
+        ],
+        "concepts": [
+          "non_compliant_device",
+          "antivirus_attention_device",
+          "unencrypted_device"
+        ],
+        "metrics": [],
+        "rules": [
+          "non_compliant_device_posture"
+        ],
+        "relationships": []
+      },
+      "interpretation_note": "Missing rule definition is measured separately from entity blocking; expanded Boolean meaning may be expressible by other supported plan forms.",
+      "context": "global"
+    },
+    {
+      "id": "non-compliant-posture-expanded",
+      "family": "non-compliant-posture",
+      "kind": "business-definition",
+      "variant": "expanded",
+      "question": "Show devices whose compliance status is non-compliant or whose antivirus is missing or outdated or whose encryption is disabled.",
+      "expected": {
+        "entities": [
+          "devices"
+        ],
+        "concepts": [
+          "non_compliant_device",
+          "antivirus_attention_device",
+          "unencrypted_device"
+        ],
+        "metrics": [],
+        "rules": [
+          "non_compliant_device_posture"
+        ],
+        "relationships": []
+      },
+      "interpretation_note": "Missing rule definition is measured separately from entity blocking; expanded Boolean meaning may be expressible by other supported plan forms.",
+      "context": "global"
+    },
+    {
+      "id": "disablement-review-canonical",
+      "family": "disablement-review",
+      "kind": "business-definition",
+      "variant": "canonical",
+      "question": "Show inactive human users requiring policy review before disablement.",
+      "expected": {
+        "entities": [
+          "directory_users",
+          "groups",
+          "user_group_memberships",
+          "security_events"
+        ],
+        "concepts": [
+          "inactive_human_directory_user",
+          "privileged_group",
+          "unresolved_critical_security_event"
+        ],
+        "metrics": [],
+        "rules": [
+          "disablement_policy_review"
+        ],
+        "relationships": []
+      },
+      "interpretation_note": "Equivalent expanded OR requires provider interpretation; presence of candidates is not selection or Boolean correctness.",
+      "context": "global"
+    },
+    {
+      "id": "disablement-review-rephrase",
+      "family": "disablement-review",
+      "kind": "business-definition",
+      "variant": "rephrase",
+      "question": "Show inactive human users who are privileged or have unresolved critical security events.",
+      "expected": {
+        "entities": [
+          "directory_users",
+          "groups",
+          "user_group_memberships",
+          "security_events"
+        ],
+        "concepts": [
+          "inactive_human_directory_user",
+          "privileged_group",
+          "unresolved_critical_security_event"
+        ],
+        "metrics": [],
+        "rules": [
+          "disablement_policy_review"
+        ],
+        "relationships": []
+      },
+      "interpretation_note": "Equivalent expanded OR requires provider interpretation; presence of candidates is not selection or Boolean correctness.",
+      "context": "global"
+    },
+    {
+      "id": "disablement-review-unanchored",
+      "family": "disablement-review",
+      "kind": "business-definition",
+      "variant": "unanchored",
+      "question": "Show dormant staff requiring review before deactivation because of elevated access or unresolved critical incidents.",
+      "expected": {
+        "entities": [
+          "directory_users",
+          "groups",
+          "user_group_memberships",
+          "security_events"
+        ],
+        "concepts": [
+          "inactive_human_directory_user",
+          "privileged_group",
+          "unresolved_critical_security_event"
+        ],
+        "metrics": [],
+        "rules": [
+          "disablement_policy_review"
+        ],
+        "relationships": []
+      },
+      "interpretation_note": "Equivalent expanded OR requires provider interpretation; presence of candidates is not selection or Boolean correctness.",
+      "context": "global"
+    },
+    {
+      "id": "device-assignee-canonical",
+      "family": "device-assignee",
+      "kind": "relationship",
+      "variant": "canonical",
+      "question": "Show devices assigned to directory users.",
+      "expected": {
+        "entities": [
+          "devices",
+          "directory_users"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": [
+          "device_assignee"
+        ]
+      },
+      "context": "global"
+    },
+    {
+      "id": "device-assignee-rephrase",
+      "family": "device-assignee",
+      "kind": "relationship",
+      "variant": "rephrase",
+      "question": "Show endpoints and their employees.",
+      "expected": {
+        "entities": [
+          "devices",
+          "directory_users"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": [
+          "device_assignee"
+        ]
+      },
+      "context": "global"
+    },
+    {
+      "id": "device-assignee-unanchored",
+      "family": "device-assignee",
+      "kind": "relationship",
+      "variant": "unanchored",
+      "question": "Show computers and their assigned personnel.",
+      "expected": {
+        "entities": [
+          "devices",
+          "directory_users"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": [
+          "device_assignee"
+        ]
+      },
+      "context": "global"
+    },
+    {
+      "id": "license-holder-canonical",
+      "family": "license-holder",
+      "kind": "relationship",
+      "variant": "canonical",
+      "question": "Show license assignments for directory users and license products.",
+      "expected": {
+        "entities": [
+          "license_assignments",
+          "licenses",
+          "directory_users"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": [
+          "license_assignment_license",
+          "license_assignment_user"
+        ]
+      },
+      "context": "global"
+    },
+    {
+      "id": "license-holder-rephrase",
+      "family": "license-holder",
+      "kind": "relationship",
+      "variant": "rephrase",
+      "question": "Show allocated software seats, their subscriptions, and their personnel.",
+      "expected": {
+        "entities": [
+          "license_assignments",
+          "licenses",
+          "directory_users"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": [
+          "license_assignment_license",
+          "license_assignment_user"
+        ]
+      },
+      "context": "global"
+    },
+    {
+      "id": "privileged-login-canonical",
+      "family": "privileged-login",
+      "kind": "relationship",
+      "variant": "canonical",
+      "question": "Show failed logins for users in privileged groups.",
+      "expected": {
+        "entities": [
+          "login_events",
+          "directory_users",
+          "groups",
+          "user_group_memberships"
+        ],
+        "concepts": [
+          "failed_login",
+          "privileged_group"
+        ],
+        "metrics": [],
+        "rules": [],
+        "relationships": [
+          "login_event_user",
+          "user_group_membership_group",
+          "user_group_membership_user"
+        ]
+      },
+      "context": "global"
+    },
+    {
+      "id": "privileged-login-rephrase",
+      "family": "privileged-login",
+      "kind": "relationship",
+      "variant": "rephrase",
+      "question": "Show unsuccessful authentication attempts by personnel with elevated access entitlements.",
+      "expected": {
+        "entities": [
+          "login_events",
+          "directory_users",
+          "groups",
+          "user_group_memberships"
+        ],
+        "concepts": [
+          "failed_login",
+          "privileged_group"
+        ],
+        "metrics": [],
+        "rules": [],
+        "relationships": [
+          "login_event_user",
+          "user_group_membership_group",
+          "user_group_membership_user"
+        ]
+      },
+      "context": "global"
+    },
+    {
+      "id": "counterevidence-ambiguous",
+      "family": "counterevidence",
+      "kind": "control",
+      "variant": "ambiguous",
+      "question": "Show the relevant records.",
+      "expected": {
+        "entities": [],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global",
+      "expect_empty_entities": true
+    },
+    {
+      "id": "counterevidence-value-only",
+      "family": "counterevidence",
+      "kind": "control",
+      "variant": "value-only",
+      "question": "Show active records.",
+      "expected": {
+        "entities": [],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global",
+      "expect_empty_entities": true
+    },
+    {
+      "id": "counterevidence-no-permission",
+      "family": "counterevidence",
+      "kind": "control",
+      "variant": "no-permission",
+      "question": "Show devices.",
+      "expected": {
+        "entities": [],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "no_permission",
+      "expect_empty_entities": true
+    },
+    {
+      "id": "counterevidence-no-assigned-scope",
+      "family": "counterevidence",
+      "kind": "control",
+      "variant": "no-assigned-scope",
+      "question": "Show devices.",
+      "expected": {
+        "entities": [],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "no_scope",
+      "expect_empty_entities": true
+    },
+    {
+      "id": "counterevidence-non-queryable",
+      "family": "counterevidence",
+      "kind": "control",
+      "variant": "non-queryable",
+      "question": "Show devices.",
+      "expected": {
+        "entities": [],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "device_not_queryable",
+      "expect_empty_entities": true
+    },
+    {
+      "id": "counterevidence-missing-predicate-column",
+      "family": "counterevidence",
+      "kind": "control",
+      "variant": "missing-predicate-column",
+      "question": "Show devices with non-compliant status.",
+      "expected": {
+        "entities": [
+          "devices"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "missing_compliance_column",
+      "forbidden": {
+        "concepts": [
+          "non_compliant_device",
+          "risky_device"
+        ]
+      }
+    },
+    {
+      "id": "counterevidence-missing-join-column",
+      "family": "counterevidence",
+      "kind": "control",
+      "variant": "missing-join-column",
+      "question": "Show devices and directory users.",
+      "expected": {
+        "entities": [
+          "devices",
+          "directory_users"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "missing_assignee_column",
+      "forbidden": {
+        "relationships": [
+          "device_assignee"
+        ]
+      }
+    },
+    {
+      "id": "counterevidence-restricted",
+      "family": "counterevidence",
+      "kind": "control",
+      "variant": "restricted",
+      "question": "Show IT audit events.",
+      "expected": {
+        "entities": [],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "context": "global",
+      "expect_empty_entities": true
+    },
+    {
+      "id": "counterevidence-not-active-metric",
+      "family": "counterevidence",
+      "kind": "control",
+      "variant": "not-active-metric",
+      "question": "Show users who are not active users.",
+      "expected": {
+        "entities": [
+          "directory_users"
+        ],
+        "concepts": [],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "forbidden_lexical": {
+        "metrics": [
+          "active_human_users"
+        ]
+      },
+      "context": "global"
+    },
+    {
+      "id": "counterevidence-service-account-decoy",
+      "family": "counterevidence",
+      "kind": "control",
+      "variant": "service-account-decoy",
+      "question": "Count service accounts.",
+      "expected": {
+        "entities": [
+          "directory_users"
+        ],
+        "concepts": [
+          "service_account"
+        ],
+        "metrics": [],
+        "rules": [],
+        "relationships": []
+      },
+      "decoy_ids": {
+        "metrics": [
+          "active_human_users"
+        ],
+        "concepts": [
+          "active_human_directory_user"
+        ]
+      },
+      "context": "global"
+    }
+  ]
+}

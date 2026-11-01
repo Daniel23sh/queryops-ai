@@ -1,0 +1,94 @@
+{
+  "canary_identity_only_not_executed": {
+    "digest": "83dadd97b819003e9e6aa20b4487affc8a3c926cd7ca3d2672c85225b4ae3fc2",
+    "id": "it_operations_v2_stability_canary",
+    "selected_case_ids": [
+      "itops-easy-005",
+      "itops-easy-006",
+      "itops-easy-008",
+      "itops-medium-006",
+      "itops-medium-009",
+      "itops-hard-004",
+      "itops-hard-006",
+      "itops-security-002",
+      "itops-security-003",
+      "itops-security-005"
+    ],
+    "selected_count": 10,
+    "version": "1"
+  },
+  "catalog": {
+    "catalog_hash": "918df0c63288b7ed7ce700f8442c82bc1ffa3f51e1f4eaa63fd66012af82adb4",
+    "catalog_id": "it_operations_semantic_catalog",
+    "catalog_version": "3"
+  },
+  "configured_openai_not_invoked": {
+    "configuration_source": "shell environment plus code defaults; no dotenv file loaded",
+    "credential_checked": false,
+    "endpoint": "https://api.openai.com/v1",
+    "max_output_tokens": 2048,
+    "max_retries": 2,
+    "model": "gpt-5.6-terra",
+    "provider": "openai",
+    "provider_calls": 0,
+    "reasoning_effort": "low",
+    "runtime_identity": {
+      "digest": "05564e25cf75eeb63e377e38e216e95e3414243b12fccc7bc17c393c4c5a99c7",
+      "version": "queryops-provider-runtime-v1"
+    },
+    "timeout_seconds": 45.0
+  },
+  "dataset": {
+    "case_count": 40,
+    "digest": "6ac164ab6c58c0b008a65afc01cd26aa434fecd3eaa402b5bdad9c89e6f6540f",
+    "id": "it_operations_v2",
+    "version": "2"
+  },
+  "default_mock_identity_not_quality_evidence": {
+    "digest": "9674dae60bb9fe764daa99d3ae9c37e39b3c02b5ac045c9b4546c5bdef59fc58",
+    "version": "queryops-provider-runtime-v1"
+  },
+  "diagnostic_only": true,
+  "packages": {
+    "alembic": "1.18.5",
+    "anyio": "4.14.1",
+    "faker": "39.1.0",
+    "fastapi": "0.115.14",
+    "httpcore": "1.0.9",
+    "httpx": "0.28.1",
+    "jiter": "0.16.0",
+    "openai": "2.46.0",
+    "psycopg": "3.3.4",
+    "psycopg-binary": "3.3.4",
+    "pydantic": "2.13.4",
+    "pydantic-core": "2.46.4",
+    "sqlalchemy": "2.0.51",
+    "sqlglot": "30.17.0",
+    "starlette": "0.46.2",
+    "typing-extensions": "4.15.0"
+  },
+  "postgres_image": {
+    "local_image_id": "sha256:95206741a5b214807675e14165369d05b93a9cf692223b616d07cca227e74b0b",
+    "tag": "postgres:16.14"
+  },
+  "probe_contract": {
+    "new_cases": "exploratory contrasts, not blinded held-out validation",
+    "plans": "handwritten downstream isolation, not provider output",
+    "qualifies_release": false
+  },
+  "python": "3.13.11",
+  "seed": {
+    "clock_note": "SQL transaction time is real; probes record it separately.",
+    "profile": "medium",
+    "reference_time_utc": "2026-11-01T09:20:36+00:00",
+    "seed": 42
+  },
+  "source_commit": "b1f03a4790c7569f7da0ef8d9be57ddd6da023c5",
+  "source_tree_paths": [
+    "backend",
+    "frontend",
+    "AGENTS.md",
+    "docs/evaluation"
+  ],
+  "source_tree_sha256": "bd707dc9b650cd1c3209128698c9840ac4e22224ea34c8bd62f52eb44fcd4f0a"
+}

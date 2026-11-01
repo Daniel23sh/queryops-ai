@@ -1,0 +1,1705 @@
+{
+  "baseline_file_sha256": "03edf30fdc86b7427353223e8ca47e82e59cd5e12e01e4e6c155272587d1d2aa",
+  "catalog": {
+    "catalog_hash": "918df0c63288b7ed7ce700f8442c82bc1ffa3f51e1f4eaa63fd66012af82adb4",
+    "catalog_id": "it_operations_semantic_catalog",
+    "catalog_version": "3"
+  },
+  "commands": [
+    "From backend with exact guarded disposable environment: PYTHONPATH=.:tests .venv/bin/python ../docs/audits/w6a/algebra_probe.py --initialize --add-contrast-fixture --out ../docs/audits/w6a/algebra-results.json (fresh EMPTY dedicated DB only)",
+    "Read-only replay: PYTHONPATH=.:tests .venv/bin/python ../docs/audits/w6a/algebra_probe.py --out ../docs/audits/w6a/algebra-results.json",
+    "PYTHONPATH=.:tests .venv/bin/pytest tests/test_relational_semantics.py -q -rs",
+    ".venv/bin/ruff check ../docs/audits/w6a/algebra_probe.py",
+    ".venv/bin/python -m py_compile ../docs/audits/w6a/algebra_probe.py"
+  ],
+  "database": {
+    "migration_head": "0010_disable_inactive_user",
+    "timezone": "Etc/UTC",
+    "transaction_time": "2026-11-01 09:31:23.437639+00:00",
+    "version": "PostgreSQL 16.14 (Debian 16.14-1.pgdg13+1) on aarch64-unknown-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit"
+  },
+  "dataset_digest": "6ac164ab6c58c0b008a65afc01cd26aa434fecd3eaa402b5bdad9c89e6f6540f",
+  "focused_regression": {
+    "log_path": "/tmp/queryops-w6a/algebra-relational-tests.log",
+    "log_sha256": "face02f593ea57f2529b9ed11e43bb4a926d18113a7aa5f206effe0618c3288c",
+    "passed": 33,
+    "path": "backend/tests/test_relational_semantics.py",
+    "skipped": 0
+  },
+  "held_out": false,
+  "model_behavior_tested": false,
+  "probes": [
+    {
+      "case_id": "itops-medium-006",
+      "conformance_vs_contract_canonical": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 1,
+        "checked_relationship_count": 3,
+        "reason_code": "semantic_output_mismatch",
+        "status": "failed"
+      },
+      "downstream_is_sql_witness_only": false,
+      "execution": {
+        "baseline_count": 8,
+        "baseline_multiset_sha256": "a794ff047b0a31ba8f3ac765cddc72ae3bc6fdbbebb835d8189ba7aca8792009",
+        "count": 8,
+        "delivery_completeness": "complete",
+        "result_multiset_sha256": "1b2b59d540d13a8f98409ffcbdac132ed3ccb3e164bc96f35b44a7e84de505c3",
+        "status": "succeeded"
+      },
+      "literal_structural_vs_canonical": {
+        "authority": "opt_in_literal_diagnostic_not_evaluator",
+        "components": {
+          "aggregations": "match",
+          "distinct": "match",
+          "group_by": "mismatch",
+          "having": "match",
+          "ordering": "match",
+          "output_fields": "mismatch",
+          "row_grain": "mismatch"
+        },
+        "passed": false
+      },
+      "plan_sha256": "934410a9205d50b930ba7c209710aa7c77ec83b6ae702069c605dc5f7e97b166",
+      "plan_validation": {
+        "reason": null,
+        "valid": true
+      },
+      "probe_id": "itops-medium-006_canonical_0",
+      "renderer": {
+        "status": "passed"
+      },
+      "renderer_self_conformance": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 1,
+        "checked_relationship_count": 3,
+        "reason_code": null,
+        "status": "passed"
+      },
+      "result_only_comparison": {
+        "comparison_state": "correct",
+        "passed": true,
+        "semantic_pass_forced_for_isolation": true
+      },
+      "runtime": {
+        "isolation": "repeatable read",
+        "read_only": "on",
+        "role": "queryops_query_runtime",
+        "snapshot": "772:772:",
+        "timezone": "Etc/UTC",
+        "transaction_time": "2026-11-01 09:31:23.711627+00:00"
+      },
+      "semantic_contract_diagnostic": {
+        "aggregations_correct": true,
+        "answer_bound_correct": true,
+        "concepts_correct": true,
+        "evaluated": true,
+        "failure_reasons": [],
+        "grain_correct": true,
+        "group_by_correct": true,
+        "having_correct": true,
+        "metric_correct": true,
+        "ordering_correct": true,
+        "outputs_correct": true,
+        "passed": true,
+        "rules_correct": true
+      },
+      "source": "handwritten_exploratory_not_provider_output",
+      "sql_safety": {
+        "reason": null,
+        "valid": true
+      },
+      "sql_sha256": "92104c106e80595124a2923af6ad9e8561f656ced39c835fddb99b43b2f05d20"
+    },
+    {
+      "case_id": "itops-medium-006",
+      "conformance_vs_contract_canonical": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 1,
+        "checked_relationship_count": 3,
+        "reason_code": null,
+        "status": "passed"
+      },
+      "downstream_is_sql_witness_only": false,
+      "execution": {
+        "baseline_count": 8,
+        "baseline_multiset_sha256": "a794ff047b0a31ba8f3ac765cddc72ae3bc6fdbbebb835d8189ba7aca8792009",
+        "count": 8,
+        "delivery_completeness": "complete",
+        "result_multiset_sha256": "3920064222a7a702a9a2953acfd295739d3ac81121e999011451373a2c0f2273",
+        "status": "succeeded"
+      },
+      "literal_structural_vs_canonical": {
+        "authority": "opt_in_literal_diagnostic_not_evaluator",
+        "components": {
+          "aggregations": "match",
+          "distinct": "match",
+          "group_by": "match",
+          "having": "match",
+          "ordering": "match",
+          "output_fields": "match",
+          "row_grain": "match"
+        },
+        "passed": true
+      },
+      "plan_sha256": "d9391069247a491d42cf3d3e2a0d3a74f57c020ba33726acfe4f33a2c73b0f29",
+      "plan_validation": {
+        "reason": null,
+        "valid": true
+      },
+      "probe_id": "itops-medium-006_canonical_1",
+      "renderer": {
+        "status": "passed"
+      },
+      "renderer_self_conformance": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 1,
+        "checked_relationship_count": 3,
+        "reason_code": null,
+        "status": "passed"
+      },
+      "result_only_comparison": {
+        "comparison_state": "correct",
+        "passed": true,
+        "semantic_pass_forced_for_isolation": true
+      },
+      "runtime": {
+        "isolation": "repeatable read",
+        "read_only": "on",
+        "role": "queryops_query_runtime",
+        "snapshot": "772:772:",
+        "timezone": "Etc/UTC",
+        "transaction_time": "2026-11-01 09:31:23.763746+00:00"
+      },
+      "semantic_contract_diagnostic": {
+        "aggregations_correct": true,
+        "answer_bound_correct": true,
+        "concepts_correct": true,
+        "evaluated": true,
+        "failure_reasons": [],
+        "grain_correct": true,
+        "group_by_correct": true,
+        "having_correct": true,
+        "metric_correct": true,
+        "ordering_correct": true,
+        "outputs_correct": true,
+        "passed": true,
+        "rules_correct": true
+      },
+      "source": "handwritten_exploratory_not_provider_output",
+      "sql_safety": {
+        "reason": null,
+        "valid": true
+      },
+      "sql_sha256": "ae7d4fcbefe0481df795df4891fdd0bc88dc16676baf29bbcc8886f7a27f1e1f"
+    },
+    {
+      "case_id": "itops-medium-006",
+      "conformance_vs_contract_canonical": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 1,
+        "checked_relationship_count": 3,
+        "reason_code": "semantic_output_mismatch",
+        "status": "failed"
+      },
+      "downstream_is_sql_witness_only": false,
+      "execution": {
+        "baseline_count": 8,
+        "baseline_multiset_sha256": "a794ff047b0a31ba8f3ac765cddc72ae3bc6fdbbebb835d8189ba7aca8792009",
+        "count": 8,
+        "delivery_completeness": "complete",
+        "result_multiset_sha256": "acd85688753721ef8f8ed602d04c646026e0b223abf5a4d7a4088ac75ca06b1d",
+        "status": "succeeded"
+      },
+      "literal_structural_vs_canonical": {
+        "authority": "opt_in_literal_diagnostic_not_evaluator",
+        "components": {
+          "aggregations": "match",
+          "distinct": "match",
+          "group_by": "mismatch",
+          "having": "match",
+          "ordering": "match",
+          "output_fields": "mismatch",
+          "row_grain": "mismatch"
+        },
+        "passed": false
+      },
+      "plan_sha256": "25d5bdab6c973a58e7d2e777be15cfe4242a624acf87eb69e165f2a87c39050b",
+      "plan_validation": {
+        "reason": null,
+        "valid": true
+      },
+      "probe_id": "itops-medium-006_canonical_2",
+      "renderer": {
+        "status": "passed"
+      },
+      "renderer_self_conformance": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 1,
+        "checked_relationship_count": 3,
+        "reason_code": null,
+        "status": "passed"
+      },
+      "result_only_comparison": {
+        "comparison_state": "correct",
+        "passed": true,
+        "semantic_pass_forced_for_isolation": true
+      },
+      "runtime": {
+        "isolation": "repeatable read",
+        "read_only": "on",
+        "role": "queryops_query_runtime",
+        "snapshot": "772:772:",
+        "timezone": "Etc/UTC",
+        "transaction_time": "2026-11-01 09:31:23.805894+00:00"
+      },
+      "semantic_contract_diagnostic": {
+        "aggregations_correct": true,
+        "answer_bound_correct": true,
+        "concepts_correct": true,
+        "evaluated": true,
+        "failure_reasons": [],
+        "grain_correct": true,
+        "group_by_correct": true,
+        "having_correct": true,
+        "metric_correct": true,
+        "ordering_correct": true,
+        "outputs_correct": true,
+        "passed": true,
+        "rules_correct": true
+      },
+      "source": "handwritten_exploratory_not_provider_output",
+      "sql_safety": {
+        "reason": null,
+        "valid": true
+      },
+      "sql_sha256": "c2b157a9c0968d1a2548ecf9994f9b80c2487d5d90758278d28f49c43c015b73"
+    },
+    {
+      "case_id": "itops-hard-004",
+      "conformance_vs_contract_canonical": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 3,
+        "checked_relationship_count": 3,
+        "reason_code": null,
+        "status": "passed"
+      },
+      "downstream_is_sql_witness_only": false,
+      "execution": {
+        "baseline_count": 1,
+        "baseline_multiset_sha256": "f7f9524afe0ae58965d1d9c8eb16847c3a0a3371bdea2699ded00a449ea6566e",
+        "count": 1,
+        "delivery_completeness": "complete",
+        "result_multiset_sha256": "f7f9524afe0ae58965d1d9c8eb16847c3a0a3371bdea2699ded00a449ea6566e",
+        "status": "succeeded"
+      },
+      "literal_structural_vs_canonical": {
+        "authority": "opt_in_literal_diagnostic_not_evaluator",
+        "components": {
+          "aggregations": "match",
+          "distinct": "match",
+          "group_by": "match",
+          "having": "match",
+          "ordering": "match",
+          "output_fields": "match",
+          "row_grain": "match"
+        },
+        "passed": true
+      },
+      "plan_sha256": "5b5c085c60d0d3997dfeb0b5b113e11ceae4f05dd158e7cfefad0120c22f6ba4",
+      "plan_validation": {
+        "reason": null,
+        "valid": true
+      },
+      "probe_id": "itops-hard-004_canonical_0",
+      "renderer": {
+        "status": "passed"
+      },
+      "renderer_self_conformance": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 3,
+        "checked_relationship_count": 3,
+        "reason_code": null,
+        "status": "passed"
+      },
+      "result_only_comparison": {
+        "comparison_state": "correct",
+        "passed": true,
+        "semantic_pass_forced_for_isolation": true
+      },
+      "runtime": {
+        "isolation": "repeatable read",
+        "read_only": "on",
+        "role": "queryops_query_runtime",
+        "snapshot": "772:772:",
+        "timezone": "Etc/UTC",
+        "transaction_time": "2026-11-01 09:31:23.850319+00:00"
+      },
+      "semantic_contract_diagnostic": {
+        "aggregations_correct": true,
+        "answer_bound_correct": true,
+        "concepts_correct": true,
+        "evaluated": true,
+        "failure_reasons": [],
+        "grain_correct": true,
+        "group_by_correct": true,
+        "having_correct": true,
+        "metric_correct": true,
+        "ordering_correct": true,
+        "outputs_correct": true,
+        "passed": true,
+        "rules_correct": true
+      },
+      "source": "handwritten_exploratory_not_provider_output",
+      "sql_safety": {
+        "reason": null,
+        "valid": true
+      },
+      "sql_sha256": "38af85162193514e6fd6c0ceb9b2d95fe5d8fc9aa27651ebaa2ad5769b0110b2"
+    },
+    {
+      "case_id": "itops-hard-004",
+      "conformance_vs_contract_canonical": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 3,
+        "checked_relationship_count": 3,
+        "reason_code": "semantic_output_mismatch",
+        "status": "failed"
+      },
+      "downstream_is_sql_witness_only": false,
+      "execution": {
+        "baseline_count": 1,
+        "baseline_multiset_sha256": "f7f9524afe0ae58965d1d9c8eb16847c3a0a3371bdea2699ded00a449ea6566e",
+        "count": 1,
+        "delivery_completeness": "complete",
+        "result_multiset_sha256": "37083be6689176ad06d762b57a58c944b0454d2527fdbdb53367e4dc671ea80a",
+        "status": "succeeded"
+      },
+      "literal_structural_vs_canonical": {
+        "authority": "opt_in_literal_diagnostic_not_evaluator",
+        "components": {
+          "aggregations": "match",
+          "distinct": "match",
+          "group_by": "mismatch",
+          "having": "match",
+          "ordering": "match",
+          "output_fields": "mismatch",
+          "row_grain": "mismatch"
+        },
+        "passed": false
+      },
+      "plan_sha256": "897a649f41be69d52c7c1a2ec3b5d25945bcecd2d835499354eab09097aa9ee5",
+      "plan_validation": {
+        "reason": null,
+        "valid": true
+      },
+      "probe_id": "itops-hard-004_canonical_1",
+      "renderer": {
+        "status": "passed"
+      },
+      "renderer_self_conformance": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 3,
+        "checked_relationship_count": 3,
+        "reason_code": null,
+        "status": "passed"
+      },
+      "result_only_comparison": {
+        "comparison_state": "correct",
+        "passed": true,
+        "semantic_pass_forced_for_isolation": true
+      },
+      "runtime": {
+        "isolation": "repeatable read",
+        "read_only": "on",
+        "role": "queryops_query_runtime",
+        "snapshot": "772:772:",
+        "timezone": "Etc/UTC",
+        "transaction_time": "2026-11-01 09:31:23.909462+00:00"
+      },
+      "semantic_contract_diagnostic": {
+        "aggregations_correct": true,
+        "answer_bound_correct": true,
+        "concepts_correct": true,
+        "evaluated": true,
+        "failure_reasons": [],
+        "grain_correct": true,
+        "group_by_correct": true,
+        "having_correct": true,
+        "metric_correct": true,
+        "ordering_correct": true,
+        "outputs_correct": true,
+        "passed": true,
+        "rules_correct": true
+      },
+      "source": "handwritten_exploratory_not_provider_output",
+      "sql_safety": {
+        "reason": null,
+        "valid": true
+      },
+      "sql_sha256": "ad520293ffadbf2d7566d2ff0a5b85c35a8a11e6b65bf628853c6c5a232ada50"
+    },
+    {
+      "case_id": "itops-hard-006",
+      "conformance_vs_contract_canonical": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 2,
+        "checked_predicate_count": 4,
+        "checked_relationship_count": 1,
+        "reason_code": null,
+        "status": "passed"
+      },
+      "downstream_is_sql_witness_only": false,
+      "execution": {
+        "baseline_count": 6,
+        "baseline_multiset_sha256": "92ae76207764891e757dce0923700ef7292cb4c834da8205eb24e08052ea2578",
+        "count": 6,
+        "delivery_completeness": "complete",
+        "result_multiset_sha256": "92ae76207764891e757dce0923700ef7292cb4c834da8205eb24e08052ea2578",
+        "status": "succeeded"
+      },
+      "literal_structural_vs_canonical": {
+        "authority": "opt_in_literal_diagnostic_not_evaluator",
+        "components": {
+          "aggregations": "match",
+          "distinct": "match",
+          "group_by": "match",
+          "having": "match",
+          "ordering": "match",
+          "output_fields": "match",
+          "row_grain": "match"
+        },
+        "passed": true
+      },
+      "plan_sha256": "16de600956d4d24e6e7e8d795c5f8a4fd48fc090fc54f60a81eefac770be6f33",
+      "plan_validation": {
+        "reason": null,
+        "valid": true
+      },
+      "probe_id": "itops-hard-006_canonical_0",
+      "renderer": {
+        "status": "passed"
+      },
+      "renderer_self_conformance": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 2,
+        "checked_predicate_count": 4,
+        "checked_relationship_count": 1,
+        "reason_code": null,
+        "status": "passed"
+      },
+      "result_only_comparison": {
+        "comparison_state": "correct",
+        "passed": true,
+        "semantic_pass_forced_for_isolation": true
+      },
+      "runtime": {
+        "isolation": "repeatable read",
+        "read_only": "on",
+        "role": "queryops_query_runtime",
+        "snapshot": "772:772:",
+        "timezone": "Etc/UTC",
+        "transaction_time": "2026-11-01 09:31:23.951694+00:00"
+      },
+      "semantic_contract_diagnostic": {
+        "aggregations_correct": true,
+        "answer_bound_correct": true,
+        "concepts_correct": true,
+        "evaluated": true,
+        "failure_reasons": [],
+        "grain_correct": true,
+        "group_by_correct": true,
+        "having_correct": true,
+        "metric_correct": true,
+        "ordering_correct": true,
+        "outputs_correct": true,
+        "passed": true,
+        "rules_correct": true
+      },
+      "source": "handwritten_exploratory_not_provider_output",
+      "sql_safety": {
+        "reason": null,
+        "valid": true
+      },
+      "sql_sha256": "7093eb8ccb673747222eb15eee7e0f95fcbf0387c9d3bfffc7efe2056c714900"
+    },
+    {
+      "case_id": "itops-medium-006",
+      "conformance_vs_contract_canonical": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 1,
+        "checked_relationship_count": 3,
+        "reason_code": "semantic_output_mismatch",
+        "status": "failed"
+      },
+      "downstream_is_sql_witness_only": true,
+      "execution": {
+        "baseline_count": 8,
+        "baseline_multiset_sha256": "a794ff047b0a31ba8f3ac765cddc72ae3bc6fdbbebb835d8189ba7aca8792009",
+        "count": 8,
+        "delivery_completeness": "complete",
+        "result_multiset_sha256": "1b2b59d540d13a8f98409ffcbdac132ed3ccb3e164bc96f35b44a7e84de505c3",
+        "status": "succeeded"
+      },
+      "literal_structural_vs_canonical": {
+        "authority": "opt_in_literal_diagnostic_not_evaluator",
+        "components": {
+          "aggregations": "match",
+          "distinct": "match",
+          "group_by": "mismatch",
+          "having": "match",
+          "ordering": "match",
+          "output_fields": "mismatch",
+          "row_grain": "mismatch"
+        },
+        "passed": false
+      },
+      "plan_sha256": "f7620c08f7410c61eb89b3162f31e58a6f3f777cd557e4c3c0a3cccda87f48ff",
+      "plan_validation": {
+        "reason": "group_by_incomplete",
+        "valid": false
+      },
+      "probe_id": "medium006_hidden_dependent_name",
+      "renderer": {
+        "status": "passed"
+      },
+      "renderer_self_conformance": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 1,
+        "checked_relationship_count": 3,
+        "reason_code": null,
+        "status": "passed"
+      },
+      "result_only_comparison": {
+        "comparison_state": "correct",
+        "passed": true,
+        "semantic_pass_forced_for_isolation": true
+      },
+      "runtime": {
+        "isolation": "repeatable read",
+        "read_only": "on",
+        "role": "queryops_query_runtime",
+        "snapshot": "772:772:",
+        "timezone": "Etc/UTC",
+        "transaction_time": "2026-11-01 09:31:23.991929+00:00"
+      },
+      "semantic_contract_diagnostic": {
+        "aggregations_correct": true,
+        "answer_bound_correct": true,
+        "concepts_correct": true,
+        "evaluated": true,
+        "failure_reasons": [],
+        "grain_correct": true,
+        "group_by_correct": true,
+        "having_correct": true,
+        "metric_correct": true,
+        "ordering_correct": true,
+        "outputs_correct": true,
+        "passed": true,
+        "rules_correct": true
+      },
+      "source": "handwritten_exploratory_not_provider_output",
+      "sql_safety": {
+        "reason": null,
+        "valid": true
+      },
+      "sql_sha256": "c3e69151505b3fc10d34e689aaac72c5e09128e213d52140fe1789924f67f94b"
+    },
+    {
+      "case_id": "itops-medium-006",
+      "conformance_vs_contract_canonical": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 1,
+        "checked_relationship_count": 3,
+        "reason_code": "semantic_group_by_mismatch",
+        "status": "failed"
+      },
+      "downstream_is_sql_witness_only": true,
+      "execution": {
+        "baseline_count": 8,
+        "baseline_multiset_sha256": "a794ff047b0a31ba8f3ac765cddc72ae3bc6fdbbebb835d8189ba7aca8792009",
+        "count": 8,
+        "delivery_completeness": "complete",
+        "result_multiset_sha256": "3920064222a7a702a9a2953acfd295739d3ac81121e999011451373a2c0f2273",
+        "status": "succeeded"
+      },
+      "literal_structural_vs_canonical": {
+        "authority": "opt_in_literal_diagnostic_not_evaluator",
+        "components": {
+          "aggregations": "match",
+          "distinct": "match",
+          "group_by": "mismatch",
+          "having": "match",
+          "ordering": "match",
+          "output_fields": "match",
+          "row_grain": "mismatch"
+        },
+        "passed": false
+      },
+      "plan_sha256": "e85c6dd1f4877f37f4f2f6e4cb5a3bc50fc418e2fa708c2f0f5f6a0507cb0479",
+      "plan_validation": {
+        "reason": "group_by_incomplete",
+        "valid": false
+      },
+      "probe_id": "medium006_name_projected_pk_grouped",
+      "renderer": {
+        "status": "passed"
+      },
+      "renderer_self_conformance": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 1,
+        "checked_relationship_count": 3,
+        "reason_code": null,
+        "status": "passed"
+      },
+      "result_only_comparison": {
+        "comparison_state": "correct",
+        "passed": true,
+        "semantic_pass_forced_for_isolation": true
+      },
+      "runtime": {
+        "isolation": "repeatable read",
+        "read_only": "on",
+        "role": "queryops_query_runtime",
+        "snapshot": "772:772:",
+        "timezone": "Etc/UTC",
+        "transaction_time": "2026-11-01 09:31:24.024584+00:00"
+      },
+      "semantic_contract_diagnostic": {
+        "aggregations_correct": true,
+        "answer_bound_correct": true,
+        "concepts_correct": true,
+        "evaluated": true,
+        "failure_reasons": [
+          "result_grain_mismatch"
+        ],
+        "grain_correct": false,
+        "group_by_correct": true,
+        "having_correct": true,
+        "metric_correct": true,
+        "ordering_correct": true,
+        "outputs_correct": true,
+        "passed": false,
+        "rules_correct": true
+      },
+      "source": "handwritten_exploratory_not_provider_output",
+      "sql_safety": {
+        "reason": null,
+        "valid": true
+      },
+      "sql_sha256": "73895519f2deb3d5371a413791e915859d6d7dbc3feaa1487fb41965b951fb8f"
+    },
+    {
+      "case_id": "itops-medium-006",
+      "conformance_vs_contract_canonical": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 1,
+        "checked_relationship_count": 3,
+        "reason_code": "semantic_output_mismatch",
+        "status": "failed"
+      },
+      "downstream_is_sql_witness_only": false,
+      "execution": {
+        "baseline_count": 8,
+        "baseline_multiset_sha256": "a794ff047b0a31ba8f3ac765cddc72ae3bc6fdbbebb835d8189ba7aca8792009",
+        "count": 8,
+        "delivery_completeness": "complete",
+        "result_multiset_sha256": "2ba5417fc00324b96a2dae7b27125215048671a48b25d0744c1623a27282bb4f",
+        "status": "succeeded"
+      },
+      "literal_structural_vs_canonical": {
+        "authority": "opt_in_literal_diagnostic_not_evaluator",
+        "components": {
+          "aggregations": "match",
+          "distinct": "match",
+          "group_by": "mismatch",
+          "having": "match",
+          "ordering": "match",
+          "output_fields": "mismatch",
+          "row_grain": "mismatch"
+        },
+        "passed": false
+      },
+      "plan_sha256": "df073c5fa6bfba03e5f1cb331cf6d8b1cfeda9248dd09ec08004f4af30aa1334",
+      "plan_validation": {
+        "reason": null,
+        "valid": true
+      },
+      "probe_id": "medium006_all_group_keys_unprojected",
+      "renderer": {
+        "status": "passed"
+      },
+      "renderer_self_conformance": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 1,
+        "checked_relationship_count": 3,
+        "reason_code": null,
+        "status": "passed"
+      },
+      "result_only_comparison": {
+        "comparison_state": "incorrect",
+        "passed": false,
+        "semantic_pass_forced_for_isolation": true
+      },
+      "runtime": {
+        "isolation": "repeatable read",
+        "read_only": "on",
+        "role": "queryops_query_runtime",
+        "snapshot": "772:772:",
+        "timezone": "Etc/UTC",
+        "transaction_time": "2026-11-01 09:31:24.054595+00:00"
+      },
+      "semantic_contract_diagnostic": {
+        "aggregations_correct": true,
+        "answer_bound_correct": true,
+        "concepts_correct": true,
+        "evaluated": true,
+        "failure_reasons": [
+          "result_grain_mismatch"
+        ],
+        "grain_correct": false,
+        "group_by_correct": true,
+        "having_correct": true,
+        "metric_correct": true,
+        "ordering_correct": true,
+        "outputs_correct": true,
+        "passed": false,
+        "rules_correct": true
+      },
+      "source": "handwritten_exploratory_not_provider_output",
+      "sql_safety": {
+        "reason": null,
+        "valid": true
+      },
+      "sql_sha256": "62c0c7bc5e2bee03888dbf6d8c564b2d1023f1abdcbe307a6ffdb968a7a563f8"
+    },
+    {
+      "case_id": "itops-medium-006",
+      "conformance_vs_contract_canonical": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 1,
+        "checked_relationship_count": 3,
+        "reason_code": "semantic_output_mismatch",
+        "status": "failed"
+      },
+      "downstream_is_sql_witness_only": false,
+      "execution": {
+        "baseline_count": 8,
+        "baseline_multiset_sha256": "a794ff047b0a31ba8f3ac765cddc72ae3bc6fdbbebb835d8189ba7aca8792009",
+        "count": 16,
+        "delivery_completeness": "complete",
+        "result_multiset_sha256": "cdc86f943da8886e65e6235ad586d92bce5d6551974b0864538126d06754340f",
+        "status": "succeeded"
+      },
+      "literal_structural_vs_canonical": {
+        "authority": "opt_in_literal_diagnostic_not_evaluator",
+        "components": {
+          "aggregations": "match",
+          "distinct": "match",
+          "group_by": "mismatch",
+          "having": "match",
+          "ordering": "match",
+          "output_fields": "mismatch",
+          "row_grain": "mismatch"
+        },
+        "passed": false
+      },
+      "plan_sha256": "3e5319ac3bace23fd4e4c132bf11a56b76c2074b069fe517291a3aa2bd6345e3",
+      "plan_validation": {
+        "reason": null,
+        "valid": true
+      },
+      "probe_id": "medium006_extra_population_dimension",
+      "renderer": {
+        "status": "passed"
+      },
+      "renderer_self_conformance": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 1,
+        "checked_relationship_count": 3,
+        "reason_code": null,
+        "status": "passed"
+      },
+      "result_only_comparison": {
+        "comparison_state": "incorrect",
+        "passed": false,
+        "semantic_pass_forced_for_isolation": true
+      },
+      "runtime": {
+        "isolation": "repeatable read",
+        "read_only": "on",
+        "role": "queryops_query_runtime",
+        "snapshot": "772:772:",
+        "timezone": "Etc/UTC",
+        "transaction_time": "2026-11-01 09:31:24.082660+00:00"
+      },
+      "semantic_contract_diagnostic": {
+        "aggregations_correct": true,
+        "answer_bound_correct": true,
+        "concepts_correct": true,
+        "evaluated": true,
+        "failure_reasons": [
+          "result_grain_mismatch",
+          "group_by_mismatch"
+        ],
+        "grain_correct": false,
+        "group_by_correct": false,
+        "having_correct": true,
+        "metric_correct": true,
+        "ordering_correct": true,
+        "outputs_correct": true,
+        "passed": false,
+        "rules_correct": true
+      },
+      "source": "handwritten_exploratory_not_provider_output",
+      "sql_safety": {
+        "reason": null,
+        "valid": true
+      },
+      "sql_sha256": "9067fde31ee74ce2d3462e639144a62af003d7eba9a588648301e4c73e39dc04"
+    },
+    {
+      "case_id": "itops-hard-004",
+      "conformance_vs_contract_canonical": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 3,
+        "checked_relationship_count": 3,
+        "reason_code": "semantic_group_by_mismatch",
+        "status": "failed"
+      },
+      "downstream_is_sql_witness_only": true,
+      "execution": {
+        "baseline_count": 1,
+        "baseline_multiset_sha256": "f7f9524afe0ae58965d1d9c8eb16847c3a0a3371bdea2699ded00a449ea6566e",
+        "count": 1,
+        "delivery_completeness": "complete",
+        "result_multiset_sha256": "f7f9524afe0ae58965d1d9c8eb16847c3a0a3371bdea2699ded00a449ea6566e",
+        "status": "succeeded"
+      },
+      "literal_structural_vs_canonical": {
+        "authority": "opt_in_literal_diagnostic_not_evaluator",
+        "components": {
+          "aggregations": "match",
+          "distinct": "match",
+          "group_by": "mismatch",
+          "having": "match",
+          "ordering": "match",
+          "output_fields": "match",
+          "row_grain": "mismatch"
+        },
+        "passed": false
+      },
+      "plan_sha256": "7f4644eabaf4616225f6656cadc26d696c519e6eef130bb5a98ea0b0d0de1da5",
+      "plan_validation": {
+        "reason": "group_by_incomplete",
+        "valid": false
+      },
+      "probe_id": "hard004_hidden_equal_user_key",
+      "renderer": {
+        "status": "passed"
+      },
+      "renderer_self_conformance": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 3,
+        "checked_relationship_count": 3,
+        "reason_code": null,
+        "status": "passed"
+      },
+      "result_only_comparison": {
+        "comparison_state": "correct",
+        "passed": true,
+        "semantic_pass_forced_for_isolation": true
+      },
+      "runtime": {
+        "isolation": "repeatable read",
+        "read_only": "on",
+        "role": "queryops_query_runtime",
+        "snapshot": "772:772:",
+        "timezone": "Etc/UTC",
+        "transaction_time": "2026-11-01 09:31:24.116585+00:00"
+      },
+      "semantic_contract_diagnostic": {
+        "aggregations_correct": true,
+        "answer_bound_correct": true,
+        "concepts_correct": true,
+        "evaluated": true,
+        "failure_reasons": [],
+        "grain_correct": true,
+        "group_by_correct": true,
+        "having_correct": true,
+        "metric_correct": true,
+        "ordering_correct": true,
+        "outputs_correct": true,
+        "passed": true,
+        "rules_correct": true
+      },
+      "source": "handwritten_exploratory_not_provider_output",
+      "sql_safety": {
+        "reason": null,
+        "valid": true
+      },
+      "sql_sha256": "84b69064794197be83596ea518994a425baba3466c94a90d716e77eb26a9c3ab"
+    },
+    {
+      "case_id": "itops-hard-004",
+      "conformance_vs_contract_canonical": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 3,
+        "checked_relationship_count": 3,
+        "reason_code": "semantic_aggregation_mismatch",
+        "status": "failed"
+      },
+      "downstream_is_sql_witness_only": false,
+      "execution": {
+        "baseline_count": 1,
+        "baseline_multiset_sha256": "f7f9524afe0ae58965d1d9c8eb16847c3a0a3371bdea2699ded00a449ea6566e",
+        "count": 2,
+        "delivery_completeness": "complete",
+        "result_multiset_sha256": "60f881f47893dcf076526eb28135c5efc6f7d652bccdedc320ec10d9fe1e92f3",
+        "status": "succeeded"
+      },
+      "literal_structural_vs_canonical": {
+        "authority": "opt_in_literal_diagnostic_not_evaluator",
+        "components": {
+          "aggregations": "mismatch",
+          "distinct": "match",
+          "group_by": "match",
+          "having": "mismatch",
+          "ordering": "match",
+          "output_fields": "match",
+          "row_grain": "match"
+        },
+        "passed": false
+      },
+      "plan_sha256": "c8d372d77471c465954fd9146c10ebe918c2f1efeab1c5a2f18aa5475077ffb4",
+      "plan_validation": {
+        "reason": null,
+        "valid": true
+      },
+      "probe_id": "hard004_non_distinct_fanout",
+      "renderer": {
+        "status": "passed"
+      },
+      "renderer_self_conformance": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 3,
+        "checked_relationship_count": 3,
+        "reason_code": null,
+        "status": "passed"
+      },
+      "result_only_comparison": {
+        "comparison_state": "incorrect",
+        "passed": false,
+        "semantic_pass_forced_for_isolation": true
+      },
+      "runtime": {
+        "isolation": "repeatable read",
+        "read_only": "on",
+        "role": "queryops_query_runtime",
+        "snapshot": "772:772:",
+        "timezone": "Etc/UTC",
+        "transaction_time": "2026-11-01 09:31:24.141630+00:00"
+      },
+      "semantic_contract_diagnostic": {
+        "aggregations_correct": false,
+        "answer_bound_correct": true,
+        "concepts_correct": true,
+        "evaluated": true,
+        "failure_reasons": [
+          "aggregation_mismatch",
+          "having_mismatch"
+        ],
+        "grain_correct": true,
+        "group_by_correct": true,
+        "having_correct": false,
+        "metric_correct": true,
+        "ordering_correct": true,
+        "outputs_correct": true,
+        "passed": false,
+        "rules_correct": true
+      },
+      "source": "handwritten_exploratory_not_provider_output",
+      "sql_safety": {
+        "reason": null,
+        "valid": true
+      },
+      "sql_sha256": "da56c51ac2235fe3d1fc0bd344ea98a74d5bf93679b95a4fe3204472595ba86d"
+    },
+    {
+      "case_id": "itops-hard-004",
+      "conformance_vs_contract_canonical": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 3,
+        "checked_relationship_count": 3,
+        "reason_code": "semantic_output_mismatch",
+        "status": "failed"
+      },
+      "downstream_is_sql_witness_only": false,
+      "execution": {
+        "baseline_count": 1,
+        "baseline_multiset_sha256": "f7f9524afe0ae58965d1d9c8eb16847c3a0a3371bdea2699ded00a449ea6566e",
+        "count": 2,
+        "delivery_completeness": "complete",
+        "result_multiset_sha256": "60f881f47893dcf076526eb28135c5efc6f7d652bccdedc320ec10d9fe1e92f3",
+        "status": "succeeded"
+      },
+      "literal_structural_vs_canonical": {
+        "authority": "opt_in_literal_diagnostic_not_evaluator",
+        "components": {
+          "aggregations": "mismatch",
+          "distinct": "mismatch",
+          "group_by": "match",
+          "having": "mismatch",
+          "ordering": "match",
+          "output_fields": "match",
+          "row_grain": "match"
+        },
+        "passed": false
+      },
+      "plan_sha256": "830a26b2f0d23e8c8156ef39a2fa2786e15b208c45bca6bb994195130ebd89a8",
+      "plan_validation": {
+        "reason": null,
+        "valid": true
+      },
+      "probe_id": "hard004_select_distinct_does_not_repair_fanout",
+      "renderer": {
+        "status": "passed"
+      },
+      "renderer_self_conformance": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 3,
+        "checked_relationship_count": 3,
+        "reason_code": null,
+        "status": "passed"
+      },
+      "result_only_comparison": {
+        "comparison_state": "incorrect",
+        "passed": false,
+        "semantic_pass_forced_for_isolation": true
+      },
+      "runtime": {
+        "isolation": "repeatable read",
+        "read_only": "on",
+        "role": "queryops_query_runtime",
+        "snapshot": "772:772:",
+        "timezone": "Etc/UTC",
+        "transaction_time": "2026-11-01 09:31:24.166395+00:00"
+      },
+      "semantic_contract_diagnostic": {
+        "aggregations_correct": false,
+        "answer_bound_correct": true,
+        "concepts_correct": true,
+        "evaluated": true,
+        "failure_reasons": [
+          "aggregation_mismatch",
+          "having_mismatch"
+        ],
+        "grain_correct": true,
+        "group_by_correct": true,
+        "having_correct": false,
+        "metric_correct": true,
+        "ordering_correct": true,
+        "outputs_correct": true,
+        "passed": false,
+        "rules_correct": true
+      },
+      "source": "handwritten_exploratory_not_provider_output",
+      "sql_safety": {
+        "reason": null,
+        "valid": true
+      },
+      "sql_sha256": "eff41bad99a09fc25349bfdab740ffafe666aff4cf84e0721c54b6e389f10993"
+    },
+    {
+      "case_id": "itops-hard-004",
+      "conformance_vs_contract_canonical": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 3,
+        "checked_relationship_count": 3,
+        "reason_code": "semantic_group_by_mismatch",
+        "status": "failed"
+      },
+      "downstream_is_sql_witness_only": true,
+      "execution": {
+        "safe_code": "baseline_database_error",
+        "status": "failed"
+      },
+      "literal_structural_vs_canonical": {
+        "authority": "opt_in_literal_diagnostic_not_evaluator",
+        "components": {
+          "aggregations": "match",
+          "distinct": "match",
+          "group_by": "mismatch",
+          "having": "match",
+          "ordering": "match",
+          "output_fields": "match",
+          "row_grain": "mismatch"
+        },
+        "passed": false
+      },
+      "plan_sha256": "cf48cba422d5f814e3aedac6fcbaa0d3b87398644455e66ca38c4ddde6aea06e",
+      "plan_validation": {
+        "reason": "group_by_incomplete",
+        "valid": false
+      },
+      "probe_id": "hard004_missing_grouping",
+      "renderer": {
+        "status": "passed"
+      },
+      "renderer_self_conformance": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 3,
+        "checked_relationship_count": 3,
+        "reason_code": null,
+        "status": "passed"
+      },
+      "runtime": {
+        "isolation": "repeatable read",
+        "read_only": "on",
+        "role": "queryops_query_runtime",
+        "snapshot": "772:772:",
+        "timezone": "Etc/UTC",
+        "transaction_time": "2026-11-01 09:31:24.191104+00:00"
+      },
+      "semantic_contract_diagnostic": {
+        "aggregations_correct": true,
+        "answer_bound_correct": true,
+        "concepts_correct": true,
+        "evaluated": true,
+        "failure_reasons": [
+          "result_grain_mismatch",
+          "group_by_mismatch"
+        ],
+        "grain_correct": false,
+        "group_by_correct": false,
+        "having_correct": true,
+        "metric_correct": true,
+        "ordering_correct": true,
+        "outputs_correct": true,
+        "passed": false,
+        "rules_correct": true
+      },
+      "source": "handwritten_exploratory_not_provider_output",
+      "sql_safety": {
+        "reason": null,
+        "valid": true
+      },
+      "sql_sha256": "eeb7905670e247c8dea7c10a38f1d6b9dec601cb5f6452d95b4b0d250f071e23"
+    },
+    {
+      "case_id": "itops-hard-004",
+      "conformance_vs_contract_canonical": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 3,
+        "checked_relationship_count": 3,
+        "reason_code": "semantic_relationship_mismatch",
+        "status": "failed"
+      },
+      "downstream_is_sql_witness_only": false,
+      "execution": {
+        "baseline_count": 1,
+        "baseline_multiset_sha256": "f7f9524afe0ae58965d1d9c8eb16847c3a0a3371bdea2699ded00a449ea6566e",
+        "count": 1,
+        "delivery_completeness": "complete",
+        "result_multiset_sha256": "f7f9524afe0ae58965d1d9c8eb16847c3a0a3371bdea2699ded00a449ea6566e",
+        "status": "succeeded"
+      },
+      "literal_structural_vs_canonical": {
+        "authority": "opt_in_literal_diagnostic_not_evaluator",
+        "components": {
+          "aggregations": "match",
+          "distinct": "match",
+          "group_by": "match",
+          "having": "match",
+          "ordering": "match",
+          "output_fields": "match",
+          "row_grain": "match"
+        },
+        "passed": true
+      },
+      "plan_sha256": "690df3d2985c45b6cf81c61e8b0429beb2641ac73c203b2192feac8be3cb21d4",
+      "plan_validation": {
+        "reason": null,
+        "valid": true
+      },
+      "probe_id": "hard004_outer_user_key",
+      "renderer": {
+        "status": "passed"
+      },
+      "renderer_self_conformance": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 3,
+        "checked_relationship_count": 3,
+        "reason_code": null,
+        "status": "passed"
+      },
+      "result_only_comparison": {
+        "comparison_state": "incorrect",
+        "passed": false,
+        "semantic_pass_forced_for_isolation": true
+      },
+      "runtime": {
+        "isolation": "repeatable read",
+        "read_only": "on",
+        "role": "queryops_query_runtime",
+        "snapshot": "772:772:",
+        "timezone": "Etc/UTC",
+        "transaction_time": "2026-11-01 09:31:24.214391+00:00"
+      },
+      "semantic_contract_diagnostic": {
+        "aggregations_correct": true,
+        "answer_bound_correct": true,
+        "concepts_correct": true,
+        "evaluated": true,
+        "failure_reasons": [],
+        "grain_correct": true,
+        "group_by_correct": true,
+        "having_correct": true,
+        "metric_correct": true,
+        "ordering_correct": true,
+        "outputs_correct": true,
+        "passed": true,
+        "rules_correct": true
+      },
+      "source": "handwritten_exploratory_not_provider_output",
+      "sql_safety": {
+        "reason": null,
+        "valid": true
+      },
+      "sql_sha256": "03bd4ce34664f5243825d5b93fc16ffa53db3528504d224d59660971d91cc2a0"
+    },
+    {
+      "case_id": "itops-hard-004",
+      "conformance_vs_contract_canonical": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 3,
+        "checked_relationship_count": 3,
+        "reason_code": "semantic_relationship_mismatch",
+        "status": "failed"
+      },
+      "downstream_is_sql_witness_only": false,
+      "execution": {
+        "baseline_count": 1,
+        "baseline_multiset_sha256": "f7f9524afe0ae58965d1d9c8eb16847c3a0a3371bdea2699ded00a449ea6566e",
+        "count": 1,
+        "delivery_completeness": "complete",
+        "result_multiset_sha256": "37083be6689176ad06d762b57a58c944b0454d2527fdbdb53367e4dc671ea80a",
+        "status": "succeeded"
+      },
+      "literal_structural_vs_canonical": {
+        "authority": "opt_in_literal_diagnostic_not_evaluator",
+        "components": {
+          "aggregations": "match",
+          "distinct": "match",
+          "group_by": "mismatch",
+          "having": "match",
+          "ordering": "match",
+          "output_fields": "mismatch",
+          "row_grain": "mismatch"
+        },
+        "passed": false
+      },
+      "plan_sha256": "7bf47575a30cd1e43e1b18b38af64f603e2facb8157e84f9ba898a2026d78cd6",
+      "plan_validation": {
+        "reason": null,
+        "valid": true
+      },
+      "probe_id": "hard004_outer_directory_key",
+      "renderer": {
+        "status": "passed"
+      },
+      "renderer_self_conformance": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 3,
+        "checked_relationship_count": 3,
+        "reason_code": null,
+        "status": "passed"
+      },
+      "result_only_comparison": {
+        "comparison_state": "correct",
+        "passed": true,
+        "semantic_pass_forced_for_isolation": true
+      },
+      "runtime": {
+        "isolation": "repeatable read",
+        "read_only": "on",
+        "role": "queryops_query_runtime",
+        "snapshot": "772:772:",
+        "timezone": "Etc/UTC",
+        "transaction_time": "2026-11-01 09:31:24.240701+00:00"
+      },
+      "semantic_contract_diagnostic": {
+        "aggregations_correct": true,
+        "answer_bound_correct": true,
+        "concepts_correct": true,
+        "evaluated": true,
+        "failure_reasons": [
+          "result_grain_mismatch",
+          "required_output_missing",
+          "group_by_mismatch"
+        ],
+        "grain_correct": false,
+        "group_by_correct": false,
+        "having_correct": true,
+        "metric_correct": true,
+        "ordering_correct": true,
+        "outputs_correct": false,
+        "passed": false,
+        "rules_correct": true
+      },
+      "source": "handwritten_exploratory_not_provider_output",
+      "sql_safety": {
+        "reason": null,
+        "valid": true
+      },
+      "sql_sha256": "8cc8df7a14950a6742e95864cc14cf1bc20b3adad7da9e5a63d00b90b763f487"
+    },
+    {
+      "case_id": "itops-hard-004",
+      "conformance_vs_contract_canonical": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 3,
+        "checked_relationship_count": 3,
+        "reason_code": "semantic_extra_filter",
+        "status": "failed"
+      },
+      "downstream_is_sql_witness_only": true,
+      "execution": {
+        "baseline_count": 1,
+        "baseline_multiset_sha256": "f7f9524afe0ae58965d1d9c8eb16847c3a0a3371bdea2699ded00a449ea6566e",
+        "count": 0,
+        "delivery_completeness": "complete",
+        "result_multiset_sha256": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+        "status": "succeeded"
+      },
+      "literal_structural_vs_canonical": {
+        "authority": "opt_in_literal_diagnostic_not_evaluator",
+        "components": {
+          "aggregations": "match",
+          "distinct": "match",
+          "group_by": "match",
+          "having": "match",
+          "ordering": "match",
+          "output_fields": "match",
+          "row_grain": "match"
+        },
+        "passed": true
+      },
+      "plan_sha256": "368459ec3a97576e8db1c444575f1bee8faae25d688f21923a0c8ee87b656a56",
+      "plan_validation": {
+        "reason": "predicate_contradiction",
+        "valid": false
+      },
+      "probe_id": "hard004_empty_grouped",
+      "renderer": {
+        "status": "passed"
+      },
+      "renderer_self_conformance": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 4,
+        "checked_relationship_count": 3,
+        "reason_code": null,
+        "status": "passed"
+      },
+      "result_only_comparison": {
+        "comparison_state": "incorrect",
+        "passed": false,
+        "semantic_pass_forced_for_isolation": true
+      },
+      "runtime": {
+        "isolation": "repeatable read",
+        "read_only": "on",
+        "role": "queryops_query_runtime",
+        "snapshot": "772:772:",
+        "timezone": "Etc/UTC",
+        "transaction_time": "2026-11-01 09:31:24.266640+00:00"
+      },
+      "semantic_contract_diagnostic": {
+        "aggregations_correct": true,
+        "answer_bound_correct": true,
+        "concepts_correct": true,
+        "evaluated": true,
+        "failure_reasons": [],
+        "grain_correct": true,
+        "group_by_correct": true,
+        "having_correct": true,
+        "metric_correct": true,
+        "ordering_correct": true,
+        "outputs_correct": true,
+        "passed": true,
+        "rules_correct": true
+      },
+      "source": "handwritten_exploratory_not_provider_output",
+      "sql_safety": {
+        "reason": null,
+        "valid": true
+      },
+      "sql_sha256": "adba60186591bf48b9885231a00b90b5a4cf293d6a54380b266e44de2e1df752"
+    },
+    {
+      "case_id": "itops-hard-004",
+      "conformance_vs_contract_canonical": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 3,
+        "checked_relationship_count": 3,
+        "reason_code": "semantic_extra_filter",
+        "status": "failed"
+      },
+      "downstream_is_sql_witness_only": true,
+      "execution": {
+        "baseline_count": 1,
+        "baseline_multiset_sha256": "f7f9524afe0ae58965d1d9c8eb16847c3a0a3371bdea2699ded00a449ea6566e",
+        "count": 1,
+        "delivery_completeness": "complete",
+        "result_multiset_sha256": "6fe7b5f897321f04b373579df6d5503ada4172bc7428f6dc75165227589c86de",
+        "status": "succeeded"
+      },
+      "literal_structural_vs_canonical": {
+        "authority": "opt_in_literal_diagnostic_not_evaluator",
+        "components": {
+          "aggregations": "match",
+          "distinct": "match",
+          "group_by": "mismatch",
+          "having": "mismatch",
+          "ordering": "match",
+          "output_fields": "mismatch",
+          "row_grain": "mismatch"
+        },
+        "passed": false
+      },
+      "plan_sha256": "ad380bc0352c2100023e7e11a0cb6df8093b6839c4a5d79854b9f32f62cabd0e",
+      "plan_validation": {
+        "reason": "predicate_contradiction",
+        "valid": false
+      },
+      "probe_id": "hard004_empty_scalar",
+      "renderer": {
+        "status": "passed"
+      },
+      "renderer_self_conformance": {
+        "checked_aggregation_count": 1,
+        "checked_entity_count": 4,
+        "checked_predicate_count": 4,
+        "checked_relationship_count": 3,
+        "reason_code": null,
+        "status": "passed"
+      },
+      "result_only_comparison": {
+        "comparison_state": "incorrect",
+        "passed": false,
+        "semantic_pass_forced_for_isolation": true
+      },
+      "runtime": {
+        "isolation": "repeatable read",
+        "read_only": "on",
+        "role": "queryops_query_runtime",
+        "snapshot": "772:772:",
+        "timezone": "Etc/UTC",
+        "transaction_time": "2026-11-01 09:31:24.290642+00:00"
+      },
+      "semantic_contract_diagnostic": {
+        "aggregations_correct": true,
+        "answer_bound_correct": true,
+        "concepts_correct": true,
+        "evaluated": true,
+        "failure_reasons": [
+          "result_grain_mismatch",
+          "required_output_missing",
+          "group_by_mismatch",
+          "having_mismatch"
+        ],
+        "grain_correct": false,
+        "group_by_correct": false,
+        "having_correct": false,
+        "metric_correct": true,
+        "ordering_correct": true,
+        "outputs_correct": false,
+        "passed": false,
+        "rules_correct": true
+      },
+      "source": "handwritten_exploratory_not_provider_output",
+      "sql_safety": {
+        "reason": null,
+        "valid": true
+      },
+      "sql_sha256": "0a0f3bc0ca83d8d9ae6786f4e19d8e43cde6b09cf54a6b835476e18e12dd96ca"
+    },
+    {
+      "case_id": "itops-hard-006",
+      "downstream_is_sql_witness_only": true,
+      "literal_structural_vs_canonical": {
+        "authority": "opt_in_literal_diagnostic_not_evaluator",
+        "components": {
+          "aggregations": "mismatch",
+          "distinct": "match",
+          "group_by": "match",
+          "having": "match",
+          "ordering": "mismatch",
+          "output_fields": "match",
+          "row_grain": "match"
+        },
+        "passed": false
+      },
+      "plan_sha256": "7d033377a2e1532ab8efbe37c7251eeee4d069bccabc66e5a7b92758a4d3bed0",
+      "plan_validation": {
+        "reason": "sum_distinct_unsupported",
+        "valid": false
+      },
+      "probe_id": "hard006_sum_distinct_unsupported",
+      "renderer": {
+        "safe_reason": "sum_distinct_unsupported",
+        "status": "failed"
+      },
+      "semantic_contract_diagnostic": {
+        "aggregations_correct": false,
+        "answer_bound_correct": true,
+        "concepts_correct": true,
+        "evaluated": true,
+        "failure_reasons": [
+          "aggregation_mismatch",
+          "ordering_mismatch"
+        ],
+        "grain_correct": true,
+        "group_by_correct": true,
+        "having_correct": true,
+        "metric_correct": true,
+        "ordering_correct": false,
+        "outputs_correct": true,
+        "passed": false,
+        "rules_correct": true
+      },
+      "source": "handwritten_exploratory_not_provider_output"
+    }
+  ],
+  "provider_calls": 0,
+  "schema": "queryops-w6a-algebra-v1",
+  "seed": {
+    "contrast_fixture": {
+      "excluded_old_failed_per_user": 1,
+      "excluded_success_per_user": 1,
+      "failed_events_per_user": [
+        6,
+        5
+      ],
+      "memberships_per_user": 2,
+      "privileged_groups": 2,
+      "users": 2
+    },
+    "database_fingerprint": "040b9f787d5728fc61803e0c66bd33bb6690d2738a6caa1d09173afd60cd9201",
+    "plain_medium_database_fingerprint": "8d027d94029ba0fd0e3a3eebcc99fec41b0084140df54a8834ea73560b0eb077",
+    "profile": "medium",
+    "reference_now": "2026-11-01T09:20:36+00:00",
+    "seed": 42,
+    "table_counts": {
+      "access_scopes": 9,
+      "app_users": 4,
+      "data_resources": 12,
+      "departments": 8,
+      "devices": 900,
+      "directory_users": 682,
+      "groups": 26,
+      "license_assignments": 1200,
+      "licenses": 8,
+      "login_events": 10015,
+      "permissions": 40,
+      "role_permissions": 80,
+      "roles": 4,
+      "security_events": 250,
+      "software_installs": 2000,
+      "support_tickets": 350,
+      "user_access_scopes": 4,
+      "user_group_memberships": 1204,
+      "user_permissions": 0
+    }
+  },
+  "source_sha": "36591a150528a654f30dc7cc8e48ca46ae5268dc",
+  "sources": [
+    {
+      "id": "F11-runtime",
+      "lines": "435-451,460-473",
+      "path": "backend/app/query_engine/semantic_plan.py",
+      "sha256": "180def7148cf634e5e9440d89c6c798581dca1daf32ca1fa836dca425615bf17"
+    },
+    {
+      "id": "F11-renderer",
+      "lines": "28-82,128-159,268-285",
+      "path": "backend/app/query_engine/sql_renderer.py",
+      "sha256": "2d5c06f37fc0323a829953d9adea03d16efff7ffc5b69638ba4a73f494799154"
+    },
+    {
+      "id": "F11-conformance",
+      "lines": "870-908",
+      "path": "backend/app/query_engine/semantic_conformance.py",
+      "sha256": "56138e61757ec97fead3e5ead09a8ee038e81eb5e9249bc6ffea42788bdbf0e4"
+    },
+    {
+      "id": "F11-evaluator",
+      "lines": "147-197",
+      "path": "backend/app/evaluation/scoring.py",
+      "sha256": "510e0f9c8dad4176d3c81f6a71c4efdab3bd904fd0ec82d200fbe3572f43db79"
+    },
+    {
+      "id": "F11-identity",
+      "lines": "1-118",
+      "path": "backend/app/evaluation/identity.py",
+      "sha256": "07e89b7a0b1a6c4021b63f99390bc834a7c63f279cbd1dd041e18b28a565080a"
+    },
+    {
+      "id": "F11-literal",
+      "lines": "1-99",
+      "path": "backend/app/query_engine/structural_intent_comparison.py",
+      "sha256": "7cf2cac2a6665ae78728ce7dcf0e92f009379dafd0a74a644bb865adcebdb85d"
+    },
+    {
+      "id": "F11-prompt",
+      "lines": "66-104",
+      "path": "backend/app/query_engine/openai_provider.py",
+      "sha256": "102995ba1c2ceb2947fdf34a6ac81465aa19e65b47cc8d01bf4731255fa9e05b"
+    },
+    {
+      "id": "F11-PG-counterexamples",
+      "lines": "125-273",
+      "path": "backend/tests/test_relational_semantics.py",
+      "sha256": "800b6b158606598332c662925d94fbe6ef8315e5f1b0660979754bbac8e316a7"
+    },
+    {
+      "id": "F11-existing-corrections",
+      "lines": "32-207",
+      "path": "backend/tests/test_evaluation_semantic_corrections.py",
+      "sha256": "cc551c10d46e235ae6a5cecb15e9c98ca0e6aa79e57097531950cdcbeb9d6615"
+    }
+  ]
+}

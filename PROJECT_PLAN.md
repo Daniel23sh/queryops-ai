@@ -60,6 +60,13 @@ rules, renderer, conformance, scoring, datasets/baselines, thresholds or gates.
 No paid provider calls, qualifying Canary or Full40 sequence is authorized. Commit
 and push the report/planning work in an unmerged PR; W6b is not approved.
 
+The three diagnostic investigations and coordinator replays are complete; final
+independent review is pending. The [W6a diagnostic report](docs/audits/2026-11-01-w6a-semantic-diagnosis-he.md)
+separates candidate availability, historical/current-unverified provider behavior,
+supported plan encodings and evaluator proof. It proposes deterministic output
+identity as the first bounded W6b correction because canonical joined outputs can
+lose a value through duplicate column labels. This is a proposal, not approval.
+
 ## Constraints and Remaining Work
 
 - Follow the [M10 roadmap](docs/development/m10-completion-roadmap.md) for W6a–W9

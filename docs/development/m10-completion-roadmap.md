@@ -85,6 +85,15 @@ qualification evidence through environment v2 and a provider/runtime fingerprint
 it does not change the frozen dataset, thresholds or the separate W6a/W6b/W6c
 semantic sequence. See the [identity/usage contract](../evaluation/v1-quality-gates.md#environment-identity-and-invalidation).
 
+The owner authorized W6a diagnosis only on 2026-11-01. Its
+[diagnostic report](../audits/2026-11-01-w6a-semantic-diagnosis-he.md) proposes a
+narrow deterministic output-identity correction before candidate/context changes
+or provider experiments: joined fields with identical labels can lose a value
+during result mapping. Canonical hard-004 works; broad algebra expansion and
+prompt/model changes are not established remedies. This refines the W6b decision
+with new evidence and does not approve implementation. Current investigation,
+review and PR status belong only in PROJECT_PLAN.md.
+
 ## Definition of Done for local synthetic IT Operations V1
 
 1. Supported scope and demo boundary are explicit; unsupported auth modes fail
