@@ -265,7 +265,7 @@ describe("DashboardDetailPage", () => {
 
     expect(await screen.findByRole("button", { name: "Reload latest layout" })).toBeInTheDocument();
     expect(screen.getByText(/draft is still here/i)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
   });
 
   it("opens card actions from Shift+F10 and limits source to question and SQL", async () => {
@@ -363,33 +363,39 @@ describe("DashboardDetailPage", () => {
     const original = backendDashboardCard();
     const renamedCard = { ...original, title: "Renamed card" };
     const copiedCard = backendDashboardCard({ id: "copy-card", title: "Renamed card Copy", position: 1 });
-    const detailWith = (cards: Array<Record<string, unknown>>) => backendDashboardDetail({ cards });
+    const detailWith = (cards: Array<Record<string, unknown>>, version = 1) => ({ ...backendDashboardDetail({ cards }), layout_version: version });
     const fetchMock = installApiMock(
       authenticatedRoutes(demoAnalyst, {
         "GET /api/v1/dashboards/dashboard-id": [
           successResponse(detailWith([original])),
           successResponse(detailWith([renamedCard])),
-          successResponse(detailWith([renamedCard, copiedCard])),
-          successResponse(detailWith([renamedCard]))
+          successResponse(detailWith([renamedCard, copiedCard], 2)),
+          successResponse(detailWith([renamedCard], 3))
         ],
         "POST /api/v1/cards/card-id/refresh": successResponse(refreshResult("card-id")),
         "POST /api/v1/cards/copy-card/refresh": successResponse(refreshResult("copy-card")),
-        "PATCH /api/v1/cards/card-id": successResponse({ card: renamedCard, layout_version: 2 }),
-        "POST /api/v1/cards/card-id/duplicate": successResponse({ card: copiedCard, layout_version: 3 }),
-        "DELETE /api/v1/cards/copy-card": successResponse({ id: "copy-card", layout_version: 4 })
+        "PATCH /api/v1/cards/card-id": successResponse({ card: renamedCard, layout_version: 1 }),
+        "POST /api/v1/cards/card-id/duplicate": successResponse({ card: copiedCard, layout_version: 2 }),
+        "DELETE /api/v1/cards/copy-card": successResponse({ id: "copy-card", layout_version: 3 }),
+        "PATCH /api/v1/dashboards/dashboard-id/layout": successResponse({ layout_version: 4, items: [] })
       })
     );
     renderAppAt("/dashboards/dashboard-id");
     fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
     fireEvent.click(screen.getByRole("button", { name: "Card actions for Open tickets" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Resize" }));
+    fireEvent.click(screen.getByRole("button", { name: "8 × 3" }));
+    fireEvent.click(screen.getByRole("button", { name: "Card actions for Open tickets" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
     fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Renamed card" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByRole("button", { name: "Card actions for Renamed card" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled();
 
     fireEvent.click(screen.getByRole("button", { name: "Card actions for Renamed card" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Duplicate" }));
     expect(await screen.findByRole("button", { name: "Card actions for Renamed card Copy" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled();
 
     fireEvent.click(screen.getByRole("button", { name: "Card actions for Renamed card Copy" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Remove" }));
@@ -398,6 +404,141 @@ describe("DashboardDetailPage", () => {
     await waitFor(() => expect(screen.queryByRole("button", { name: "Card actions for Renamed card Copy" })).not.toBeInTheDocument());
     expect(screen.getByRole("button", { name: "Edit" })).toHaveAttribute("aria-pressed", "true");
     expect(fetchMock.mock.calls.some(([url, init]) => String(url).endsWith("/copy-card") && init?.method === "DELETE")).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Edit" })).toHaveAttribute("aria-pressed", "false"));
+    const saved = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/layout"));
+    expect(JSON.parse(String(saved?.[1]?.body))).toMatchObject({ expected_layout_version: 3, items: [{ card_id: "card-id", desktop: { w: 8, h: 3 } }] });
+  });
+  it("preserves moved layouts through dashboard rename, visualization reset and Add Card", async () => {
+    setCsrfCookie("csrf-token");
+    const first = backendDashboardCard();
+    const added = backendDashboardCard({ id: "added", title: "Added result", position: 1 });
+    const renamed = { ...backendDashboardDetail({ cards: [first] }), title: "Renamed dashboard" };
+    const withCard = { ...renamed, cards: [first, added], card_count: 2, layout_version: 3 };
+    installApiMock(authenticatedRoutes(demoAnalyst, {
+      "GET /api/v1/dashboards/dashboard-id": [
+        successResponse(backendDashboardDetail({ cards: [first] })), successResponse(renamed),
+        successResponse({ ...renamed, layout_version: 2 }), successResponse(withCard),
+        successResponse({ ...withCard, layout_version: 4 })
+      ],
+      "PATCH /api/v1/dashboards/dashboard-id": successResponse({ layout_version: 1 }),
+      "POST /api/v1/cards/card-id/refresh": successResponse(refreshResult("card-id")),
+      "PATCH /api/v1/cards/card-id": successResponse({ card: first, layout_version: 2 }),
+      "GET /api/v1/query-templates": successResponse([]),
+      "GET /api/v1/queries/history": successResponse([{ id: "recent", status: "succeeded", natural_language_question: "Added result", row_count: 1, can_save_as_card: true, created_at: "2026-07-14T12:00:00Z", metadata: {} }]),
+      "POST /api/v1/query-runs/recent/save-card": successResponse(added),
+      "POST /api/v1/cards/added/refresh": [successResponse(refreshResult("added")), successResponse(refreshResult("added"))],
+      "PATCH /api/v1/cards/added": successResponse({ card: added, layout_version: 4 })
+    }));
+    renderAppAt("/dashboards/dashboard-id");
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    fireEvent.keyDown(screen.getByRole("button", { name: "Drag Open tickets" }), { key: "ArrowRight" });
+    fireEvent.click(screen.getByRole("button", { name: "Dashboard actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename dashboard" }));
+    fireEvent.change(screen.getByLabelText("Title"), { target: { value: "Renamed dashboard" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("heading", { name: "Renamed dashboard" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Card actions for Open tickets" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Change visualization" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reset to recommended" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Add Card" }));
+    fireEvent.click(await screen.findByRole("tab", { name: "Recent results" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Add result" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Reload latest layout" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+    expect(screen.getByRole("heading", { name: "Renamed dashboard" })).toBeInTheDocument();
+    expect(screen.getByRole("article", { name: "Dashboard card Added result" })).toBeInTheDocument();
+  });
+
+  it("retains draft and its version through save and metadata refresh failures", async () => {
+    setCsrfCookie("csrf-token");
+    const card = backendDashboardCard();
+    const initial = backendDashboardDetail({ cards: [card] });
+    const fetchMock = installApiMock(authenticatedRoutes(demoAnalyst, {
+      "GET /api/v1/dashboards/dashboard-id": [successResponse(initial), errorResponse("TEMPORARY_FAILURE", 503, "Unavailable"), successResponse(initial), successResponse(initial)],
+      "POST /api/v1/cards/card-id/refresh": successResponse(refreshResult("card-id")),
+      "PATCH /api/v1/cards/card-id": successResponse({ card, layout_version: 1 }),
+      "PATCH /api/v1/dashboards/dashboard-id/layout": [errorResponse("SAVE_FAILED", 503, "Unavailable"), successResponse({ layout_version: 2, items: [] })]
+    }));
+    renderAppAt("/dashboards/dashboard-id");
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    fireEvent.keyDown(screen.getByRole("button", { name: "Drag Open tickets" }), { key: "ArrowRight" });
+    fireEvent.click(screen.getByRole("button", { name: "Card actions for Open tickets" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByRole("button", { name: "Retry refresh" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Retry refresh" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Retry refresh" })).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    expect(await screen.findByText("Dashboard changes could not be saved. Try again.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Edit" })).toHaveAttribute("aria-pressed", "false"));
+    const saves = fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/layout"));
+    expect(saves).toHaveLength(2);
+    for (const [, request] of saves) expect(JSON.parse(String(request?.body))).toMatchObject({ expected_layout_version: 1, items: [{ desktop: { x: 6 } }] });
+  });
+
+  it("keeps a stale draft conflicted through failed reload until explicit successful discard", async () => {
+    setCsrfCookie("csrf-token");
+    const card = backendDashboardCard();
+    const initial = backendDashboardDetail({ cards: [card] });
+    const latest = { ...initial, layout_version: 3 };
+    const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValue(true);
+    const fetchMock = installApiMock(authenticatedRoutes(demoAnalyst, {
+      "GET /api/v1/dashboards/dashboard-id": [successResponse(initial), successResponse(latest), errorResponse("TEMPORARY_FAILURE", 503, "Unavailable"), successResponse(latest)],
+      "POST /api/v1/cards/card-id/refresh": successResponse(refreshResult("card-id")),
+      "PATCH /api/v1/cards/card-id": successResponse({ card, layout_version: 3 })
+    }));
+    renderAppAt("/dashboards/dashboard-id");
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    fireEvent.keyDown(screen.getByRole("button", { name: "Drag Open tickets" }), { key: "ArrowRight" });
+    fireEvent.click(screen.getByRole("button", { name: "Card actions for Open tickets" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Rename" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    const reload = await screen.findByRole("button", { name: "Reload latest layout" });
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+    fireEvent.click(reload);
+    expect(confirm).toHaveBeenCalledOnce();
+    fireEvent.click(reload);
+    expect(await screen.findByRole("button", { name: "Retry refresh" })).toBeInTheDocument();
+    expect(screen.getByText("Unsaved layout changes")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Reload latest layout" }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Reload latest layout" })).not.toBeInTheDocument());
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/layout"))).toBe(false);
+  });
+
+  it("guards current-session links, View and dashboard duplication before discarding dirty layouts", async () => {
+    setCsrfCookie("csrf-token");
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    const fetchMock = installApiMock(authenticatedRoutes(demoAnalyst, {
+      "GET /api/v1/dashboards/dashboard-id": successResponse(backendDashboardDetail({ cards: [backendDashboardCard()] })),
+      "POST /api/v1/cards/card-id/refresh": successResponse(refreshResult("card-id"))
+    }));
+    renderAppAt("/dashboards/dashboard-id");
+    fireEvent.click(await screen.findByRole("button", { name: "Edit" }));
+    fireEvent.keyDown(screen.getByRole("button", { name: "Drag Open tickets" }), { key: "ArrowRight" });
+    fireEvent.click(screen.getByRole("link", { name: "Skip to main content" }));
+    expect(confirm).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("link", { name: "Back to My Dashboard" }));
+    expect(window.location.pathname).toBe("/dashboards/dashboard-id");
+    fireEvent.click(screen.getByRole("button", { name: "View" }));
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Dashboard actions" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Duplicate dashboard" }));
+    expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/duplicate"))).toBe(false);
+    confirm.mockReturnValue(true);
+    fireEvent.click(screen.getByRole("link", { name: "Back to My Dashboard" }));
+    await waitFor(() => expect(window.location.pathname).toBe("/"));
   });
 });
 

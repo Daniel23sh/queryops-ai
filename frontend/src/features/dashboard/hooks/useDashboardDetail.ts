@@ -29,17 +29,19 @@ export function useDashboardDetail(dashboardId: string | undefined) {
       }
       setDashboard(result);
       setStatus("success");
+      return result;
     } catch (error: unknown) {
       if (controller.signal.aborted) {
         return;
       }
-      setDashboard(null);
+      if (error instanceof ApiError && (error.status === 403 || error.status === 404)) setDashboard(null);
       setStatus(
         error instanceof ApiError &&
           (error.status === 404 || error.code === "DASHBOARD_NOT_FOUND")
           ? "not-found"
           : "error"
       );
+      return null;
     }
   }, [dashboardId]);
 
@@ -48,5 +50,5 @@ export function useDashboardDetail(dashboardId: string | undefined) {
     return () => requestRef.current?.abort();
   }, [load]);
 
-  return { dashboard, reload: load, status };
+  return { dashboard: dashboard?.id === dashboardId ? dashboard : null, reload: load, status };
 }
