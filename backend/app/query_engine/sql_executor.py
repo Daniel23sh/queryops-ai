@@ -429,6 +429,11 @@ def _execute_on_runtime_connection(
     )
     try:
         columns = list(result.keys())
+        if len(columns) != len(set(columns)):
+            return _failure(
+                started_at, "ambiguous_output_columns", QUERY_EXECUTION_PUBLIC_ERROR,
+                referenced_tables,
+            )
         rows: list[dict[str, Any]] = []
         payload_bytes = 2 if options.max_payload_bytes is not None else 0
         payload_limited = False

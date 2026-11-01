@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 import pytest
+from sqlglot import parse_one
 
 from app.query_engine.domain_pack import DomainPack
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
@@ -118,6 +119,75 @@ def test_raw_semantic_plan_is_not_accepted() -> None:
 
     with pytest.raises(TypeError, match="ValidatedSemanticPlan"):
         render_validated_semantic_plan(raw_plan, DOMAIN_PACK)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("entities,column,relationship", [
+    (("devices", "directory_users"), "id", "device_assignee"),
+    (("groups", "departments"), "name", "group_department"),
+])
+def test_colliding_field_labels_preserve_identity_under_reordering(
+    entities, column, relationship,
+) -> None:
+    fields = tuple(_field(entity, column) for entity in entities)
+    for ordered in (fields, fields[::-1]):
+        checked = _validated(_plan(
+            entity_ids=entities, output_fields=ordered,
+            relationships=(_relationship(relationship, "inner"),),
+        ))
+        sql = _render(checked)
+        expressions = parse_one(sql, dialect="postgres").expressions
+        assert [item.alias_or_name for item in expressions] == [
+            f"{item.entity_id}__{column}" for item in ordered
+        ]
+        schema = _schema_context(DOMAIN_PACK)
+        assert check_semantic_conformance(
+            plan=checked, candidate_sql=sql, safety_result=validate_sql(sql, schema),
+            domain_pack=DOMAIN_PACK, schema_context=schema,
+        ).valid
+
+
+def test_output_labels_reserve_compatible_names_and_aggregation_identity() -> None:
+    fields = (_field("devices", "id"), _field("directory_users", "id"))
+    aggregations = (_aggregation("id", "count"), _aggregation("devices__id", "count"))
+    for ordered in (fields, fields[::-1]):
+        checked = _validated(_plan(
+            entity_ids=("devices", "directory_users"), output_fields=ordered,
+            relationships=(_relationship("device_assignee", "inner"),),
+            aggregations=aggregations, group_by=fields,
+            order_by=(SemanticOrderIntent(
+                target_kind="aggregation", field=None, aggregation_id="id", direction="desc",
+            ), SemanticOrderIntent(
+                target_kind="field", field=fields[0], aggregation_id=None, direction="asc",
+            )),
+        ))
+        labels = [item.alias_or_name for item in parse_one(_render(checked)).expressions]
+        by_field = dict(zip(ordered, labels[:len(ordered)], strict=True))
+        assert by_field[_field("devices", "id")] == "devices__id__2"
+        assert by_field[_field("directory_users", "id")] == "directory_users__id"
+        assert labels[-2:] == ["aggregation__id", "devices__id"]
+        assert len(labels) == len(set(labels))
+        sql = _render(checked)
+        schema = _schema_context(DOMAIN_PACK)
+        assert check_semantic_conformance(
+            plan=checked, candidate_sql=sql, safety_result=validate_sql(sql, schema),
+            domain_pack=DOMAIN_PACK, schema_context=schema,
+        ).valid
+        assert "ORDER BY COUNT(*) DESC, devices.id ASC" in sql
+
+
+def test_output_identity_accounts_for_postgres_case_and_identifier_truncation() -> None:
+    identifiers = ("Count", "count", "x" * 100 + "a", "x" * 100 + "b")
+    outputs = []
+    for ordered in (identifiers, identifiers[::-1]):
+        checked = _validated(_plan(
+            entity_ids=("devices",),
+            aggregations=tuple(_aggregation(value, "count") for value in ordered),
+        ))
+        labels = [item.alias_or_name.lower()[:63] for item in parse_one(_render(checked)).expressions]
+        assert len(labels) == len(set(labels)) == 4
+        assert all(len(value.encode()) <= 63 for value in labels)
+        outputs.append(dict(zip(ordered, labels, strict=True)))
+    assert outputs[0] == outputs[1]
 
 
 @pytest.mark.parametrize(
