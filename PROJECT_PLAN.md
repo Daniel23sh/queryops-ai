@@ -67,7 +67,8 @@ Implementation is complete locally: authorized optional graph availability and
 atomic definition bundles retain the ranked core and 16,000-byte cap. Known W6a
 positive coverage is 40/69 → 69/69; five literal empty-context controls change
 without authorizing forbidden targets. See the [decision/evidence](docs/audits/2026-11-01-candidate-availability-he.md).
-The implementation is not merged or independently accepted. No claim of provider
+Implementation commit `9f537a3` is pushed in [draft PR #68](https://github.com/Daniel23sh/queryops-ai/pull/68).
+It is not merged or independently accepted. No claim of provider
 answer quality or release qualification follows from these availability metrics.
 
 ## Constraints and Remaining Work
@@ -90,8 +91,8 @@ answer quality or release qualification follows from these availability metrics.
 
 ## Next Approved Work
 
-Complete the Candidate Availability verification/PR handoff, then obtain the
-separate independent final review on the unmerged combined diff. Do not begin W6c,
+Obtain the separate independent final review of Candidate Availability in
+unmerged PR #68, including frozen unseen cases and its final-head CI evidence. Do not begin W6c,
 W7 or prompt/model tuning; no paid evaluation is authorized.
 
 ## References

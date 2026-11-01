@@ -18,6 +18,12 @@ retrieval/budgets and authored PostgreSQL/API adversarial regressions. One owner
 implemented production changes and reconciled contracts/tests/docs; their helper
 inspection is not the separate independent final acceptance review.
 
+Implementation commit `9f537a3` is pushed in
+[draft PR #68](https://github.com/Daniel23sh/queryops-ai/pull/68). Final-head CI
+run links, actual new-file collection and browser case counts belong to that PR's
+validation section; PR creation is not proof that those gates passed. No merge
+or independent acceptance is claimed.
+
 Frozen known-corpus coverage: 40/69 → 69/69, entities 56/91 → 91/91,
 relationships 7/13 → 13/13, concepts 30/40 → 40/40, rules 3/6 → 6/6,
 metrics 3/3 unchanged. No positive regressions, maximum 16,000 bytes.
