@@ -1,5 +1,14 @@
 # QueryOps AI — Development History
 
+## 2026-11-01 — W6a merged; narrow W6b authorized
+
+PR #66 merged at `dac8031bd368f0d17fb94818369cd3071bf8160e`. Remote merge metadata,
+fetched main and diagnostic ancestry were verified on a clean checkout. The owner
+approved deterministic output identity only for W6b, with V3 evidence and an
+unmerged candidate PR; independent final review is a separate approval gate.
+Candidate retrieval, prompt/model tuning, W6c, W7 and paid evaluations remain
+out of scope. Historical W6a unmerged statements below describe its handoff.
+
 ## 2026-11-01 — W6a semantic diagnosis and independent review
 
 [PR #66](https://github.com/Daniel23sh/queryops-ai/pull/66) contains the completed,
