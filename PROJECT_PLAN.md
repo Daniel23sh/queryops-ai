@@ -51,6 +51,17 @@ Cover rendering/conformance/execution/provenance, unchanged hard-005 contracts,
 saved results, Dashboard refresh/visualization and CSV with V3 PostgreSQL/API/
 browser evidence. Preserve authorization, RLS, limits and export protection.
 
+Implementation and local V3 verification are complete in
+[Draft PR #67](https://github.com/Daniel23sh/queryops-ai/pull/67), implementation
+commit `1667afc`, on the feature branch;
+the candidate is not merged and has not received independent final approval.
+The renderer preserves compatible labels and qualifies collisions with stable
+backend names; the executor rejects duplicate cursor labels before mapping rows,
+including empty/legacy SQL. No schema, provider-plan, evaluator or frozen-data
+change was needed. Evidence and compatibility limits are recorded in
+[development history](docs/history/development-history.md) and the
+[output contract](docs/development/semantic-ownership-migration.md#deterministic-output-identity--m10-w6b-contract).
+
 Only this correction is approved: no provider aliases, algebra expansion,
 candidate/context improvements, prompt/model tuning, W6c, W7 or paid calls.
 Commit/push a focused unmerged PR. This implementation is a candidate only;
@@ -76,9 +87,9 @@ independent final review remains a separate approval gate.
 
 ## Next Approved Work
 
-Implement and verify W6b deterministic output identity only, then hand off an
-unmerged candidate PR for independent final review. Do not begin other semantic
-corrections or later packages; no paid evaluation is authorized.
+Review the unmerged W6b candidate PR through a separately approved independent
+final review. No further implementation, candidate retrieval changes, W6c, W7 or
+paid evaluation is approved. Do not merge automatically.
 
 ## References
 

@@ -94,6 +94,14 @@ prompt/model changes are not established remedies. This refines the W6b decision
 with new evidence and does not approve implementation. Current investigation,
 review and PR status belong only in PROJECT_PLAN.md.
 
+The first W6b correction was explicitly authorized on 2026-11-01 for deterministic
+output identity only. Its contract requires stable unique backend labels,
+PostgreSQL folding/truncation handling, compatible unique names, unchanged
+hard-005 semantics/results and fail-safe legacy refresh/export with no lost
+values. See the [output contract](semantic-ownership-migration.md#deterministic-output-identity--m10-w6b-contract).
+Independent final acceptance review is a separate approval gate; this narrow
+authorization does not include candidate retrieval, prompt/model tuning or W6c.
+
 ## Definition of Done for local synthetic IT Operations V1
 
 1. Supported scope and demo boundary are explicit; unsupported auth modes fail

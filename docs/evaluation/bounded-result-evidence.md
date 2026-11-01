@@ -224,3 +224,10 @@ a permitted 500-row export. Missing or invalid response metadata is shown as
 unknown. Audit records include only safe delivery state/counts, not result rows.
 Current-viewer scopes, restricted-export policy, RLS, runtime role, SQL validation,
 row caps and formula-injection sanitization remain authoritative.
+
+Result fields also obey the backend-owned
+[output identity contract](../development/semantic-ownership-migration.md#deterministic-output-identity--m10-w6b-contract).
+Rendered collisions receive unique deterministic labels; ambiguous legacy SQL
+fails before row mapping, refresh persistence or successful CSV auditing. This
+protects field delivery independently of row-completeness evidence. No old
+evaluation evidence is upgraded, and source-identity qualification remains binding.
