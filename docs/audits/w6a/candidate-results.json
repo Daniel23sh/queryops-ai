@@ -1,0 +1,896 @@
+{
+  "baseline_source": "b1f03a4790c7569f7da0ef8d9be57ddd6da023c5",
+  "by_kind": {
+    "business-definition": {
+      "case_count": 24,
+      "concepts": {
+        "authorized_items": 36,
+        "catalog_present_items": 36,
+        "expected_items": 36,
+        "projected_items": 27,
+        "projected_over_authorized": 0.75
+      },
+      "control_case_count": 0,
+      "controls_passed": 0,
+      "entities": {
+        "authorized_items": 33,
+        "catalog_present_items": 33,
+        "expected_items": 33,
+        "projected_items": 24,
+        "projected_over_authorized": 0.7272727272727273
+      },
+      "metrics": {
+        "authorized_items": 3,
+        "catalog_present_items": 3,
+        "expected_items": 3,
+        "projected_items": 3,
+        "projected_over_authorized": 1.0
+      },
+      "positive_case_count": 24,
+      "positive_cases_fully_projected": 16,
+      "relationships": {
+        "authorized_items": 0,
+        "catalog_present_items": 0,
+        "expected_items": 0,
+        "projected_items": 0,
+        "projected_over_authorized": null
+      },
+      "rules": {
+        "authorized_items": 6,
+        "catalog_present_items": 6,
+        "expected_items": 6,
+        "projected_items": 3,
+        "projected_over_authorized": 0.5
+      },
+      "stage_counts": {
+        "covered": 16,
+        "definition_context_miss": 2,
+        "entity_retrieval_miss": 6
+      }
+    },
+    "control": {
+      "case_count": 10,
+      "concepts": {
+        "authorized_items": 0,
+        "catalog_present_items": 0,
+        "expected_items": 0,
+        "projected_items": 0,
+        "projected_over_authorized": null
+      },
+      "control_case_count": 10,
+      "controls_passed": 10,
+      "entities": {
+        "authorized_items": 0,
+        "catalog_present_items": 0,
+        "expected_items": 0,
+        "projected_items": 0,
+        "projected_over_authorized": null
+      },
+      "metrics": {
+        "authorized_items": 0,
+        "catalog_present_items": 0,
+        "expected_items": 0,
+        "projected_items": 0,
+        "projected_over_authorized": null
+      },
+      "positive_case_count": 0,
+      "positive_cases_fully_projected": 0,
+      "relationships": {
+        "authorized_items": 0,
+        "catalog_present_items": 0,
+        "expected_items": 0,
+        "projected_items": 0,
+        "projected_over_authorized": null
+      },
+      "rules": {
+        "authorized_items": 0,
+        "catalog_present_items": 0,
+        "expected_items": 0,
+        "projected_items": 0,
+        "projected_over_authorized": null
+      },
+      "stage_counts": {
+        "control_satisfied": 10
+      }
+    },
+    "relationship": {
+      "case_count": 7,
+      "concepts": {
+        "authorized_items": 4,
+        "catalog_present_items": 4,
+        "expected_items": 4,
+        "projected_items": 3,
+        "projected_over_authorized": 0.75
+      },
+      "control_case_count": 0,
+      "controls_passed": 0,
+      "entities": {
+        "authorized_items": 20,
+        "catalog_present_items": 20,
+        "expected_items": 20,
+        "projected_items": 12,
+        "projected_over_authorized": 0.6
+      },
+      "metrics": {
+        "authorized_items": 0,
+        "catalog_present_items": 0,
+        "expected_items": 0,
+        "projected_items": 0,
+        "projected_over_authorized": null
+      },
+      "positive_case_count": 7,
+      "positive_cases_fully_projected": 4,
+      "relationships": {
+        "authorized_items": 13,
+        "catalog_present_items": 13,
+        "expected_items": 13,
+        "projected_items": 7,
+        "projected_over_authorized": 0.5384615384615384
+      },
+      "rules": {
+        "authorized_items": 0,
+        "catalog_present_items": 0,
+        "expected_items": 0,
+        "projected_items": 0,
+        "projected_over_authorized": null
+      },
+      "stage_counts": {
+        "covered": 4,
+        "entity_retrieval_miss": 3
+      }
+    },
+    "vocabulary": {
+      "case_count": 38,
+      "concepts": {
+        "authorized_items": 0,
+        "catalog_present_items": 0,
+        "expected_items": 0,
+        "projected_items": 0,
+        "projected_over_authorized": null
+      },
+      "control_case_count": 0,
+      "controls_passed": 0,
+      "entities": {
+        "authorized_items": 38,
+        "catalog_present_items": 38,
+        "expected_items": 38,
+        "projected_items": 20,
+        "projected_over_authorized": 0.5263157894736842
+      },
+      "metrics": {
+        "authorized_items": 0,
+        "catalog_present_items": 0,
+        "expected_items": 0,
+        "projected_items": 0,
+        "projected_over_authorized": null
+      },
+      "positive_case_count": 38,
+      "positive_cases_fully_projected": 20,
+      "relationships": {
+        "authorized_items": 0,
+        "catalog_present_items": 0,
+        "expected_items": 0,
+        "projected_items": 0,
+        "projected_over_authorized": null
+      },
+      "rules": {
+        "authorized_items": 0,
+        "catalog_present_items": 0,
+        "expected_items": 0,
+        "projected_items": 0,
+        "projected_over_authorized": null
+      },
+      "stage_counts": {
+        "covered": 20,
+        "entity_retrieval_miss": 18
+      }
+    }
+  },
+  "catalog_hash": "918df0c63288b7ed7ce700f8442c82bc1ffa3f51e1f4eaa63fd66012af82adb4",
+  "catalog_id": "it_operations_semantic_catalog",
+  "catalog_ids": {
+    "concepts": [
+      "active_directory_account",
+      "active_employee",
+      "active_exception_license_assignment",
+      "active_human_directory_user",
+      "active_license_assignment",
+      "active_mandatory_license_assignment",
+      "antivirus_attention_device",
+      "disabled_directory_account",
+      "failed_login",
+      "failed_login_within_30_days",
+      "high_confidence_unused_license_assignment",
+      "high_risk_unsupported_software_install",
+      "high_severity_open_security_event",
+      "human_directory_user",
+      "inactive_directory_user",
+      "inactive_human_directory_user",
+      "missing_antivirus_device",
+      "non_compliant_device",
+      "non_exception_license_assignment",
+      "open_security_event",
+      "open_support_ticket",
+      "open_support_ticket_older_than_30_days",
+      "outdated_software_install",
+      "privileged_group",
+      "recent_privileged_group_membership",
+      "risky_device",
+      "service_account",
+      "stale_device",
+      "terminated_employee",
+      "terminated_employee_with_active_account",
+      "unencrypted_device",
+      "unresolved_critical_security_event",
+      "unsupported_software_install",
+      "unused_license_assignment"
+    ],
+    "entities": [
+      "departments",
+      "devices",
+      "directory_users",
+      "groups",
+      "license_assignments",
+      "licenses",
+      "login_events",
+      "security_events",
+      "software_installs",
+      "support_tickets",
+      "user_group_memberships"
+    ],
+    "metrics": [
+      "active_human_users"
+    ],
+    "relationships": [
+      "device_assignee",
+      "device_department",
+      "directory_user_department",
+      "group_department",
+      "license_assignment_department",
+      "license_assignment_license",
+      "license_assignment_user",
+      "login_event_department",
+      "login_event_device",
+      "login_event_user",
+      "security_event_department",
+      "security_event_device",
+      "security_event_user",
+      "software_install_department",
+      "software_install_device",
+      "support_ticket_department",
+      "user_group_membership_department",
+      "user_group_membership_group",
+      "user_group_membership_user"
+    ],
+    "rules": [
+      "disablement_policy_review",
+      "non_compliant_device_posture"
+    ]
+  },
+  "catalog_version": "3",
+  "classification": "exploratory_not_blinded_holdout",
+  "context_authorization_excluded_from_global": {
+    "device_not_queryable": {
+      "concepts": [
+        "antivirus_attention_device",
+        "missing_antivirus_device",
+        "non_compliant_device",
+        "risky_device",
+        "stale_device",
+        "unencrypted_device"
+      ],
+      "entities": [
+        "devices"
+      ],
+      "relationships": [
+        "device_assignee",
+        "device_department",
+        "login_event_device",
+        "security_event_device",
+        "software_install_device"
+      ],
+      "rules": [
+        "non_compliant_device_posture"
+      ]
+    },
+    "missing_assignee_column": {
+      "relationships": [
+        "device_assignee"
+      ]
+    },
+    "missing_compliance_column": {
+      "concepts": [
+        "non_compliant_device",
+        "risky_device"
+      ],
+      "rules": [
+        "non_compliant_device_posture"
+      ]
+    },
+    "no_permission": {
+      "concepts": [
+        "active_directory_account",
+        "active_employee",
+        "active_exception_license_assignment",
+        "active_human_directory_user",
+        "active_license_assignment",
+        "active_mandatory_license_assignment",
+        "antivirus_attention_device",
+        "disabled_directory_account",
+        "failed_login",
+        "failed_login_within_30_days",
+        "high_confidence_unused_license_assignment",
+        "high_risk_unsupported_software_install",
+        "high_severity_open_security_event",
+        "human_directory_user",
+        "inactive_directory_user",
+        "inactive_human_directory_user",
+        "missing_antivirus_device",
+        "non_compliant_device",
+        "non_exception_license_assignment",
+        "open_security_event",
+        "open_support_ticket",
+        "open_support_ticket_older_than_30_days",
+        "outdated_software_install",
+        "privileged_group",
+        "recent_privileged_group_membership",
+        "risky_device",
+        "service_account",
+        "stale_device",
+        "terminated_employee",
+        "terminated_employee_with_active_account",
+        "unencrypted_device",
+        "unresolved_critical_security_event",
+        "unsupported_software_install",
+        "unused_license_assignment"
+      ],
+      "entities": [
+        "departments",
+        "devices",
+        "directory_users",
+        "groups",
+        "license_assignments",
+        "licenses",
+        "login_events",
+        "security_events",
+        "software_installs",
+        "support_tickets",
+        "user_group_memberships"
+      ],
+      "metrics": [
+        "active_human_users"
+      ],
+      "relationships": [
+        "device_assignee",
+        "device_department",
+        "directory_user_department",
+        "group_department",
+        "license_assignment_department",
+        "license_assignment_license",
+        "license_assignment_user",
+        "login_event_department",
+        "login_event_device",
+        "login_event_user",
+        "security_event_department",
+        "security_event_device",
+        "security_event_user",
+        "software_install_department",
+        "software_install_device",
+        "support_ticket_department",
+        "user_group_membership_department",
+        "user_group_membership_group",
+        "user_group_membership_user"
+      ],
+      "rules": [
+        "disablement_policy_review",
+        "non_compliant_device_posture"
+      ]
+    },
+    "no_scope": {
+      "concepts": [
+        "active_directory_account",
+        "active_employee",
+        "active_exception_license_assignment",
+        "active_human_directory_user",
+        "active_license_assignment",
+        "active_mandatory_license_assignment",
+        "antivirus_attention_device",
+        "disabled_directory_account",
+        "failed_login",
+        "failed_login_within_30_days",
+        "high_confidence_unused_license_assignment",
+        "high_risk_unsupported_software_install",
+        "high_severity_open_security_event",
+        "human_directory_user",
+        "inactive_directory_user",
+        "inactive_human_directory_user",
+        "missing_antivirus_device",
+        "non_compliant_device",
+        "non_exception_license_assignment",
+        "open_security_event",
+        "open_support_ticket",
+        "open_support_ticket_older_than_30_days",
+        "outdated_software_install",
+        "privileged_group",
+        "recent_privileged_group_membership",
+        "risky_device",
+        "service_account",
+        "stale_device",
+        "terminated_employee",
+        "terminated_employee_with_active_account",
+        "unencrypted_device",
+        "unresolved_critical_security_event",
+        "unsupported_software_install",
+        "unused_license_assignment"
+      ],
+      "entities": [
+        "devices",
+        "directory_users",
+        "groups",
+        "license_assignments",
+        "login_events",
+        "security_events",
+        "software_installs",
+        "support_tickets",
+        "user_group_memberships"
+      ],
+      "metrics": [
+        "active_human_users"
+      ],
+      "relationships": [
+        "device_assignee",
+        "device_department",
+        "directory_user_department",
+        "group_department",
+        "license_assignment_department",
+        "license_assignment_license",
+        "license_assignment_user",
+        "login_event_department",
+        "login_event_device",
+        "login_event_user",
+        "security_event_department",
+        "security_event_device",
+        "security_event_user",
+        "software_install_department",
+        "software_install_device",
+        "support_ticket_department",
+        "user_group_membership_department",
+        "user_group_membership_group",
+        "user_group_membership_user"
+      ],
+      "rules": [
+        "disablement_policy_review",
+        "non_compliant_device_posture"
+      ]
+    }
+  },
+  "context_table_counts": {
+    "device_not_queryable": 10,
+    "global": 11,
+    "missing_assignee_column": 11,
+    "missing_compliance_column": 11,
+    "no_permission": 0,
+    "no_scope": 2
+  },
+  "corpus_sha256": "203afe0e190bbcf4d569a596697a414c552496efae967577613ae51c5f9253e9",
+  "global_authorized_ids": {
+    "concepts": [
+      "active_directory_account",
+      "active_employee",
+      "active_exception_license_assignment",
+      "active_human_directory_user",
+      "active_license_assignment",
+      "active_mandatory_license_assignment",
+      "antivirus_attention_device",
+      "disabled_directory_account",
+      "failed_login",
+      "failed_login_within_30_days",
+      "high_confidence_unused_license_assignment",
+      "high_risk_unsupported_software_install",
+      "high_severity_open_security_event",
+      "human_directory_user",
+      "inactive_directory_user",
+      "inactive_human_directory_user",
+      "missing_antivirus_device",
+      "non_compliant_device",
+      "non_exception_license_assignment",
+      "open_security_event",
+      "open_support_ticket",
+      "open_support_ticket_older_than_30_days",
+      "outdated_software_install",
+      "privileged_group",
+      "recent_privileged_group_membership",
+      "risky_device",
+      "service_account",
+      "stale_device",
+      "terminated_employee",
+      "terminated_employee_with_active_account",
+      "unencrypted_device",
+      "unresolved_critical_security_event",
+      "unsupported_software_install",
+      "unused_license_assignment"
+    ],
+    "entities": [
+      "departments",
+      "devices",
+      "directory_users",
+      "groups",
+      "license_assignments",
+      "licenses",
+      "login_events",
+      "security_events",
+      "software_installs",
+      "support_tickets",
+      "user_group_memberships"
+    ],
+    "metrics": [
+      "active_human_users"
+    ],
+    "relationships": [
+      "device_assignee",
+      "device_department",
+      "directory_user_department",
+      "group_department",
+      "license_assignment_department",
+      "license_assignment_license",
+      "license_assignment_user",
+      "login_event_department",
+      "login_event_device",
+      "login_event_user",
+      "security_event_department",
+      "security_event_device",
+      "security_event_user",
+      "software_install_department",
+      "software_install_device",
+      "support_ticket_department",
+      "user_group_membership_department",
+      "user_group_membership_group",
+      "user_group_membership_user"
+    ],
+    "rules": [
+      "disablement_policy_review",
+      "non_compliant_device_posture"
+    ]
+  },
+  "offline_alternative_inventory": {
+    "alternatives": {
+      "all_authorized_facts_minimal": {
+        "all_expected_ids_present": 69,
+        "cases": 69,
+        "covered_and_within_cap": 0,
+        "max_bytes": 18366,
+        "min_bytes": 18366,
+        "missing_expected_ids_case_ids": [],
+        "over_cap_ids": [
+          "devices-canonical",
+          "devices-endpoint",
+          "devices-computer",
+          "devices-laptop",
+          "devices-desktop",
+          "devices-server",
+          "devices-description",
+          "directory-users-canonical",
+          "directory-users-employee",
+          "directory-users-personnel",
+          "directory-users-description",
+          "departments-canonical",
+          "departments-unit",
+          "departments-division",
+          "groups-canonical",
+          "groups-security",
+          "groups-role",
+          "license-products-canonical",
+          "license-products-subscription",
+          "license-products-software-subscription",
+          "license-assignments-canonical",
+          "license-assignments-paid",
+          "license-assignments-seat",
+          "login-events-canonical",
+          "login-events-description",
+          "login-events-sign-in",
+          "security-events-canonical",
+          "security-events-incident",
+          "security-events-alert",
+          "software-installs-canonical",
+          "software-installs-application",
+          "software-installs-package",
+          "support-tickets-canonical",
+          "support-tickets-helpdesk-request",
+          "support-tickets-helpdesk-case",
+          "memberships-canonical",
+          "memberships-member",
+          "memberships-entitlement",
+          "stale-device-canonical",
+          "stale-device-rephrase",
+          "stale-device-unanchored",
+          "unused-license-canonical",
+          "unused-license-rephrase",
+          "unused-license-unanchored",
+          "high-confidence-unused-canonical",
+          "high-confidence-unused-rephrase",
+          "high-confidence-unused-unanchored",
+          "active-human-metric-canonical",
+          "active-human-metric-rephrase",
+          "active-human-metric-unanchored",
+          "open-support-canonical",
+          "open-support-rephrase",
+          "open-support-unanchored",
+          "failed-login-canonical",
+          "failed-login-rephrase",
+          "failed-login-unanchored",
+          "non-compliant-posture-canonical",
+          "non-compliant-posture-rephrase",
+          "non-compliant-posture-expanded",
+          "disablement-review-canonical",
+          "disablement-review-rephrase",
+          "disablement-review-unanchored",
+          "device-assignee-canonical",
+          "device-assignee-rephrase",
+          "device-assignee-unanchored",
+          "license-holder-canonical",
+          "license-holder-rephrase",
+          "privileged-login-canonical",
+          "privileged-login-rephrase"
+        ],
+        "within_cap": 0
+      },
+      "all_entities_and_relationships": {
+        "all_expected_ids_present": 60,
+        "cases": 69,
+        "covered_and_within_cap": 60,
+        "max_bytes": 14521,
+        "min_bytes": 7064,
+        "missing_expected_ids_case_ids": [
+          "stale-device-unanchored",
+          "unused-license-unanchored",
+          "high-confidence-unused-unanchored",
+          "open-support-unanchored",
+          "failed-login-unanchored",
+          "non-compliant-posture-expanded",
+          "disablement-review-rephrase",
+          "disablement-review-unanchored",
+          "privileged-login-rephrase"
+        ],
+        "over_cap_ids": [],
+        "within_cap": 69
+      },
+      "selected_entity_definition_closure": {
+        "all_expected_ids_present": 42,
+        "cases": 69,
+        "covered_and_within_cap": 28,
+        "max_bytes": 20655,
+        "min_bytes": 362,
+        "missing_expected_ids_case_ids": [
+          "devices-computer",
+          "devices-laptop",
+          "devices-desktop",
+          "devices-server",
+          "directory-users-personnel",
+          "departments-unit",
+          "departments-division",
+          "license-products-subscription",
+          "license-products-software-subscription",
+          "license-assignments-seat",
+          "login-events-sign-in",
+          "security-events-incident",
+          "security-events-alert",
+          "software-installs-application",
+          "software-installs-package",
+          "support-tickets-helpdesk-request",
+          "support-tickets-helpdesk-case",
+          "memberships-entitlement",
+          "stale-device-unanchored",
+          "unused-license-unanchored",
+          "high-confidence-unused-unanchored",
+          "open-support-unanchored",
+          "failed-login-unanchored",
+          "disablement-review-unanchored",
+          "device-assignee-unanchored",
+          "license-holder-rephrase",
+          "privileged-login-rephrase"
+        ],
+        "over_cap_ids": [
+          "license-assignments-canonical",
+          "license-assignments-paid",
+          "memberships-canonical",
+          "memberships-member",
+          "unused-license-canonical",
+          "unused-license-rephrase",
+          "high-confidence-unused-canonical",
+          "high-confidence-unused-rephrase",
+          "disablement-review-canonical",
+          "disablement-review-rephrase",
+          "device-assignee-canonical",
+          "device-assignee-rephrase",
+          "license-holder-canonical",
+          "privileged-login-canonical"
+        ],
+        "within_cap": 55
+      }
+    },
+    "cap_bytes": 16000,
+    "classification": "post_first_run_offline_alternative_inventory_not_independent_validation",
+    "full_authorized_cardinality": {
+      "concepts": 34,
+      "entities": 11,
+      "metrics": 1,
+      "relationships": 19,
+      "rules": 2
+    },
+    "full_facts_minimal_bytes": 18366,
+    "full_facts_omits": [
+      "examples",
+      "candidate_signals",
+      "suggested_result_intent"
+    ],
+    "limits": [
+      "Copy-only availability/byte inventory: lexical signals are preserved rather than reranked for copied definitions.",
+      "All-positive corpus targets are present in the full authorized catalog by construction; 100 percent unbounded availability is tautological.",
+      "No alternative is a complete implementation or measured model improvement. Items above the cap are unusable under the current contract.",
+      "Broadening can add ambiguous/irrelevant choices; false selection, latency, cost, prompt interaction and deployment safety are unmeasured."
+    ]
+  },
+  "schema_method": "production_schema_context_and_access_policy_with_unpersisted_seed_metadata_loader_fixture",
+  "schema_version": 1,
+  "source_paths_unchanged": [
+    "backend/app",
+    "backend/scripts",
+    "backend/tests"
+  ],
+  "summary": {
+    "case_count": 79,
+    "concepts": {
+      "authorized_items": 40,
+      "catalog_present_items": 40,
+      "expected_items": 40,
+      "projected_items": 30,
+      "projected_over_authorized": 0.75
+    },
+    "control_case_count": 10,
+    "controls_passed": 10,
+    "entities": {
+      "authorized_items": 91,
+      "catalog_present_items": 91,
+      "expected_items": 91,
+      "projected_items": 56,
+      "projected_over_authorized": 0.6153846153846154
+    },
+    "metrics": {
+      "authorized_items": 3,
+      "catalog_present_items": 3,
+      "expected_items": 3,
+      "projected_items": 3,
+      "projected_over_authorized": 1.0
+    },
+    "positive_case_count": 69,
+    "positive_cases_fully_projected": 40,
+    "relationships": {
+      "authorized_items": 13,
+      "catalog_present_items": 13,
+      "expected_items": 13,
+      "projected_items": 7,
+      "projected_over_authorized": 0.5384615384615384
+    },
+    "rules": {
+      "authorized_items": 6,
+      "catalog_present_items": 6,
+      "expected_items": 6,
+      "projected_items": 3,
+      "projected_over_authorized": 0.5
+    },
+    "stage_counts": {
+      "control_satisfied": 10,
+      "covered": 40,
+      "definition_context_miss": 2,
+      "entity_retrieval_miss": 27
+    }
+  },
+  "vocabulary_families": {
+    "count": 11,
+    "fully_covered": [
+      "groups"
+    ],
+    "with_entity_miss": [
+      "departments",
+      "devices",
+      "directory-users",
+      "license-assignments",
+      "license-products",
+      "login-events",
+      "memberships",
+      "security-events",
+      "software-installs",
+      "support-tickets"
+    ]
+  },
+  "warnings": [
+    "Exploratory researcher-authored corpus; not population recall, blinded holdout, release evidence, or a model benchmark.",
+    "Policy and schema functions run unchanged; persisted metadata/effective permission resolution, PostgreSQL, RLS, and API execution are not tested.",
+    "Missing-column modes inject negative post-projection contexts; production schema builder exposes domain-pack columns.",
+    "Expected IDs measure availability only; laptop subtype filters, chosen definition, grain, Boolean meaning and final correctness are not scored.",
+    "Extra candidates and absent lexical matches are not errors by themselves; provider selection is not measured.",
+    "A missing rule/metric can sometimes be expressed by other supported forms; an absent required entity cannot be selected in a valid plan.",
+    "No provider invoked, SQL rendered/executed, row read, database connected, or database write performed."
+  ],
+  "results": [
+    {"id":"devices-canonical","lexical":{"entities":["devices"]},"missing":{},"projection_bytes":2808,"selected":{"concepts":["antivirus_attention_device","missing_antivirus_device","non_compliant_device","risky_device","stale_device","unencrypted_device"],"entities":["devices"],"metrics":[],"relationships":[],"rules":[]},"stage":"covered"},
+    {"id":"devices-endpoint","lexical":{"entities":["devices"]},"missing":{},"projection_bytes":2632,"selected":{"concepts":["antivirus_attention_device","missing_antivirus_device","non_compliant_device","risky_device","stale_device","unencrypted_device"],"entities":["devices"],"metrics":[],"relationships":[],"rules":[]},"stage":"covered"},
+    {"id":"devices-computer","lexical":{},"missing":{"entities":["devices"]},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"id":"devices-laptop","lexical":{},"missing":{"entities":["devices"]},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"id":"devices-desktop","lexical":{},"missing":{"entities":["devices"]},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"id":"devices-server","lexical":{},"missing":{"entities":["devices"]},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"id":"devices-description","lexical":{},"missing":{},"projection_bytes":2627,"selected":{"concepts":["antivirus_attention_device","missing_antivirus_device","non_compliant_device","risky_device","stale_device","unencrypted_device"],"entities":["devices"],"metrics":[],"relationships":[],"rules":[]},"stage":"covered"},
+    {"id":"directory-users-canonical","lexical":{"entities":["directory_users"]},"missing":{},"projection_bytes":4737,"selected":{"concepts":["active_directory_account","active_employee","active_human_directory_user","disabled_directory_account","human_directory_user","inactive_directory_user","inactive_human_directory_user","service_account","terminated_employee","terminated_employee_with_active_account"],"entities":["directory_users"],"metrics":["active_human_users"],"relationships":[],"rules":[]},"stage":"covered"},
+    {"id":"directory-users-employee","lexical":{"entities":["directory_users"]},"missing":{},"projection_bytes":4737,"selected":{"concepts":["active_directory_account","active_employee","active_human_directory_user","disabled_directory_account","human_directory_user","inactive_directory_user","inactive_human_directory_user","service_account","terminated_employee","terminated_employee_with_active_account"],"entities":["directory_users"],"metrics":["active_human_users"],"relationships":[],"rules":[]},"stage":"covered"},
+    {"id":"directory-users-personnel","lexical":{},"missing":{"entities":["directory_users"]},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"id":"directory-users-description","lexical":{},"missing":{},"projection_bytes":4718,"selected":{"concepts":["active_directory_account","active_employee","active_human_directory_user","disabled_directory_account","human_directory_user","inactive_directory_user","inactive_human_directory_user","service_account","terminated_employee","terminated_employee_with_active_account"],"entities":["directory_users"],"metrics":["active_human_users"],"relationships":[],"rules":[]},"stage":"covered"},
+    {"id":"departments-canonical","lexical":{"entities":["departments"]},"missing":{},"projection_bytes":584,"selected":{"concepts":[],"entities":["departments"],"metrics":[],"relationships":[],"rules":[]},"stage":"covered"},
+    {"id":"departments-unit","lexical":{},"missing":{"entities":["departments"]},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"id":"departments-division","lexical":{},"missing":{"entities":["departments"]},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"id":"groups-canonical","lexical":{"entities":["groups"]},"missing":{},"projection_bytes":869,"selected":{"concepts":["privileged_group"],"entities":["groups"],"metrics":[],"relationships":[],"rules":[]},"stage":"covered"},
+    {"id":"groups-security","lexical":{"entities":["groups"]},"missing":{},"projection_bytes":869,"selected":{"concepts":["privileged_group"],"entities":["groups"],"metrics":[],"relationships":[],"rules":[]},"stage":"covered"},
+    {"id":"groups-role","lexical":{},"missing":{},"projection_bytes":865,"selected":{"concepts":["privileged_group"],"entities":["groups"],"metrics":[],"relationships":[],"rules":[]},"stage":"covered"},
+    {"id":"license-products-canonical","lexical":{"entities":["licenses"]},"missing":{},"projection_bytes":554,"selected":{"concepts":[],"entities":["licenses"],"metrics":[],"relationships":[],"rules":[]},"stage":"covered"},
+    {"id":"license-products-subscription","lexical":{},"missing":{"entities":["licenses"]},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"id":"license-products-software-subscription","lexical":{"entities":["software_installs"]},"misleading_entity_only":true,"missing":{"entities":["licenses"]},"projection_bytes":1770,"selected":{"concepts":["high_risk_unsupported_software_install","outdated_software_install","unsupported_software_install"],"entities":["software_installs"],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"id":"license-assignments-canonical","lexical":{"entities":["license_assignments"]},"missing":{},"projection_bytes":10415,"selected":{"concepts":["active_exception_license_assignment","active_license_assignment","active_mandatory_license_assignment","high_confidence_unused_license_assignment","non_exception_license_assignment","unused_license_assignment"],"entities":["departments","devices","directory_users","groups","license_assignments","licenses","login_events","security_events","software_installs","support_tickets","user_group_memberships"],"metrics":[],"relationships":["device_assignee","device_department","directory_user_department","group_department","license_assignment_department","license_assignment_license","license_assignment_user","login_event_department","login_event_device","login_event_user","security_event_department","security_event_device","security_event_user","software_install_department","software_install_device","support_ticket_department","user_group_membership_department","user_group_membership_group","user_group_membership_user"],"rules":[]},"stage":"covered"},
+    {"id":"license-assignments-paid","lexical":{"entities":["license_assignments"]},"missing":{},"projection_bytes":9929,"selected":{"concepts":["active_exception_license_assignment","active_license_assignment","active_mandatory_license_assignment","high_confidence_unused_license_assignment","non_exception_license_assignment","unused_license_assignment"],"entities":["departments","devices","directory_users","groups","license_assignments","licenses","login_events","security_events","software_installs","support_tickets","user_group_memberships"],"metrics":[],"relationships":["device_assignee","device_department","directory_user_department","group_department","license_assignment_department","license_assignment_license","license_assignment_user","login_event_department","login_event_device","login_event_user","security_event_department","security_event_device","security_event_user","software_install_department","software_install_device","support_ticket_department","user_group_membership_department","user_group_membership_group","user_group_membership_user"],"rules":[]},"stage":"covered"},
+    {"id":"license-assignments-seat","lexical":{"entities":["software_installs"]},"misleading_entity_only":true,"missing":{"entities":["license_assignments"]},"projection_bytes":1770,"selected":{"concepts":["high_risk_unsupported_software_install","outdated_software_install","unsupported_software_install"],"entities":["software_installs"],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"id":"login-events-canonical","lexical":{"entities":["login_events"]},"missing":{},"projection_bytes":1344,"selected":{"concepts":["failed_login","failed_login_within_30_days"],"entities":["login_events"],"metrics":[],"relationships":[],"rules":[]},"stage":"covered"},
+    {"id":"login-events-description","lexical":{},"missing":{},"projection_bytes":1334,"selected":{"concepts":["failed_login","failed_login_within_30_days"],"entities":["login_events"],"metrics":[],"relationships":[],"rules":[]},"stage":"covered"},
+    {"id":"login-events-sign-in","lexical":{},"missing":{"entities":["login_events"]},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"id":"security-events-canonical","lexical":{"entities":["security_events"]},"missing":{},"projection_bytes":1937,"selected":{"concepts":["high_severity_open_security_event","open_security_event","unresolved_critical_security_event"],"entities":["security_events"],"metrics":[],"relationships":[],"rules":[]},"stage":"covered"},
+    {"id":"security-events-incident","lexical":{},"missing":{"entities":["security_events"]},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"id":"security-events-alert","lexical":{},"missing":{"entities":["security_events"]},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"id":"software-installs-canonical","lexical":{"entities":["software_installs"]},"missing":{},"projection_bytes":1770,"selected":{"concepts":["high_risk_unsupported_software_install","outdated_software_install","unsupported_software_install"],"entities":["software_installs"],"metrics":[],"relationships":[],"rules":[]},"stage":"covered"},
+    {"id":"software-installs-application","lexical":{},"missing":{"entities":["software_installs"]},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"id":"software-installs-package","lexical":{},"missing":{"entities":["software_installs"]},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"id":"support-tickets-canonical","lexical":{"entities":["support_tickets"]},"missing":{},"projection_bytes":1471,"selected":{"concepts":["open_support_ticket","open_support_ticket_older_than_30_days"],"entities":["support_tickets"],"metrics":[],"relationships":[],"rules":[]},"stage":"covered"},
+    {"id":"support-tickets-helpdesk-request","lexical":{},"missing":{"entities":["support_tickets"]},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"id":"support-tickets-helpdesk-case","lexical":{},"missing":{"entities":["support_tickets"]},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"id":"memberships-canonical","lexical":{"entities":["user_group_memberships"]},"missing":{},"projection_bytes":7960,"selected":{"concepts":["privileged_group","recent_privileged_group_membership"],"entities":["departments","devices","directory_users","groups","license_assignments","licenses","login_events","security_events","software_installs","support_tickets","user_group_memberships"],"metrics":[],"relationships":["device_assignee","device_department","directory_user_department","group_department","license_assignment_department","license_assignment_license","license_assignment_user","login_event_department","login_event_device","login_event_user","security_event_department","security_event_device","security_event_user","software_install_department","software_install_device","support_ticket_department","user_group_membership_department","user_group_membership_group","user_group_membership_user"],"rules":[]},"stage":"covered"},
+    {"id":"memberships-member","lexical":{"entities":["user_group_memberships"]},"missing":{},"projection_bytes":7960,"selected":{"concepts":["privileged_group","recent_privileged_group_membership"],"entities":["departments","devices","directory_users","groups","license_assignments","licenses","login_events","security_events","software_installs","support_tickets","user_group_memberships"],"metrics":[],"relationships":["device_assignee","device_department","directory_user_department","group_department","license_assignment_department","license_assignment_license","license_assignment_user","login_event_department","login_event_device","login_event_user","security_event_department","security_event_device","security_event_user","software_install_department","software_install_device","support_ticket_department","user_group_membership_department","user_group_membership_group","user_group_membership_user"],"rules":[]},"stage":"covered"},
+    {"id":"memberships-entitlement","lexical":{},"missing":{"entities":["user_group_memberships"]},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"id":"stale-device-canonical","lexical":{"concepts":["stale_device"],"entities":["devices"]},"missing":{},"projection_bytes":2647,"selected":{"concepts":["antivirus_attention_device","missing_antivirus_device","non_compliant_device","risky_device","stale_device","unencrypted_device"],"entities":["devices"],"metrics":[],"relationships":[],"rules":[]},"stage":"covered"},
+    {"id":"stale-device-rephrase","lexical":{"entities":["devices"]},"missing":{},"projection_bytes":2632,"selected":{"concepts":["antivirus_attention_device","missing_antivirus_device","non_compliant_device","risky_device","stale_device","unencrypted_device"],"entities":["devices"],"metrics":[],"relationships":[],"rules":[]},"stage":"covered"},
+    {"id":"stale-device-unanchored","lexical":{},"missing":{"concepts":["stale_device"],"entities":["devices"]},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"id":"unused-license-canonical","lexical":{"concepts":["unused_license_assignment"],"entities":["license_assignments"]},"missing":{},"projection_bytes":10443,"selected":{"concepts":["active_exception_license_assignment","active_license_assignment","active_mandatory_license_assignment","high_confidence_unused_license_assignment","non_exception_license_assignment","unused_license_assignment"],"entities":["departments","devices","directory_users","groups","license_assignments","licenses","login_events","security_events","software_installs","support_tickets","user_group_memberships"],"metrics":[],"relationships":["device_assignee","device_department","directory_user_department","group_department","license_assignment_department","license_assignment_license","license_assignment_user","login_event_department","login_event_device","login_event_user","security_event_department","security_event_device","security_event_user","software_install_department","software_install_device","support_ticket_department","user_group_membership_department","user_group_membership_group","user_group_membership_user"],"rules":[]},"stage":"covered"},
+    {"id":"unused-license-rephrase","lexical":{"entities":["license_assignments"]},"missing":{},"projection_bytes":10415,"selected":{"concepts":["active_exception_license_assignment","active_license_assignment","active_mandatory_license_assignment","high_confidence_unused_license_assignment","non_exception_license_assignment","unused_license_assignment"],"entities":["departments","devices","directory_users","groups","license_assignments","licenses","login_events","security_events","software_installs","support_tickets","user_group_memberships"],"metrics":[],"relationships":["device_assignee","device_department","directory_user_department","group_department","license_assignment_department","license_assignment_license","license_assignment_user","login_event_department","login_event_device","login_event_user","security_event_department","security_event_device","security_event_user","software_install_department","software_install_device","support_ticket_department","user_group_membership_department","user_group_membership_group","user_group_membership_user"],"rules":[]},"stage":"covered"},
+    {"id":"unused-license-unanchored","lexical":{},"missing":{"concepts":["unused_license_assignment"],"entities":["license_assignments"]},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"id":"high-confidence-unused-canonical","lexical":{"concepts":["high_confidence_unused_license_assignment"],"entities":["license_assignments"]},"missing":{},"projection_bytes":9460,"selected":{"concepts":["active_exception_license_assignment","active_license_assignment","active_mandatory_license_assignment","high_confidence_unused_license_assignment","non_exception_license_assignment"],"entities":["departments","devices","directory_users","groups","license_assignments","licenses","login_events","security_events","software_installs","support_tickets","user_group_memberships"],"metrics":[],"relationships":["device_assignee","device_department","directory_user_department","group_department","license_assignment_department","license_assignment_license","license_assignment_user","login_event_department","login_event_device","login_event_user","security_event_department","security_event_device","security_event_user","software_install_department","software_install_device","support_ticket_department","user_group_membership_department","user_group_membership_group","user_group_membership_user"],"rules":[]},"stage":"covered"},
+    {"id":"high-confidence-unused-rephrase","lexical":{"entities":["license_assignments"]},"missing":{},"projection_bytes":10415,"selected":{"concepts":["active_exception_license_assignment","active_license_assignment","active_mandatory_license_assignment","high_confidence_unused_license_assignment","non_exception_license_assignment","unused_license_assignment"],"entities":["departments","devices","directory_users","groups","license_assignments","licenses","login_events","security_events","software_installs","support_tickets","user_group_memberships"],"metrics":[],"relationships":["device_assignee","device_department","directory_user_department","group_department","license_assignment_department","license_assignment_license","license_assignment_user","login_event_department","login_event_device","login_event_user","security_event_department","security_event_device","security_event_user","software_install_department","software_install_device","support_ticket_department","user_group_membership_department","user_group_membership_group","user_group_membership_user"],"rules":[]},"stage":"covered"},
+    {"id":"high-confidence-unused-unanchored","lexical":{},"missing":{"concepts":["high_confidence_unused_license_assignment"],"entities":["license_assignments"]},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"id":"active-human-metric-canonical","lexical":{"entities":["directory_users"],"metrics":["active_human_users"]},"missing":{},"projection_bytes":5079,"selected":{"concepts":["active_directory_account","active_employee","active_human_directory_user","disabled_directory_account","human_directory_user","inactive_directory_user","inactive_human_directory_user","service_account","terminated_employee","terminated_employee_with_active_account"],"entities":["directory_users"],"metrics":["active_human_users"],"relationships":[],"rules":[]},"stage":"covered"},
+    {"id":"active-human-metric-rephrase","lexical":{"concepts":["active_human_directory_user","human_directory_user"],"entities":["directory_users"],"metrics":["active_human_users"]},"missing":{},"projection_bytes":5940,"selected":{"concepts":["active_directory_account","active_employee","active_human_directory_user","disabled_directory_account","human_directory_user","inactive_directory_user","inactive_human_directory_user","service_account","terminated_employee","terminated_employee_with_active_account"],"entities":["directory_users"],"metrics":["active_human_users"],"relationships":[],"rules":[]},"stage":"covered"},
+    {"id":"active-human-metric-unanchored","lexical":{},"missing":{},"projection_bytes":4718,"selected":{"concepts":["active_directory_account","active_employee","active_human_directory_user","disabled_directory_account","human_directory_user","inactive_directory_user","inactive_human_directory_user","service_account","terminated_employee","terminated_employee_with_active_account"],"entities":["directory_users"],"metrics":["active_human_users"],"relationships":[],"rules":[]},"stage":"covered"},
+    {"id":"open-support-canonical","lexical":{"concepts":["open_support_ticket"],"entities":["support_tickets"]},"missing":{},"projection_bytes":1493,"selected":{"concepts":["open_support_ticket","open_support_ticket_older_than_30_days"],"entities":["support_tickets"],"metrics":[],"relationships":[],"rules":[]},"stage":"covered"},
+    {"id":"open-support-rephrase","lexical":{"entities":["support_tickets"]},"missing":{},"projection_bytes":1471,"selected":{"concepts":["open_support_ticket","open_support_ticket_older_than_30_days"],"entities":["support_tickets"],"metrics":[],"relationships":[],"rules":[]},"stage":"covered"},
+    {"id":"open-support-unanchored","lexical":{},"missing":{"concepts":["open_support_ticket"],"entities":["support_tickets"]},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"id":"failed-login-canonical","lexical":{"concepts":["failed_login"],"entities":["login_events"]},"missing":{},"projection_bytes":1359,"selected":{"concepts":["failed_login","failed_login_within_30_days"],"entities":["login_events"],"metrics":[],"relationships":[],"rules":[]},"stage":"covered"},
+    {"id":"failed-login-rephrase","lexical":{},"missing":{},"projection_bytes":1334,"selected":{"concepts":["failed_login","failed_login_within_30_days"],"entities":["login_events"],"metrics":[],"relationships":[],"rules":[]},"stage":"covered"},
+    {"id":"failed-login-unanchored","lexical":{},"missing":{"concepts":["failed_login"],"entities":["login_events"]},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"id":"non-compliant-posture-canonical","lexical":{"entities":["devices"],"rules":["non_compliant_device_posture"]},"missing":{},"projection_bytes":3065,"selected":{"concepts":["antivirus_attention_device","missing_antivirus_device","non_compliant_device","risky_device","stale_device","unencrypted_device"],"entities":["devices"],"metrics":[],"relationships":[],"rules":["non_compliant_device_posture"]},"stage":"covered"},
+    {"id":"non-compliant-posture-rephrase","lexical":{"entities":["devices"],"rules":["non_compliant_device_posture"]},"missing":{},"projection_bytes":3065,"selected":{"concepts":["antivirus_attention_device","missing_antivirus_device","non_compliant_device","risky_device","stale_device","unencrypted_device"],"entities":["devices"],"metrics":[],"relationships":[],"rules":["non_compliant_device_posture"]},"stage":"covered"},
+    {"id":"non-compliant-posture-expanded","lexical":{"entities":["devices"]},"missing":{"rules":["non_compliant_device_posture"]},"projection_bytes":2632,"selected":{"concepts":["antivirus_attention_device","missing_antivirus_device","non_compliant_device","risky_device","stale_device","unencrypted_device"],"entities":["devices"],"metrics":[],"relationships":[],"rules":[]},"stage":"definition_context_miss"},
+    {"id":"disablement-review-canonical","lexical":{"concepts":["human_directory_user","inactive_human_directory_user"],"entities":["directory_users","groups","security_events","user_group_memberships"],"rules":["disablement_policy_review"]},"missing":{},"projection_bytes":14140,"selected":{"concepts":["active_directory_account","active_employee","active_human_directory_user","disabled_directory_account","high_severity_open_security_event","human_directory_user","inactive_directory_user","inactive_human_directory_user","privileged_group","recent_privileged_group_membership","service_account","terminated_employee","terminated_employee_with_active_account","unresolved_critical_security_event"],"entities":["departments","devices","directory_users","groups","license_assignments","licenses","login_events","security_events","software_installs","support_tickets","user_group_memberships"],"metrics":["active_human_users"],"relationships":["device_assignee","device_department","directory_user_department","group_department","license_assignment_department","license_assignment_license","license_assignment_user","login_event_department","login_event_device","login_event_user","security_event_department","security_event_device","security_event_user","software_install_department","software_install_device","support_ticket_department","user_group_membership_department","user_group_membership_group","user_group_membership_user"],"rules":["disablement_policy_review"]},"stage":"covered"},
+    {"id":"disablement-review-rephrase","lexical":{"concepts":["human_directory_user","inactive_human_directory_user","unresolved_critical_security_event"],"entities":["directory_users","security_events"]},"missing":{"concepts":["privileged_group"],"rules":["disablement_policy_review"]},"projection_bytes":12490,"selected":{"concepts":["active_directory_account","active_employee","active_human_directory_user","disabled_directory_account","high_severity_open_security_event","human_directory_user","inactive_directory_user","inactive_human_directory_user","service_account","terminated_employee","terminated_employee_with_active_account","unresolved_critical_security_event"],"entities":["departments","devices","directory_users","groups","license_assignments","licenses","login_events","security_events","software_installs","support_tickets","user_group_memberships"],"metrics":["active_human_users"],"relationships":["device_assignee","device_department","directory_user_department","group_department","license_assignment_department","license_assignment_license","license_assignment_user","login_event_department","login_event_device","login_event_user","security_event_department","security_event_device","security_event_user","software_install_department","software_install_device","support_ticket_department","user_group_membership_department","user_group_membership_group","user_group_membership_user"],"rules":[]},"stage":"definition_context_miss"},
+    {"id":"disablement-review-unanchored","lexical":{},"missing":{"concepts":["inactive_human_directory_user","privileged_group","unresolved_critical_security_event"],"entities":["directory_users","groups","security_events","user_group_memberships"],"rules":["disablement_policy_review"]},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"id":"device-assignee-canonical","lexical":{"entities":["devices","directory_users"]},"missing":{},"projection_bytes":13223,"selected":{"concepts":["active_directory_account","active_employee","active_human_directory_user","antivirus_attention_device","disabled_directory_account","human_directory_user","inactive_directory_user","inactive_human_directory_user","missing_antivirus_device","non_compliant_device","risky_device","service_account","stale_device","terminated_employee","terminated_employee_with_active_account","unencrypted_device"],"entities":["departments","devices","directory_users","groups","license_assignments","licenses","login_events","security_events","software_installs","support_tickets","user_group_memberships"],"metrics":["active_human_users"],"relationships":["device_assignee","device_department","directory_user_department","group_department","license_assignment_department","license_assignment_license","license_assignment_user","login_event_department","login_event_device","login_event_user","security_event_department","security_event_device","security_event_user","software_install_department","software_install_device","support_ticket_department","user_group_membership_department","user_group_membership_group","user_group_membership_user"],"rules":[]},"stage":"covered"},
+    {"id":"device-assignee-rephrase","lexical":{"entities":["devices","directory_users"]},"missing":{},"projection_bytes":13223,"selected":{"concepts":["active_directory_account","active_employee","active_human_directory_user","antivirus_attention_device","disabled_directory_account","human_directory_user","inactive_directory_user","inactive_human_directory_user","missing_antivirus_device","non_compliant_device","risky_device","service_account","stale_device","terminated_employee","terminated_employee_with_active_account","unencrypted_device"],"entities":["departments","devices","directory_users","groups","license_assignments","licenses","login_events","security_events","software_installs","support_tickets","user_group_memberships"],"metrics":["active_human_users"],"relationships":["device_assignee","device_department","directory_user_department","group_department","license_assignment_department","license_assignment_license","license_assignment_user","login_event_department","login_event_device","login_event_user","security_event_department","security_event_device","security_event_user","software_install_department","software_install_device","support_ticket_department","user_group_membership_department","user_group_membership_group","user_group_membership_user"],"rules":[]},"stage":"covered"},
+    {"id":"device-assignee-unanchored","lexical":{},"missing":{"entities":["devices","directory_users"],"relationships":["device_assignee"]},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"id":"license-holder-canonical","lexical":{"entities":["directory_users","license_assignments","licenses"]},"missing":{},"projection_bytes":14521,"selected":{"concepts":["active_directory_account","active_employee","active_exception_license_assignment","active_human_directory_user","active_license_assignment","active_mandatory_license_assignment","disabled_directory_account","high_confidence_unused_license_assignment","human_directory_user","inactive_directory_user","inactive_human_directory_user","non_exception_license_assignment","service_account","terminated_employee","terminated_employee_with_active_account","unused_license_assignment"],"entities":["departments","devices","directory_users","groups","license_assignments","licenses","login_events","security_events","software_installs","support_tickets","user_group_memberships"],"metrics":["active_human_users"],"relationships":["device_assignee","device_department","directory_user_department","group_department","license_assignment_department","license_assignment_license","license_assignment_user","login_event_department","login_event_device","login_event_user","security_event_department","security_event_device","security_event_user","software_install_department","software_install_device","support_ticket_department","user_group_membership_department","user_group_membership_group","user_group_membership_user"],"rules":[]},"stage":"covered"},
+    {"id":"license-holder-rephrase","lexical":{"entities":["software_installs"]},"missing":{"entities":["directory_users","license_assignments","licenses"],"relationships":["license_assignment_license","license_assignment_user"]},"projection_bytes":1770,"selected":{"concepts":["high_risk_unsupported_software_install","outdated_software_install","unsupported_software_install"],"entities":["software_installs"],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"id":"privileged-login-canonical","lexical":{"concepts":["failed_login","privileged_group"],"entities":["groups","login_events","user_group_memberships"]},"missing":{},"projection_bytes":12901,"selected":{"concepts":["active_directory_account","active_employee","active_human_directory_user","disabled_directory_account","failed_login","failed_login_within_30_days","human_directory_user","inactive_directory_user","inactive_human_directory_user","privileged_group","recent_privileged_group_membership","service_account","terminated_employee","terminated_employee_with_active_account"],"entities":["departments","devices","directory_users","groups","license_assignments","licenses","login_events","security_events","software_installs","support_tickets","user_group_memberships"],"metrics":["active_human_users"],"relationships":["device_assignee","device_department","directory_user_department","group_department","license_assignment_department","license_assignment_license","license_assignment_user","login_event_department","login_event_device","login_event_user","security_event_department","security_event_device","security_event_user","software_install_department","software_install_device","support_ticket_department","user_group_membership_department","user_group_membership_group","user_group_membership_user"],"rules":[]},"stage":"covered"},
+    {"id":"privileged-login-rephrase","lexical":{},"missing":{"concepts":["privileged_group"],"entities":["directory_users","groups","user_group_memberships"],"relationships":["login_event_user","user_group_membership_group","user_group_membership_user"]},"projection_bytes":1334,"selected":{"concepts":["failed_login","failed_login_within_30_days"],"entities":["login_events"],"metrics":[],"relationships":[],"rules":[]},"stage":"entity_retrieval_miss"},
+    {"control_pass":true,"id":"counterevidence-ambiguous","lexical":{},"missing":{},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"control_satisfied"},
+    {"control_pass":true,"id":"counterevidence-value-only","lexical":{},"missing":{},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"control_satisfied"},
+    {"control_pass":true,"id":"counterevidence-no-permission","lexical":{},"missing":{},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"control_satisfied"},
+    {"control_pass":true,"id":"counterevidence-no-assigned-scope","lexical":{},"missing":{},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"control_satisfied"},
+    {"control_pass":true,"id":"counterevidence-non-queryable","lexical":{},"missing":{},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"control_satisfied"},
+    {"control_pass":true,"id":"counterevidence-missing-predicate-column","lexical":{"entities":["devices"]},"missing":{},"projection_bytes":1920,"selected":{"concepts":["antivirus_attention_device","missing_antivirus_device","stale_device","unencrypted_device"],"entities":["devices"],"metrics":[],"relationships":[],"rules":[]},"stage":"control_satisfied"},
+    {"control_pass":true,"id":"counterevidence-missing-join-column","lexical":{"entities":["devices","directory_users"]},"missing":{},"projection_bytes":12988,"selected":{"concepts":["active_directory_account","active_employee","active_human_directory_user","antivirus_attention_device","disabled_directory_account","human_directory_user","inactive_directory_user","inactive_human_directory_user","missing_antivirus_device","non_compliant_device","risky_device","service_account","stale_device","terminated_employee","terminated_employee_with_active_account","unencrypted_device"],"entities":["departments","devices","directory_users","groups","license_assignments","licenses","login_events","security_events","software_installs","support_tickets","user_group_memberships"],"metrics":["active_human_users"],"relationships":["device_department","directory_user_department","group_department","license_assignment_department","license_assignment_license","license_assignment_user","login_event_department","login_event_device","login_event_user","security_event_department","security_event_device","security_event_user","software_install_department","software_install_device","support_ticket_department","user_group_membership_department","user_group_membership_group","user_group_membership_user"],"rules":[]},"stage":"control_satisfied"},
+    {"control_pass":true,"id":"counterevidence-restricted","lexical":{},"missing":{},"projection_bytes":362,"selected":{"concepts":[],"entities":[],"metrics":[],"relationships":[],"rules":[]},"stage":"control_satisfied"},
+    {"control_pass":true,"id":"counterevidence-not-active-metric","lexical":{"entities":["directory_users"]},"missing":{},"projection_bytes":5058,"selected":{"concepts":["active_directory_account","active_employee","active_human_directory_user","disabled_directory_account","human_directory_user","inactive_directory_user","inactive_human_directory_user","service_account","terminated_employee","terminated_employee_with_active_account"],"entities":["directory_users"],"metrics":["active_human_users"],"relationships":[],"rules":[]},"stage":"control_satisfied"},
+    {"control_pass":true,"decoy_ids_present":{"concepts":["active_human_directory_user"],"metrics":["active_human_users"]},"id":"counterevidence-service-account-decoy","lexical":{"concepts":["service_account"],"entities":["directory_users"]},"missing":{},"projection_bytes":5737,"selected":{"concepts":["active_directory_account","active_employee","active_human_directory_user","disabled_directory_account","human_directory_user","inactive_directory_user","inactive_human_directory_user","service_account","terminated_employee","terminated_employee_with_active_account"],"entities":["directory_users"],"metrics":["active_human_users"],"relationships":[],"rules":[]},"stage":"control_satisfied"}
+  ]
+}

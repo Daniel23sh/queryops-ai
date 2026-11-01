@@ -1,0 +1,344 @@
+{
+  "baseline_file_sha256": "03edf30fdc86b7427353223e8ca47e82e59cd5e12e01e4e6c155272587d1d2aa",
+  "baseline_reference": "baseline.json",
+  "candidate_observations_by_case": {
+    "exploratory-inactive": {
+      "catalog_hash": "918df0c63288b7ed7ce700f8442c82bc1ffa3f51e1f4eaa63fd66012af82adb4",
+      "catalog_id": "it_operations_semantic_catalog",
+      "catalog_version": "3",
+      "grounded_result_intent": null,
+      "mandatory_semantic_evidence": {
+        "concept_ids": [],
+        "entity_ids": [],
+        "metric_ids": [],
+        "rule_ids": []
+      },
+      "selected_concept_ids": [
+        "active_directory_account",
+        "active_employee",
+        "active_human_directory_user",
+        "disabled_directory_account",
+        "failed_login",
+        "failed_login_within_30_days",
+        "human_directory_user",
+        "inactive_directory_user",
+        "inactive_human_directory_user",
+        "service_account",
+        "terminated_employee",
+        "terminated_employee_with_active_account"
+      ],
+      "selected_entity_ids": [
+        "departments",
+        "devices",
+        "directory_users",
+        "groups",
+        "license_assignments",
+        "licenses",
+        "login_events",
+        "security_events",
+        "software_installs",
+        "support_tickets",
+        "user_group_memberships"
+      ],
+      "selected_example_ids": [],
+      "selected_metric_ids": [
+        "active_human_users"
+      ],
+      "selected_relationship_ids": [
+        "device_assignee",
+        "device_department",
+        "directory_user_department",
+        "group_department",
+        "license_assignment_department",
+        "license_assignment_license",
+        "license_assignment_user",
+        "login_event_department",
+        "login_event_device",
+        "login_event_user",
+        "security_event_department",
+        "security_event_device",
+        "security_event_user",
+        "software_install_department",
+        "software_install_device",
+        "support_ticket_department",
+        "user_group_membership_department",
+        "user_group_membership_group",
+        "user_group_membership_user"
+      ],
+      "selected_rule_ids": [],
+      "suggested_result_intent": null
+    },
+    "itops-easy-010": {
+      "catalog_hash": "918df0c63288b7ed7ce700f8442c82bc1ffa3f51e1f4eaa63fd66012af82adb4",
+      "catalog_id": "it_operations_semantic_catalog",
+      "catalog_version": "3",
+      "grounded_result_intent": null,
+      "mandatory_semantic_evidence": {
+        "concept_ids": [],
+        "entity_ids": [],
+        "metric_ids": [],
+        "rule_ids": []
+      },
+      "selected_concept_ids": [
+        "active_directory_account",
+        "active_employee",
+        "active_human_directory_user",
+        "disabled_directory_account",
+        "human_directory_user",
+        "inactive_directory_user",
+        "inactive_human_directory_user",
+        "service_account",
+        "terminated_employee",
+        "terminated_employee_with_active_account"
+      ],
+      "selected_entity_ids": [
+        "directory_users"
+      ],
+      "selected_example_ids": [
+        "active_service_accounts"
+      ],
+      "selected_metric_ids": [
+        "active_human_users"
+      ],
+      "selected_relationship_ids": [],
+      "selected_rule_ids": [],
+      "suggested_result_intent": null
+    },
+    "itops-hard-005": {
+      "catalog_hash": "918df0c63288b7ed7ce700f8442c82bc1ffa3f51e1f4eaa63fd66012af82adb4",
+      "catalog_id": "it_operations_semantic_catalog",
+      "catalog_version": "3",
+      "grounded_result_intent": null,
+      "mandatory_semantic_evidence": {
+        "concept_ids": [],
+        "entity_ids": [],
+        "metric_ids": [],
+        "rule_ids": []
+      },
+      "selected_concept_ids": [
+        "active_directory_account",
+        "active_employee",
+        "active_human_directory_user",
+        "antivirus_attention_device",
+        "disabled_directory_account",
+        "high_risk_unsupported_software_install",
+        "human_directory_user",
+        "inactive_directory_user",
+        "inactive_human_directory_user",
+        "missing_antivirus_device",
+        "non_compliant_device",
+        "outdated_software_install",
+        "risky_device",
+        "service_account",
+        "stale_device",
+        "terminated_employee",
+        "terminated_employee_with_active_account",
+        "unencrypted_device",
+        "unsupported_software_install"
+      ],
+      "selected_entity_ids": [
+        "departments",
+        "devices",
+        "directory_users",
+        "groups",
+        "license_assignments",
+        "licenses",
+        "login_events",
+        "security_events",
+        "software_installs",
+        "support_tickets",
+        "user_group_memberships"
+      ],
+      "selected_example_ids": [],
+      "selected_metric_ids": [
+        "active_human_users"
+      ],
+      "selected_relationship_ids": [
+        "device_assignee",
+        "device_department",
+        "directory_user_department",
+        "group_department",
+        "license_assignment_department",
+        "license_assignment_license",
+        "license_assignment_user",
+        "login_event_department",
+        "login_event_device",
+        "login_event_user",
+        "security_event_department",
+        "security_event_device",
+        "security_event_user",
+        "software_install_department",
+        "software_install_device",
+        "support_ticket_department",
+        "user_group_membership_department",
+        "user_group_membership_group",
+        "user_group_membership_user"
+      ],
+      "selected_rule_ids": [],
+      "suggested_result_intent": null
+    },
+    "itops-medium-009": {
+      "catalog_hash": "918df0c63288b7ed7ce700f8442c82bc1ffa3f51e1f4eaa63fd66012af82adb4",
+      "catalog_id": "it_operations_semantic_catalog",
+      "catalog_version": "3",
+      "grounded_result_intent": null,
+      "mandatory_semantic_evidence": {
+        "concept_ids": [],
+        "entity_ids": [],
+        "metric_ids": [],
+        "rule_ids": []
+      },
+      "selected_concept_ids": [
+        "antivirus_attention_device",
+        "high_risk_unsupported_software_install",
+        "missing_antivirus_device",
+        "non_compliant_device",
+        "outdated_software_install",
+        "risky_device",
+        "stale_device",
+        "unencrypted_device",
+        "unsupported_software_install"
+      ],
+      "selected_entity_ids": [
+        "departments",
+        "devices",
+        "directory_users",
+        "groups",
+        "license_assignments",
+        "licenses",
+        "login_events",
+        "security_events",
+        "software_installs",
+        "support_tickets",
+        "user_group_memberships"
+      ],
+      "selected_example_ids": [],
+      "selected_metric_ids": [],
+      "selected_relationship_ids": [
+        "device_assignee",
+        "device_department",
+        "directory_user_department",
+        "group_department",
+        "license_assignment_department",
+        "license_assignment_license",
+        "license_assignment_user",
+        "login_event_department",
+        "login_event_device",
+        "login_event_user",
+        "security_event_department",
+        "security_event_device",
+        "security_event_user",
+        "software_install_department",
+        "software_install_device",
+        "support_ticket_department",
+        "user_group_membership_department",
+        "user_group_membership_group",
+        "user_group_membership_user"
+      ],
+      "selected_rule_ids": [
+        "non_compliant_device_posture"
+      ],
+      "suggested_result_intent": null
+    },
+    "itops-medium-011": {
+      "catalog_hash": "918df0c63288b7ed7ce700f8442c82bc1ffa3f51e1f4eaa63fd66012af82adb4",
+      "catalog_id": "it_operations_semantic_catalog",
+      "catalog_version": "3",
+      "grounded_result_intent": null,
+      "mandatory_semantic_evidence": {
+        "concept_ids": [],
+        "entity_ids": [],
+        "metric_ids": [],
+        "rule_ids": []
+      },
+      "selected_concept_ids": [
+        "active_directory_account",
+        "active_employee",
+        "active_human_directory_user",
+        "disabled_directory_account",
+        "human_directory_user",
+        "inactive_directory_user",
+        "inactive_human_directory_user",
+        "service_account",
+        "terminated_employee",
+        "terminated_employee_with_active_account"
+      ],
+      "selected_entity_ids": [
+        "directory_users"
+      ],
+      "selected_example_ids": [
+        "active_service_accounts",
+        "not_disabled_accounts_literal",
+        "terminated_active_accounts"
+      ],
+      "selected_metric_ids": [
+        "active_human_users"
+      ],
+      "selected_relationship_ids": [],
+      "selected_rule_ids": [],
+      "suggested_result_intent": null
+    }
+  },
+  "catalog": {
+    "catalog_hash": "918df0c63288b7ed7ce700f8442c82bc1ffa3f51e1f4eaa63fd66012af82adb4",
+    "catalog_id": "it_operations_semantic_catalog",
+    "catalog_version": "3"
+  },
+  "database": {
+    "migration_head": "0010_disable_inactive_user",
+    "timezone": "Etc/UTC",
+    "transaction_time": "2026-11-01 14:02:44.954382+00:00",
+    "version": "PostgreSQL 16.14 (Debian 16.14-1.pgdg13+1) on aarch64-unknown-linux-gnu, compiled by gcc (Debian 14.2.0-19) 14.2.0, 64-bit"
+  },
+  "dataset_digest": "6ac164ab6c58c0b008a65afc01cd26aa434fecd3eaa402b5bdad9c89e6f6540f",
+  "investigation_head_sha": "a31eb0d5966576960e88ce1336a743eef859425e",
+  "live_provider_calls": 0,
+  "model_selection_tested": false,
+  "runtime_source_sha": "b1f03a4790c7569f7da0ef8d9be57ddd6da023c5",
+  "schema": "queryops-w6a-composition-v1",
+  "seed": 42,
+  "seed_fingerprint": "8d027d94029ba0fd0e3a3eebcc99fec41b0084140df54a8834ea73560b0eb077",
+  "seed_profile": "medium",
+  "seed_reference_time": "2026-11-01T09:20:36+00:00",
+  "seed_table_counts": {
+    "access_scopes": 9,
+    "app_users": 4,
+    "data_resources": 12,
+    "departments": 8,
+    "devices": 900,
+    "directory_users": 680,
+    "groups": 24,
+    "license_assignments": 1200,
+    "licenses": 8,
+    "login_events": 10000,
+    "permissions": 40,
+    "role_permissions": 80,
+    "roles": 4,
+    "security_events": 250,
+    "software_installs": 2000,
+    "support_tickets": 350,
+    "user_access_scopes": 4,
+    "user_group_memberships": 1200,
+    "user_permissions": 0
+  },
+  "probes": [
+    {"actor_role":"analyst","candidate_observation_ref":"itops-medium-009","case_id":"itops-medium-009","distinct":true,"executions_actual_then_expected":[{"count":16,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"f0e3a06f6f5f83e28d04889d5c25db4dbd3212930c25d9e0d84ec9cb9ac1367d","shape":{"columns":["id"],"mapped_key_counts":[1],"unique_column_count":1},"side":"actual","sql_sha256":"950c5bdb82b088f72a6b09adb26092c3f950fb5f6c29480d00a1e8668ac16f29","status":"succeeded","truncated":false,"unique_count":16},{"count":16,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"f0e3a06f6f5f83e28d04889d5c25db4dbd3212930c25d9e0d84ec9cb9ac1367d","shape":{"columns":["id"],"mapped_key_counts":[1],"unique_column_count":1},"side":"expected","sql_sha256":"1ce48743d7acc188bdc48d4aa1375b2ac7b334c8fbfd3ea4a04710ca308c3101","status":"succeeded","truncated":false,"unique_count":16}],"exploratory":false,"metrics":{"comparison_evidence":{"actual":{"complete":true,"exhausted":true,"limitation_reason":null},"expected":{"complete":true,"exhausted":true,"limitation_reason":null}},"provenance_reason":null,"row_comparison_before_semantic_contract_veto":"correct","semantic_contract":{"concepts_correct":true,"evaluated":true,"failure_reasons":[],"grain_correct":true,"outputs_correct":true,"passed":true,"rules_correct":true},"stages":{"execution":{"error_code":null,"status":"succeeded"},"semantic_conformance":{"reason_code":null,"status":"passed"},"semantic_plan_validation":{"reason_code":null,"status":"passed"},"semantic_sql_render":{"reason_code":null,"status":"passed"},"validation":{"error_code":null,"valid":true}}},"plan_sha256":"fddb3f4b58d1b5b2b53fb54b9a41bfc9972f9ea75f4e81c69102a7e8363f8a14","probe_id":"medium009_intended_or","runtime":{"isolation":"repeatable read","read_only":"on","runtime_role":"queryops_query_runtime","snapshot":"941:941:","timezone":"UTC","transaction_time":"2026-11-01 14:02:44.995021+00:00"},"same_snapshot_subset_controls":[],"same_snapshot_verified":true,"selected_concepts":["outdated_software_install"],"selected_rules":["non_compliant_device_posture"],"source":"handwritten_plan_fixture_not_model_selection","summary":{"comparison_limitation_reason":null,"comparison_state":"correct","delivery_completeness":"complete","error_code":null,"failure_reasons":[],"passed":true,"status":"succeeded"}},
+    {"actor_role":"analyst","candidate_observation_ref":"itops-medium-009","case_id":"itops-medium-009","distinct":true,"executions_actual_then_expected":[{"count":11,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"79345f9ba26f11db84cec2b62e3a6c944a58c3ba826b03b0327f166feadb3f4c","shape":{"columns":["id"],"mapped_key_counts":[1],"unique_column_count":1},"side":"actual","sql_sha256":"4471a22e64e9dfb23a94c1b6a1ed250331dada3202ce4100ad47138e95f3f6a4","status":"succeeded","truncated":false,"unique_count":11},{"count":16,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"f0e3a06f6f5f83e28d04889d5c25db4dbd3212930c25d9e0d84ec9cb9ac1367d","shape":{"columns":["id"],"mapped_key_counts":[1],"unique_column_count":1},"side":"expected","sql_sha256":"1ce48743d7acc188bdc48d4aa1375b2ac7b334c8fbfd3ea4a04710ca308c3101","status":"succeeded","truncated":false,"unique_count":16}],"exploratory":false,"metrics":{"comparison_evidence":{"actual":{"complete":true,"exhausted":true,"limitation_reason":null},"expected":{"complete":true,"exhausted":true,"limitation_reason":null}},"provenance_reason":null,"row_comparison_before_semantic_contract_veto":"incorrect","semantic_contract":{"concepts_correct":true,"evaluated":true,"failure_reasons":["required_rule_missing"],"grain_correct":true,"outputs_correct":true,"passed":false,"rules_correct":false},"stages":{"execution":{"error_code":null,"status":"succeeded"},"semantic_conformance":{"reason_code":null,"status":"passed"},"semantic_plan_validation":{"reason_code":null,"status":"passed"},"semantic_sql_render":{"reason_code":null,"status":"passed"},"validation":{"error_code":null,"valid":true}}},"plan_sha256":"4c8198c289b9ee6a4c18da0ea33111a2032512162a029d9989116efbd7eb135a","probe_id":"medium009_status_only","runtime":{"isolation":"repeatable read","read_only":"on","runtime_role":"queryops_query_runtime","snapshot":"942:942:","timezone":"UTC","transaction_time":"2026-11-01 14:02:45.026111+00:00"},"same_snapshot_subset_controls":[],"same_snapshot_verified":true,"selected_concepts":["outdated_software_install","non_compliant_device"],"selected_rules":[],"source":"handwritten_plan_fixture_not_model_selection","summary":{"comparison_limitation_reason":null,"comparison_state":"incorrect","delivery_completeness":"complete","error_code":null,"failure_reasons":["row_count_mismatch"],"passed":false,"status":"succeeded"}},
+    {"actor_role":"analyst","candidate_observation_ref":"itops-medium-009","case_id":"itops-medium-009","distinct":true,"executions_actual_then_expected":[{"count":48,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"fcb35a7ebea4c9c51fc3386c76e7fe11bf3bf3eb460ad3ce07a80cb895dba2ad","shape":{"columns":["id"],"mapped_key_counts":[1],"unique_column_count":1},"side":"actual","sql_sha256":"3d4d8ac0fe0d9d86f936657a730c3fc38a1510c6a67ebe3d89e3aa4a8f9d2e36","status":"succeeded","truncated":false,"unique_count":48},{"count":16,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"f0e3a06f6f5f83e28d04889d5c25db4dbd3212930c25d9e0d84ec9cb9ac1367d","shape":{"columns":["id"],"mapped_key_counts":[1],"unique_column_count":1},"side":"expected","sql_sha256":"1ce48743d7acc188bdc48d4aa1375b2ac7b334c8fbfd3ea4a04710ca308c3101","status":"succeeded","truncated":false,"unique_count":16}],"exploratory":false,"metrics":{"comparison_evidence":{"actual":{"complete":true,"exhausted":true,"limitation_reason":null},"expected":{"complete":true,"exhausted":true,"limitation_reason":null}},"provenance_reason":null,"row_comparison_before_semantic_contract_veto":"incorrect","semantic_contract":{"concepts_correct":true,"evaluated":true,"failure_reasons":["required_rule_missing"],"grain_correct":true,"outputs_correct":true,"passed":false,"rules_correct":false},"stages":{"execution":{"error_code":null,"status":"succeeded"},"semantic_conformance":{"reason_code":null,"status":"passed"},"semantic_plan_validation":{"reason_code":null,"status":"passed"},"semantic_sql_render":{"reason_code":null,"status":"passed"},"validation":{"error_code":null,"valid":true}}},"plan_sha256":"2fad987a8ec2c4e4fb38210015ad559a0e5b747a213be77151b575f8b81e4ec9","probe_id":"medium009_rule_omitted","runtime":{"isolation":"repeatable read","read_only":"on","runtime_role":"queryops_query_runtime","snapshot":"943:943:","timezone":"UTC","transaction_time":"2026-11-01 14:02:45.044843+00:00"},"same_snapshot_subset_controls":[],"same_snapshot_verified":true,"selected_concepts":["outdated_software_install"],"selected_rules":[],"source":"handwritten_plan_fixture_not_model_selection","summary":{"comparison_limitation_reason":null,"comparison_state":"incorrect","delivery_completeness":"complete","error_code":null,"failure_reasons":["row_count_mismatch"],"passed":false,"status":"succeeded"}},
+    {"actor_role":"analyst","candidate_observation_ref":"itops-medium-009","case_id":"itops-medium-009","distinct":true,"executions_actual_then_expected":[{"count":11,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"79345f9ba26f11db84cec2b62e3a6c944a58c3ba826b03b0327f166feadb3f4c","shape":{"columns":["id"],"mapped_key_counts":[1],"unique_column_count":1},"side":"actual","sql_sha256":"2434e9ec4e68d2648137b1e222a272ac6d0e35576ef5aa671ddbf7244c9e1c09","status":"succeeded","truncated":false,"unique_count":11},{"count":16,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"f0e3a06f6f5f83e28d04889d5c25db4dbd3212930c25d9e0d84ec9cb9ac1367d","shape":{"columns":["id"],"mapped_key_counts":[1],"unique_column_count":1},"side":"expected","sql_sha256":"1ce48743d7acc188bdc48d4aa1375b2ac7b334c8fbfd3ea4a04710ca308c3101","status":"succeeded","truncated":false,"unique_count":16}],"exploratory":false,"metrics":{"comparison_evidence":{"actual":{"complete":true,"exhausted":true,"limitation_reason":null},"expected":{"complete":true,"exhausted":true,"limitation_reason":null}},"provenance_reason":null,"row_comparison_before_semantic_contract_veto":"incorrect","semantic_contract":{"concepts_correct":true,"evaluated":true,"failure_reasons":[],"grain_correct":true,"outputs_correct":true,"passed":true,"rules_correct":true},"stages":{"execution":{"error_code":null,"status":"succeeded"},"semantic_conformance":{"reason_code":null,"status":"passed"},"semantic_plan_validation":{"reason_code":null,"status":"passed"},"semantic_sql_render":{"reason_code":null,"status":"passed"},"validation":{"error_code":null,"valid":true}}},"plan_sha256":"6eb69cfc67b71d069d3dad82192c4a2fb96c590a6901b34040ef71578a311b3a","probe_id":"medium009_or_plus_status","runtime":{"isolation":"repeatable read","read_only":"on","runtime_role":"queryops_query_runtime","snapshot":"944:944:","timezone":"UTC","transaction_time":"2026-11-01 14:02:45.062221+00:00"},"same_snapshot_subset_controls":[],"same_snapshot_verified":true,"selected_concepts":["outdated_software_install","non_compliant_device"],"selected_rules":["non_compliant_device_posture"],"source":"handwritten_plan_fixture_not_model_selection","summary":{"comparison_limitation_reason":null,"comparison_state":"incorrect","delivery_completeness":"complete","error_code":null,"failure_reasons":["row_count_mismatch"],"passed":false,"status":"succeeded"}},
+    {"actor_role":"analyst","candidate_observation_ref":"itops-medium-009","case_id":"itops-medium-009","distinct":true,"executions_actual_then_expected":[{"count":9,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"47c913a5a42beff089635f35c83d9589d0a92b07b94239aecf83cc9f2c870e7d","shape":{"columns":["id"],"mapped_key_counts":[1],"unique_column_count":1},"side":"actual","sql_sha256":"d120c89cd5f7e37cbcad95661368c90b3cb2e335c07462d10bf43800b445d052","status":"succeeded","truncated":false,"unique_count":9},{"count":16,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"f0e3a06f6f5f83e28d04889d5c25db4dbd3212930c25d9e0d84ec9cb9ac1367d","shape":{"columns":["id"],"mapped_key_counts":[1],"unique_column_count":1},"side":"expected","sql_sha256":"1ce48743d7acc188bdc48d4aa1375b2ac7b334c8fbfd3ea4a04710ca308c3101","status":"succeeded","truncated":false,"unique_count":16}],"exploratory":false,"metrics":{"comparison_evidence":{"actual":{"complete":true,"exhausted":true,"limitation_reason":null},"expected":{"complete":true,"exhausted":true,"limitation_reason":null}},"provenance_reason":null,"row_comparison_before_semantic_contract_veto":"incorrect","semantic_contract":{"concepts_correct":true,"evaluated":true,"failure_reasons":[],"grain_correct":true,"outputs_correct":true,"passed":true,"rules_correct":true},"stages":{"execution":{"error_code":null,"status":"succeeded"},"semantic_conformance":{"reason_code":null,"status":"passed"},"semantic_plan_validation":{"reason_code":null,"status":"passed"},"semantic_sql_render":{"reason_code":null,"status":"passed"},"validation":{"error_code":null,"valid":true}}},"plan_sha256":"55deba0c81d3e5bc68fa7e38d2c3523629c2adaa0cf712f410d4c83159b4ae9b","probe_id":"medium009_or_plus_antivirus","runtime":{"isolation":"repeatable read","read_only":"on","runtime_role":"queryops_query_runtime","snapshot":"945:945:","timezone":"UTC","transaction_time":"2026-11-01 14:02:45.080580+00:00"},"same_snapshot_subset_controls":[],"same_snapshot_verified":true,"selected_concepts":["outdated_software_install","antivirus_attention_device"],"selected_rules":["non_compliant_device_posture"],"source":"handwritten_plan_fixture_not_model_selection","summary":{"comparison_limitation_reason":null,"comparison_state":"incorrect","delivery_completeness":"complete","error_code":null,"failure_reasons":["row_count_mismatch"],"passed":false,"status":"succeeded"}},
+    {"actor_role":"analyst","candidate_observation_ref":"itops-medium-009","case_id":"itops-medium-009","distinct":true,"executions_actual_then_expected":[{"count":4,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"e7f957b295db259b428540a67afeaa80be9c6459935dedeb1be0b1feaca77968","shape":{"columns":["id"],"mapped_key_counts":[1],"unique_column_count":1},"side":"actual","sql_sha256":"35081bb7d921328ebc41e0a85d673e9919fa44ab076829a271422c955ec6c09d","status":"succeeded","truncated":false,"unique_count":4},{"count":16,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"f0e3a06f6f5f83e28d04889d5c25db4dbd3212930c25d9e0d84ec9cb9ac1367d","shape":{"columns":["id"],"mapped_key_counts":[1],"unique_column_count":1},"side":"expected","sql_sha256":"1ce48743d7acc188bdc48d4aa1375b2ac7b334c8fbfd3ea4a04710ca308c3101","status":"succeeded","truncated":false,"unique_count":16}],"exploratory":false,"metrics":{"comparison_evidence":{"actual":{"complete":true,"exhausted":true,"limitation_reason":null},"expected":{"complete":true,"exhausted":true,"limitation_reason":null}},"provenance_reason":null,"row_comparison_before_semantic_contract_veto":"incorrect","semantic_contract":{"concepts_correct":true,"evaluated":true,"failure_reasons":[],"grain_correct":true,"outputs_correct":true,"passed":true,"rules_correct":true},"stages":{"execution":{"error_code":null,"status":"succeeded"},"semantic_conformance":{"reason_code":null,"status":"passed"},"semantic_plan_validation":{"reason_code":null,"status":"passed"},"semantic_sql_render":{"reason_code":null,"status":"passed"},"validation":{"error_code":null,"valid":true}}},"plan_sha256":"1d37d28f5aa0fa7e1cf63299ad3caebed987ffafbe1dfbbf3367b3f8ce9789f4","probe_id":"medium009_or_plus_encryption","runtime":{"isolation":"repeatable read","read_only":"on","runtime_role":"queryops_query_runtime","snapshot":"946:946:","timezone":"UTC","transaction_time":"2026-11-01 14:02:45.099301+00:00"},"same_snapshot_subset_controls":[],"same_snapshot_verified":true,"selected_concepts":["outdated_software_install","unencrypted_device"],"selected_rules":["non_compliant_device_posture"],"source":"handwritten_plan_fixture_not_model_selection","summary":{"comparison_limitation_reason":null,"comparison_state":"incorrect","delivery_completeness":"complete","error_code":null,"failure_reasons":["row_count_mismatch"],"passed":false,"status":"succeeded"}},
+    {"actor_role":"analyst","candidate_observation_ref":"itops-medium-009","case_id":"itops-medium-009","distinct":true,"executions_actual_then_expected":[{"count":16,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"f0e3a06f6f5f83e28d04889d5c25db4dbd3212930c25d9e0d84ec9cb9ac1367d","shape":{"columns":["id"],"mapped_key_counts":[1],"unique_column_count":1},"side":"expected","sql_sha256":"1ce48743d7acc188bdc48d4aa1375b2ac7b334c8fbfd3ea4a04710ca308c3101","status":"succeeded","truncated":false,"unique_count":16}],"exploratory":false,"metrics":{"comparison_evidence":null,"provenance_reason":null,"row_comparison_before_semantic_contract_veto":"not_reached","semantic_contract":{"concepts_correct":null,"evaluated":false,"failure_reasons":[],"grain_correct":null,"outputs_correct":null,"passed":null,"rules_correct":null},"stages":{"execution":null,"semantic_conformance":null,"semantic_plan_validation":{"reason_code":"composition_rule_overconstraint","status":"failed"},"semantic_sql_render":null,"validation":null}},"plan_sha256":"dc47dc5b59690aafea674765fbf65ef7270ead6c12278c919d4cfa5d0ddb5600","probe_id":"medium009_or_plus_all_branches","runtime":{"isolation":"repeatable read","read_only":"on","runtime_role":"queryops_query_runtime","snapshot":"947:947:","timezone":"UTC","transaction_time":"2026-11-01 14:02:45.116941+00:00"},"same_snapshot_subset_controls":[],"same_snapshot_verified":true,"selected_concepts":["outdated_software_install","non_compliant_device","antivirus_attention_device","unencrypted_device"],"selected_rules":["non_compliant_device_posture"],"source":"handwritten_plan_fixture_not_model_selection","summary":{"comparison_limitation_reason":null,"comparison_state":"not_reached","delivery_completeness":"unknown","error_code":"provider_response_invalid","failure_reasons":["unexpected_outcome","execution_state_mismatch","referenced_tables_mismatch"],"passed":false,"status":"failed"}},
+    {"actor_role":"analyst","candidate_observation_ref":"itops-medium-009","case_id":"itops-medium-009","distinct":true,"executions_actual_then_expected":[{"count":1,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"f883cd2d363b0da099b322e13fa68b630e5154f11ef996c94174a1b4c03797aa","shape":{"columns":["id"],"mapped_key_counts":[1],"unique_column_count":1},"side":"actual","sql_sha256":"cd6230a1c79da613ab765845a0092bd92256958631a06f970fbd76a70f3c5565","status":"succeeded","truncated":false,"unique_count":1},{"count":16,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"f0e3a06f6f5f83e28d04889d5c25db4dbd3212930c25d9e0d84ec9cb9ac1367d","shape":{"columns":["id"],"mapped_key_counts":[1],"unique_column_count":1},"side":"expected","sql_sha256":"1ce48743d7acc188bdc48d4aa1375b2ac7b334c8fbfd3ea4a04710ca308c3101","status":"succeeded","truncated":false,"unique_count":16}],"exploratory":false,"metrics":{"comparison_evidence":{"actual":{"complete":true,"exhausted":true,"limitation_reason":null},"expected":{"complete":true,"exhausted":true,"limitation_reason":null}},"provenance_reason":null,"row_comparison_before_semantic_contract_veto":"incorrect","semantic_contract":{"concepts_correct":true,"evaluated":true,"failure_reasons":["required_rule_missing"],"grain_correct":true,"outputs_correct":true,"passed":false,"rules_correct":false},"stages":{"execution":{"error_code":null,"status":"succeeded"},"semantic_conformance":{"reason_code":null,"status":"passed"},"semantic_plan_validation":{"reason_code":null,"status":"passed"},"semantic_sql_render":{"reason_code":null,"status":"passed"},"validation":{"error_code":null,"valid":true}}},"plan_sha256":"6541f4906a68e932517122a7956f3ad1b178d1009fc5f1bb9f08b46dcbe98d90","probe_id":"medium009_all_branches_no_rule","runtime":{"isolation":"repeatable read","read_only":"on","runtime_role":"queryops_query_runtime","snapshot":"948:948:","timezone":"UTC","transaction_time":"2026-11-01 14:02:45.130673+00:00"},"same_snapshot_subset_controls":[],"same_snapshot_verified":true,"selected_concepts":["outdated_software_install","non_compliant_device","antivirus_attention_device","unencrypted_device"],"selected_rules":[],"source":"handwritten_plan_fixture_not_model_selection","summary":{"comparison_limitation_reason":null,"comparison_state":"incorrect","delivery_completeness":"complete","error_code":null,"failure_reasons":["row_count_mismatch"],"passed":false,"status":"succeeded"}},
+    {"actor_role":"analyst","candidate_observation_ref":"itops-medium-009","case_id":"itops-medium-009","distinct":false,"executions_actual_then_expected":[{"count":25,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"2adf085d713ae8ce66575155ec769e24f9ab126c5dd59a752c7c9f5bd16110d5","shape":{"columns":["id"],"mapped_key_counts":[1],"unique_column_count":1},"side":"actual","sql_sha256":"d670c363e725fd1f63cad95e1ccaf84bd76393c86c4647865c921799581c0ab9","status":"succeeded","truncated":false,"unique_count":16},{"count":16,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"f0e3a06f6f5f83e28d04889d5c25db4dbd3212930c25d9e0d84ec9cb9ac1367d","shape":{"columns":["id"],"mapped_key_counts":[1],"unique_column_count":1},"side":"expected","sql_sha256":"1ce48743d7acc188bdc48d4aa1375b2ac7b334c8fbfd3ea4a04710ca308c3101","status":"succeeded","truncated":false,"unique_count":16}],"exploratory":false,"metrics":{"comparison_evidence":{"actual":{"complete":true,"exhausted":true,"limitation_reason":null},"expected":{"complete":true,"exhausted":true,"limitation_reason":null}},"provenance_reason":null,"row_comparison_before_semantic_contract_veto":"incorrect","semantic_contract":{"concepts_correct":true,"evaluated":true,"failure_reasons":[],"grain_correct":true,"outputs_correct":true,"passed":true,"rules_correct":true},"stages":{"execution":{"error_code":null,"status":"succeeded"},"semantic_conformance":{"reason_code":null,"status":"passed"},"semantic_plan_validation":{"reason_code":null,"status":"passed"},"semantic_sql_render":{"reason_code":null,"status":"passed"},"validation":{"error_code":null,"valid":true}}},"plan_sha256":"e77eb28afe2d954362a1579ef793d9cfebe977cbd38de151674925de8fdba8f9","probe_id":"medium009_no_distinct","runtime":{"isolation":"repeatable read","read_only":"on","runtime_role":"queryops_query_runtime","snapshot":"949:949:","timezone":"UTC","transaction_time":"2026-11-01 14:02:45.147217+00:00"},"same_snapshot_subset_controls":[],"same_snapshot_verified":true,"selected_concepts":["outdated_software_install"],"selected_rules":["non_compliant_device_posture"],"source":"handwritten_plan_fixture_not_model_selection","summary":{"comparison_limitation_reason":null,"comparison_state":"incorrect","delivery_completeness":"complete","error_code":null,"failure_reasons":["row_count_mismatch"],"passed":false,"status":"succeeded"}},
+    {"actor_role":"manager","candidate_observation_ref":"itops-easy-010","case_id":"itops-easy-010","distinct":false,"executions_actual_then_expected":[{"count":11,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"46c236970b5630b614df2dc8a222e88f657cbebce6cb76fb81946be021507b6b","shape":{"columns":["account_status","account_type","id"],"mapped_key_counts":[3],"unique_column_count":3},"side":"actual","sql_sha256":"4252719dcbf1db968085e265d39a5812240fc38e3ecce6fbab56bf00a8e6935c","status":"succeeded","truncated":false,"unique_count":11},{"count":11,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"46c236970b5630b614df2dc8a222e88f657cbebce6cb76fb81946be021507b6b","shape":{"columns":["id","account_type","account_status"],"mapped_key_counts":[3],"unique_column_count":3},"side":"expected","sql_sha256":"c58e81e3021fd45ac2589f2f4c2025c52b7d7358b4371fe0754cb24c89e99067","status":"succeeded","truncated":false,"unique_count":11}],"exploratory":false,"metrics":{"comparison_evidence":{"actual":{"complete":true,"exhausted":true,"limitation_reason":null},"expected":{"complete":true,"exhausted":true,"limitation_reason":null}},"provenance_reason":null,"row_comparison_before_semantic_contract_veto":"correct","semantic_contract":{"concepts_correct":true,"evaluated":true,"failure_reasons":[],"grain_correct":true,"outputs_correct":true,"passed":true,"rules_correct":true},"stages":{"execution":{"error_code":null,"status":"succeeded"},"semantic_conformance":{"reason_code":null,"status":"passed"},"semantic_plan_validation":{"reason_code":null,"status":"passed"},"semantic_sql_render":{"reason_code":null,"status":"passed"},"validation":{"error_code":null,"valid":true}}},"plan_sha256":"fa4b428bf08fe592a98e063e91e280cf12d9f92da950aacb43e20d551d152f81","probe_id":"service_accounts_catalog","runtime":{"isolation":"repeatable read","read_only":"on","runtime_role":"queryops_query_runtime","snapshot":"950:950:","timezone":"UTC","transaction_time":"2026-11-01 14:02:45.169725+00:00"},"same_snapshot_subset_controls":[],"same_snapshot_verified":true,"selected_concepts":["service_account"],"selected_rules":[],"source":"handwritten_plan_fixture_not_model_selection","summary":{"comparison_limitation_reason":null,"comparison_state":"correct","delivery_completeness":"complete","error_code":null,"failure_reasons":[],"passed":true,"status":"succeeded"}},
+    {"actor_role":"manager","candidate_observation_ref":"itops-medium-011","case_id":"itops-medium-011","distinct":false,"executions_actual_then_expected":[{"count":4,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"66a176f30ac970e85f05d9ddb5027d3e78ca1b855194fa76cc06a6121472958a","shape":{"columns":["account_status","employee_status","id"],"mapped_key_counts":[3],"unique_column_count":3},"side":"actual","sql_sha256":"7804877d890e1b4a1534751d6bfbd7b4ce679a731a15b9fcfd415b5330eeb3af","status":"succeeded","truncated":false,"unique_count":4},{"count":4,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"66a176f30ac970e85f05d9ddb5027d3e78ca1b855194fa76cc06a6121472958a","shape":{"columns":["id","employee_status","account_status"],"mapped_key_counts":[3],"unique_column_count":3},"side":"expected","sql_sha256":"d6f3ac11b224217a57b401228daab19823bcd749512aa6831ecf01b9ff3cbb55","status":"succeeded","truncated":false,"unique_count":4}],"exploratory":false,"metrics":{"comparison_evidence":{"actual":{"complete":true,"exhausted":true,"limitation_reason":null},"expected":{"complete":true,"exhausted":true,"limitation_reason":null}},"provenance_reason":null,"row_comparison_before_semantic_contract_veto":"correct","semantic_contract":{"concepts_correct":true,"evaluated":true,"failure_reasons":[],"grain_correct":true,"outputs_correct":true,"passed":true,"rules_correct":true},"stages":{"execution":{"error_code":null,"status":"succeeded"},"semantic_conformance":{"reason_code":null,"status":"passed"},"semantic_plan_validation":{"reason_code":null,"status":"passed"},"semantic_sql_render":{"reason_code":null,"status":"passed"},"validation":{"error_code":null,"valid":true}}},"plan_sha256":"6113a96863f139ae216d69fbb7b999b82cc79ef01f3a5846aa9bd31a83e18b8d","probe_id":"terminated_active_catalog","runtime":{"isolation":"repeatable read","read_only":"on","runtime_role":"queryops_query_runtime","snapshot":"951:951:","timezone":"UTC","transaction_time":"2026-11-01 14:02:45.211669+00:00"},"same_snapshot_subset_controls":[],"same_snapshot_verified":true,"selected_concepts":["terminated_employee_with_active_account"],"selected_rules":[],"source":"handwritten_plan_fixture_not_model_selection","summary":{"comparison_limitation_reason":null,"comparison_state":"correct","delivery_completeness":"complete","error_code":null,"failure_reasons":[],"passed":true,"status":"succeeded"}},
+    {"actor_role":"manager","candidate_observation_ref":"itops-medium-011","case_id":"itops-medium-011","distinct":false,"executions_actual_then_expected":[{"count":4,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"66a176f30ac970e85f05d9ddb5027d3e78ca1b855194fa76cc06a6121472958a","shape":{"columns":["account_status","employee_status","id"],"mapped_key_counts":[3],"unique_column_count":3},"side":"actual","sql_sha256":"3d7ca6fd4c54c1de63eeb3d012eca2be2451c9c378358a7062746dc1c0771c83","status":"succeeded","truncated":false,"unique_count":4},{"count":4,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"66a176f30ac970e85f05d9ddb5027d3e78ca1b855194fa76cc06a6121472958a","shape":{"columns":["id","employee_status","account_status"],"mapped_key_counts":[3],"unique_column_count":3},"side":"expected","sql_sha256":"d6f3ac11b224217a57b401228daab19823bcd749512aa6831ecf01b9ff3cbb55","status":"succeeded","truncated":false,"unique_count":4}],"exploratory":false,"metrics":{"comparison_evidence":{"actual":{"complete":true,"exhausted":true,"limitation_reason":null},"expected":{"complete":true,"exhausted":true,"limitation_reason":null}},"provenance_reason":null,"row_comparison_before_semantic_contract_veto":"correct","semantic_contract":{"concepts_correct":false,"evaluated":true,"failure_reasons":["required_concept_missing"],"grain_correct":true,"outputs_correct":true,"passed":false,"rules_correct":true},"stages":{"execution":{"error_code":null,"status":"succeeded"},"semantic_conformance":{"reason_code":null,"status":"passed"},"semantic_plan_validation":{"reason_code":null,"status":"passed"},"semantic_sql_render":{"reason_code":null,"status":"passed"},"validation":{"error_code":null,"valid":true}}},"plan_sha256":"8fab3bc2dc7baebb9d2c8831674d035e39cbc5d306479109182aaee895b91d7e","probe_id":"terminated_omitted_active","runtime":{"isolation":"repeatable read","read_only":"on","runtime_role":"queryops_query_runtime","snapshot":"952:952:","timezone":"UTC","transaction_time":"2026-11-01 14:02:45.229698+00:00"},"same_snapshot_subset_controls":[],"same_snapshot_verified":true,"selected_concepts":["terminated_employee"],"selected_rules":[],"source":"handwritten_plan_fixture_not_model_selection","summary":{"comparison_limitation_reason":null,"comparison_state":"incorrect","delivery_completeness":"complete","error_code":null,"failure_reasons":["result_semantics_mismatch"],"passed":false,"status":"succeeded"}},
+    {"actor_role":"analyst","candidate_observation_ref":"itops-hard-005","case_id":"itops-hard-005","distinct":true,"executions_actual_then_expected":[{"count":1,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"eb57e74ce22d2ba70a97b76ce5e89bf4ddc8b0d1ba3df63562cba35323a4785d","shape":{"columns":["id","id"],"diagnostic_validated_sql_replay_count":1,"duplicate_label_positions_differ":true,"mapped_key_counts":[1],"unique_column_count":1},"side":"actual","sql_sha256":"1014da60c6eb435f4a6135fb623f34d9bbb9c05ddf53736acab62d68752c5e7f","status":"succeeded","truncated":false,"unique_count":1},{"count":1,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"0c1ef1eb196459783ad221e852bf5c9ef6f463f4a261f79bb44dbd99dab654a7","shape":{"columns":["device_id","user_id"],"mapped_key_counts":[2],"unique_column_count":2},"side":"expected","sql_sha256":"c917491192ebd5fa63b3a8bb1464873407ab786413a295c8e6051cd5e75da3eb","status":"succeeded","truncated":false,"unique_count":1}],"exploratory":false,"metrics":{"comparison_evidence":{"actual":{"complete":true,"exhausted":true,"limitation_reason":null},"expected":{"complete":true,"exhausted":true,"limitation_reason":null}},"provenance_reason":"output_name_duplicated","row_comparison_before_semantic_contract_veto":"unestablished","semantic_contract":{"concepts_correct":true,"evaluated":true,"failure_reasons":[],"grain_correct":true,"outputs_correct":true,"passed":true,"rules_correct":true},"stages":{"execution":{"error_code":null,"status":"succeeded"},"semantic_conformance":{"reason_code":null,"status":"passed"},"semantic_plan_validation":{"reason_code":null,"status":"passed"},"semantic_sql_render":{"reason_code":null,"status":"passed"},"validation":{"error_code":null,"valid":true}}},"plan_sha256":"c53e6c8639c058587127aae54a6c1ccdf168f3770f641ce529e03492b290e5bc","probe_id":"inactive_null_or_90days_catalog","runtime":{"isolation":"repeatable read","read_only":"on","runtime_role":"queryops_query_runtime","snapshot":"953:953:","timezone":"UTC","transaction_time":"2026-11-01 14:02:45.245170+00:00"},"same_snapshot_subset_controls":[],"same_snapshot_verified":true,"selected_concepts":["high_risk_unsupported_software_install","inactive_directory_user"],"selected_rules":[],"source":"handwritten_plan_fixture_not_model_selection","summary":{"comparison_limitation_reason":"comparison_proof_unavailable","comparison_state":"unestablished","delivery_completeness":"complete","error_code":null,"failure_reasons":[],"passed":false,"status":"succeeded"}},
+    {"actor_role":"analyst","candidate_observation_ref":"itops-hard-005","case_id":"itops-hard-005","distinct":true,"executions_actual_then_expected":[{"count":0,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945","shape":{"columns":["id","id"],"diagnostic_validated_sql_replay_count":1,"duplicate_label_positions_differ":false,"mapped_key_counts":[],"unique_column_count":1},"side":"actual","sql_sha256":"063562e0ddcc108e4a6e83b73f08c0a3b8e97c1849f904ef9f6e05f7dbc77536","status":"succeeded","truncated":false,"unique_count":0},{"count":1,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"0c1ef1eb196459783ad221e852bf5c9ef6f463f4a261f79bb44dbd99dab654a7","shape":{"columns":["device_id","user_id"],"mapped_key_counts":[2],"unique_column_count":2},"side":"expected","sql_sha256":"c917491192ebd5fa63b3a8bb1464873407ab786413a295c8e6051cd5e75da3eb","status":"succeeded","truncated":false,"unique_count":1}],"exploratory":false,"metrics":{"comparison_evidence":{"actual":{"complete":true,"exhausted":true,"limitation_reason":null},"expected":{"complete":true,"exhausted":true,"limitation_reason":null}},"provenance_reason":"output_name_duplicated","row_comparison_before_semantic_contract_veto":"incorrect","semantic_contract":{"concepts_correct":true,"evaluated":true,"failure_reasons":[],"grain_correct":true,"outputs_correct":true,"passed":true,"rules_correct":true},"stages":{"execution":{"error_code":null,"status":"succeeded"},"semantic_conformance":{"reason_code":null,"status":"passed"},"semantic_plan_validation":{"reason_code":null,"status":"passed"},"semantic_sql_render":{"reason_code":null,"status":"passed"},"validation":{"error_code":null,"valid":true}}},"plan_sha256":"c97e77f5e5998e78dc18d20e96c2424556e8a9a5ab3b1787cab1b4fc241b022d","probe_id":"inactive_human_extra_narrowing","runtime":{"isolation":"repeatable read","read_only":"on","runtime_role":"queryops_query_runtime","snapshot":"954:954:","timezone":"UTC","transaction_time":"2026-11-01 14:02:45.265294+00:00"},"same_snapshot_subset_controls":[],"same_snapshot_verified":true,"selected_concepts":["high_risk_unsupported_software_install","inactive_human_directory_user"],"selected_rules":[],"source":"handwritten_plan_fixture_not_model_selection","summary":{"comparison_limitation_reason":null,"comparison_state":"incorrect","delivery_completeness":"complete","error_code":null,"failure_reasons":["row_count_mismatch"],"passed":false,"status":"succeeded"}},
+    {"actor_role":"analyst","candidate_observation_ref":"itops-hard-005","case_id":"itops-hard-005","distinct":true,"executions_actual_then_expected":[{"count":1,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"9b3cfee89fe8c58835cb0f3902b5e57ed7b1f331550ada9eb3de43b27b6016f6","shape":{"columns":["assigned_user_id","id"],"mapped_key_counts":[2],"unique_column_count":2},"side":"actual","sql_sha256":"6bbf1add93986562f9de4bc7af60ab9158247ec6c89d6c2e265b8d043dcbac50","status":"succeeded","truncated":false,"unique_count":1},{"count":1,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"0c1ef1eb196459783ad221e852bf5c9ef6f463f4a261f79bb44dbd99dab654a7","shape":{"columns":["device_id","user_id"],"mapped_key_counts":[2],"unique_column_count":2},"side":"expected","sql_sha256":"c917491192ebd5fa63b3a8bb1464873407ab786413a295c8e6051cd5e75da3eb","status":"succeeded","truncated":false,"unique_count":1}],"exploratory":false,"metrics":{"comparison_evidence":{"actual":{"complete":true,"exhausted":true,"limitation_reason":null},"expected":{"complete":true,"exhausted":true,"limitation_reason":null}},"provenance_reason":null,"row_comparison_before_semantic_contract_veto":"correct","semantic_contract":{"concepts_correct":true,"evaluated":true,"failure_reasons":["result_grain_mismatch","required_output_missing"],"grain_correct":false,"outputs_correct":false,"passed":false,"rules_correct":true},"stages":{"execution":{"error_code":null,"status":"succeeded"},"semantic_conformance":{"reason_code":null,"status":"passed"},"semantic_plan_validation":{"reason_code":null,"status":"passed"},"semantic_sql_render":{"reason_code":null,"status":"passed"},"validation":{"error_code":null,"valid":true}}},"plan_sha256":"744bedd79608d96527bac1759a911649599c921a3101eeb4b0da481d14ef56c6","probe_id":"inactive_fk_equivalent_user_output","runtime":{"isolation":"repeatable read","read_only":"on","runtime_role":"queryops_query_runtime","snapshot":"955:955:","timezone":"UTC","transaction_time":"2026-11-01 14:02:45.285058+00:00"},"same_snapshot_subset_controls":[],"same_snapshot_verified":true,"selected_concepts":["high_risk_unsupported_software_install","inactive_directory_user"],"selected_rules":[],"source":"handwritten_plan_fixture_not_model_selection","summary":{"comparison_limitation_reason":null,"comparison_state":"incorrect","delivery_completeness":"complete","error_code":null,"failure_reasons":["result_semantics_mismatch"],"passed":false,"status":"succeeded"}},
+    {"actor_role":"analyst","candidate_observation_ref":"itops-hard-005","case_id":"itops-hard-005","distinct":true,"executions_actual_then_expected":[{"count":1,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"c2d0aae740340bbcbe59c08161e5ada2f924a2246494217921bba3d0d9067ed4","shape":{"columns":["id","device_id"],"mapped_key_counts":[2],"unique_column_count":2},"side":"actual","sql_sha256":"151a5c49b262717a3e6d3bb0205c48a42103c4549d255169d3bd70d190d3779e","status":"succeeded","truncated":false,"unique_count":1},{"count":1,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"0c1ef1eb196459783ad221e852bf5c9ef6f463f4a261f79bb44dbd99dab654a7","shape":{"columns":["device_id","user_id"],"mapped_key_counts":[2],"unique_column_count":2},"side":"expected","sql_sha256":"c917491192ebd5fa63b3a8bb1464873407ab786413a295c8e6051cd5e75da3eb","status":"succeeded","truncated":false,"unique_count":1}],"exploratory":false,"metrics":{"comparison_evidence":{"actual":{"complete":true,"exhausted":true,"limitation_reason":null},"expected":{"complete":true,"exhausted":true,"limitation_reason":null}},"provenance_reason":null,"row_comparison_before_semantic_contract_veto":"correct","semantic_contract":{"concepts_correct":true,"evaluated":true,"failure_reasons":["result_grain_mismatch"],"grain_correct":false,"outputs_correct":true,"passed":false,"rules_correct":true},"stages":{"execution":{"error_code":null,"status":"succeeded"},"semantic_conformance":{"reason_code":null,"status":"passed"},"semantic_plan_validation":{"reason_code":null,"status":"passed"},"semantic_sql_render":{"reason_code":null,"status":"passed"},"validation":{"error_code":null,"valid":true}}},"plan_sha256":"ebd8feb5cdbe0d7c080adffeff3c095c4e935b424268b2c1d46efb12cc152b0f","probe_id":"inactive_fk_equivalent_device_output","runtime":{"isolation":"repeatable read","read_only":"on","runtime_role":"queryops_query_runtime","snapshot":"956:956:","timezone":"UTC","transaction_time":"2026-11-01 14:02:45.306422+00:00"},"same_snapshot_subset_controls":[],"same_snapshot_verified":true,"selected_concepts":["high_risk_unsupported_software_install","inactive_directory_user"],"selected_rules":[],"source":"handwritten_plan_fixture_not_model_selection","summary":{"comparison_limitation_reason":null,"comparison_state":"incorrect","delivery_completeness":"complete","error_code":null,"failure_reasons":["result_semantics_mismatch"],"passed":false,"status":"succeeded"}},
+    {"actor_role":"analyst","candidate_observation_ref":"exploratory-inactive","case_id":"exploratory-inactive","distinct":false,"executions_actual_then_expected":[{"count":26,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"cb68ec7e38a8bedf417f0348b1d8b1cd1a85bbbe8df364d6e63ae12a42534ac6","shape":{"columns":["id"],"mapped_key_counts":[1],"unique_column_count":1},"side":"actual","sql_sha256":"a5dc08445d3310050f4d81a596c73d9be62ab92103de4a9c927ccf74ddd9569b","status":"succeeded","truncated":false,"unique_count":26},{"count":26,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"cb68ec7e38a8bedf417f0348b1d8b1cd1a85bbbe8df364d6e63ae12a42534ac6","shape":{"columns":["id"],"mapped_key_counts":[1],"unique_column_count":1},"side":"expected","sql_sha256":"08d2e6eab7edd41dc40f273a5ef93f511a012277a3bc45454714340f7f388cc4","status":"succeeded","truncated":false,"unique_count":26}],"exploratory":true,"metrics":{"comparison_evidence":{"actual":{"complete":true,"exhausted":true,"limitation_reason":null},"expected":{"complete":true,"exhausted":true,"limitation_reason":null}},"provenance_reason":null,"row_comparison_before_semantic_contract_veto":"correct","semantic_contract":{"concepts_correct":true,"evaluated":true,"failure_reasons":[],"grain_correct":true,"outputs_correct":true,"passed":true,"rules_correct":true},"stages":{"execution":{"error_code":null,"status":"succeeded"},"semantic_conformance":{"reason_code":null,"status":"passed"},"semantic_plan_validation":{"reason_code":null,"status":"passed"},"semantic_sql_render":{"reason_code":null,"status":"passed"},"validation":{"error_code":null,"valid":true}}},"plan_sha256":"e259c9b5f642582d0beac57d5f70681805bb68ba64c0492932015de75132d641","probe_id":"exploratory_inactive_null_or_90days","runtime":{"isolation":"repeatable read","read_only":"on","runtime_role":"queryops_query_runtime","snapshot":"957:957:","timezone":"UTC","transaction_time":"2026-11-01 14:02:45.325298+00:00"},"same_snapshot_subset_controls":[{"control_id":"null_login_subset","count":0},{"control_id":"older_login_subset","count":26}],"same_snapshot_verified":true,"selected_concepts":["inactive_directory_user"],"selected_rules":[],"source":"handwritten_plan_fixture_not_model_selection","summary":{"comparison_limitation_reason":null,"comparison_state":"correct","delivery_completeness":"complete","error_code":null,"failure_reasons":[],"passed":true,"status":"succeeded"}},
+    {"actor_role":"analyst","candidate_observation_ref":"exploratory-inactive","case_id":"exploratory-inactive","distinct":false,"executions_actual_then_expected":[{"count":9,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"22b1e4f6efc3b474ca75ef8968d836abc3e505fb92abda2354dcca16c68dbe71","shape":{"columns":["id"],"mapped_key_counts":[1],"unique_column_count":1},"side":"actual","sql_sha256":"1e82aa38779fd94a41e3361f509abd78df4f2eed5ee73a8c979db196cafe4769","status":"succeeded","truncated":false,"unique_count":9},{"count":26,"delivery_completeness":"complete","error_code":null,"limit_source":"safety_added","result_multiset_sha256":"cb68ec7e38a8bedf417f0348b1d8b1cd1a85bbbe8df364d6e63ae12a42534ac6","shape":{"columns":["id"],"mapped_key_counts":[1],"unique_column_count":1},"side":"expected","sql_sha256":"08d2e6eab7edd41dc40f273a5ef93f511a012277a3bc45454714340f7f388cc4","status":"succeeded","truncated":false,"unique_count":26}],"exploratory":true,"metrics":{"comparison_evidence":{"actual":{"complete":true,"exhausted":true,"limitation_reason":null},"expected":{"complete":true,"exhausted":true,"limitation_reason":null}},"provenance_reason":null,"row_comparison_before_semantic_contract_veto":"incorrect","semantic_contract":{"concepts_correct":true,"evaluated":true,"failure_reasons":[],"grain_correct":true,"outputs_correct":true,"passed":true,"rules_correct":true},"stages":{"execution":{"error_code":null,"status":"succeeded"},"semantic_conformance":{"reason_code":null,"status":"passed"},"semantic_plan_validation":{"reason_code":null,"status":"passed"},"semantic_sql_render":{"reason_code":null,"status":"passed"},"validation":{"error_code":null,"valid":true}}},"plan_sha256":"d639637e5867fce20a9314b4d5535b05815fa734297de7c873a96671bc28657a","probe_id":"exploratory_inactive_human_narrowing","runtime":{"isolation":"repeatable read","read_only":"on","runtime_role":"queryops_query_runtime","snapshot":"958:958:","timezone":"UTC","transaction_time":"2026-11-01 14:02:45.347183+00:00"},"same_snapshot_subset_controls":[],"same_snapshot_verified":true,"selected_concepts":["inactive_human_directory_user"],"selected_rules":[],"source":"handwritten_plan_fixture_not_model_selection","summary":{"comparison_limitation_reason":null,"comparison_state":"incorrect","delivery_completeness":"complete","error_code":null,"failure_reasons":["row_count_mismatch"],"passed":false,"status":"succeeded"}}
+  ]
+}
