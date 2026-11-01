@@ -365,10 +365,30 @@ algebra מוסיף שני users, שתי privileged groups, שתי memberships ל
 
 ## 8. סקירה עצמאית, סטטוס והחלטה הבאה
 
-סטטוס עריכה: consolidation לפני סקירה עצמאית. סעיף זה יעודכן בתוצאות reviewer
-בלתי תלוי, תיקוני ראיות אם נדרשו, וסטטוס Git/PR האמיתי לפני handoff.
+סקירה עצמאית הושלמה בידי agent חדש שלא כתב את החקירה. הוא קרא את ה־diff,
+את ה־corpus והמקורות המחוברים, שחזר את כל 79/18/19 המקרים, בדק תוצאות
+מלאות מול הארטיפקטים והריץ בנפרד 33 בדיקות PG ללא דילוגים. פרטים ו־hashes:
+[independent-review.md](w6a/independent-review.md).
 
-החלטה נדרשת לאחר review: לאשר רק את תיקון output identity שתואר לעיל כצעד
+נמצאו שני ליקויי P2 בכלי החקירה: algebra לא אכף התאמה ל־baseline לפני ריצה,
+וה־probe דרש log זמני והוסיף metadata סטטי של tests שלא הריץ.
+ב־`b1852b8` נוספו guards לפני גישה ל־DB, ה־guards של composition הוקדמו גם
+הם לפני initialization, ותלות ה־log/metadata הוסרה. שש בדיקות שליליות עצמאיות
+אישרו ש־dataset/catalog/source לא תואמים נעצרים לפני DB. reviewer שחזר את
+ה־head המתוקן ואישר **אין ממצא חוסם פתוח**. לא בוצע תיקון סמנטי במוצר.
+
+מגבלת coverage לא־חוסמת: composition assertions מקבעים רק חלק מתוצאות
+ה־pass/fail; הסוקר השווה בנפרד את כל 18 ה־records, לרבות negatives ו־shape.
+תיקון W6b צריך להפוך את הממצאים הרלוונטיים ל־regressions ממוקדים. אין לבלבל
+את כלי האבחון הנוכחיים עם test suite מלא או held-out validation.
+
+החקירה committed ונפתחה [PR #66](https://github.com/Daniel23sh/queryops-ai/pull/66)
+מול `main`, **ללא merge**. source baseline נשאר `b1f03a4`; diagnostic head
+שנסקר הוא `b1852b8`, ואחריו עדכון תיעוד/סקירה בלבד. סטטוס הענף ו־CI המדויק
+נשאר ב־PR; בדיקות CI אינן ראיית איכות מודל או V1 readiness. `main` לא שונה
+במשימה זו, וקובצי planning פרטיים לא שונו ולא נכללו ב־commits.
+
+החלטה נדרשת: לאשר רק את תיקון output identity שתואר לעיל כצעד
 W6b ראשון. Candidate availability, current provider composition ואפשרות
 להרחבת supported algebra נשארים החלטות נפרדות לפי סדר הראיות; אין כאן אישור
 מובלע ליישם אותן. W7–W9 ו־W6c נשארים נדרשים בדרך ל־V1, והפרויקט אינו released.

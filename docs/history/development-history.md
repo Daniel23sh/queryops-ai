@@ -1,5 +1,37 @@
 # QueryOps AI — Development History
 
+## 2026-11-01 — W6a semantic diagnosis and independent review
+
+[PR #66](https://github.com/Daniel23sh/queryops-ai/pull/66) contains the completed,
+intentionally unmerged investigation from main `b1f03a4`. Approval `36591a1`,
+diagnostic evidence/report `a31eb0d`, reproducibility corrections `b1852b8`;
+documentation/review handoff follows. No production semantics, tests, prompts,
+catalog, frozen dataset, threshold or release gate changed. Private planning files
+were untouched. No paid calls, qualifying runs or V1 release claim were made.
+
+Three specialists investigated candidate availability, business composition and
+algebra/evaluator contracts. The coordinator and a fresh non-author reviewer
+replayed 79 candidate cases, 18 composition and 19 algebra probes. Focused tests:
+480 passed with seven PG skips; the PG relational suite separately passed 33 with
+zero skips, also independently repeated. Counts overlap and are not additive.
+
+The reviewer found two P2 diagnostic defects: missing algebra source/data/catalog
+enforcement and an obligatory temporary test-log/static-pass claim. Both were
+corrected before DB access/log-free replay and independently re-reviewed at
+`b1852b8`; no blocking finding remains. Assertions cover a subset of composition
+outcomes; the reviewer separately compared all records. Current provider quality,
+positive inactive-user NULL coverage, browser/CSV collision propagation and fresh
+held-out quality remain unverified.
+
+The [Hebrew report](../audits/2026-11-01-w6a-semantic-diagnosis-he.md) prioritizes
+deterministic output identity for the first bounded W6b decision: hard-005's two
+required ID fields collide in SQL labels and lose a value during mapping. F14
+candidate misses are reproducible; medium-009's omission mechanism is reproduced
+only through handwritten plans, not current provider selection. Canonical
+hard-004 works on a nonempty fanout fixture. Candidate/context changes remain a
+separate decision; broad prompt/model/algebra changes are not justified. W6b and
+the exact eight-question live experiment proposal require separate approval.
+
 ## 2026-11-01 — W4 + W5 merged; W6a diagnosis authorized
 
 PR #65 merged into main at `b1f03a4790c7569f7da0ef8d9be57ddd6da023c5`. GitHub

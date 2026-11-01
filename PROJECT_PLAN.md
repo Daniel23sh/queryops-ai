@@ -38,34 +38,25 @@ merged at `b1f03a4790c7569f7da0ef8d9be57ddd6da023c5`. Reviewed implementations,
 independent findings/corrections and deterministic evidence are recorded in
 [development history](docs/history/development-history.md). V1 remains unreleased.
 
-**W6a — Semantic Reliability Diagnosis** is the active investigation, explicitly
-approved by the owner on 2026-11-01. Work on
-`investigation/m10-w6a-semantic-diagnosis` from verified main `b1f03a4`.
+**W6a diagnosis is complete on its review branch**, approved on 2026-11-01.
+[PR #66](https://github.com/Daniel23sh/queryops-ai/pull/66) is open and intentionally
+unmerged, from `investigation/m10-w6a-semantic-diagnosis` on verified main `b1f03a4`.
+The [Hebrew diagnostic report](docs/audits/2026-11-01-w6a-semantic-diagnosis-he.md)
+freezes source/data/catalog/runtime identities and separates candidate availability,
+historical/current-unverified provider interpretation, supported encodings,
+deterministic delivery and evaluator proof. Production behavior, tests, frozen
+datasets, prompts and release gates are unchanged; no paid call was made.
 
-Investigate F14 candidate recall/catalog coverage, F3 interpretation/business
-composition and F11 supported plan algebra/rendering/conformance/comparison.
-Freeze exact source, V2 dataset, semantic catalog, provider configuration and
-runtime identities. Separate offline deterministic reproduction from historical
-provider observations and current unverified model behavior. Use independent
-specialists, contrast cases and counter-evidence, then a fresh non-author review.
+Three diagnostic specialists, coordinator replays and a fresh non-author review
+are complete. Two diagnostic reproducibility issues were corrected and re-reviewed
+at `b1852b8`; no unresolved blocking review finding remains. Detailed evidence and
+limitations are in the report/history. This does not qualify V1 or establish
+current live-model quality.
 
-Deliver a tracked diagnostic report with reproducible probes/coverage matrix,
-root-cause attribution/confidence, alternatives, the smallest justified W6b scope,
-acceptance/regression/held-out verification and a bounded proposal for any live
-experiments needing separate approval. Keep diagnostic and held-out material
-separate; no tuning from held-out outcomes.
-
-This is investigation only. Do not change production semantics, prompts, candidate
-rules, renderer, conformance, scoring, datasets/baselines, thresholds or gates.
-No paid provider calls, qualifying Canary or Full40 sequence is authorized. Commit
-and push the report/planning work in an unmerged PR; W6b is not approved.
-
-The three diagnostic investigations and coordinator replays are complete; final
-independent review is pending. The [W6a diagnostic report](docs/audits/2026-11-01-w6a-semantic-diagnosis-he.md)
-separates candidate availability, historical/current-unverified provider behavior,
-supported plan encodings and evaluator proof. It proposes deterministic output
-identity as the first bounded W6b correction because canonical joined outputs can
-lose a value through duplicate column labels. This is a proposal, not approval.
+The first proposed W6b correction is **deterministic output identity**: joined
+fields with duplicate labels can lose a required value during JSON mapping.
+Candidate/context coverage remains a separate next decision; broad algebra or
+prompt/model changes are not established remedies. **W6b is not approved**.
 
 ## Constraints and Remaining Work
 
@@ -73,7 +64,7 @@ lose a value through duplicate column labels. This is a proposal, not approval.
   dependencies/acceptance; W10 cleanup is optional. W6a diagnosis, W6b targeted
   correction and W6c independent validation are separate packages.
 - Old environment v1/missing-fingerprint evidence cannot qualify under environment
-  v2. Semantic diagnosis is active; correction and independent validation,
+  v2. Semantic diagnosis is complete in the unmerged PR; correction and independent validation,
   explicit local auth boundary, reproducible validation and final V1 QA remain open.
   The audit's hard-004 case passed its diagnostic canary; blanket historical
   failure claims are not accepted without new evidence.
@@ -87,9 +78,10 @@ lose a value through duplicate column labels. This is a proposal, not approval.
 
 ## Next Approved Work
 
-Complete W6a diagnosis and propose the next bounded decision only. Keep the PR
-**unmerged**; do not implement W6b or later packages. Any live experiment requires
-separate exact-model/case/call-budget approval after feasible offline work.
+Owner review of W6a PR #66 only; keep it **unmerged** until separately approved.
+No new implementation is approved. The next decision is the narrow W6b output-
+identity proposal and its acceptance criteria. Any live experiment also requires
+separate exact-model/case/call-budget approval; do not begin later packages.
 
 ## References
 
