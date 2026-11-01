@@ -42,6 +42,7 @@ class MockLLMProvider:
                     str(entity["table"])
                     for entity in semantic_projection.entities
                     if isinstance(entity.get("table"), str)
+                    and entity["id"] in semantic_projection.lexical_evidence()["entity_ids"]
                 )
                 if isinstance(semantic_projection, SemanticCatalogProjection)
                 else []

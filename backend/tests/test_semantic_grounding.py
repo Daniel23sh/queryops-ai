@@ -38,14 +38,14 @@ def test_directory_paraphrases_receive_bounded_identity_candidates(
     projection = _projection(question)
     observation = projection.as_observation()
 
-    assert observation["selected_entity_ids"] == ["directory_users"]
+    assert "directory_users" in observation["selected_entity_ids"]
     assert {
         "active_directory_account",
         "active_employee",
         "active_human_directory_user",
         "human_directory_user",
     } <= set(observation["selected_concept_ids"])
-    assert observation["selected_metric_ids"] == ["active_human_users"]
+    assert "active_human_users" in observation["selected_metric_ids"]
     assert _size(projection) <= MAX_SEMANTIC_PROJECTION_BYTES
 
 
@@ -85,7 +85,7 @@ def test_exact_rule_is_priority_and_scope_language_is_not_business_entity(
         "metric_ids": [],
         "rule_ids": ["non_compliant_device_posture"],
     }
-    assert "departments" not in projection.as_observation()["selected_entity_ids"]
+    assert "departments" not in projection.lexical_evidence()["entity_ids"]
     serialized = json.dumps(projection.as_prompt_dict(), sort_keys=True)
     assert "department-id" not in serialized
 
@@ -256,14 +256,14 @@ def test_shared_composed_concept_dependency_is_deduplicated() -> None:
     _assert_no_dangling_concept_dependencies(projection)
 
 
-def test_supersedence_still_removes_unneeded_independent_concept() -> None:
+def test_supersedence_keeps_weaker_definition_nonlexical() -> None:
     projection = _projection(
         "Show active license assignments marked as exceptions."
     )
     concept_ids = set(projection.as_observation()["selected_concept_ids"])
 
     assert "active_exception_license_assignment" in concept_ids
-    assert "active_license_assignment" not in concept_ids
+    assert "active_license_assignment" not in projection.lexical_evidence()["concept_ids"]
     _assert_no_dangling_concept_dependencies(projection)
 
 
@@ -635,23 +635,25 @@ def test_non_compliant_status_is_narrower_than_device_posture() -> None:
     ]
 
 
-def test_known_value_alone_cannot_anchor_an_entity() -> None:
+def test_known_value_alone_does_not_create_lexical_or_required_intent() -> None:
     projection = _projection("Show active records.")
-    assert projection.entities == ()
-    assert projection.concepts == ()
-    assert projection.metrics == ()
+    assert projection.entities
+    assert projection.candidate_signals == ()
+    assert not any(projection.lexical_evidence().values())
+    assert projection.grounded_result_intent is None
 
 
-def test_unique_description_fallback_is_narrow_and_ambiguous_fallback_is_empty() -> None:
+def test_description_and_ambiguous_availability_do_not_add_lexical_evidence() -> None:
     devices = _projection("Summarize managed server inventory.")
-    assert devices.as_observation()["selected_entity_ids"] == ["devices"]
+    assert "devices" in devices.as_observation()["selected_entity_ids"]
     assert any(
         signal["tier"] == "description_context"
         for signal in devices.candidate_signals
     )
 
     ambiguous = _projection("Summarize the relevant records.")
-    assert ambiguous.entities == ()
+    assert ambiguous.entities
+    assert ambiguous.grounded_result_intent is None
     assert ambiguous.candidate_signals == ()
 
 
@@ -832,7 +834,7 @@ def test_real_multi_anchor_graph_preserves_department_and_identity_routes() -> N
     assert "departments" in observation["selected_entity_ids"]
 
 
-def test_intermediate_path_entities_do_not_import_unrelated_semantics() -> None:
+def test_intermediate_path_entities_do_not_become_lexical_or_binding_evidence() -> None:
     projection = _projection("Show devices and access groups.")
     observation = projection.as_observation()
 
@@ -848,8 +850,9 @@ def test_intermediate_path_entities_do_not_import_unrelated_semantics() -> None:
     metric_entities = {
         metric["entity_id"] for metric in projection.as_prompt_dict()["metrics"]
     }
-    assert not (path_only_entities & concept_entities)
-    assert not (path_only_entities & metric_entities)
+    assert concept_entities <= set(observation["selected_entity_ids"])
+    assert metric_entities <= set(observation["selected_entity_ids"])
+    assert projection.grounded_result_intent is None
     assert not (
         path_only_entities
         & set(projection.lexical_evidence()["entity_ids"])

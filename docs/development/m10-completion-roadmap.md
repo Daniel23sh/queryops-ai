@@ -102,6 +102,15 @@ values. See the [output contract](semantic-ownership-migration.md#deterministic-
 Independent final acceptance review is a separate approval gate; this narrow
 authorization does not include candidate retrieval, prompt/model tuning or W6c.
 
+The owner separately authorized **Candidate Availability** on 2026-11-01 after
+Output Identity merged. This follow-up preserves the ranked authorized core and
+adds budgeted authorized entity/relationship options plus dependency-closed
+business definitions, without adding lexical or binding intent. The 16,000-byte
+cap, one provider call and deterministic SQL remain unchanged. Known W6a corpus
+coverage is availability evidence only; independent review owns unseen cases.
+See the [decision and limitations](../audits/2026-11-01-candidate-availability-he.md).
+Current implementation/PR state remains in PROJECT_PLAN.md; W6c is not approved.
+
 ## Definition of Done for local synthetic IT Operations V1
 
 1. Supported scope and demo boundary are explicit; unsupported auth modes fail

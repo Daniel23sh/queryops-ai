@@ -159,7 +159,7 @@ def test_projection_selects_relevant_semantics_and_resolved_rls_guidance() -> No
     serialized = json.dumps(projected, sort_keys=True, separators=(",", ":"))
 
     assert projected == second.as_prompt_dict()
-    assert [item["id"] for item in projected["entities"]] == ["directory_users"]
+    assert "directory_users" in {item["id"] for item in projected["entities"]}
     concepts = {item["id"]: item for item in projected["concepts"]}
     assert {
         "active_human_directory_user",
@@ -193,7 +193,7 @@ def test_projection_selects_relevant_semantics_and_resolved_rls_guidance() -> No
     assert len(serialized.encode("utf-8")) <= MAX_SEMANTIC_PROJECTION_BYTES
 
 
-def test_projection_falls_back_to_schema_without_inventing_a_concept() -> None:
+def test_ambiguous_projection_offers_options_without_inventing_intent() -> None:
     pack = load_it_operations_domain_pack()
     projection = build_semantic_catalog_projection(
         pack.semantic_catalog,
@@ -202,8 +202,10 @@ def test_projection_falls_back_to_schema_without_inventing_a_concept() -> None:
         {"scope_type": "none", "scope_reference_resolved": False},
     )
 
-    assert projection.entities == ()
-    assert projection.concepts == ()
+    assert projection.entities
+    assert projection.candidate_signals == ()
+    assert projection.grounded_result_intent is None
+    assert not any(projection.lexical_evidence().values())
     assert projection.authorization_guidance == ()
     assert projection.catalog_hash == pack.semantic_catalog.digest
 
@@ -341,7 +343,7 @@ def test_specific_concepts_suppress_selected_weaker_concepts() -> None:
         {"scope_type": "department", "scope_reference_resolved": True},
     )
 
-    assert projection.as_observation()["selected_concept_ids"] == [
+    assert projection.lexical_evidence()["concept_ids"] == [
         "failed_login_within_30_days"
     ]
 
@@ -382,7 +384,9 @@ def test_composition_rule_projects_all_or_branches_or_is_omitted_whole() -> None
         {"scope_type": "department", "scope_reference_resolved": True},
     )
 
-    assert restricted.composition_rules == ()
+    assert "disablement_policy_review" not in {
+        rule["id"] for rule in restricted.composition_rules
+    }
     assert "unresolved_critical_security_event" not in (
         restricted.as_observation()["selected_concept_ids"]
     )

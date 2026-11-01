@@ -43,35 +43,37 @@ merged at `dac8031bd368f0d17fb94818369cd3071bf8160e`; remote metadata, ancestry
 and the diagnostic findings were verified before this task. Its dated findings
 remain in the [Hebrew report](docs/audits/2026-11-01-w6a-semantic-diagnosis-he.md).
 
-**W6b — Deterministic Output Identity** is explicitly approved by the owner on
-2026-11-01, on `feature/m10-w6b-deterministic-output-identity` from verified main
-`dac8031`. Preserve every selected value under unique, deterministic backend-owned
-keys; retain compatible unique labels; fail safely for ambiguous legacy SQL.
-Cover rendering/conformance/execution/provenance, unchanged hard-005 contracts,
-saved results, Dashboard refresh/visualization and CSV with V3 PostgreSQL/API/
-browser evidence. Preserve authorization, RLS, limits and export protection.
+**W6b Output Identity is merged.** [PR #67](https://github.com/Daniel23sh/queryops-ai/pull/67)
+merged at `722e6a092b53dd58b7f9779393273ed13cc70c33`. Its CI selection finding
+was corrected at `f43d630`, then independently re-reviewed READY TO MERGE before
+integration. Historical evidence is in development history.
 
-Implementation and local V3 verification are complete in
-[Draft PR #67](https://github.com/Daniel23sh/queryops-ai/pull/67), implementation
-commit `1667afc`, on the feature branch;
-the candidate is not merged and has not received independent final approval.
-The renderer preserves compatible labels and qualifies collisions with stable
-backend names; the executor rejects duplicate cursor labels before mapping rows,
-including empty/legacy SQL. No schema, provider-plan, evaluator or frozen-data
-change was needed. Evidence and compatibility limits are recorded in
-[development history](docs/history/development-history.md) and the
-[output contract](docs/development/semantic-ownership-migration.md#deterministic-output-identity--m10-w6b-contract).
+**W6b — Candidate Availability** is explicitly approved by the owner as a separate
+follow-up on 2026-11-01, on `feature/m10-w6b-candidate-availability` from verified
+main `722e6a0`. Compare narrow catalog vocabulary, bounded authorized entity/
+relationship availability and selective definition inclusion; implement only an
+evidence-supported correction with the existing 16,000-byte cap and security
+boundaries. Measure W6a corpus before/after by component, including regressions,
+negative controls, deterministic budget/dependency closure and real PostgreSQL/API
+permission boundaries. Availability is not provider selection or answer quality.
 
-An independent review of `8fc585a` found that CI did not select the two new
-output-identity browser tests. The approved correction adds them to the existing
-M8 Primary E2E sequence. Local Chromium, ordering and failure-propagation checks
-passed; exact-head CI evidence is recorded on PR #67. Independent re-review of
-the corrected head remains required before acceptance.
+Preserve one structured-plan provider call, deterministic SQL, non-binding
+lexical/connector guidance, exact permissions/scopes and RLS. No frozen dataset,
+prompt/model, thresholds, release-gate changes, paid runs, W6c or W7 are approved.
+Commit/push a focused PR and leave it unmerged for independent final review. The
+known W6a corpus is regression material; the reviewer owns new unseen cases.
 
-Only this correction is approved: no provider aliases, algebra expansion,
-candidate/context improvements, prompt/model tuning, W6c, W7 or paid calls.
-Commit/push a focused unmerged PR. This implementation is a candidate only;
-independent final review remains a separate approval gate.
+Implementation is complete locally: authorized optional graph availability and
+atomic definition bundles retain the ranked core and 16,000-byte cap. Known W6a
+positive coverage is 40/69 → 69/69; five literal empty-context controls change
+without authorizing forbidden targets. See the [decision/evidence](docs/audits/2026-11-01-candidate-availability-he.md).
+Implementation commit `9f537a3` is pushed in [draft PR #68](https://github.com/Daniel23sh/queryops-ai/pull/68).
+It is not merged or independently accepted. No claim of provider
+answer quality or release qualification follows from these availability metrics.
+Independent review found P2 unsafe-request metadata inflation in the OpenAI
+adapter. The correction uses authorized lexical entity evidence, matching Mock;
+fresh independent review of the corrected head remains required. P3's bounded
+packing recall limitation is accepted as non-blocking without case-specific tuning.
 
 ## Constraints and Remaining Work
 
@@ -79,7 +81,7 @@ independent final review remains a separate approval gate.
   dependencies/acceptance; W10 cleanup is optional. W6a diagnosis, W6b targeted
   correction and W6c independent validation are separate packages.
 - Old environment v1/missing-fingerprint evidence cannot qualify under environment
-  v2. Semantic diagnosis is merged; the narrowly approved output correction and independent validation,
+  v2. Semantic diagnosis and Output Identity are merged; Candidate Availability, independent validation,
   explicit local auth boundary, reproducible validation and final V1 QA remain open.
   The audit's hard-004 case passed its diagnostic canary; blanket historical
   failure claims are not accepted without new evidence.
@@ -93,9 +95,9 @@ independent final review remains a separate approval gate.
 
 ## Next Approved Work
 
-Review the unmerged W6b candidate PR through a separately approved independent
-final review. No further implementation, candidate retrieval changes, W6c, W7 or
-paid evaluation is approved. Do not merge automatically.
+Obtain a fresh independent review of the corrected Candidate Availability head in
+unmerged PR #68 and its final-head CI evidence. Do not begin W6c,
+W7 or prompt/model tuning; no paid evaluation is authorized.
 
 ## References
 
