@@ -70,6 +70,10 @@ without authorizing forbidden targets. See the [decision/evidence](docs/audits/2
 Implementation commit `9f537a3` is pushed in [draft PR #68](https://github.com/Daniel23sh/queryops-ai/pull/68).
 It is not merged or independently accepted. No claim of provider
 answer quality or release qualification follows from these availability metrics.
+Independent review found P2 unsafe-request metadata inflation in the OpenAI
+adapter. The correction uses authorized lexical entity evidence, matching Mock;
+fresh independent review of the corrected head remains required. P3's bounded
+packing recall limitation is accepted as non-blocking without case-specific tuning.
 
 ## Constraints and Remaining Work
 
@@ -91,8 +95,8 @@ answer quality or release qualification follows from these availability metrics.
 
 ## Next Approved Work
 
-Obtain the separate independent final review of Candidate Availability in
-unmerged PR #68, including frozen unseen cases and its final-head CI evidence. Do not begin W6c,
+Obtain a fresh independent review of the corrected Candidate Availability head in
+unmerged PR #68 and its final-head CI evidence. Do not begin W6c,
 W7 or prompt/model tuning; no paid evaluation is authorized.
 
 ## References

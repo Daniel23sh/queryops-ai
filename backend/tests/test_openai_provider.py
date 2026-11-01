@@ -759,6 +759,56 @@ def test_openai_provider_returns_bounded_unsafe_request_without_plan() -> None:
 
 
 @pytest.mark.parametrize(
+    ("question", "restrict_users", "expected"),
+    [
+        ("Delete every directory user.", False, ["directory_users"]),
+        ("Delete every record.", False, []),
+        ("Delete every directory user.", True, []),
+    ],
+)
+def test_unsafe_metadata_only_reports_authorized_lexical_entities(
+    question: str, restrict_users: bool, expected: list[str],
+) -> None:
+    pack = load_it_operations_domain_pack()
+    tables = [
+        table for table in pack.tables
+        if table.name in pack.allowed_resource_table_names
+        and (not restrict_users or table.name != "directory_users")
+    ]
+    schema = {
+        "allowed_tables": [table.name for table in tables],
+        "allowed_columns": {
+            table.name: [column.name for column in table.columns] for table in tables
+        },
+        "tables": [
+            {"name": table.name, "columns": [
+                {"name": column.name, "data_type": column.data_type}
+                for column in table.columns
+            ]}
+            for table in tables
+        ],
+    }
+    projection = build_semantic_catalog_projection(
+        pack.semantic_catalog, question, schema, USER_CONTEXT,
+    )
+    assert len(projection.entities) > 1
+    assert projection.lexical_evidence()["entity_ids"] == expected
+    client = FakeClient({
+        "outcome": "unsafe_request", "semantic_plan": None, "clarification_reason": None,
+    })
+
+    result = provider_for(client).generate_plan(
+        question, schema, USER_CONTEXT, {"semantic_catalog": projection},
+    )
+
+    assert result.outcome is PlanGenerationOutcome.UNSAFE_REQUEST
+    assert result.semantic_plan is None
+    assert result.unsupported_reason == "unsafe_request"
+    assert result.generation_metadata["referenced_tables"] == expected
+    assert "response-id-must-not-persist" not in str(result)
+
+
+@pytest.mark.parametrize(
     "payload",
     [
         {"outcome": "plan", "semantic_plan": None, "clarification_reason": None},

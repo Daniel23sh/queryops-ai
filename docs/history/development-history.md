@@ -1,5 +1,16 @@
 # QueryOps AI — Development History
 
+## 2026-11-01 — Candidate Availability independent-review correction
+
+Independent review of `740d3bc` requested changes for P2: OpenAI unsafe-request
+metadata reported every available candidate table. The adapter now reports only
+tables with authorized lexical entity evidence, matching Mock. Regression coverage
+includes the full authorized schema, absent lexical evidence and a restricted
+resource; the original unsafe outcome, no-plan behavior and safe metadata remain.
+The review's P3 bounded-packing recall limitation is accepted as non-blocking;
+no packing or exposed-case tuning was performed. A fresh independent review of
+the corrected head is required before acceptance.
+
 ## 2026-11-01 — W6b Candidate Availability implementation candidate
 
 Implemented on `feature/m10-w6b-candidate-availability` from verified main

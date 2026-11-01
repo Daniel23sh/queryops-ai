@@ -112,6 +112,12 @@ catalog גדול יותר עלול לא להכניס את כל הגרף; אז נ
 כל־catalog. אין metrics על false provider selections או latency של ספק. הסרת
 lexical gating מגדילה אפשרויות ועשויה להקשות על interpretation; אין הסתרה של סיכון זה.
 
+Independent review של `740d3bc` מצא P2: בתוצאת unsafe, ספק OpenAI דיווח על כל
+הטבלאות הזמינות במקום על ההתאמות הלקסיקליות. התיקון משתמש ב־
+`lexical_evidence()` כמו Mock, עם regression ל־schema מלא, ללא התאמה ועם משאב
+שאינו מורשה. נדרש review עצמאי חדש ל־head המתוקן. ממצא P3 על השמטת חבילות
+בתקציב מתקבל כסיכון לא חוסם; לא בוצע tuning למקרה החשוף של הסוקר.
+
 Independent final review צריך לבנות ולשמור מקרים בלתי נראים בנפרד ולבדוק במיוחד
 הרשאות, ambiguity, decoys, atomic budgets והיעדר משמעות מחייבת. הוא אינו בוצע בידי
 מחברי התיקון ואינו מוחלף בבדיקת helper של מחבר הבדיקות. אין להתחיל W6c או tuning.
