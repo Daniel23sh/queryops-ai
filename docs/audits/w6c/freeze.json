@@ -1,0 +1,26 @@
+{
+  "schema": "queryops-w6c-offline-freeze-v1",
+  "runtime_source": "92bf4ca8b7df1d591cdb1b5f3e66188e19cdb5f0",
+  "question_freeze_commit": "e22831e",
+  "files": {
+    "heldout-v1.json": "ed5946c1f837b344563ef770b687e83ed1e6cce182a42820b9e2e7df9d4e8b8a",
+    "witnesses.py": "10eaec05e11e8afc4956951e311afcd3a742b2014c977e51495575ffe9d638bf",
+    "fixture.py": "4ad0d71e4924f8ebe897a4f199bda37d6ddabd77706a66a98f7946b822d6673d"
+  },
+  "dataset_digest": "6ac164ab6c58c0b008a65afc01cd26aa434fecd3eaa402b5bdad9c89e6f6540f",
+  "catalog_digest": "918df0c63288b7ed7ce700f8442c82bc1ffa3f51e1f4eaa63fd66012af82adb4",
+  "known_regressions": {
+    "w6a_cases": 79,
+    "pr68_reviewer_cases": 32,
+    "pr68_reviewer_raw_sha256": "004d2f65d757224afe24b704aa5b251cc646d6f6fed3be9ead79341ec62d28bf",
+    "normalized_exact_question_overlaps": 0,
+    "interpretation": "Known diagnostic families remain related; lexical novelty alone is not independent model-generalization evidence. The new question author did not execute the runtime."
+  },
+  "execution_policy": {
+    "paid_provider_calls": 0,
+    "before_first_case_execution": true,
+    "fixture": "fresh guarded PostgreSQL; small deterministic seed 42 plus fixed synthetic contrasts; never a qualification environment",
+    "oracle_changes_after_observation": "forbidden; record methodological errors or uncertainty separately",
+    "classification": ["reproduced", "independently_verified", "inferred", "unmeasured"]
+  }
+}
