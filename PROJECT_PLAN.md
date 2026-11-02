@@ -48,32 +48,28 @@ merged at `722e6a092b53dd58b7f9779393273ed13cc70c33`. Its CI selection finding
 was corrected at `f43d630`, then independently re-reviewed READY TO MERGE before
 integration. Historical evidence is in development history.
 
-**W6b — Candidate Availability** is explicitly approved by the owner as a separate
-follow-up on 2026-11-01, on `feature/m10-w6b-candidate-availability` from verified
-main `722e6a0`. Compare narrow catalog vocabulary, bounded authorized entity/
-relationship availability and selective definition inclusion; implement only an
-evidence-supported correction with the existing 16,000-byte cap and security
-boundaries. Measure W6a corpus before/after by component, including regressions,
-negative controls, deterministic budget/dependency closure and real PostgreSQL/API
-permission boundaries. Availability is not provider selection or answer quality.
+**W6b Candidate Availability is merged.** [PR #68](https://github.com/Daniel23sh/queryops-ai/pull/68)
+merged at `92bf4ca8b7df1d591cdb1b5f3e66188e19cdb5f0`, verified against remote
+metadata and latest main on 2026-11-02. Independent re-review accepted corrected
+head `264431f`; bounded-packing recall remains an accepted non-blocking risk.
+See the [decision/evidence](docs/audits/2026-11-01-candidate-availability-he.md).
 
-Preserve one structured-plan provider call, deterministic SQL, non-binding
-lexical/connector guidance, exact permissions/scopes and RLS. No frozen dataset,
-prompt/model, thresholds, release-gate changes, paid runs, W6c or W7 are approved.
-Commit/push a focused PR and leave it unmerged for independent final review. The
-known W6a corpus is regression material; the reviewer owns new unseen cases.
+**W6c — Independent Semantic Validation, offline phase** is explicitly authorized
+on 2026-11-02. Freeze new independently authored questions and criteria before
+execution; distinguish availability, supported plans, rendering/conformance,
+PostgreSQL results and evaluator comparison. Known W6a/reviewer cases remain
+regressions. Record proven and uncertain boundaries, then propose a bounded
+separately authorized live experiment. Use disposable PostgreSQL, fresh-context
+final review and a focused unmerged evidence PR. No product tuning, frozen dataset/
+threshold changes, prompt/model changes or paid provider calls are authorized.
 
-Implementation is complete locally: authorized optional graph availability and
-atomic definition bundles retain the ranked core and 16,000-byte cap. Known W6a
-positive coverage is 40/69 → 69/69; five literal empty-context controls change
-without authorizing forbidden targets. See the [decision/evidence](docs/audits/2026-11-01-candidate-availability-he.md).
-Implementation commit `9f537a3` is pushed in [draft PR #68](https://github.com/Daniel23sh/queryops-ai/pull/68).
-It is not merged or independently accepted. No claim of provider
-answer quality or release qualification follows from these availability metrics.
-Independent review found P2 unsafe-request metadata inflation in the OpenAI
-adapter. The correction uses authorized lexical entity evidence, matching Mock;
-fresh independent review of the corrected head remains required. P3's bounded
-packing recall limitation is accepted as non-blocking without case-specific tuning.
+Offline evidence is assembled in the [W6c report](docs/audits/2026-11-02-w6c-offline-validation-he.md):
+20 new frozen cases, 19 bounded projections and one permission denial; 13/14 manual
+positive witnesses match their PostgreSQL oracles. One optional-OR join encoding
+is unsupported in the tested tree; one excess-filter contrast is not distinguished
+by the frozen fixture. Provider interpretation and NL answer accuracy remain
+unmeasured. Fresh-context final methodology review approved the evidence after
+closing an audit-tool import-order guard issue; the focused PR handoff follows.
 
 ## Constraints and Remaining Work
 
@@ -81,8 +77,9 @@ packing recall limitation is accepted as non-blocking without case-specific tuni
   dependencies/acceptance; W10 cleanup is optional. W6a diagnosis, W6b targeted
   correction and W6c independent validation are separate packages.
 - Old environment v1/missing-fingerprint evidence cannot qualify under environment
-  v2. Semantic diagnosis and Output Identity are merged; Candidate Availability, independent validation,
-  explicit local auth boundary, reproducible validation and final V1 QA remain open.
+  v2. Semantic diagnosis, Output Identity and Candidate Availability are merged;
+  live semantic validation, explicit local auth boundary, reproducible validation
+  and final V1 QA remain open.
   The audit's hard-004 case passed its diagnostic canary; blanket historical
   failure claims are not accepted without new evidence.
 - Preserve authorization, RLS, safety caps, historical V1 baselines, semantic
@@ -95,9 +92,10 @@ packing recall limitation is accepted as non-blocking without case-specific tuni
 
 ## Next Approved Work
 
-Obtain a fresh independent review of the corrected Candidate Availability head in
-unmerged PR #68 and its final-head CI evidence. Do not begin W6c,
-W7 or prompt/model tuning; no paid evaluation is authorized.
+Leave the focused W6c offline evidence PR unmerged for owner review.
+Decide the optional-OR product boundary and separately approve the exact live
+diagnostic configuration/questions/call and dispatch caps before live validation.
+W7, product tuning and paid evaluation are not authorized.
 
 ## References
 

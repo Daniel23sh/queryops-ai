@@ -109,7 +109,14 @@ business definitions, without adding lexical or binding intent. The 16,000-byte
 cap, one provider call and deterministic SQL remain unchanged. Known W6a corpus
 coverage is availability evidence only; independent review owns unseen cases.
 See the [decision and limitations](../audits/2026-11-01-candidate-availability-he.md).
-Current implementation/PR state remains in PROJECT_PLAN.md; W6c is not approved.
+Current implementation/PR state remains in PROJECT_PLAN.md.
+
+After PR #68 merged, the owner authorized the **W6c offline phase** on 2026-11-02:
+freeze independent questions and criteria, verify deterministic stages separately,
+retain known regressions and report gaps without tuning. See the
+[offline evidence and limits](../audits/2026-11-02-w6c-offline-validation-he.md).
+Real-provider diagnosis still needs a separate exact-model/configuration/questions/
+call-budget decision; no qualifying live evidence follows from manual plans.
 
 ## Definition of Done for local synthetic IT Operations V1
 

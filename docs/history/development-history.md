@@ -1,5 +1,37 @@
 # QueryOps AI — Development History
 
+## 2026-11-02 — W6c offline semantic validation evidence
+
+Verified PR #68 merged at latest main `92bf4ca`, then created clean branch
+`codex/m10-w6c-offline-validation`. A fresh-context author froze 20 questions and
+criteria at `e22831e`; manual witnesses, independent SQL oracles, synthetic
+contrast fixture and hashes were frozen at `97ef82b` before execution.
+No product/runtime, prompt/model, catalog, fixed V2/scorer/threshold or CI changes.
+
+Nineteen authorized projections meet the coverage targets within 16,000 bytes;
+one effective-permission gate denies before projection. Thirteen of fourteen
+manual positive witnesses pass deterministic stages and complete PostgreSQL
+comparison; one selected optional-OR tree cannot preserve both exclusive witness
+branches under current LEFT orientation. Of sixteen wrong-plan contrasts,
+fourteen compare incorrect, one is rejected, and one remains observationally
+equal under DISTINCT in this frozen fixture. These are backend/oracle observations,
+not provider interpretation or NL answer accuracy. Known W6a and exposed CA-B01
+remain separate regression evidence; packing is unchanged.
+
+Dedicated loopback-only PostgreSQL 16.14 held the small seed plus fixed contrasts;
+a second disposable instance ran existing reset-based regressions. Focused
+PostgreSQL/semantic/evaluator regressions: 264 passed, zero skipped. Separate
+provider/grounding/catalog/environment/evidence/provenance/dataset: 292 passed.
+Three tampering self-checks stop before DB construction; Ruff, source-diff guards
+and local Markdown targets passed. The report and proposed bounded, unexecuted
+live diagnostic are [recorded here](../audits/2026-11-02-w6c-offline-validation-he.md).
+Fresh-context final methodology review is a separate evidence check. No paid
+calls, W7, product tuning, release canary/Full40 or V1 qualification occurred.
+That review independently replayed the evidence and approved the unmerged
+evidence PR after closing an audit-tool import-order guard issue. Frozen inputs
+and every stable observation matched; scope-flag-only coverage and the limits
+of fixture discrimination remain explicit in the report.
+
 ## 2026-11-01 — Candidate Availability independent-review correction
 
 Independent review of `740d3bc` requested changes for P2: OpenAI unsafe-request
