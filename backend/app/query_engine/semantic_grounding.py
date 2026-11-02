@@ -19,6 +19,7 @@ from app.query_engine.semantic_catalog import (
     SemanticCatalog,
     SemanticCatalogProjection,
     SemanticConcept,
+    SemanticCompositionRule,
     SemanticEntity,
     SemanticMetric,
     SemanticRelationship,
@@ -440,12 +441,7 @@ def _build_candidate_context(
         if metric.id in selected_metric_ids and metric.id in eligible_metrics
     )
     rule_projection = tuple(
-        {
-            "id": rule.id,
-            "description": rule.description,
-            "all_of_concept_ids": list(rule.all_of_concept_ids),
-            "or_concept_ids": list(rule.or_concept_ids),
-        }
+        _project_composition_rule(rule)
         for rule in sorted(catalog.composition_rules, key=lambda item: item.id)
         if rule.id in exact_rule_ids
         and set((*rule.all_of_concept_ids, *rule.or_concept_ids))
@@ -544,7 +540,87 @@ def _build_candidate_context(
         raise DomainPackValidationError(
             "Semantic catalog projection exceeds the safe prompt size limit"
         )
+    projection = _augment_available_context(
+        projection, catalog, question_tokens, eligible_entities,
+        eligible_concepts, eligible_metrics, eligible_relationships, allowed_columns,
+    )
     return projection, grounded_result_intent, suggested_result_intent
+
+
+def _augment_available_context(
+    projection: SemanticCatalogProjection,
+    catalog: SemanticCatalog,
+    question_tokens: tuple[str, ...],
+    entities: Mapping[str, SemanticEntity],
+    concepts: Mapping[str, SemanticConcept],
+    metrics: Mapping[str, SemanticMetric],
+    relationships: tuple[SemanticRelationship, ...],
+    allowed_columns: Mapping[str, frozenset[str]],
+) -> SemanticCatalogProjection:
+    # Availability adds options, never lexical evidence or binding intent.
+    expanded = _copy_projection(
+        projection,
+        entities=tuple(
+            _project_entity(entity, allowed_columns.get(entity.table, frozenset()))
+            for entity in sorted(entities.values(), key=lambda item: item.id)
+        ),
+        relationships=tuple(_project_relationship(item) for item in relationships),
+    )
+    # shortcut: oversized graphs retain the ranked core; revisit for larger catalogs.
+    if _projection_size(expanded) <= MAX_SEMANTIC_PROJECTION_BYTES:
+        projection = expanded
+    available_entities = {item["id"] for item in projection.entities}
+    definitions = [
+        (kind, item)
+        for kind, items in (
+            ("concepts", concepts.values()),
+            ("metrics", metrics.values()),
+            ("composition_rules", catalog.composition_rules),
+        )
+        for item in items
+    ]
+    definitions.sort(key=lambda pair: (
+        -_description_score(
+            question_tokens,
+            pair[1].description + " " + " ".join(pair[1].natural_language_references),
+        ),
+        pair[0], pair[1].id,
+    ))
+    for kind, item in definitions:
+        if any(value["id"] == item.id for value in getattr(projection, kind)):
+            continue
+        if isinstance(item, SemanticConcept):
+            required_ids = (item.id,)
+        elif isinstance(item, SemanticMetric):
+            if item.entity_id not in available_entities:
+                continue
+            required_ids = item.required_concept_ids
+        else:
+            required_ids = (*item.all_of_concept_ids, *item.or_concept_ids)
+        closure = set(expand_semantic_concept_ids(catalog, required_ids))
+        if not closure <= concepts.keys() or any(
+            concepts[item_id].entity_id not in available_entities
+            for item_id in closure
+        ):
+            continue
+        retained = {value["id"] for value in projection.concepts}
+        changes = {"concepts": projection.concepts + tuple(
+            _project_concept(concepts[item_id], entities[concepts[item_id].entity_id])
+            for item_id in sorted(closure - retained)
+        )}
+        if isinstance(item, SemanticMetric):
+            changes[kind] = projection.metrics + (_project_metric(item),)
+        elif isinstance(item, SemanticCompositionRule):
+            changes[kind] = projection.composition_rules + (_project_composition_rule(item),)
+        expanded = _copy_projection(projection, **changes)
+        if _projection_size(expanded) <= MAX_SEMANTIC_PROJECTION_BYTES:
+            projection = expanded
+    projection = _copy_projection(projection, **{
+        kind: tuple(sorted(getattr(projection, kind), key=lambda value: value["id"]))
+        for kind in ("concepts", "metrics", "composition_rules")
+    })
+    _validate_projection_concept_dependency_closure(projection)
+    return projection
 
 
 def _concept_is_authorized(
@@ -675,6 +751,15 @@ def _project_metric(metric: SemanticMetric) -> dict[str, Any]:
             "function": metric.aggregation.function,
             "description": metric.aggregation.description,
         },
+    }
+
+
+def _project_composition_rule(rule: SemanticCompositionRule) -> dict[str, Any]:
+    return {
+        "id": rule.id,
+        "description": rule.description,
+        "all_of_concept_ids": list(rule.all_of_concept_ids),
+        "or_concept_ids": list(rule.or_concept_ids),
     }
 
 

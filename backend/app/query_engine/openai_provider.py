@@ -332,6 +332,7 @@ class OpenAIProvider:
                     str(entity["table"])
                     for entity in semantic_projection.entities
                     if isinstance(entity.get("table"), str)
+                    and entity["id"] in semantic_projection.lexical_evidence()["entity_ids"]
                 )
             return PlanGenerationResult(
                 provider_name=self.provider_name,
