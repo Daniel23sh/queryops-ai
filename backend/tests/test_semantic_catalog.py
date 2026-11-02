@@ -667,6 +667,16 @@ def test_catalog_validation_rejects_supersedence_cycle() -> None:
         _parse(document)
 
 
+@pytest.mark.parametrize("join_type", ["inner", "left", "left_reverse"])
+def test_catalog_example_accepts_explicit_join_intent(join_type):
+    document = _catalog_document()
+    example = next(e for e in document["examples"] if e.get("relationships"))
+    example["relationships"][0]["join_type"] = join_type
+    parsed = _parse(document)
+    actual = next(e for e in parsed.examples if e.id == example["id"])
+    assert actual.relationships[0].join_type == join_type
+
+
 def _catalog_document() -> dict[str, Any]:
     loaded = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
     assert isinstance(loaded, dict)

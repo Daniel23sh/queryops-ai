@@ -110,7 +110,15 @@ jobs:
         working-directory: backend
         run: |
           pytest --ignore=tests/test_action_security_release.py -q -rs --junitxml=/tmp/postgres-backend.xml
-          python -c 'import xml.etree.ElementTree as ET; root = ET.parse("/tmp/postgres-backend.xml").getroot(); skipped = sum(int(suite.attrib.get("skipped", 0)) for suite in root.iter("testsuite")); assert skipped == 0, f"{skipped} PostgreSQL backend tests skipped"'
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          root = ET.parse("/tmp/postgres-backend.xml").getroot()
+          skipped = sum(int(suite.attrib.get("skipped", 0)) for suite in root.iter("testsuite"))
+          assert skipped == 0, f"{skipped} PostgreSQL backend tests skipped"
+          reverse_left = [case for case in root.iter("testcase")
+                          if case.attrib.get("classname") == "tests.test_reverse_left_postgres"]
+          assert len(reverse_left) >= 13, "Reverse LEFT PostgreSQL regressions were not selected"
+          PY
 
   frontend:
     name: Frontend

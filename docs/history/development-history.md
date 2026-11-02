@@ -1,5 +1,40 @@
 # QueryOps AI — Development History
 
+## 2026-11-02 — W6c F1 bounded reverse-LEFT implementation
+
+Created `codex/m10-w6c-f1-reverse-left` from clean latest main `761ddb2`.
+PR #69 had already merged before this task; its `04834e5` evidence and frozen
+audit fixtures remain unchanged. Separately authorized F1 adds explicit
+SemanticPlan `left_reverse`, preserving `to_entity`; legacy `left` still
+preserves `from_entity`, and INNER behavior/rendering is unchanged.
+
+The provider-facing enum/description, catalog-example parser, deterministic tree
+traversal, nullable-side conformance and non-null/named-metric guards agree on the
+new intent. Observations preserve it; FK/PK equivalence remains INNER-only.
+Grouped OR and independent AND remain unchanged. No catalog restructuring,
+prompt/model changes, new filter algebra or production case-specific logic.
+
+Permanent synthetic regressions use fake OpenAI structured parsing through the
+governed API and real PostgreSQL runtime role/RLS. An independent population
+oracle and the reverse-LEFT plan return the same three users: A-only, B-only and
+both. Nonqualifying/NULL/hidden witnesses, independent restrictions, fanout,
+DISTINCT/COUNT/SUM, conservative metrics and authorization denials are covered.
+These are supplied-plan backend results, not NL/provider-accuracy evidence.
+
+V3 local evidence: 2,007 complete PostgreSQL backend tests plus the separate
+20-case action security suite, zero skips; all 13 new API cases verified in
+JUnit. Ruff/Pyright/compileall and Alembic head/no-diff passed. CI explicitly
+asserts the new API test module executes. See the
+[contract and evidence](../development/reverse-left-joins.md) for limits.
+No live calls, frozen Evaluation changes, browser/UI change, W6c Live or V1
+release qualification. Fresh-context independent review found a pre-existing
+LEFT ON/WHERE predicate-placement gap. Physical LEFT ON now accepts only the
+catalog relationship equality, preventing an independent restriction from being
+moved off WHERE; INNER normalization and canonical legacy rendering are intact.
+The reviewer rechecked the correction, ran 77 focused tests and verified the
+127-case corrected PostgreSQL selection, with no remaining findings. The focused
+Draft PR remains for independent owner review and is not to be merged by this task.
+
 ## 2026-11-02 — W6c offline semantic validation evidence
 
 Verified PR #68 merged at latest main `92bf4ca`, then created clean branch

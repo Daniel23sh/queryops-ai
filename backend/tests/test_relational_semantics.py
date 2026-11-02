@@ -140,11 +140,11 @@ def test_fanout_along_a_second_branch_is_not_missed():
     assert validated(value)  # It explicitly counts joined rows.
 
 
-@pytest.mark.parametrize("join_type", ["inner", "left"])
+@pytest.mark.parametrize("join_type", ["inner", "left", "left_reverse"])
 def test_non_null_proof_respects_left_extension(join_type):
     value = joined(join_type)
-    assert field_is_non_null(field(), value, pack()) == (join_type == "inner")
-    assert field_is_non_null(field("children"), value, pack())
+    assert field_is_non_null(field(), value, pack()) == (join_type != "left")
+    assert field_is_non_null(field("children"), value, pack()) == (join_type != "left_reverse")
     assert not field_is_non_null(field(column="amount"), value, pack())
 
 
@@ -189,7 +189,8 @@ def execute(connection, value, domain=None):
             for row in connection.execute(text(sql)).mappings()]
 
 
-@pytest.mark.parametrize("join_type,expected", [("inner", (2, 2, 1, 20, 5)), ("left", (3, 2, 1, 20, 9))])
+@pytest.mark.parametrize("join_type,expected", [("inner", (2, 2, 1, 20, 5)), ("left", (3, 2, 1, 20, 9)),
+    ("left_reverse", (3, 3, 2, 20, 5))])
 def test_postgres_join_population_and_multiple_aggregates(postgres_connection, join_type, expected):
     value = joined(join_type, aggregations=(aggregate(), aggregate(target=field(), name="non_null"),
         aggregate(target=field(), distinct=True, name="unique_parents"),
@@ -235,7 +236,7 @@ def test_sum_rejects_non_numeric_or_unknown_metadata(data_type):
     assert error.value.reason == "sum_target_not_numeric"
 
 
-@pytest.mark.parametrize("join_type,valid", [("inner", True), ("left", False)])
+@pytest.mark.parametrize("join_type,valid", [("inner", True), ("left", False), ("left_reverse", True)])
 def test_metric_count_conformance_requires_input_non_null_proof(join_type, valid):
     domain = pack()
     # Exercise conformance's independent defense with a formerly accepted shape.
@@ -264,3 +265,126 @@ def test_postgres_distinct_order_and_multi_dimension_group(postgres_connection):
     value = plan(entity_ids=("children",), distinct=True, output_fields=keys, group_by=keys,
         order_by=(SemanticOrderIntent(target_kind="field", field=keys[1], aggregation_id=None, direction="desc"),))
     assert execute(postgres_connection, value) == [(None, "z", 1), (1, "y", 1), (1, "x", 1)]
+
+
+@pytest.mark.parametrize("join_type,root,added", [
+    ("inner", "children", "parents"),
+    ("left", "children", "parents"),
+    ("left_reverse", "parents", "children"),
+])
+def test_join_intent_rendering_observation_and_wrong_side(join_type, root, added):
+    domain = pack()
+    checked = validated(joined(join_type))
+    sql = render_validated_semantic_plan(checked, domain)
+    keyword = "INNER" if join_type == "inner" else "LEFT"
+    assert sql == (f"SELECT COUNT(*) AS n FROM {root} {keyword} JOIN {added} "
+                   "ON children.parent_id = parents.id")
+    assert checked.as_observation()["relationship_join_types"] == [
+        {"relationship_id": "child_parent", "join_type": join_type}]
+    _, schema = inputs(domain)
+    wrong = (f"SELECT COUNT(*) AS n FROM {added} {keyword} JOIN {root} "
+             "ON children.parent_id = parents.id")
+    safety = validate_sql(wrong, schema)
+    assert safety.valid
+    result = check_semantic_conformance(plan=checked, candidate_sql=wrong,
+        safety_result=safety, domain_pack=domain, schema_context=schema)
+    assert result.valid == (join_type == "inner")
+    if join_type != "inner":
+        assert result.reason_code.value == "semantic_relationship_mismatch"
+
+
+def test_reverse_left_conflicting_preservation_fails_closed():
+    domain = pack()
+    relationships = domain.semantic_catalog.relationships
+    domain = replace(domain, semantic_catalog=replace(domain.semantic_catalog,
+        relationships=(relationships[0], replace(relationships[1], from_entity="children", to_entity="peers"))))
+    value = plan(entity_ids=("parents", "children", "peers"), relationships=tuple(
+        SemanticRelationshipIntent(relationship_id=r.id, join_type="left_reverse")
+        for r in relationships))
+    with pytest.raises(SemanticPlanValidationError) as error:
+        validated(value, domain)
+    assert error.value.reason == "left_join_orientation_unsupported"
+
+
+@pytest.mark.parametrize("nullable_metric", [False, True])
+def test_reverse_left_one_to_one_metric_population(nullable_metric):
+    domain = pack(SemanticRelationshipCardinality.ONE_TO_ONE)
+    if nullable_metric:
+        domain = replace(domain, semantic_catalog=replace(domain.semantic_catalog,
+            metrics=(replace(domain.semantic_catalog.metrics[0], entity_id="children"),)))
+    value = joined("left_reverse", metric_id="parent_count", aggregations=())
+    if nullable_metric:
+        with pytest.raises(SemanticPlanValidationError) as error:
+            validated(value, domain)
+        assert error.value.reason == "metric_population_unsupported"
+    else:
+        assert validated(value, domain)
+
+
+def test_reverse_left_many_to_one_metric_still_rejects_fanout():
+    with pytest.raises(SemanticPlanValidationError) as error:
+        validated(joined("left_reverse", metric_id="parent_count", aggregations=()))
+    assert error.value.reason == "metric_population_unsupported"
+
+
+@pytest.mark.parametrize("relationship_id,reason", [
+    ("unknown", "relationship_not_candidate"),
+    ("peer_parent", "relationship_endpoint_missing"),
+])
+def test_reverse_left_does_not_authorize_arbitrary_relationships(relationship_id, reason):
+    value = joined("left_reverse").model_copy(update={"relationships": (
+        SemanticRelationshipIntent(relationship_id=relationship_id, join_type="left_reverse"),)})
+    with pytest.raises(SemanticPlanValidationError) as error:
+        validated(value)
+    assert error.value.reason == reason
+
+
+@pytest.mark.parametrize("changes", [
+    {"relationship_id": "children; DROP TABLE parents"},
+    {"join_type": "right"}, {"join_type": "full"},
+    {"preserve": "to_entity"},
+])
+def test_join_intent_rejects_injection_and_unknown_shapes(changes):
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        SemanticRelationshipIntent.model_validate({
+            "relationship_id": "child_parent", "join_type": "left_reverse", **changes})
+
+
+def test_reverse_left_order_is_deterministic_for_two_branches():
+    value = plan(entity_ids=("parents", "children", "peers"), relationships=tuple(
+        SemanticRelationshipIntent(relationship_id=r, join_type="left_reverse")
+        for r in ("child_parent", "peer_parent")))
+    checked = validated(value)
+    reordered = validated(value.model_copy(update={
+        "relationships": value.relationships[::-1], "entity_ids": value.entity_ids[::-1]}))
+    assert render_validated_semantic_plan(checked, pack()) == render_validated_semantic_plan(reordered, pack())
+
+
+def test_postgres_reverse_left_one_to_one_named_metric(postgres_connection):
+    postgres_connection.execute(text("DELETE FROM children WHERE id=12"))
+    postgres_connection.execute(text("ALTER TABLE children ADD UNIQUE (parent_id)"))
+    domain = pack(SemanticRelationshipCardinality.ONE_TO_ONE)
+    value = joined("left_reverse", metric_id="parent_count", aggregations=())
+    checked = validated(value, domain)
+    sql = render_validated_semantic_plan(checked, domain)
+    assert postgres_connection.scalar(text(sql)) == 2
+
+
+@pytest.mark.parametrize("join_type", ["inner", "left", "left_reverse"])
+def test_outer_join_on_filters_cannot_stand_in_for_where(join_type):
+    from app.query_engine.semantic_plan import SemanticLiteralFilter
+
+    value = joined(join_type, literal_filters=(SemanticLiteralFilter(
+        field=field(column="label"), operator="equals", value="a"),))
+    checked = validated(value)
+    sql = render_validated_semantic_plan(checked, pack())
+    assert " WHERE " in sql
+    mutation = sql.replace(" WHERE ", " AND ")
+    _, schema = inputs(pack())
+    safety = validate_sql(mutation, schema)
+    assert safety.valid
+    result = check_semantic_conformance(plan=checked, candidate_sql=mutation,
+        safety_result=safety, domain_pack=pack(), schema_context=schema)
+    assert result.valid == (join_type == "inner")

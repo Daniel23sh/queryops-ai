@@ -17,7 +17,8 @@ def selected_join_order(
     """Return the existing renderer's order, or no supported LEFT orientation.
 
     Requires an authorized, connected, acyclic selected graph. LEFT preserves
-    from_entity; INNER may be traversed in either direction. This selects no
+    from_entity; LEFT_REVERSE preserves to_entity; INNER may be traversed in
+    either direction. This selects no
     candidate or semantic relationship role.
     """
     by_id = {item.id: item for item in domain_pack.semantic_catalog.relationships}
@@ -31,6 +32,8 @@ def selected_join_order(
                 source = relationship.from_entity in available
                 target = relationship.to_entity in available
                 if (join_type == "left" and source and not target) or (
+                    join_type == "left_reverse" and target and not source
+                ) or (
                     join_type == "inner" and source != target
                 ):
                     added = relationship.to_entity if source else relationship.from_entity
@@ -55,7 +58,7 @@ def field_is_non_null(
     entity = domain_pack.semantic_catalog.entities_by_id[field.entity_id]
     column = domain_pack.tables_by_name[entity.table].columns_by_name.get(field.column)
     return column is not None and not column.nullable and all(
-        added != field.entity_id or join_type != "left"
+        added != field.entity_id or join_type not in {"left", "left_reverse"}
         for _, join_type, added in order[1]
     )
 
