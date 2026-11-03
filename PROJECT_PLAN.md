@@ -93,10 +93,18 @@ authorized one-time W6c v2 Live diagnostic ended after 8 dispatch attempts and
 The [post-live diagnosis](docs/audits/w6c/post-live-diagnosis-he.md) separates
 established observations from unavailable provider/exception evidence.
 
-**W6c Post-Live Diagnostics** is authorized on 2026-11-03: offline evidence
-analysis and diagnostic-only contract/result and transport observability, with
-fake HTTP, disposable PostgreSQL, final CI and independent review. No new live
-call, experiment version, replay/resume, product-semantic change or merge.
+**W6c Post-Live Diagnostics** merged through [PR #72](https://github.com/Daniel23sh/queryops-ai/pull/72)
+at `b2cf868b62f6fd122a7423a52dc0e4bb7fe0d1a8`, verified against clean latest
+remote main on 2026-11-03. Its frozen evidence and terminal journal remain unchanged.
+
+**W7 — Explicit Local Release Boundary** is explicitly authorized on 2026-11-03,
+superseding the earlier W7 exclusion. Only exact, explicit `AUTH_MODE=demo` is
+supported for local synthetic V1. Enforce startup/request configuration and
+session/provider identity, preserve current permissions/scopes/session security,
+align Compose/environment/setup docs, and validate with deterministic negative
+and positive regressions, disposable PostgreSQL, Compose startup, final CI and
+fresh-context independent V3 review. Deliver a focused Draft PR without merging.
+W8, production identity/deployment and live-provider work remain unauthorized.
 
 ## Constraints and Remaining Work
 
@@ -105,8 +113,8 @@ call, experiment version, replay/resume, product-semantic change or merge.
   correction and W6c independent validation are separate packages.
 - Old environment v1/missing-fingerprint evidence cannot qualify under environment
   v2. Semantic diagnosis, Output Identity and Candidate Availability are merged;
-  live semantic validation, explicit local auth boundary, reproducible validation
-  and final V1 QA remain open.
+  qualifying live semantic validation, reproducible validation and final V1 QA
+  remain open. W7 local-auth implementation and validation are recorded below.
   The audit's hard-004 case passed its diagnostic canary; blanket historical
   failure claims are not accepted without new evidence.
 - Preserve authorization, RLS, safety caps, historical V1 baselines, semantic
@@ -119,12 +127,12 @@ call, experiment version, replay/resume, product-semantic change or merge.
 
 ## Next Approved Work
 
-Complete the focused offline diagnosis/instrumentation Draft PR and leave it
-unmerged for owner review. Preserve the original terminal v2 journal and frozen
-evidence. Any future billable experiment needs separately approved scope, model,
-settings, questions, fingerprint and call/dispatch limits; the first experiment's
-remaining nominal budget cannot be reused. W7 and product-semantic tuning are
-not authorized.
+W7 implementation is complete on its feature branch. Focused PostgreSQL/auth,
+Compose startup, frontend/browser and independent V3 review passed; evidence is
+in [development history](docs/history/development-history.md). Complete final
+CI verification and hand off the focused Draft PR against main. Stop at that handoff; no merge,
+W8, production authentication/deployment or live-provider evaluation. The W6c
+terminal journal and frozen evidence must remain unchanged.
 
 ## References
 

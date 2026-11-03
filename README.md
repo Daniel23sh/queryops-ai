@@ -140,7 +140,15 @@ Stop the stack without deleting the database volume:
 docker compose down
 ```
 
-The supported V1 target is local use with synthetic data. The checked-in environment is for that target; changing credentials alone does not provide real authentication or make shared/production deployment supported.
+The supported V1 target is **local use with synthetic data and demo identities only**.
+`AUTH_MODE=demo` must be explicitly configured with that exact value. Missing,
+empty, unknown or unsupported values (including `disabled` and `supabase`) stop
+backend startup; requests also fail closed before reaching application routes.
+Compose requires a nonempty value and publishes all services on `127.0.0.1` only.
+The quick start copies the explicit setting from `.env.example`; existing cookies
+cannot bypass the configured mode or authenticate a different provider's user.
+Changing credentials or enabling secure cookies does not provide real identity.
+The application is **not ready for shared or production identity/deployment**.
 
 ### Optional host-based development
 
@@ -153,6 +161,7 @@ cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -e ".[dev]"
+export AUTH_MODE=demo
 export DATABASE_URL=postgresql+psycopg://queryops:queryops@localhost:5432/queryops
 alembic upgrade head
 python scripts/seed_it_operations.py --profile small --reset
@@ -186,7 +195,8 @@ passes the values through; host Python commands use their exported environment
 (they do not load `.env` implicitly). `provider_config.py` is the single owner of
 bounded fallback defaults: Terra, low reasoning, 2048 output tokens, 45 seconds
 and 2 retries. Explicit empty/invalid values and a CLI model conflicting with
-`OPENAI_MODEL` fail closed. No `.env` is required for Mock or Python defaults.
+`OPENAI_MODEL` fail closed. No `.env` is required for Mock or provider defaults;
+host-based backend startup still requires the explicit `AUTH_MODE=demo` export above.
 The diagnostic-only zero-retry policy does not change normal product retries.
 W6c preparation and its disabled-by-default live guard are documented in the
 [separately versioned diagnostic proposal](docs/audits/w6c/live-experiment-v2.md).

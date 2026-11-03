@@ -2,13 +2,16 @@ import os
 
 SERVICE_NAME = "queryops-backend"
 DEFAULT_DATABASE_URL = "postgresql+psycopg://queryops:queryops@localhost:5432/queryops"
-DEFAULT_AUTH_MODE = "demo"
 DEFAULT_SESSION_SECRET_KEY = "queryops-local-session-secret"
 DEFAULT_SESSION_MAX_AGE_SECONDS = 28800
 FRONTEND_DEV_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
+
+
+class AuthConfigurationError(ValueError):
+    """The local demo authentication boundary is not explicitly configured."""
 
 
 def normalize_database_url(database_url: str) -> str:
@@ -23,7 +26,12 @@ def get_database_url() -> str:
 
 
 def get_auth_mode() -> str:
-    return os.environ.get("AUTH_MODE", DEFAULT_AUTH_MODE)
+    mode = os.environ.get("AUTH_MODE")
+    if mode != "demo":
+        raise AuthConfigurationError(
+            "AUTH_MODE must be explicitly set to demo for local synthetic use only."
+        )
+    return mode
 
 
 def get_session_secret_key() -> str:
