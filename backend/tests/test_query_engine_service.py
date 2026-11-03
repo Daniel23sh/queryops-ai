@@ -1105,10 +1105,10 @@ def test_selected_provider_receives_authorized_context_and_persists_only_safe_us
     assert provider.semantic_catalog.catalog_id == "it_operations_semantic_catalog"
     assert "it_audit_events" not in provider.schema_context["allowed_tables"]
     assert query_run.query_metadata["provider"] == "openai"
-    assert query_run.query_metadata["model"] == "gpt-5.6-terra"
+    assert query_run.query_metadata["model"] == "gpt-6.1-terra"
     assert query_run.query_metadata["provider_measurement"] == {
         "provider": "openai",
-        "model_label": "gpt-5.6-terra",
+        "model_label": "gpt-6.1-terra",
         "duration_ms": 7.5,
         "attempt_count": 1,
         "call_count": 1,
@@ -1288,7 +1288,7 @@ class UnsafeRequestProvider:
 
 class RecordingMeasuredProvider:
     provider_name = "openai"
-    model_name = "gpt-5.6-terra"
+    model_name = "gpt-6.1-terra"
 
     def __init__(self) -> None:
         self.calls = 0
@@ -1313,7 +1313,7 @@ class RecordingMeasuredProvider:
             generation_metadata={
                 "provider_measurement": {
                     "provider": "openai",
-                    "model_label": "gpt-5.6-terra",
+                    "model_label": "gpt-6.1-terra",
                     "duration_ms": 7.5,
                     "attempt_count": 1,
                     "call_count": 1,

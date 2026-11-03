@@ -116,7 +116,7 @@ def test_openai_runner_requires_environment_before_service_or_persistence() -> N
         query_service_factory=service_factory,
         provider_descriptor=ProviderDescriptor(
             provider=ProviderId.OPENAI,
-            model_label="gpt-5.6-terra",
+            model_label="gpt-6.1-terra",
             runtime_digest=current_openai_runtime_identity()["digest"],
         ),
     )
@@ -963,11 +963,11 @@ def test_runner_persists_real_provider_identity_and_aggregates_safe_usage(
                 clarification_required=clarification,
                 metadata={
                     "provider": "openai",
-                    "model": "gpt-5.6-terra",
+                    "model": "gpt-6.1-terra",
                     "referenced_tables": [] if clarification else ["devices"],
                     "provider_measurement": {
                         "provider": "openai",
-                        "model_label": "gpt-5.6-terra",
+                        "model_label": "gpt-6.1-terra",
                         "duration_ms": 12.5,
                         "attempt_count": 1,
                         "call_count": 1,
@@ -990,7 +990,7 @@ def test_runner_persists_real_provider_identity_and_aggregates_safe_usage(
         query_service_factory=lambda _pack: factory_calls.append(True) or service,
         provider_descriptor=ProviderDescriptor(
             provider=ProviderId.OPENAI,
-            model_label="gpt-5.6-terra",
+            model_label="gpt-6.1-terra",
             runtime_digest=current_openai_runtime_identity()["digest"],
         ),
         evaluation_environment=_environment_identity(),
@@ -1010,7 +1010,7 @@ def test_runner_persists_real_provider_identity_and_aggregates_safe_usage(
     assert factory_calls == [True]
     assert service.calls == 2
     assert summary.provider == "openai"
-    assert summary.model_label == "gpt-5.6-terra"
+    assert summary.model_label == "gpt-6.1-terra"
     assert summary.provider_usage == {
         "call_count": 2,
         "attempt_count": 2,
@@ -1026,7 +1026,7 @@ def test_runner_persists_real_provider_identity_and_aggregates_safe_usage(
     assert run is not None
     assert run.name == "it_operations_v1:openai"
     assert run.summary["provider"] == "openai"
-    assert run.summary["model_label"] == "gpt-5.6-terra"
+    assert run.summary["model_label"] == "gpt-6.1-terra"
     assert run.summary["provider_usage"] == summary.provider_usage
     assert run.summary["semantic_catalog"] == summary.semantic_catalog
     assert run.summary["evaluation_environment"] == summary.evaluation_environment
@@ -1059,7 +1059,7 @@ def test_fatal_provider_authentication_failure_stops_and_finalizes_run(
                 clarification_required=True,
                 metadata={
                     "provider": "openai",
-                    "model": "gpt-5.6-terra",
+                    "model": "gpt-6.1-terra",
                     "referenced_tables": [],
                     "provider_failure_code": "provider_authentication_failed",
                     "provider_failure_fatal": True,
@@ -1073,7 +1073,7 @@ def test_fatal_provider_authentication_failure_stops_and_finalizes_run(
         query_service_factory=lambda _pack: service,
         provider_descriptor=ProviderDescriptor(
             provider=ProviderId.OPENAI,
-            model_label="gpt-5.6-terra",
+            model_label="gpt-6.1-terra",
             runtime_digest=current_openai_runtime_identity()["digest"],
         ),
         evaluation_environment=_environment_identity(),
@@ -1231,7 +1231,7 @@ def test_openai_runner_rejects_invalid_runtime_identity_before_provider_or_persi
         query_service_factory=lambda _pack: calls.append(True),
         provider_descriptor=ProviderDescriptor(
             provider=ProviderId.OPENAI,
-            model_label="gpt-5.6-terra",
+            model_label="gpt-6.1-terra",
             runtime_digest=current_openai_runtime_identity()["digest"],
         ),
         evaluation_environment=environment,

@@ -17,7 +17,7 @@ from app.query_engine.llm_provider import LLMProvider
 from app.query_engine.mock_llm_provider import MockLLMProvider
 
 
-DEFAULT_OPENAI_MODEL = "gpt-5.6-terra"
+DEFAULT_OPENAI_MODEL = "gpt-6.1-terra"
 DEFAULT_OPENAI_TIMEOUT_SECONDS = 45.0
 DEFAULT_OPENAI_MAX_RETRIES = 2
 ReasoningEffort = Literal["none", "low", "medium", "high"]
@@ -188,6 +188,8 @@ def load_provider_settings(
         if model_override is not None
         else values.get("OPENAI_MODEL", DEFAULT_OPENAI_MODEL)
     )
+    if model_override is not None and values.get("OPENAI_MODEL") not in (None, model_override):
+        raise ProviderConfigurationError("provider_model_mismatch")
     if not valid_model_label(model):
         raise ProviderConfigurationError("provider_model_invalid")
 

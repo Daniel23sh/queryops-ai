@@ -176,10 +176,20 @@ OpenAI is available only through explicit configuration:
 ```env
 LLM_PROVIDER=openai
 OPENAI_API_KEY=replace-with-a-local-secret
-OPENAI_MODEL=gpt-5.6-terra
+OPENAI_MODEL=gpt-6.1-terra
 ```
 
 Setting `OPENAI_API_KEY` alone does not activate OpenAI. Real-provider requests can incur API charges; keep secrets out of tracked files and use MockLLM for routine development and tests.
+
+Environment variables control provider settings. Compose reads local `.env` and
+passes the values through; host Python commands use their exported environment
+(they do not load `.env` implicitly). `provider_config.py` is the single owner of
+bounded fallback defaults: Terra, low reasoning, 2048 output tokens, 45 seconds
+and 2 retries. Explicit empty/invalid values and a CLI model conflicting with
+`OPENAI_MODEL` fail closed. No `.env` is required for Mock or Python defaults.
+The diagnostic-only zero-retry policy does not change normal product retries.
+W6c preparation and its disabled-by-default live guard are documented in the
+[separately versioned diagnostic proposal](docs/audits/w6c/live-experiment-v2.md).
 
 The OpenAI provider returns only a structured `SemanticPlan` in one request. QueryOps validates the plan, renders SQL deterministically in the backend, and makes no repair or fallback provider call.
 

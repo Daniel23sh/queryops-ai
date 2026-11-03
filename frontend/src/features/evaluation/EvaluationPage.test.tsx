@@ -80,7 +80,7 @@ describe("Evaluation workspace", () => {
     renderAppAt("/evaluation");
 
     expect(await screen.findByRole("heading", { name: "V1 readiness unavailable" })).toBeInTheDocument();
-    expect(screen.queryByText("gpt-5.6-terra")).not.toBeInTheDocument();
+    expect(screen.queryByText("gpt-6.1-terra")).not.toBeInTheDocument();
   });
 
   it.each([0, 1, 2])("shows incomplete canary progress at %s/3 runs", async (runCount) => {
@@ -185,7 +185,7 @@ describe("Evaluation workspace", () => {
     expect(await screen.findByRole("heading", { name: "V1 readiness: Ready" })).toBeInTheDocument();
     expect(screen.queryByText(/Measured 100/)).not.toBeInTheDocument();
     expect(screen.queryByText(/Threshold/)).not.toBeInTheDocument();
-    expect(screen.getByText("Status: Ready")).not.toHaveTextContent("gpt-5.6-terra");
+    expect(screen.getByText("Status: Ready")).not.toHaveTextContent("gpt-6.1-terra");
     expect(screen.queryByLabelText("Provider usage")).not.toBeInTheDocument();
   });
 
@@ -229,7 +229,7 @@ describe("Evaluation workspace", () => {
       "GET /api/v1/evaluation/overview": successResponse(
         backendEvaluationOverview({
           provider: "openai",
-          modelLabel: "gpt-5.6-terra"
+          modelLabel: "gpt-6.1-terra"
         })
       )
     }));
@@ -238,7 +238,7 @@ describe("Evaluation workspace", () => {
     expect(
       await screen.findByRole("heading", { name: "OpenAI quality measurement" })
     ).toBeInTheDocument();
-    expect(screen.getByText("OpenAI · gpt-5.6-terra")).toBeInTheDocument();
+    expect(screen.getByText("OpenAI · gpt-6.1-terra")).toBeInTheDocument();
     expect(screen.getByText(/measurements, not release thresholds/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /start|run|rerun/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("combobox", { name: /provider|model/i })).not.toBeInTheDocument();

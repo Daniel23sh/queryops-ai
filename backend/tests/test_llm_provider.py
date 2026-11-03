@@ -137,7 +137,7 @@ def test_mock_provider_makes_no_network_calls(monkeypatch) -> None:
 
 def test_unknown_attempts_and_usage_never_aggregate_as_zero():
     from app.query_engine.llm_provider import aggregate_provider_measurements, sanitize_provider_measurement
-    base = {"provider": "openai", "model_label": "gpt-5.6-terra", "duration_ms": 1.5,
+    base = {"provider": "openai", "model_label": "gpt-6.1-terra", "duration_ms": 1.5,
             "call_count": 1, "attempt_count": None, "usage_complete": False, "input_tokens": 5}
     measurement = sanitize_provider_measurement(base)
     assert measurement == base

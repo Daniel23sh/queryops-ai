@@ -687,7 +687,7 @@ def test_readiness_selects_latest_qualifying_openai_and_ignores_newer_ineligible
 
     assert data["verdict"] == "ready"
     assert data["provider"] == "openai"
-    assert data["model_label"] == "gpt-5.6-terra"
+    assert data["model_label"] == "gpt-6.1-terra"
     assert data["completed_count"] == 40
     assert data["technical"]["run_id"] == str(qualifying.id)
 
@@ -833,7 +833,7 @@ def test_latest_default_selects_newest_supported_provider_run(
     assert run["id"] == str(newer.id)
     assert run["provider"] == newer_provider
     assert run["model_label"] == (
-        "gpt-5.6-terra" if newer_provider == "openai" else "mock-queryops-v1"
+        "gpt-6.1-terra" if newer_provider == "openai" else "mock-queryops-v1"
     )
 
 
@@ -841,14 +841,14 @@ def test_explicit_openai_run_serializes_validated_identity(
     client: TestClient,
     db_session: Session,
 ) -> None:
-    run = _create_run(db_session, provider="openai", model_label="gpt-5.6-terra")
+    run = _create_run(db_session, provider="openai", model_label="gpt-6.1-terra")
     _login(client, "demo.admin@queryops.local")
 
     response = client.get(f"/api/v1/evaluation/overview?run_id={run.id}")
 
     assert response.status_code == 200
     assert response.json()["data"]["run"]["provider"] == "openai"
-    assert response.json()["data"]["run"]["model_label"] == "gpt-5.6-terra"
+    assert response.json()["data"]["run"]["model_label"] == "gpt-6.1-terra"
 
 
 @pytest.mark.parametrize(
@@ -1420,7 +1420,7 @@ def _create_run(
         summary={
             "provider": provider,
             "model_label": model_label
-            or ("gpt-5.6-terra" if provider == "openai" else "mock-queryops-v1"),
+            or ("gpt-6.1-terra" if provider == "openai" else "mock-queryops-v1"),
             "dataset_id": evaluation_set.dataset_id,
             "dataset_version": evaluation_set.version,
             "dataset_digest": evaluation_dataset_digest(evaluation_set),
@@ -1517,7 +1517,7 @@ def _create_run(
                         {
                             "provider_measurement": {
                                 "provider": "openai",
-                                "model_label": model_label or "gpt-5.6-terra",
+                                "model_label": model_label or "gpt-6.1-terra",
                                 "duration_ms": 1.25,
                                 "attempt_count": 1,
                                 "call_count": 1,
