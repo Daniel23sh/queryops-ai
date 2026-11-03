@@ -118,6 +118,12 @@ jobs:
           reverse_left = [case for case in root.iter("testcase")
                           if case.attrib.get("classname") == "tests.test_reverse_left_postgres"]
           assert len(reverse_left) >= 13, "Reverse LEFT PostgreSQL regressions were not selected"
+          for module, minimum in {"tests.test_w6c_dispatch": 29,
+                                  "tests.test_w6c_live": 31,
+                                  "tests.test_w6c_live_postgres": 18}.items():
+              cases = [case for case in root.iter("testcase") if case.attrib.get("classname") == module]
+              assert len(cases) >= minimum, f"W6c preparation regressions not selected: {module}"
+              assert not any(case.find("skipped") is not None for case in cases), module
           PY
 
   frontend:

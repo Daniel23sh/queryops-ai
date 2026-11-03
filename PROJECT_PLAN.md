@@ -75,9 +75,17 @@ closing an audit-tool import-order guard issue; the focused PR handoff follows.
 The implementation adds explicit `left_reverse` preservation of `to_entity`,
 retains legacy `inner`/`left` semantics and leaves the frozen evidence unchanged.
 Contract, PostgreSQL oracles and limits are recorded in the
-[implementation contract](docs/development/reverse-left-joins.md). V3 validation
-and fresh-context independent review passed; the focused Draft PR remains unmerged
-for owner review.
+[implementation contract](docs/development/reverse-left-joins.md). PR #70 merged
+at `4b8ba26fa28677e9cff913c99dda5cec6bd7490b`, verified against remote metadata
+and clean latest main on 2026-11-03 after independent V3 acceptance.
+
+**W6c Live preparation + Terra configuration migration** is authorized on
+2026-11-03: migrate active configuration, remove competing defaults, implement a
+diagnostic-only durable HTTP dispatch guard, and prepare a separately versioned
+12-case no-network preflight/dry-run with W6C-007 replacing W6C-010. Preserve all
+frozen evidence, product prompts/catalogs and V2 qualification. No real OpenAI
+request, availability probe, paid evaluation, W6c Live, W7 or merge is authorized.
+See the [v2 preparation/approval contract](docs/audits/w6c/live-experiment-v2.md).
 
 ## Constraints and Remaining Work
 
@@ -100,11 +108,12 @@ for owner review.
 
 ## Next Approved Work
 
-Leave the focused F1 implementation Draft PR unmerged for independent owner review.
-PR #69 was already included in latest main `761ddb2` before F1 implementation;
-its frozen artifacts remain read-only regression evidence. Separately approve
-the exact live diagnostic configuration/questions/call and dispatch caps before
-live validation. W7, broader product tuning and paid evaluation are not authorized.
+Complete the focused preparation Draft PR and leave it unmerged for owner review.
+After a separately approved merge, regenerate the live fingerprint on the merged
+candidate with a fresh disposable fixture. Explicit exact-model/settings/ordered
+questions/fingerprint/call and dispatch-budget approval is still required before
+Live. Frozen W6c and V2 evidence remains read-only; W7, broader tuning and paid
+evaluation are not authorized.
 
 ## References
 
