@@ -1,7 +1,9 @@
-from fastapi import FastAPI
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.responses import ApiError, api_error_handler
+from app.api.responses import ApiError, api_error_handler, error_response
 from app.api.routes.actions import router as actions_router
 from app.api.routes.approvals import router as approvals_router
 from app.api.routes.audit import router as audit_router
@@ -15,9 +17,32 @@ from app.api.routes.notifications import router as notifications_router
 from app.api.routes.queries import router as queries_router
 from app.api.routes.query_templates import router as query_templates_router
 from app.api.routes.role_requests import router as role_requests_router
-from app.core.config import FRONTEND_DEV_ORIGINS
+from app.core.config import AuthConfigurationError, FRONTEND_DEV_ORIGINS, get_auth_mode
 
-app = FastAPI(title="QueryOps AI Backend")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    get_auth_mode()
+    yield
+
+
+app = FastAPI(title="QueryOps AI Backend", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def enforce_auth_configuration(request: Request, call_next):
+    # Recheck before routing, including when an ASGI host omits lifespan startup.
+    try:
+        get_auth_mode()
+    except AuthConfigurationError:
+        return error_response(
+            code="AUTH_CONFIGURATION_ERROR",
+            message="Local demo authentication is not configured.",
+            status_code=503,
+        )
+    return await call_next(request)
+
+
 app.add_exception_handler(ApiError, api_error_handler)
 app.add_middleware(
     CORSMiddleware,

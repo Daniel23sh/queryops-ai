@@ -1,5 +1,46 @@
 # QueryOps AI — Development History
 
+## 2026-11-03 — M10 W7 explicit local authentication boundary
+
+Started from verified clean latest main `b2cf868` (PR #72) on
+`codex/m10-w7-local-auth-boundary`. The owner explicitly authorized W7 only.
+The authoritative configuration reader now accepts only exact, explicit
+`AUTH_MODE=demo`. Missing, empty, unknown and unsupported modes fail startup;
+a request guard also returns a safe 503 before routing or database access when
+lifespan is omitted or configuration changes. Existing signed sessions require
+both the configured provider and the current active AppUser's actual provider.
+Demo login remains restricted to the four seeded synthetic personas; effective
+permissions, exact assigned scopes, cookie signing/expiry, CSRF and logout remain
+unchanged.
+
+Compose now requires nonempty AUTH_MODE, takes the supported explicit value from
+`.env.example`, and publishes PostgreSQL/backend/frontend only on loopback. README
+includes the required host export and explicitly excludes shared/production
+identity and deployment. The single supported mode needs no provider factory,
+new framework, schema migration or production identity integration.
+
+Focused validation passed 73 tests including 18 new disposable-PostgreSQL
+provider/session/persona cases and 17 new configuration/startup cases. The actual
+Compose backend build/startup path passed 55 authentication/permission tests;
+missing/empty Compose settings were rejected and loopback bindings verified.
+Frontend lint, both type checks, all 318 unit tests, production build and all
+12 general browser flows passed against a separate disposable PostgreSQL cluster
+with Mock. Alembic upgrade/current/check found head with no schema differences;
+Ruff, Pyright and compileall passed. Full PostgreSQL validation passed 2,154
+backend tests plus the separate 20-case action security suite, with zero skips;
+the new-module counts were verified from JUnit. Final-head CI results are retained
+on the focused Draft PR. CI explicitly asserts both new
+regression modules execute without skips, and the Backend job runs the Compose
+startup/authentication smoke.
+
+Fresh-context independent V3 review found no actionable correctness/security
+defects, independently passed 46 focused tests and checked the 73-test report and
+CI selection assertions. Demo identities and local session defaults remain
+unsuitable for shared/production use. No user database was reset, no live provider
+call or terminal W6c resume occurred, and frozen evaluation data, query semantics
+and thresholds are unchanged. W8, deployment, real authentication and merge are
+outside this authorization; work stops at the Draft PR.
+
 ## 2026-11-03 — W6c post-live offline diagnosis and observability
 
 Started from verified clean latest main `23b6980`, after PR #71 merged. The

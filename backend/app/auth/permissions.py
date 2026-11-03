@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.api.responses import ApiError
 from app.auth.session import SessionData, session_from_request
+from app.core.config import get_auth_mode
 from app.db.session import get_db
 from app.models.product import (
     AppUser,
@@ -63,8 +64,14 @@ def get_current_app_user_for_session(
     session_data: SessionData,
     db: Session,
 ) -> AppUser | None:
+    if session_data.auth_provider != get_auth_mode():
+        return None
     user = db.get(AppUser, session_data.user_id)
-    if user is None or user.status != UserStatus.ACTIVE.value:
+    if (
+        user is None
+        or user.status != UserStatus.ACTIVE.value
+        or user.auth_provider != session_data.auth_provider
+    ):
         return None
     return user
 
