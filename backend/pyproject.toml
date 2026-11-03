@@ -63,6 +63,7 @@ include = [
     "scripts/seed_it_operations.py",
     "scripts/w6c_dispatch.py",
     "scripts/w6c_live.py",
+    "scripts/w6c_v3.py",
 ]
 exclude = ["alembic"]
 venvPath = "."

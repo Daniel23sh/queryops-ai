@@ -103,11 +103,20 @@ remote main on 2026-11-03. Its frozen evidence and terminal journal remain uncha
 starting W8. Exact explicit `AUTH_MODE=demo` is the sole local synthetic V1 mode;
 its reviewed implementation and deterministic evidence are in development history.
 
-**W8 — Reproducible Validation** is the sole work authorized on 2026-11-03.
-The [entry point and contract](docs/development/reproducible-validation.md) reuse
-the six existing CI gates with isolated disposable clusters, real scoped Evaluation
-and browser execution, counted sanitized evidence and owned cleanup. Implementation,
-clean-run evidence and fresh-context V3 review belong in development history.
+**W8 — Reproducible Validation** merged through
+[PR #74](https://github.com/Daniel23sh/queryops-ai/pull/74) at
+`2c0c4459caf9840beff421664eff2922ab8dc604`, verified against clean latest
+remote main before starting this work. Its contract remains in
+[reproducible validation](docs/development/reproducible-validation.md).
+
+**W6c v3 — Offline Preparation Only** is explicitly authorized on 2026-11-04:
+prepare exactly W6C-008 → W6C-011 → W6C-012 → W6C-013 → W6C-020 → W6C-007,
+with separately versioned 6/6/1 guard, OS-account journal and operator approval,
+fresh disposable PostgreSQL preflight, real-SDK/fake-HTTP dry-run, adversarial
+regressions, full CI and fresh-context independent V3 review. Preserve frozen
+artifacts, historical v2 contract/journal, product semantics and V2 qualification.
+See the [v3 contract](docs/audits/w6c/live-experiment-v3.md) and
+[preparation evidence](docs/audits/w6c/v3-preparation-evidence-he.md).
 
 ## Constraints and Remaining Work
 
@@ -117,7 +126,7 @@ clean-run evidence and fresh-context V3 review belong in development history.
 - Old environment v1/missing-fingerprint evidence cannot qualify under environment
   v2. Semantic diagnosis, Output Identity and Candidate Availability are merged;
   qualifying live semantic validation and final V1 QA remain open. W7 is merged;
-  W8's focused implementation/evidence PR remains unmerged.
+  W8 is merged; W6c v3 preparation remains diagnostic-only.
   The audit's hard-004 case passed its diagnostic canary; blanket historical
   failure claims are not accepted without new evidence.
 - Preserve authorization, RLS, safety caps, historical V1 baselines, semantic
@@ -130,12 +139,13 @@ clean-run evidence and fresh-context V3 review belong in development history.
 
 ## Next Approved Work
 
-W8 implementation and two successful clean-run validations are complete on
-[Draft PR #74](https://github.com/Daniel23sh/queryops-ai/pull/74); final-head CI is
-recorded on the PR and checked before handoff. No further implementation is
-approved. Stop at the focused Draft PR handoff; do not merge or start W9. Live
-provider execution, production deployment/identity and changes to frozen evidence
-remain unauthorized. The W6c terminal journal must remain unchanged.
+Complete only the authorized W6c v3 offline preparation and reviewed focused
+Draft PR against main. Do not merge or start W9. No real provider request,
+availability probe, paid Evaluation, live diagnostic or operator-approval file
+is authorized. After a future separately approved merge, regenerate preflight
+against the exact clean merged main SHA before requesting exact live authorization.
+Feature-branch fingerprints are preparation evidence only. Never reset/reuse
+historical journals.
 
 ## References
 

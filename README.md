@@ -208,7 +208,10 @@ and 2 retries. Explicit empty/invalid values and a CLI model conflicting with
 host-based backend startup still requires the explicit `AUTH_MODE=demo` export above.
 The diagnostic-only zero-retry policy does not change normal product retries.
 W6c preparation and its disabled-by-default live guard are documented in the
-[separately versioned diagnostic proposal](docs/audits/w6c/live-experiment-v2.md).
+[v2 diagnostic proposal](docs/audits/w6c/live-experiment-v2.md). The separate
+[six-case v3 preparation contract](docs/audits/w6c/live-experiment-v3.md) adds an
+offline entry point and distinct approval/journal identity; live remains separately
+unauthorized.
 
 The OpenAI provider returns only a structured `SemanticPlan` in one request. QueryOps validates the plan, renders SQL deterministically in the backend, and makes no repair or fallback provider call.
 
