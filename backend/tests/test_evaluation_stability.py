@@ -49,7 +49,7 @@ def test_three_matching_passing_runs_form_one_stable_set() -> None:
     assert assessment.reason_code is None
     assert len(assessment.run_ids) == 3
     assert assessment.source_git_sha == "a" * 40
-    assert assessment.model_label == "gpt-5.6-terra"
+    assert assessment.model_label == "gpt-6.1-terra"
 
 
 def test_three_identical_unestablished_runs_cannot_pass_stability() -> None:
@@ -325,7 +325,7 @@ def _run(*, index: int) -> StabilityRunEvidence:
         completed_at=started_at + timedelta(seconds=30),
         summary={
             "provider": "openai",
-            "model_label": "gpt-5.6-terra",
+            "model_label": "gpt-6.1-terra",
             "dataset_id": dataset.dataset_id,
             "dataset_version": dataset.version,
             "dataset_digest": evaluation_dataset_digest(dataset),
@@ -423,7 +423,7 @@ def _result(case) -> StabilityResultEvidence:
     if case.template_id is None and success:
         metrics["provider_measurement"] = {
             "provider": "openai",
-            "model_label": "gpt-5.6-terra",
+            "model_label": "gpt-6.1-terra",
             "duration_ms": 1.0,
             "attempt_count": 1,
             "call_count": 1,

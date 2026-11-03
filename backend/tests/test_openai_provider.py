@@ -309,7 +309,7 @@ def test_openai_provider_parses_plan_and_extracts_only_safe_usage() -> None:
     measurement = result.generation_metadata["provider_measurement"]
     assert measurement == {
         "provider": "openai",
-        "model_label": "gpt-5.6-terra",
+        "model_label": "gpt-6.1-terra",
         "duration_ms": measurement["duration_ms"],
         "attempt_count": None,
         "call_count": 1,
@@ -320,7 +320,7 @@ def test_openai_provider_parses_plan_and_extracts_only_safe_usage() -> None:
         "total_tokens": 120,
     }
     call = client.responses.calls[0]
-    assert call["model"] == "gpt-5.6-terra"
+    assert call["model"] == "gpt-6.1-terra"
     assert call["reasoning"] == {"effort": "low"}
     assert call["max_output_tokens"] == 2048
     assert call["store"] is False
@@ -955,7 +955,7 @@ def _transport_provider(monkeypatch, handler, *, retries=2, timeout=45.0):
 def _http_response(*, malformed=False):
     return {
         "id": "private-response-id", "object": "response", "created_at": 0,
-        "status": "completed", "model": "gpt-5.6-terra",
+        "status": "completed", "model": "gpt-6.1-terra",
         "output": [{"id": "private-message", "type": "message", "role": "assistant", "status": "completed",
                     "content": [{"type": "output_text", "annotations": [],
                                  "text": "malformed-private-payload" if malformed else json.dumps({"outcome": "plan", "semantic_plan": DEVICE_PLAN, "clarification_reason": None})}]}],
@@ -1083,7 +1083,7 @@ def test_response_stream_timeout_keeps_sdk_timeout_and_retry_behavior(monkeypatc
 def test_observed_token_overflow_is_unavailable_rather_than_capped():
     from app.query_engine.openai_provider import _HTTPMeasurement, _safe_response_metadata
     observation = _HTTPMeasurement(attempts=2, usages=[{"input_tokens": 1_000_000_000}] * 2)
-    measurement = _safe_response_metadata(None, 1.0, "gpt-5.6-terra", observation)["provider_measurement"]
+    measurement = _safe_response_metadata(None, 1.0, "gpt-6.1-terra", observation)["provider_measurement"]
     assert "input_tokens" not in measurement
     assert measurement["usage_complete"] is False
 

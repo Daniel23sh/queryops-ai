@@ -134,7 +134,7 @@ def test_cli_openai_selection_is_explicit_and_uses_requested_model(
             selected=1,
             completed=1,
             provider="openai",
-            model_label="gpt-5.6-terra",
+            model_label="gpt-6.1-terra",
         )
     )
 
@@ -143,7 +143,7 @@ def test_cli_openai_selection_is_explicit_and_uses_requested_model(
             "--provider",
             "openai",
             "--model",
-            "gpt-5.6-terra",
+            "gpt-6.1-terra",
             "--case-id",
             "itops-easy-001",
             "--environment-manifest",
@@ -157,8 +157,8 @@ def test_cli_openai_selection_is_explicit_and_uses_requested_model(
     output = capsys.readouterr()
     assert exit_code == 0
     assert seen_settings[0].provider.value == "openai"
-    assert seen_settings[0].model_label == "gpt-5.6-terra"
-    assert "Provider: openai (gpt-5.6-terra)" in output.out
+    assert seen_settings[0].model_label == "gpt-6.1-terra"
+    assert "Provider: openai (gpt-6.1-terra)" in output.out
     assert "never-print-this-key" not in output.out + output.err
 
 
@@ -229,7 +229,7 @@ def test_cli_missing_openai_key_and_mock_model_mismatch_fail_before_runner(
 
     assert (
         run_cli(
-            ["--provider", "mock", "--model", "gpt-5.6-terra"],
+            ["--provider", "mock", "--model", "gpt-6.1-terra"],
             runner_factory=must_not_build,
         )
         == 2

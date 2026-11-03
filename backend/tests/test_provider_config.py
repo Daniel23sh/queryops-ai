@@ -126,7 +126,7 @@ def test_explicit_openai_requires_credentials_without_leaking_config() -> None:
             },
             None,
         ),
-        ({"LLM_PROVIDER": "mock"}, "gpt-5.6-terra"),
+        ({"LLM_PROVIDER": "mock"}, "gpt-6.1-terra"),
     ],
 )
 def test_invalid_provider_configuration_fails_closed(
@@ -168,6 +168,28 @@ def test_provider_settings_repr_does_not_expose_api_key() -> None:
     )
 
     assert "super-secret-key" not in repr(settings)
+
+
+def test_environment_controls_all_provider_values_and_conflicting_model_is_rejected():
+    values = {"LLM_PROVIDER": "openai", "OPENAI_API_KEY": "synthetic",
+              "OPENAI_MODEL": "gpt-6.1-terra", "OPENAI_TIMEOUT_SECONDS": "30",
+              "OPENAI_MAX_RETRIES": "1", "OPENAI_REASONING_EFFORT": "medium",
+              "OPENAI_MAX_OUTPUT_TOKENS": "1024"}
+    settings = load_provider_settings(values).openai
+    assert settings is not None
+    assert (settings.model, settings.timeout_seconds, settings.max_retries,
+            settings.reasoning_effort, settings.max_output_tokens) == (
+                "gpt-6.1-terra", 30, 1, "medium", 1024)
+    with pytest.raises(ProviderConfigurationError, match="configuration"):
+        load_provider_settings(values, model_override="gpt-5.6-terra")
+
+
+def test_current_runtime_does_not_accept_historical_model_identity(monkeypatch):
+    from app.query_engine.provider_config import current_openai_runtime_identity
+    monkeypatch.setenv("OPENAI_MODEL", "gpt-6.1-terra")
+    with pytest.raises(ProviderConfigurationError) as error:
+        current_openai_runtime_identity("gpt-5.6-terra")
+    assert error.value.code == "provider_model_mismatch"
 
 
 def test_openai_settings_normalize_key_without_exposing_it() -> None:

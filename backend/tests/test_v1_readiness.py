@@ -705,7 +705,7 @@ def _evidence(dataset=None) -> ReadinessRunEvidence:
         completed_at=datetime.now(UTC),
         summary={
             "provider": "openai",
-            "model_label": "gpt-5.6-terra",
+            "model_label": "gpt-6.1-terra",
             "dataset_id": dataset.dataset_id,
             "dataset_version": dataset.version,
             "dataset_digest": evaluation_dataset_digest(dataset),
@@ -782,7 +782,7 @@ def _result(case) -> ReadinessResultEvidence:
         "query_execution_attempted": success,
         "provider_measurement": {
             "provider": "openai",
-            "model_label": "gpt-5.6-terra",
+            "model_label": "gpt-6.1-terra",
             "duration_ms": 1.0,
             "attempt_count": 1,
             "call_count": 1,

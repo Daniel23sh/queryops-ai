@@ -217,7 +217,7 @@ export function backendEvaluationReadiness({
     policy_id: "queryops-v1-readiness-v2",
     verdict,
     provider,
-    model_label: provider === "openai" ? "gpt-5.6-terra" : provider === null ? null : "mock-queryops-v1",
+    model_label: provider === "openai" ? "gpt-6.1-terra" : provider === null ? null : "mock-queryops-v1",
     dataset_version: "2",
     completed_count: measuredCount,
     stability_canary: {
@@ -300,7 +300,7 @@ function backendEvaluationRun(
   provider = "mock",
   modelLabel?: string
 ) {
-  return { id, provider, model_label: modelLabel ?? (provider === "openai" ? "gpt-5.6-terra" : "mock-queryops-v1"), dataset_id: "it_operations_v1", dataset_version: "1.0.0", dataset_digest: "a".repeat(64), status: "succeeded", started_at: "2026-07-20T11:00:00Z", completed_at: "2026-07-20T11:02:00Z" };
+  return { id, provider, model_label: modelLabel ?? (provider === "openai" ? "gpt-6.1-terra" : "mock-queryops-v1"), dataset_id: "it_operations_v1", dataset_version: "1.0.0", dataset_digest: "a".repeat(64), status: "succeeded", started_at: "2026-07-20T11:00:00Z", completed_at: "2026-07-20T11:02:00Z" };
 }
 
 function backendEvaluationMetrics({ availability = "measured", completed, failed, passed }: { availability?: string; completed: number; failed: number; passed: number }) {
