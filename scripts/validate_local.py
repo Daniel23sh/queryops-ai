@@ -195,11 +195,17 @@ class Run:
             # Build the supported backend Dockerfile, without Compose networks/binds.
             smoke_image = self.build(source, "backend/Dockerfile", "smoke")
             smoke = self.create("compose-smoke", "--network", "none", "-e", "AUTH_MODE=demo", smoke_image,
-                                "python", "-c", 'from app.core.config import get_auth_mode; assert get_auth_mode() == "demo"; import pytest; raise SystemExit(pytest.main(["tests/test_auth_configuration.py", "tests/test_auth_session.py", "tests/test_permissions.py", "-q"]))')
+                                "python", "-c", 'from app.core.config import get_auth_mode; assert get_auth_mode() == "demo"; import pytest, json; from pathlib import Path; from validation_gate import junit_counts; result = pytest.main(["tests/test_auth_configuration.py", "tests/test_auth_session.py", "tests/test_permissions.py", "-q", "--junitxml=/tmp/smoke.xml"]); Path("/tmp/smoke.json").write_text(json.dumps(junit_counts(Path("/tmp/smoke.xml")))); raise SystemExit(result)')
             # The supported Dockerfile omits tests; copy only the committed tests.
             command("docker", "cp", str(source / "backend/tests"), smoke + ":/app/tests")
+            command("docker", "cp", str(source / "scripts/validation/gate.py"), smoke + ":/app/validation_gate.py")
             command("docker", "start", smoke)
-            if command("docker", "wait", smoke) != "0":
+            result = command("docker", "wait", smoke)
+            command("docker", "cp", smoke + ":/tmp/smoke.json", str(self.evidence / "compose-smoke.json"))
+            counts = json.loads((self.evidence / "compose-smoke.json").read_text())
+            self.summary["compose_smoke"] = counts
+            self.save()
+            if result != "0" or not counts["executed"] or counts["failed"] or counts["skipped"]:
                 raise ValidationError("supported backend image smoke failed")
             self.remove(smoke)
             self.summary["compose_boundary"] = "passed (supported image, no Compose service startup)"
