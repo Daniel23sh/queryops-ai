@@ -156,9 +156,11 @@ def test_live_rejected_before_journal_or_http_transport(prepared, monkeypatch, g
         live.execute(supplied, approval=approval, dry_run=False)
 
 
-@pytest.mark.parametrize("drift", ["data", "rls", "grants", "query_role", "action_role", "authorization"])
+@pytest.mark.parametrize("drift", ["data", "rls", "grants", "query_role", "action_role", "authorization", "column_grants", "schema_grants"])
 def test_security_or_identity_drift_rejected_before_client(prepared, drift):
     changes = {
+        "column_grants": ("GRANT UPDATE (hostname) ON devices TO queryops_action_runtime", "REVOKE UPDATE (hostname) ON devices FROM queryops_action_runtime"),
+        "schema_grants": ("GRANT CREATE ON SCHEMA public TO queryops_action_runtime", "REVOKE CREATE ON SCHEMA public FROM queryops_action_runtime"),
         "data": ("UPDATE devices SET os='synthetic-drift'", None),
         "rls": ("ALTER TABLE devices DISABLE ROW LEVEL SECURITY", None),
         "grants": ("GRANT UPDATE ON devices TO queryops_query_runtime", "REVOKE UPDATE ON devices FROM queryops_query_runtime"),

@@ -1347,6 +1347,8 @@ preserves frozen criteria and v2 history while isolating config, manifest/approv
 result identities, 6/6/1 budget, exact case order, disposable database and fixed
 OS-account journal. Shared dispatch changes retain v2's default 12/12/1 behavior.
 No product prompt/catalog/renderer/authorization/RLS/Evaluation contract changed.
+Independent boundary review identified missing column/schema ACL identity; the
+v3-only fingerprint and two disposable PostgreSQL drift regressions close it.
 
 Focused synthetic HTTP + PostgreSQL verification, clean-source offline preflight,
 full CI and independent V3 review evidence are consolidated in the

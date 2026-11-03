@@ -149,7 +149,10 @@ def runtime_policy_identity(db):
                 and (domain_tables[name].scope_type is None or rls)), "query_runtime_rls_missing")
     require(not db.scalar(text("SELECT has_schema_privilege('queryops_query_runtime', 'public', 'CREATE')")), "query_runtime_schema_write")
     assert role is not None
-    return digest({"policy": identity, "action_role": list(role)})
+    columns = db.execute(text("SELECT c.relname, a.attnum, a.attname, a.attacl::text FROM pg_attribute a JOIN pg_class c ON c.oid=a.attrelid JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname='public' AND c.relkind='r' AND a.attnum>0 AND NOT a.attisdropped AND cardinality(a.attacl)>0 ORDER BY c.relname, a.attnum")).all()
+    schema = db.execute(text("SELECT nspname, nspowner::regrole::text, nspacl::text FROM pg_namespace WHERE nspname='public'")).one()
+    return digest({"policy": identity, "action_role": list(role),
+                   "column_grants": [list(r) for r in columns], "schema_grants": list(schema)})
 
 
 def prepare(reference_text: str, *, initialize_database: bool = False):

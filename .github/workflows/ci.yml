@@ -147,7 +147,7 @@ jobs:
                                   "tests.test_w6c_live": 31,
                                   "tests.test_w6c_live_postgres": 25,
                                   "tests.test_w6c_v3": 51,
-                                  "tests.test_w6c_v3_postgres": 24}.items():
+                                  "tests.test_w6c_v3_postgres": 26}.items():
               cases = [case for case in root.iter("testcase") if case.attrib.get("classname") == module]
               assert len(cases) >= minimum, f"W6c preparation regressions not selected: {module}"
               assert not any(case.find("skipped") is not None for case in cases), module

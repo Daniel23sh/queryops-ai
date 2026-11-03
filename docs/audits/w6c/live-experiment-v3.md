@@ -96,7 +96,8 @@ loopback network namespace. Synthetic dry usage is not billable usage evidence.
 The secret-free manifest binds clean source SHA, fresh UTC reference, frozen
 hashes, config, per-case authorized schema/catalog/prompt/request hashes, dataset,
 full data fingerprint/counts, actual Python/package/PostgreSQL versions, provider
-runtime identity, dependency manifest, migration and role/grant/RLS identities.
+runtime identity, dependency manifest, migration and role/grant/RLS identities (including column ACLs and public schema
+ownership/ACLs; absent/empty column ACLs both mean no column grant).
 It validates query-runtime restrictions/effective read-only grants, scoped RLS,
 action-runtime flags, effective query authorization and **all six independent
 positive witnesses** under non-owner read-only repeatable-read UTC transactions.
