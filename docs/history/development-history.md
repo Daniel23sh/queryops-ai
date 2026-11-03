@@ -1349,6 +1349,11 @@ OS-account journal. Shared dispatch changes retain v2's default 12/12/1 behavior
 No product prompt/catalog/renderer/authorization/RLS/Evaluation contract changed.
 Independent boundary review identified missing column/schema ACL identity; the
 v3-only fingerprint and two disposable PostgreSQL drift regressions close it.
+Corrected implementation `f46f58a` passed 187 focused tests with zero skips;
+independent review verified the clean-source CLI manifest/dry-run and recomputed
+fingerprint `db95e0d6f14329f96d04a865f3bbd2ee68d5420e3358a39c815d5f13515b9076`.
+The preparation is attached to [Draft PR #75](https://github.com/Daniel23sh/queryops-ai/pull/75);
+final-head CI must pass before handoff.
 
 Focused synthetic HTTP + PostgreSQL verification, clean-source offline preflight,
 full CI and independent V3 review evidence are consolidated in the

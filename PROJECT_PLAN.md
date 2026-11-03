@@ -139,8 +139,11 @@ See the [v3 contract](docs/audits/w6c/live-experiment-v3.md) and
 
 ## Next Approved Work
 
-Complete only the authorized W6c v3 offline preparation and reviewed focused
-Draft PR against main. Do not merge or start W9. No real provider request,
+The W6c v3 offline implementation, 187 focused disposable regressions,
+clean-source preflight/dry-run and independent V3 review are complete on
+[Draft PR #75](https://github.com/Daniel23sh/queryops-ai/pull/75). Final-head CI
+must pass before handoff. Stop at this reviewed preparation PR; no further
+implementation is approved. Do not merge or start W9. No real provider request,
 availability probe, paid Evaluation, live diagnostic or operator-approval file
 is authorized. After a future separately approved merge, regenerate preflight
 against the exact clean merged main SHA before requesting exact live authorization.

@@ -10,7 +10,7 @@
 העבודה התחילה מ־`main` נקי ומעודכן:
 `2c0c4459caf9840beff421664eff2922ab8dc604`, בענף
 `feature/m10-w6c-v3-preparation`. המימוש והבדיקות נבדקו במקור נקי:
-`0a1b09fbe2dad263af8b2bc7fe97565017a4640c`. עדכוני תיעוד מאוחרים יותר
+`f46f58a89f9b6b3c45643ecf1e2936ffa75f90fd` (לאחר תיקון ACL בסקירה). עדכוני תיעוד מאוחרים יותר
 אינם הופכים את הזהות הזו לזהות מפעיל מאושרת.
 
 ה־CLI האמיתי ביצע `--initialize` מול אשכול PostgreSQL חדש בבעלות ההרצה,
@@ -21,10 +21,10 @@ contrasts מעוגנים לזמן חדש. האשכול הוסר בניקוי ב�
 
 | זהות הכנה | ערך |
 | --- | --- |
-| UTC reference | `2026-11-03T22:50:54+00:00` (2026-11-04 לפי זמן המפעיל) |
-| Offline fingerprint | `3511990fbae8e4f3c565fe8ee57bc7dd9800c07e83aab5673ccea1adeaab9472` |
-| Database fingerprint | `61cea205004c02f6763ccc1b5b8806a1f98636d9d14cafea965f608df591b6de` |
-| Runtime policy hash | `8769fae60487557acad4e566b94c55458a2954224febd0ec0f18052636d2aa37` |
+| UTC reference | `2026-11-03T23:00:12+00:00` (2026-11-04 לפי זמן המפעיל) |
+| Offline fingerprint | `db95e0d6f14329f96d04a865f3bbd2ee68d5420e3358a39c815d5f13515b9076` |
+| Database fingerprint | `e89d8a15f862ed7dae7a296c50d98e8ea028caaf16886af8b809fd029ea98277` |
+| Runtime policy hash | `6aefe849be921ac276f93ba8c20c385e6b5ef3f5f888627d87b72fcbb948392c` |
 | v3 configuration hash | `c8d478bda873018d7bdcc53a25a16b032d8f9c09b7a8581bbec37db1a6865df1` |
 | Provider runtime digest | `032168fecf1973ef470e85a5a828f1a27c367e9ba12cf8a58adbb11f563ceb04` |
 | Migration | `0010_disable_inactive_user` |
@@ -88,10 +88,16 @@ PostgreSQL הממוקדות ושערי המימוש רצו גם ב־network name
 owner/ACL; v2 לא שונה. נוספו בדיקות drift ב־PostgreSQL לשני המצבים. לאחר
 התיקון עברו **187 בדיקות ממוקדות, ללא כשל או דילוג**, באשכול חדש עם network
 namespace מבודד. זהו פער באכיפת זהות אבחונית, לא ראיה לעקיפת הרשאות במוצר.
+הסוקר בדק מחדש את התיקון ואת שלושת קובצי הראיות הבטוחים: manifest,
+dry-run ו־journal-isolation. הוא חישב מחדש את ה־fingerprint, אימת את כל
+הזהויות/הגרסאות/ששת המקרים/המונים ואת בידוד היומנים. לא נותרה אי־התאמה.
+אין הסתמכות על דיווח המחבר בלבד; המסד שכבר נוקה לא הורץ מחדש בידי הסוקר.
 
 כל ששת שערי [CI הראשוני](https://github.com/Daniel23sh/queryops-ai/actions/runs/41734486970)
-עברו על `0a1b09f`. preflight חדש ו־CI לגרסה עם הרחבת ACL נדרשים לפני
-handoff; תוצאותיהם יירשמו לאחר סיום ההרצה.
+עברו על `0a1b09f`. ה־preflight המתוקן וה־dry-run של `f46f58a` עברו ונבדקו
+עצמאית, כמפורט לעיל. Handoff מותנה בהצלחה של כל ששת השערים גם ב־HEAD הסופי
+של [Draft PR #75](https://github.com/Daniel23sh/queryops-ai/pull/75); זהות ה־commit
+והריצה הסופיים נשמרים ב־checks של ה־PR ובדוח המסירה.
 
 ## עלות משוערת ואי־ודאות
 
