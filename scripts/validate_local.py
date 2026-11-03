@@ -16,6 +16,8 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 LABEL = "io.queryops.validation"
 GATES = ("backend", "postgres-security", "frontend", "e2e", "m8-primary-e2e")
+PROXY_KEYS = ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
+              "http_proxy", "https_proxy", "all_proxy", "no_proxy")
 
 
 class ValidationError(Exception):
@@ -29,12 +31,22 @@ def clean_environment() -> dict[str, str]:
 
 
 def command(*args: str, capture: bool = True) -> str:
-    result = subprocess.run(args, cwd=ROOT, env=clean_environment(),
-                            stdout=subprocess.PIPE if capture else subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL, text=True)
-    if result.returncode:
-        raise ValidationError(f"{args[0]} exited {result.returncode}")
-    return result.stdout.strip() if capture else ""
+    process = subprocess.Popen(args, cwd=ROOT, env=clean_environment(),
+                               stdout=subprocess.PIPE if capture else subprocess.DEVNULL,
+                               stderr=subprocess.DEVNULL, text=True)
+    try:
+        output, _ = process.communicate()
+    except BaseException:
+        process.terminate()
+        try:
+            process.communicate(timeout=30)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.communicate()
+        raise
+    if process.returncode:
+        raise ValidationError(f"{args[0]} exited {process.returncode}")
+    return output.strip() if capture else ""
 
 
 class Run:
@@ -44,7 +56,7 @@ class Run:
         self.containers: list[str] = []
         self.images: list[str] = []
         self.summary: dict = {"schema": "queryops-local-validation-v1", "run": self.token,
-                              "status": "failed", "gates": {}, "cleanup": "pending",
+                              "status": "failed", "gates": {gate: {"status": "not_run"} for gate in (*GATES, "v1-deterministic-release-gates")}, "cleanup": "pending",
                               "incomplete_coverage": ["production readiness", "provider quality", "manual V1 QA"]}
 
     def save(self):
@@ -57,12 +69,13 @@ class Run:
         if existing:
             raise ValidationError("container name conflict")
         self.containers.append(name)
+        # Docker also injects proxies from ~/.docker/config.json independently of env.
+        proxy_env = [value for key in PROXY_KEYS for value in ("-e", key + "=")]
         identifier = command("docker", "create", "--name", name, "--label",
-                             f"{LABEL}={self.token}", *args)
+                             f"{LABEL}={self.token}", *proxy_env, *args)
         if not re.fullmatch(r"[a-f0-9]{64}", identifier):
             raise ValidationError("container identity missing")
-        self.containers.remove(name)
-        self.containers.append(identifier)
+        self.containers[self.containers.index(name)] = identifier
         return identifier
 
     def remove(self, identifier: str):
@@ -70,10 +83,10 @@ class Run:
             if not command("docker", "ps", "-aq", "--filter", "name=^/" + identifier + "$"):
                 self.containers.remove(identifier)
                 return
-        owner = command("docker", "inspect", "--format", '{{index .Config.Labels "' + LABEL + '"}}', identifier)
-        if owner != self.token:
+        identity = command("docker", "inspect", "--format", '{{.Id}} {{index .Config.Labels "' + LABEL + '"}}', identifier)
+        actual_id, _, owner = identity.partition(" ")
+        if owner != self.token or not re.fullmatch(r"[a-f0-9]{64}", actual_id):
             raise ValidationError("cleanup ownership mismatch")
-        actual_id = command("docker", "inspect", "--format", "{{.Id}}", identifier)
         command("docker", "rm", "-f", "-v", actual_id)
         self.containers.remove(identifier)
 
@@ -83,17 +96,18 @@ class Run:
             try:
                 self.remove(identifier)
             except ValidationError:
-                errors.append("owned container cleanup failed")
+                errors.append({"kind": "container", "identity": identifier, "error": "cleanup failed or ownership mismatch"})
         for identifier in self.images:
             try:
                 if not command("docker", "image", "ls", "-q", identifier):
                     continue
-                owner = command("docker", "image", "inspect", "--format", '{{index .Config.Labels "' + LABEL + '"}}', identifier)
-                if owner != self.token:
+                identity = command("docker", "image", "inspect", "--format", '{{.Id}} {{index .Config.Labels "' + LABEL + '"}}', identifier)
+                actual_id, _, owner = identity.partition(" ")
+                if owner != self.token or not re.fullmatch(r"sha256:[a-f0-9]{64}", actual_id):
                     raise ValidationError("image ownership mismatch")
-                command("docker", "image", "rm", identifier)
+                command("docker", "image", "rm", actual_id)
             except ValidationError:
-                errors.append("owned image cleanup failed")
+                errors.append({"kind": "image", "identity": identifier, "error": "cleanup failed or ownership mismatch"})
         self.summary["cleanup"] = errors or "complete"
         if errors:
             self.summary["status"] = "failed"
@@ -166,7 +180,8 @@ class Run:
                 except ValidationError:
                     continue
                 raise ValidationError("Compose accepted missing/empty AUTH_MODE")
-            config = json.loads(command("env", "AUTH_MODE=demo", *compose, "config", "--format", "json"))
+            positive_compose = ["docker", "compose", "--project-name", self.token, "--env-file", str(source / ".env.example"), "-f", str(source / "docker-compose.yml")]
+            config = json.loads(command(*positive_compose, "config", "--format", "json"))
             if config["services"]["backend"]["environment"]["AUTH_MODE"] != "demo" or any(
                 port["host_ip"] != "127.0.0.1" for service in config["services"].values() for port in service.get("ports", [])
             ):

@@ -48,6 +48,9 @@ emulated. No CI architecture or product contracts change.
   host forwards only PATH, HOME, TMPDIR and DOCKER_CONFIG to Docker/Git. Application,
   provider, PostgreSQL, proxy, Compose and Docker endpoint environment overrides
   are discarded. A local Unix-socket Docker context is required.
+  Docker client-config proxy settings are explicitly cleared in execution
+  containers too. Docker registry credentials/proxies can still be used by Docker
+  during online image builds/downloads; runtime images do not receive those values.
 - Every run has an unpredictable UUID namespace. Names are checked before creation;
   conflicts fail instead of adopting resources. Only committed files enter build
   contexts, excluding ignored local credentials and data.

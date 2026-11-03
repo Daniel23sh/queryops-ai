@@ -5,6 +5,7 @@ import importlib.metadata
 import hashlib
 import json
 import os
+import platform
 from pathlib import Path
 import subprocess
 import time
@@ -50,6 +51,7 @@ class Gate:
                     "PLAYWRIGHT_SKIP_WEBSERVER": "1", "M8_E2E_PYTHON": "python", "POSTGRES_DB": "queryops",
                     "PLAYWRIGHT_JUNIT_OUTPUT_FILE": "/evidence/playwright.xml", "PYTHONPATH": str(BACKEND)}
         self.report: dict = {"status": "failed", "steps": [], "suites": {}, "incomplete_coverage": [],
+                             "platform": platform.system() + "/" + platform.machine(),
                              "python": subprocess.check_output(["python", "--version"], text=True).strip(),
                              "node": subprocess.check_output(["node", "--version"], text=True).strip(),
                              "dependencies": dict(sorted((item.metadata["Name"], item.version) for item in importlib.metadata.distributions())),

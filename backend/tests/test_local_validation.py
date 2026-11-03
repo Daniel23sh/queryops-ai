@@ -1,6 +1,8 @@
 """Destructive-operation ownership and evidence integrity of the local adapter."""
 import importlib.util
 import json
+import linecache
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -38,6 +40,15 @@ def test_conflicting_container_is_not_adopted_or_deleted(tmp_path):
     assert run.containers == []
 
 
+def test_client_config_proxies_are_explicitly_cleared(tmp_path):
+    run = local.Run(tmp_path)
+    with patch.object(local, "command", side_effect=["", "a" * 64]) as command:
+        run.create("backend", "image")
+    arguments = command.call_args.args
+    for key in local.PROXY_KEYS:
+        assert key + "=" in arguments
+
+
 def test_cleanup_refuses_foreign_owner(tmp_path):
     run = local.Run(tmp_path)
     run.containers.append("a" * 64)
@@ -56,7 +67,7 @@ def test_partial_create_is_registered_and_cleaned_only_by_owned_id(tmp_path):
         if args[1] == "create":
             raise local.ValidationError("interrupted create")
         if args[1] == "inspect":
-            return run.token if "Labels" in args[3] else "a" * 64
+            return "a" * 64 + " " + run.token
         return ""
     with patch.object(local, "command", side_effect=command) as mocked:
         with pytest.raises(local.ValidationError):
@@ -65,6 +76,25 @@ def test_partial_create_is_registered_and_cleaned_only_by_owned_id(tmp_path):
         run.cleanup()
         mocked.assert_any_call("docker", "rm", "-f", "-v", "a" * 64)
     assert run.summary["cleanup"] == "complete"
+
+
+def test_interruption_during_name_to_id_transition_retains_ownership(tmp_path):
+    run = local.Run(tmp_path)
+    def interrupt(frame, event, arg):
+        if event == "line" and frame.f_code is local.Run.create.__code__:
+            line = linecache.getline(frame.f_code.co_filename, frame.f_lineno).strip()
+            if line.startswith("self.containers[self.containers.index(name)]") or line == "self.containers.append(identifier)":
+                sys.settrace(None)
+                raise KeyboardInterrupt
+        return interrupt
+    with patch.object(local, "command", side_effect=["", "a" * 64]):
+        try:
+            sys.settrace(interrupt)
+            with pytest.raises(KeyboardInterrupt):
+                run.create("interrupted", "image")
+        finally:
+            sys.settrace(None)
+    assert len(run.containers) == 1
 
 
 def test_failed_build_does_not_delete_preexisting_image(tmp_path):
