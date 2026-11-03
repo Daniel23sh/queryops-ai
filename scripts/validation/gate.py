@@ -159,6 +159,8 @@ with httpx.Client(base_url='http://127.0.0.1:8000') as client:
             self.migrations(database)
             names = {"Run exact 20-case M8 release-blocking suite", "Run complete PostgreSQL backend suite"}
         else:
+            browser = "const {chromium}=require('@playwright/test'); (async()=>{const b=await chromium.launch(); console.log(b.version()); await b.close();})().catch(()=>process.exit(1));"
+            self.report["chromium"] = subprocess.check_output(["node", "-e", browser], cwd=FRONTEND, env=self.env, text=True).strip()
             database = "queryops_e2e_test" if self.name == "m8-primary-e2e" else "queryops_general_e2e_test"
             self.postgres(database)
             self.migrations(database)
