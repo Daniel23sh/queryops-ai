@@ -142,7 +142,11 @@ class Run:
             result = command("docker", "wait", container)
             command("docker", "cp", container + ":/evidence/summary.json", str(self.evidence / (gate + ".json")))
             report = json.loads((self.evidence / (gate + ".json")).read_text())
-            self.summary["gates"][gate] = report
+            self.summary["gates"][gate] = {key: report[key] for key in
+                ("status", "steps", "suites", "postgresql", "migration", "chromium", "error", "active_step", "incomplete_coverage") if key in report}
+            self.summary["gates"][gate]["report"] = gate + ".json"
+            if "runtime" not in self.summary:
+                self.summary["runtime"] = {key: report[key] for key in ("python", "node", "npm", "platform", "frontend_lock_sha256")}
             self.save()
             if result != "0" or report["status"] != "passed":
                 raise ValidationError(gate + " failed; see sanitized gate report")

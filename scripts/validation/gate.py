@@ -20,6 +20,18 @@ GATES = ("backend", "postgres-security", "frontend", "e2e", "m8-primary-e2e")
 URL = "postgresql+psycopg://queryops:local-validation-only@127.0.0.1:5432/"
 
 
+def gate_environment(name: str) -> dict[str, str]:
+    environment = {**os.environ, "AUTH_MODE": "demo", "LLM_PROVIDER": "mock", "DATABASE_URL": URL + "queryops",
+                   "SESSION_SECRET_KEY": "validation-synthetic-session-only", "SESSION_COOKIE_SECURE": "false",
+                   "POSTGRES_DB": "queryops", "PYTHONPATH": str(BACKEND)}
+    environment.pop("VITE_API_BASE_URL", None)
+    if name in ("e2e", "m8-primary-e2e"):
+        environment.update(VITE_API_BASE_URL="http://127.0.0.1:8000", PLAYWRIGHT_BASE_URL="http://127.0.0.1:5173",
+                           PLAYWRIGHT_SKIP_WEBSERVER="1", M8_E2E_PYTHON="python",
+                           PLAYWRIGHT_JUNIT_OUTPUT_FILE="/evidence/playwright.xml")
+    return environment
+
+
 def junit_counts(path: Path) -> dict[str, int]:
     root = ET.parse(path).getroot()
     cases = list(root.iter("testcase"))
@@ -45,11 +57,7 @@ class Gate:
             raise ValueError("CI graph changed; update adapter")
         if set(self.jobs["v1-deterministic-release-gates"]["needs"]) != set(GATES):
             raise ValueError("CI aggregate dependencies changed")
-        self.env = {**os.environ, "AUTH_MODE": "demo", "LLM_PROVIDER": "mock", "DATABASE_URL": URL + "queryops",
-                    "SESSION_SECRET_KEY": "validation-synthetic-session-only", "SESSION_COOKIE_SECURE": "false",
-                    "VITE_API_BASE_URL": "http://127.0.0.1:8000", "PLAYWRIGHT_BASE_URL": "http://127.0.0.1:5173",
-                    "PLAYWRIGHT_SKIP_WEBSERVER": "1", "M8_E2E_PYTHON": "python", "POSTGRES_DB": "queryops",
-                    "PLAYWRIGHT_JUNIT_OUTPUT_FILE": "/evidence/playwright.xml", "PYTHONPATH": str(BACKEND)}
+        self.env = gate_environment(name)
         self.report: dict = {"status": "failed", "steps": [], "suites": {}, "incomplete_coverage": [],
                              "platform": platform.system() + "/" + platform.machine(),
                              "python": subprocess.check_output(["python", "--version"], text=True).strip(),

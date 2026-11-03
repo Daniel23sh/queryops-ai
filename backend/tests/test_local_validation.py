@@ -23,6 +23,17 @@ local = load("local_validation", "scripts/validate_local.py")
 gate = load("local_validation_gate", "scripts/validation/gate.py")
 
 
+@pytest.mark.parametrize("name", local.GATES)
+def test_api_origin_is_configured_only_for_real_browser_jobs(monkeypatch, name):
+    monkeypatch.setenv("VITE_API_BASE_URL", "http://inherited-invalid-origin")
+    environment = gate.gate_environment(name)
+    if name in ("e2e", "m8-primary-e2e"):
+        assert environment["VITE_API_BASE_URL"] == "http://127.0.0.1:8000"
+        assert environment["PLAYWRIGHT_BASE_URL"] == "http://127.0.0.1:5173"
+    else:
+        assert "VITE_API_BASE_URL" not in environment
+
+
 @pytest.mark.parametrize("key", ["DATABASE_URL", "POSTGRES_TEST_DATABASE_URL", "M8_E2E_DATABASE_URL",
                                       "OPENAI_API_KEY", "AUTH_MODE", "LLM_PROVIDER", "DOCKER_HOST",
                                       "COMPOSE_PROJECT_NAME", "HTTP_PROXY", "PGSERVICE", "PGHOST"])
