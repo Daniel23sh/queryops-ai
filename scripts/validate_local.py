@@ -60,7 +60,9 @@ class Run:
                               "incomplete_coverage": ["production readiness", "provider quality", "manual V1 QA"]}
 
     def save(self):
-        (self.evidence / "summary.json").write_text(json.dumps(self.summary, indent=2) + "\n")
+        temporary = self.evidence / "summary.tmp"
+        temporary.write_text(json.dumps(self.summary, indent=2) + "\n")
+        temporary.replace(self.evidence / "summary.json")
 
     def create(self, suffix: str, *args: str) -> str:
         name = self.token + "-" + suffix
@@ -161,7 +163,7 @@ class Run:
         with tempfile.TemporaryDirectory(prefix=self.token) as directory:
             source = Path(directory)
             archive = source / "source.tar"
-            command("git", "archive", "--format=tar", "-o", str(archive), "HEAD")
+            command("git", "archive", "--format=tar", "-o", str(archive), self.summary["source_sha"])
             with tarfile.open(archive) as snapshot:
                 # Only a trusted, committed repository tree enters the build context.
                 snapshot.extractall(source, filter="data")

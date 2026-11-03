@@ -114,6 +114,23 @@ def test_dirty_checkout_rejected_before_docker(tmp_path):
     assert command.call_count == 1
 
 
+def test_snapshot_pins_the_recorded_revision_even_if_head_moves(tmp_path):
+    run = local.Run(tmp_path)
+    revision = "b" * 40
+    def command(*args, **kwargs):
+        if args[:3] == ("git", "rev-parse", "HEAD"):
+            return revision
+        if args[:2] == ("git", "archive"):
+            assert args[-1] == revision
+            raise local.ValidationError("snapshot pinned")
+        if args[:3] == ("docker", "context", "inspect"):
+            return "unix:///local-docker.sock"
+        return ""
+    with patch.object(local, "command", side_effect=command):
+        with pytest.raises(local.ValidationError, match="snapshot pinned"):
+            run.execute()
+
+
 @pytest.mark.parametrize("xml,expected", [
     ('<testsuites><testsuite><testcase/><testcase><skipped/></testcase><testcase><failure>secret</failure></testcase></testsuite></testsuites>',
      {"executed": 2, "passed": 1, "failed": 1, "skipped": 1}),
