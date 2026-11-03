@@ -1,5 +1,33 @@
 # QueryOps AI — Development History
 
+## 2026-11-03 — W6c post-live offline diagnosis and observability
+
+Started from verified clean latest main `23b6980`, after PR #71 merged. The
+one-time authorized v2 diagnostic stopped after 8 dispatch attempts and 7 completed
+cases. Available safe journal/summary evidence confirms a combined comparison
+failure for W6C-008 and an unclassified transport/interruption after 45.003455s
+for W6C-007. The generated plan and exact exception were not retained; neither
+root cause is independently recoverable. Token totals from the seven measured
+responses are partial; the failed attempt and total bill remain unknown. See the
+[evidence-backed Hebrew diagnosis](../audits/w6c/post-live-diagnosis-he.md).
+
+Diagnostic measurements now separate output-contract match from result-multiset
+match; incompatible/ambiguous identities record `not_evaluated`. Legacy
+`oracle_equal` keeps its conjunction meaning. The transport adds bounded actual
+exception categories while preserving legacy failure codes, partial usage,
+terminal stop behavior, pre-dispatch durable reservations and completed-case
+evidence. No production Evaluation, provider, prompt/model/catalog, SQL renderer,
+authorization, RLS, budget, retry or redirect policy changed. The original
+experiment contract/configuration and frozen evidence remain unchanged.
+
+Focused PostgreSQL/fake-HTTP tests cover separate contract/result failures,
+incomparable identities, sanitization, exception/HTTP categories, prior-case
+durability and unchanged 12/12/1 limits. Final CI and independent-review evidence
+are retained on the Draft PR for its exact head. The original journal is read-only
+with SHA256 `f750227e1f186fced226ddee4e84e6b4687a0d47daa8e75179c2950b45dcaef8`.
+No new live request, replay/resume, experiment reset/version, paid qualification
+or merge is authorized by this work.
+
 ## 2026-11-02 — W6c F1 bounded reverse-LEFT implementation
 
 Created `codex/m10-w6c-f1-reverse-left` from clean latest main `761ddb2`.

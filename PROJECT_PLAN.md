@@ -87,6 +87,17 @@ frozen evidence, product prompts/catalogs and V2 qualification. No real OpenAI
 request, availability probe, paid evaluation, W6c Live, W7 or merge is authorized.
 See the [v2 preparation/approval contract](docs/audits/w6c/live-experiment-v2.md).
 
+PR #71 merged at `23b6980d43ec980cf60fa9707815d4fc01a568f9`. The separately
+authorized one-time W6c v2 Live diagnostic ended after 8 dispatch attempts and
+7 completed cases; its single-use journal is terminal and must not be reset.
+The [post-live diagnosis](docs/audits/w6c/post-live-diagnosis-he.md) separates
+established observations from unavailable provider/exception evidence.
+
+**W6c Post-Live Diagnostics** is authorized on 2026-11-03: offline evidence
+analysis and diagnostic-only contract/result and transport observability, with
+fake HTTP, disposable PostgreSQL, final CI and independent review. No new live
+call, experiment version, replay/resume, product-semantic change or merge.
+
 ## Constraints and Remaining Work
 
 - Follow the [M10 roadmap](docs/development/m10-completion-roadmap.md) for W6a–W9
@@ -108,12 +119,12 @@ See the [v2 preparation/approval contract](docs/audits/w6c/live-experiment-v2.md
 
 ## Next Approved Work
 
-Complete the focused preparation Draft PR and leave it unmerged for owner review.
-After a separately approved merge, regenerate the live fingerprint on the merged
-candidate with a fresh disposable fixture. Explicit exact-model/settings/ordered
-questions/fingerprint/call and dispatch-budget approval is still required before
-Live. Frozen W6c and V2 evidence remains read-only; W7, broader tuning and paid
-evaluation are not authorized.
+Complete the focused offline diagnosis/instrumentation Draft PR and leave it
+unmerged for owner review. Preserve the original terminal v2 journal and frozen
+evidence. Any future billable experiment needs separately approved scope, model,
+settings, questions, fingerprint and call/dispatch limits; the first experiment's
+remaining nominal budget cannot be reused. W7 and product-semantic tuning are
+not authorized.
 
 ## References
 

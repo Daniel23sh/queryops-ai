@@ -300,8 +300,17 @@ def oracle_comparison(runtime, access, schema, plan, witness, pack, projection):
         require(len(result.columns) == len(keys), "output_shape_mismatch")
         return sorted(json.dumps(dict(zip(keys, r.values(), strict=True)), default=str, sort_keys=True)
                       for r in result.rows)
-    result = {"oracle_equal": output_ok and rows(expected, identities(witness["plan"])) == rows(
-                actual, identities(normalized.model_dump(mode="json"))),
+    expected_keys = identities(witness["plan"])
+    actual_keys = identities(normalized.model_dump(mode="json"))
+    comparable = (len(expected_keys) == len(set(expected_keys))
+                  and len(actual_keys) == len(set(actual_keys))
+                  and set(expected_keys) == set(actual_keys))
+    multiset_match = (rows(expected, expected_keys) == rows(actual, actual_keys)
+                      if comparable else "not_evaluated")
+    result = {"output_contract_match": output_ok, "result_multiset_match": multiset_match,
+            # Legacy evidence keeps its combined meaning; missing new fields in
+            # historical records cannot establish either independent result.
+            "oracle_equal": output_ok and multiset_match is True,
             "oracle_complete": True, "same_read_only_snapshot": True}
     if witness["case_id"] == "W6C-007":
         fixture = artifact_module("fixture")
@@ -349,7 +358,7 @@ def prepare(reference_text: str, *, initialize_database: bool = False):
                     with query_runtime_transaction(engine, access, isolation_level="repeatable_read", timezone_name="UTC") as runtime:
                         result = oracle_comparison(runtime, access, schema, plan, witnesses[case["id"]], pack, projection)
                     require(result["oracle_equal"], "manual_witness_oracle_mismatch_" + case["id"])
-                    require(all(result.values()), "manual_witness_contract_mismatch_" + case["id"])
+                    require(all(value is True for value in result.values()), "manual_witness_contract_mismatch_" + case["id"])
                     record.update(result)
                 else:
                     record["expected_outcome"] = "clarification"
