@@ -193,3 +193,35 @@ def test_live_gates_fail_before_constructing_network_transport(prepared, monkeyp
         monkeypatch.setattr(live, "source_identity", source)
     with pytest.raises(DiagnosticStop):
         live.execute(prepared, approval=approval, dry_run=False)
+
+
+def test_second_question_failure_preserves_first_semantic_result_in_durable_journal(prepared, monkeypatch):
+    import httpx
+    journals = []
+    original_guard = live.DispatchGuard
+    class RecordingGuard(original_guard):
+        def __init__(self, transport, journal, *args, **kwargs):
+            self.journal = journal
+            super().__init__(transport, journal, *args, **kwargs)
+        def close(self):
+            journals.append([json.loads(line) for line in self.journal.read_text().splitlines()])
+            super().close()
+    monkeypatch.setattr(live, "DispatchGuard", RecordingGuard)
+    original_response = live.fake_response
+    calls = []
+    def response(plan):
+        calls.append(True)
+        if len(calls) == 2:
+            raise httpx.ReadTimeout("private-second-call")
+        return original_response(plan)
+    monkeypatch.setattr(live, "fake_response", response)
+    with pytest.raises(Exception):
+        live.execute(prepared)
+    assert len(calls) == 2
+    events = journals[-1]
+    completed = [e for e in events if e["event"] == "case_result"]
+    assert completed == [{"event": "case_result", "case_id": "W6C-001", "outcome": "plan",
+                          "oracle_equal": True, "oracle_complete": True, "same_read_only_snapshot": True}]
+    assert len([e for e in events if e["event"] == "dispatch_reserved"]) == 2
+    assert events[-1]["event"] == "sequence_failed"
+    assert "private" not in json.dumps(events)

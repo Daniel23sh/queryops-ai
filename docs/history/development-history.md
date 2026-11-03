@@ -1155,3 +1155,48 @@ These counts describe particular completed revisions and must not be treated as 
 - [`docs/evaluation/v1-readiness-report.md`](../evaluation/v1-readiness-report.md)
 - [`docs/security/m8-release-test-matrix.md`](../security/m8-release-test-matrix.md)
 - Git first-parent history on `main`, especially merge commits listed above.
+## 2026-11-03 — M10 W6c Terra preparation (no Live authorization)
+
+From verified clean main `4b8ba26` after PR #70 merged, active Terra configuration
+and synthetic current-candidate tests migrated to `gpt-6.1-terra`. Provider parsing,
+safe defaults and runtime identity remain centralized; Compose's duplicate model,
+timeout, retry, reasoning and token defaults were removed. Explicit conflicting
+CLI/environment model selection now fails closed. Mock remains default and normal
+retries remain 2. Local ignored `.env` was already target/low/2048/45/2 and its
+secrets/unrelated settings were preserved. Historical model identities and Luna
+mismatch fixtures remain intact; see the [inventory](../development/terra-configuration-migration.md).
+
+The [separately versioned W6c proposal](../audits/w6c/live-experiment-v2.md) and
+machine config replace W6C-010 with W6C-007 in slot 8 without changing frozen
+questions/oracles/results. The diagnostic-only actual HTTP transport enforces
+12 logical/physical calls and one dispatch per question, zero retries/redirects,
+durable pre-dispatch reservations and a fixed single-use journal across checkouts
+and restarts. Safe completed case observations survive subsequent fatal failure.
+Live requires separate explicit operator approval, exact environment and a fresh
+fingerprint on the eventual merged source revision; no API key alone enables it.
+
+No-key preflight on clean committed `e0d8a49` and a fresh isolated PostgreSQL 16
+cluster succeeded with 0 logical calls/dispatches; the real-SDK in-process dry run
+completed 12/12 using manual witnesses, not a provider. Ten positive witnesses
+matched independent same-snapshot read-only RLS oracles, including both optional
+W6C-007 populations. Seed-reference reproduction, installed dependency/runtime,
+authorization, policy/data identity, request-body identity and frozen-byte guards
+are checked. This source/config fingerprint is preparation evidence only and must
+be regenerated after merge.
+
+Local validation: full disposable-PostgreSQL backend suite 2,086 passed with zero
+skips before the final approval-type/durable-evidence regressions; the subsequent
+focused suite passed 99 tests, including all 79 diagnostic cases and the separate
+20 action release cases. 31 Evaluation UI tests, Ruff, Pyright, compileall and
+Compose configuration with/without `.env` passed. Final-head CI is authoritative
+and its result is retained on the PR, avoiding a self-referential source fingerprint.
+The PostgreSQL CI job explicitly asserts all new diagnostic modules are selected
+and zero-skipped. Frozen W6c/V2 artifacts, prompt/catalog and release gates are
+unchanged; ignored planning files and `.env` are not tracked.
+
+Fresh-context review found and corrected aggregate-alias false failures,
+unrequested-LIMIT false acceptance and loss of earlier semantic observations after
+a later fatal call; permanent adversarial PostgreSQL regressions cover all three.
+Final re-review of the committed correction is a required handoff gate. No real
+OpenAI request, model availability probe, paid evaluation, W6c Live, W7 or merge
+was performed.

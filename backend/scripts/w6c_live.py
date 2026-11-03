@@ -466,8 +466,10 @@ def execute(manifest, *, approval=None, dry_run: bool = True):
                         record["semantic_match"] = False
                 else:
                     record["semantic_match"] = case["id"] in {"W6C-002", "W6C-003"} and result.clarification_required
+                # Persist safe semantic evidence before the next question. A
+                # later fatal failure cannot erase earlier non-repeatable work.
+                guard.finish(record)
                 results.append(record)
-                guard.finish()
         return {"schema": "queryops-w6c-diagnostic-result-v2", "fingerprint": manifest["fingerprint"],
             "mode": "in_process_manual_witnesses" if dry_run else "live_diagnostic",
             "provider_interpretation": "unmeasured" if dry_run else "diagnostic_only",

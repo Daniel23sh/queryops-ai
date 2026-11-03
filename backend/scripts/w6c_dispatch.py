@@ -83,10 +83,24 @@ class DispatchGuard(httpx.BaseTransport):
         self._write({"event": "stopped", "code": code})
         raise DiagnosticStop(code)
 
-    def finish(self) -> None:
+    def finish(self, record: dict[str, Any] | None = None) -> None:
         with self.lock:
             if self.stopped or self.active is None or not self.active.get("dispatched"):
                 self.stop("missing_or_failed_dispatch")
+            if record is not None:
+                allowed = {"case_id", "outcome", "oracle_equal", "oracle_complete",
+                    "same_read_only_snapshot", "semantic_match", "both_optional_arms_preserved",
+                    "left_reverse_selected", "independent_where_restriction", "optional_or_rule_selected"}
+                if (set(record) - allowed or record.get("case_id") != self.active["case_id"]
+                        or record.get("outcome") not in {"plan", "clarification", "unsafe_request"}
+                        or any(type(value) is not bool for key, value in record.items()
+                               if key not in {"case_id", "outcome"})):
+                    self.stop("case_evidence_invalid")
+                try:
+                    self._write({"event": "case_result", **record})
+                except BaseException:
+                    self.stopped = True
+                    raise
             self.active = None
 
     def handle_request(self, request: httpx.Request) -> httpx.Response:

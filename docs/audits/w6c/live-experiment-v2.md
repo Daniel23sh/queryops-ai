@@ -82,7 +82,9 @@ Structured clarification/unsafe outcomes and safe semantic mismatches are record
 without retry. Wrong semantics do not authorize tuning or extra calls.
 
 Logical events, pre-dispatch physical reservations, latency, bounded usage fields
-and terminal failures are recorded separately. Failed/abandoned work is not assumed
+and terminal failures are recorded separately. Each completed case's safe outcome
+and semantic/oracle booleans are fsynced before the next question; a later fatal
+failure cannot erase earlier non-repeatable observations. Failed/abandoned work is not assumed
 free. Missing usage remains null/incomplete; partial known counters are preserved,
 not turned into zero or a complete total. A reservation left without a result is
 an attempted dispatch with unknown usage, never permission to resend. The 24,576
