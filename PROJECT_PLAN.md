@@ -71,6 +71,14 @@ by the frozen fixture. Provider interpretation and NL answer accuracy remain
 unmeasured. Fresh-context final methodology review approved the evidence after
 closing an audit-tool import-order guard issue; the focused PR handoff follows.
 
+**W6c F1 — bounded reverse-LEFT support** was separately authorized on 2026-11-02.
+The implementation adds explicit `left_reverse` preservation of `to_entity`,
+retains legacy `inner`/`left` semantics and leaves the frozen evidence unchanged.
+Contract, PostgreSQL oracles and limits are recorded in the
+[implementation contract](docs/development/reverse-left-joins.md). V3 validation
+and fresh-context independent review passed; the focused Draft PR remains unmerged
+for owner review.
+
 ## Constraints and Remaining Work
 
 - Follow the [M10 roadmap](docs/development/m10-completion-roadmap.md) for W6a–W9
@@ -92,10 +100,11 @@ closing an audit-tool import-order guard issue; the focused PR handoff follows.
 
 ## Next Approved Work
 
-Leave the focused W6c offline evidence PR unmerged for owner review.
-Decide the optional-OR product boundary and separately approve the exact live
-diagnostic configuration/questions/call and dispatch caps before live validation.
-W7, product tuning and paid evaluation are not authorized.
+Leave the focused F1 implementation Draft PR unmerged for independent owner review.
+PR #69 was already included in latest main `761ddb2` before F1 implementation;
+its frozen artifacts remain read-only regression evidence. Separately approve
+the exact live diagnostic configuration/questions/call and dispatch caps before
+live validation. W7, broader product tuning and paid evaluation are not authorized.
 
 ## References
 

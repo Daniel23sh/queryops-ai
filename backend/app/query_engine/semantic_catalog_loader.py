@@ -990,7 +990,7 @@ def _parse_example_relationships(
                 f"{path} references unknown relationship"
             )
         join_type = _text(item, "join_type", f"{path}.join_type", 16)
-        if join_type not in {"inner", "left"}:
+        if join_type not in {"inner", "left", "left_reverse"}:
             raise DomainPackValidationError(f"{path}.join_type is not supported")
         result.append(
             SemanticExampleRelationshipIntent(

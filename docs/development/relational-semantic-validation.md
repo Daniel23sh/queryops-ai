@@ -1,5 +1,9 @@
 # PR55 relational semantic validation
 
+The additive [M10 W6c F1 join contract](reverse-left-joins.md) extends these
+guarantees to explicit `left_reverse`, preserving `to_entity` and null-extending
+`from_entity`. Legacy `left` preservation and the safeguards below remain intact.
+
 Phase 0 passed on `6af16a4eb002b5b1b56619d6fe4b477d799c87bc`.
 The [existing validator](../../backend/app/query_engine/semantic_plan.py) retains
 Required Intent. New checks consume no question text and introduce no plan schema.

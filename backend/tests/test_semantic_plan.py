@@ -666,13 +666,14 @@ def test_grounded_distinct_count_refuses_unproven_relationship_shape(
     assert exc_info.value.reason == "grounded_aggregation_mismatch"
 
 
-def test_grounded_distinct_count_refuses_left_or_missing_direct_relationship() -> None:
+@pytest.mark.parametrize("join_type", ["left", "left_reverse"])
+def test_grounded_distinct_count_refuses_left_or_missing_direct_relationship(join_type) -> None:
     left_join = _medium_006_fk_count_plan().model_copy(
         update={
             "relationships": (
                 _relationship("directory_user_department", "inner"),
                 _relationship("user_group_membership_group", "inner"),
-                _relationship("user_group_membership_user", "left"),
+                _relationship("user_group_membership_user", join_type),
             )
         }
     )
@@ -1157,7 +1158,7 @@ def _order(
 
 def _relationship(
     relationship_id: str,
-    join_type: Literal["inner", "left"],
+    join_type: Literal["inner", "left", "left_reverse"],
 ) -> SemanticRelationshipIntent:
     return SemanticRelationshipIntent(
         relationship_id=relationship_id,

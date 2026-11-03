@@ -71,7 +71,10 @@ class SemanticRelationshipIntent(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True, strict=True)
 
     relationship_id: Identifier
-    join_type: Literal["inner", "left"]
+    join_type: Literal["inner", "left", "left_reverse"] = Field(
+        description="inner joins either direction; left preserves from_entity; "
+        "left_reverse preserves to_entity. Both LEFT intents add the nullable endpoint."
+    )
 
 
 class SemanticAggregationIntent(BaseModel):
@@ -416,7 +419,7 @@ def validate_semantic_plan(
             # The catalog has no target field for SUM metrics.
             raise SemanticPlanValidationError("metric_sum_target_missing")
         if population_may_multiply(metric.entity_id, plan, domain_pack) or any(
-            added == metric.entity_id and join_type == "left"
+            added == metric.entity_id and join_type in {"left", "left_reverse"}
             for _, join_type, added in join_order[1]
         ):
             # Named metrics declare an entity population. COUNT(*) cannot

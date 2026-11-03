@@ -208,7 +208,7 @@ def test_equivalent_user_keys_and_supported_bridge(table, column):
     ).passed
 
 
-@pytest.mark.parametrize("mutation", ["missing", "left", "unrelated"])
+@pytest.mark.parametrize("mutation", ["missing", "left", "left_reverse", "unrelated"])
 def test_user_key_equivalence_requires_selected_inner_relationship(mutation):
     case, plan, _ = example("itops-hard-004", grouping=[("directory_users", "id")])
     observation = plan.as_observation()
@@ -218,9 +218,9 @@ def test_user_key_equivalence_requires_selected_inner_relationship(mutation):
         for selected in observation["relationship_join_types"]:
             if selected["relationship_id"] == "login_event_user":
                 selected.update(
-                    join_type="left" if mutation == "left" else "inner",
+                    join_type=mutation if mutation in {"left", "left_reverse"} else "inner",
                     relationship_id="login_event_user"
-                    if mutation == "left"
+                    if mutation in {"left", "left_reverse"}
                     else "device_assignee",
                 )
     assert not score_evaluation_semantic_contract(case, observation).passed

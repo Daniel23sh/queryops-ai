@@ -37,6 +37,10 @@ Approved query templates bypass the LLM provider. Free-text queries use the curr
 
 The backend-rendered SQL remains untrusted and must pass every downstream control before execution.
 
+SemanticPlan supports explicit `inner`, `left` (preserving `from_entity`) and
+`left_reverse` (preserving `to_entity`) joins within its bounded join tree. See
+the [join contract and limits](docs/development/reverse-left-joins.md).
+
 ## Key Capabilities
 
 - **Natural-language and template queries:** Run free-text questions when permitted or use approved, provider-free query templates.

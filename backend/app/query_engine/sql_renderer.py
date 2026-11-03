@@ -114,14 +114,14 @@ def _render_join_tree(
             raise SemanticSQLRenderError("relationship_unavailable")
         selected.append((relationship, intent.join_type))
 
-    if any(join_type not in {"inner", "left"} for _, join_type in selected):
+    if any(join_type not in {"inner", "left", "left_reverse"} for _, join_type in selected):
         raise SemanticSQLRenderError("join_type_unsupported")
     order = selected_join_order(plan, domain_pack)
     if order is None:
         raise SemanticSQLRenderError("left_join_orientation_unsupported")
     root_entity_id, joins = order
     return root_entity_id, tuple(
-        f"{'LEFT JOIN' if join_type == 'left' else 'INNER JOIN'} "
+        f"{'INNER JOIN' if join_type == 'inner' else 'LEFT JOIN'} "
         f"{entity_tables[added]} ON "
         f"{entity_tables[relationship.from_entity]}.{relationship.from_column} = "
         f"{entity_tables[relationship.to_entity]}.{relationship.to_column}"

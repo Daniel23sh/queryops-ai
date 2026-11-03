@@ -281,12 +281,15 @@ def _parse_query(
                     )
                 relationship_id = candidate_id
             else:
+                if join_type == "left":
+                    # LEFT ON filters are not interchangeable with WHERE filters.
+                    raise _ConformanceFailure(
+                        SemanticConformanceReason.SQL_SHAPE_UNSUPPORTED
+                    )
                 residual_nodes.append(_normalize_boolean(term, resolver))
         if relationship_id is None:
             raise _ConformanceFailure(SemanticConformanceReason.RELATIONSHIP_MISSING)
-        # INNER joins are direction-independent.  LEFT joins are not: the
-        # relationship's ``from_entity`` is the preserved side and its
-        # ``to_entity`` must be the newly joined nullable side.
+        # Compare the actual SQL nullable endpoint with the explicit plan intent.
         nullable_entity_id = joined_entity_id if join_type == "left" else None
         selected_relationships.add(
             (relationship_id, join_type, nullable_entity_id)
@@ -792,9 +795,11 @@ def _check_relationships(
     expected = frozenset(
         (
             item.relationship_id,
-            item.join_type,
+            "left" if item.join_type == "left_reverse" else item.join_type,
             catalog_relationships[item.relationship_id].to_entity
             if item.join_type == "left"
+            else catalog_relationships[item.relationship_id].from_entity
+            if item.join_type == "left_reverse"
             else None,
         )
         for item in plan.plan.relationships
