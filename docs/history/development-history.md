@@ -1,5 +1,73 @@
 # QueryOps AI — Development History
 
+## 2026-11-03 — M10 W8 reproducible local validation
+
+Started from clean latest main `c2636a0c600f5ed1972c8a4216aee8602f618ab3`
+(W7, PR #73), on `codex/m10-w8-reproducible-validation`, with explicit W8-only
+authorization. [Draft PR #74](https://github.com/Daniel23sh/queryops-ai/pull/74)
+adds [`scripts/validate_local.py`](../../scripts/validate_local.py), documented in
+the [local validation contract](../development/reproducible-validation.md).
+It reads the existing six CI jobs and executes their selected commands without a
+new test framework or CI architecture change. Every database gate gets its own
+fresh PostgreSQL cluster, isolated network namespace and tmpfs data, preserving
+cluster-global migration/runtime-role safeguards. No existing application process,
+port, database, container or volume is adopted or reset.
+
+The host builds only an immutable committed archive, strips application/provider
+and endpoint overrides, explicitly clears Docker client-config proxy injection,
+and runs demo/Mock services without external runtime network access or host port
+publication. Registered pending resources survive interrupted create replies;
+cleanup checks ownership and uses immutable IDs. Sanitized JSON evidence includes
+source/image/runtime/dependency/migration identity, actual suite counts, incomplete
+coverage and cleanup outcomes. Raw SQL, rows, credentials, traces and exception
+bodies are not exported as retained diagnostics. Docker cache/base images remain;
+daemon failure/SIGKILL and bounded dependency ranges prevent stronger guarantees.
+
+Clean full runs at `5e995409afdff0b6679d5a16bae487a212344d0c` and final executable
+snapshot `046112fe6a237e8e475b04f994aa528e302f9fe0` passed all six local gates and
+completed cleanup with identical suite counts: Backend 1,839 passed / 365 expected PostgreSQL
+skips; separate PostgreSQL 2,184 passed plus exactly 20 action release cases,
+zero skips; Frontend 318 passed plus lint/both types/build; general browser 12
+passed; primary browser 26 passed (actions 2, access 2, persisted scoped Evaluation
+9, result delivery 8, dashboard integrity 3, output identity 2), zero skips.
+Migration upgrade/current/check reached `0010_disable_inactive_user` without schema
+diffs. This is deterministic synthetic evidence, not production or provider-quality
+qualification. Final snapshot `046112f` additionally records the supported
+backend-image auth smoke: 55 passed, zero skips. Its run ID is
+`queryops-validation-e4f7b611c0fc4cff9f5c5ba9012e4488`; runner image identity is
+`sha256:a5c8b78864c3efb28b23986675954cade3494f2e4bfe726088a70883215908bd`;
+PostgreSQL image identity is
+`sha256:0cefaabd882e42bcb2a2f3dc56d3ce4770560ba62fd7f197f1a2e008fd5731ab`.
+No W8-owned containers/images remained after cleanup; the pre-existing service
+kept its original container ID and host binding.
+
+Runtime identity: Linux/aarch64 on Docker 29.0.1, Python 3.12.16, Node 22.23.4,
+npm 10.9.9, PostgreSQL 16.15, Chromium 149.0.7827.0, Playwright 1.61.1;
+SQLAlchemy 2.1.6, psycopg 3.3.7, Alembic 1.20.1, FastAPI 0.115.14,
+SQLGlot 30.17.0, OpenAI SDK 2.54.0, Pytest 8.4.2, Ruff 0.15.22,
+Pyright 1.1.414, React 18.3.1, TypeScript 5.9.3, Vite 5.4.21, Vitest 2.1.9.
+Frontend lock SHA-256:
+`ba44dc71b6a8272084af2124ad831036ddbeb21e7de04cf5b6416d44d5daa43c`.
+The evidence directory contains the full installed-version maps and image IDs.
+
+Thirty focused guard/evidence regressions pass. Two real Docker lifecycle tests
+also pass, covering existing-name rejection, partial creation, failed process,
+foreign-owner cleanup refusal and actual SIGTERM during an active Docker wait.
+Protected cluster database/role/sentinel content and container/volume inspection
+remain identical across rejected/failed operations. Earlier full attempts exposed
+52 frontend failures from wrongly inheriting browser VITE origin into the unit
+job; the adapter now mirrors CI's separate environments, with five regressions.
+The failed runs reported failure and completed owned cleanup; no tests were weakened.
+
+Independent fresh-context V3 review found and corrected Docker client proxy
+injection, a signal-time ownership-registration gap, and mutable-HEAD archive/evidence
+mismatch. Dedicated regressions cover all three; re-review found no open confirmed
+issue. CodeRabbit was unauthenticated, so this is agent review, not a CodeRabbit
+result. Final-head CI remains recorded on the PR to avoid self-referential source
+claims. No frozen Evaluation data, thresholds, runtime product contracts, terminal
+W6c journal, real provider calls or W9 work changed. Full manual QA, separately
+authorized matching live quality evidence and final V1 freeze/completion remain open.
+
 ## 2026-11-03 — M10 W7 explicit local authentication boundary
 
 Started from verified clean latest main `b2cf868` (PR #72) on

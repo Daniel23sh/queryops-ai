@@ -97,14 +97,17 @@ established observations from unavailable provider/exception evidence.
 at `b2cf868b62f6fd122a7423a52dc0e4bb7fe0d1a8`, verified against clean latest
 remote main on 2026-11-03. Its frozen evidence and terminal journal remain unchanged.
 
-**W7 — Explicit Local Release Boundary** is explicitly authorized on 2026-11-03,
-superseding the earlier W7 exclusion. Only exact, explicit `AUTH_MODE=demo` is
-supported for local synthetic V1. Enforce startup/request configuration and
-session/provider identity, preserve current permissions/scopes/session security,
-align Compose/environment/setup docs, and validate with deterministic negative
-and positive regressions, disposable PostgreSQL, Compose startup, final CI and
-fresh-context independent V3 review. Deliver a focused Draft PR without merging.
-W8, production identity/deployment and live-provider work remain unauthorized.
+**W7 — Explicit Local Release Boundary** merged through
+[PR #73](https://github.com/Daniel23sh/queryops-ai/pull/73) at
+`c2636a0c600f5ed1972c8a4216aee8602f618ab3`, verified as clean latest main when
+starting W8. Exact explicit `AUTH_MODE=demo` is the sole local synthetic V1 mode;
+its reviewed implementation and deterministic evidence are in development history.
+
+**W8 — Reproducible Validation** is the sole work authorized on 2026-11-03.
+The [entry point and contract](docs/development/reproducible-validation.md) reuse
+the six existing CI gates with isolated disposable clusters, real scoped Evaluation
+and browser execution, counted sanitized evidence and owned cleanup. Implementation,
+clean-run evidence and fresh-context V3 review belong in development history.
 
 ## Constraints and Remaining Work
 
@@ -113,8 +116,8 @@ W8, production identity/deployment and live-provider work remain unauthorized.
   correction and W6c independent validation are separate packages.
 - Old environment v1/missing-fingerprint evidence cannot qualify under environment
   v2. Semantic diagnosis, Output Identity and Candidate Availability are merged;
-  qualifying live semantic validation, reproducible validation and final V1 QA
-  remain open. W7 local-auth implementation and validation are recorded below.
+  qualifying live semantic validation and final V1 QA remain open. W7 is merged;
+  W8's focused implementation/evidence PR remains unmerged.
   The audit's hard-004 case passed its diagnostic canary; blanket historical
   failure claims are not accepted without new evidence.
 - Preserve authorization, RLS, safety caps, historical V1 baselines, semantic
@@ -127,14 +130,12 @@ W8, production identity/deployment and live-provider work remain unauthorized.
 
 ## Next Approved Work
 
-W7 is merged on main (`c2636a0`). The owner explicitly authorized **W8 only** on
-2026-11-03, superseding the earlier W8 exclusion. Implement the
-[reproducible validation contract](docs/development/reproducible-validation.md)
-using the six existing CI gates, owned disposable clusters, real scoped Evaluation
-and browser evidence, adversarial lifecycle tests and independent fresh-context
-V3 review. Deliver a focused Draft PR; do not merge. W9, live provider execution,
-production deployment/identity and changes to frozen evidence remain unauthorized.
-The W6c terminal journal must remain unchanged.
+W8 implementation and two successful clean-run validations are complete on
+[Draft PR #74](https://github.com/Daniel23sh/queryops-ai/pull/74); final-head CI is
+recorded on the PR and checked before handoff. No further implementation is
+approved. Stop at the focused Draft PR handoff; do not merge or start W9. Live
+provider execution, production deployment/identity and changes to frozen evidence
+remain unauthorized. The W6c terminal journal must remain unchanged.
 
 ## References
 

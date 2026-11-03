@@ -32,7 +32,7 @@ this is a small explicit adapter, not a general GitHub Actions emulator.
 | M8 Primary E2E | Separate new cluster/DB; existing migration/seed/preparation command; six sequential spec files from CI, including all real PostgreSQL scoped Evaluation API/browser cases without route mocks |
 | V1 Deterministic Release Gates | Success only after every preceding job succeeds; any failure stops the local run and leaves remaining coverage incomplete |
 
-Local differences: Linux containers run on the Docker engine's architecture
+Local differences: Debian Bookworm execution containers run on the Docker engine's architecture
 (for example ARM64 on Apple Silicon), while GitHub uses Ubuntu hosted runners.
 Backend Python 3.12 and Node 22 match CI major versions. The supported backend
 Dockerfile is built and its auth smoke runs offline; Compose configuration is
@@ -97,9 +97,10 @@ cd backend
 `summary.json` records source SHA, unique run ID, Docker/image identities, gate
 outcomes and cleanup. Per-gate JSON records Python/Node/npm and installed backend
 versions, frontend dependency versions and lock hash, PostgreSQL server version,
-Alembic revision, completed commands and executed/pass/fail/skip counts. Only JSON
-summaries leave execution containers; raw test output, credentials, SQL, persisted
-rows, browser traces/screenshots and exception bodies do not. Failure reports name
+Alembic revision, completed commands and executed/pass/fail/skip counts. The supported
+backend-image smoke has its own counted JSON report. Only JSON summaries are exported
+to the host; raw test output, credentials, SQL, persisted rows, browser traces/screenshots
+and exception bodies are not retained after container cleanup. Failure reports name
 the active fixed CI step and exception type; a setup failure may have no suite counts.
 This intentionally limits diagnostics. Reproduce using the same source SHA for a
 closer inspection inside a separately owned disposable environment.
