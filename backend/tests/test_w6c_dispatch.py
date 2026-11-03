@@ -217,3 +217,84 @@ def test_real_sdk_cannot_retry_redirect_or_repeat_a_question(tmp_path, monkeypat
         assert len(calls) == guard.physical_dispatches == 1
     finally:
         client.close()
+
+
+@pytest.mark.parametrize("exception_type,category", [
+    (httpx.ConnectTimeout, "timeout"), (httpx.ReadTimeout, "timeout"),
+    (httpx.WriteTimeout, "timeout"), (httpx.PoolTimeout, "timeout"),
+    (httpx.ConnectError, "connection_failure"), (httpx.ReadError, "connection_failure"),
+    (httpx.WriteError, "connection_failure"), (httpx.ProxyError, "connection_failure"),
+    (httpx.RemoteProtocolError, "protocol_failure"), (httpx.LocalProtocolError, "protocol_failure"),
+    (httpx.UnsupportedProtocol, "protocol_failure"),
+    (KeyboardInterrupt, "unknown_interruption"), (RuntimeError, "unknown_interruption"),
+])
+def test_boundary_classifies_actual_exception_without_sensitive_details(tmp_path, exception_type, category):
+    def handler(req):
+        raise exception_type("private-body https://user:secret@example.test Authorization: Bearer private-key")
+    guard, calls = guarded(tmp_path, handler)
+    try:
+        guard.begin("case-0")
+        with pytest.raises(BaseException):
+            guard.handle_request(request())
+        assert guard.records[0]["transport_failure_category"] == category
+        assert guard.records[0]["failure"] == "transport_or_interruption"  # Legacy field remains readable.
+        assert guard.records[0]["usage_complete"] is False
+        assert guard.records[0]["total_tokens"] is None
+        with pytest.raises(DiagnosticStop):
+            guard.handle_request(request())
+        assert len(calls) == guard.physical_dispatches == 1
+        journal = (tmp_path / "journal").read_text()
+        for forbidden in ("private", "secret", "example.test", "Authorization", "Bearer"):
+            assert forbidden not in journal
+    finally:
+        guard.close()
+
+
+@pytest.mark.parametrize("status,category", [(401, "http_failure"), (429, "http_failure"),
+                                           (503, "http_failure"), (307, "redirect"), (200, None)])
+def test_non_json_responses_keep_http_category_without_persisting_body(tmp_path, status, category):
+    guard, calls = guarded(tmp_path, lambda req: httpx.Response(status, text="private-server-body"))
+    try:
+        guard.begin("case-0")
+        with pytest.raises(DiagnosticStop):
+            guard.handle_request(request())
+        record = guard.records[0]
+        assert record["transport_failure_category"] == category
+        assert record["failure"] == ("response_invalid" if status == 200 else
+                                      "unexpected_redirect" if status == 307 else "http_failure")
+        assert record["usage_complete"] is False and record["input_tokens"] is None
+        assert len(calls) == 1 and guard.stopped
+        assert "private" not in (tmp_path / "journal").read_text()
+    finally:
+        guard.close()
+
+
+@pytest.mark.parametrize("multiset", [True, False, "not_evaluated"])
+def test_safe_new_case_measurements_are_durable_and_restart_is_rejected(tmp_path, multiset):
+    guard, _ = guarded(tmp_path)
+    guard.begin("case-0")
+    guard.handle_request(request())
+    record = {"case_id": "case-0", "outcome": "plan", "output_contract_match": multiset is True,
+              "result_multiset_match": multiset, "oracle_equal": multiset is True}
+    guard.finish(record)
+    guard.close()
+    events = [json.loads(line) for line in (tmp_path / "journal").read_text().splitlines()]
+    assert events[-1] == {"event": "case_result", **record}
+    with pytest.raises(FileExistsError):
+        guarded(tmp_path)
+
+
+@pytest.mark.parametrize("changes", [{"output_contract_match": "private"},
+    {"result_multiset_match": "private"}, {"result_multiset_match": 1}, {"rows": []}])
+def test_case_measurements_reject_unbounded_or_mistyped_values(tmp_path, changes):
+    guard, _ = guarded(tmp_path)
+    try:
+        guard.begin("case-0")
+        guard.handle_request(request())
+        with pytest.raises(DiagnosticStop, match="case_evidence_invalid"):
+            guard.finish({"case_id": "case-0", "outcome": "plan", **changes})
+        journal = (tmp_path / "journal").read_text()
+        assert "private" not in journal and '"rows"' not in journal
+        assert guard.stopped
+    finally:
+        guard.close()

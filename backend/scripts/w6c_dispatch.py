@@ -25,6 +25,19 @@ def digest(value: Any) -> str:
                                      default=str).encode()).hexdigest()
 
 
+def transport_failure_category(exc: BaseException) -> str | None:
+    """Classify only available types/codes; never serialize exception text."""
+    if isinstance(exc, httpx.TimeoutException):
+        return "timeout"
+    if isinstance(exc, (httpx.NetworkError, httpx.ProxyError)):
+        return "connection_failure"
+    if isinstance(exc, (httpx.ProtocolError, httpx.UnsupportedProtocol)):
+        return "protocol_failure"
+    if isinstance(exc, DiagnosticStop):
+        return {"http_failure": "http_failure", "unexpected_redirect": "redirect"}.get(exc.code)
+    return "unknown_interruption"
+
+
 class DispatchGuard(httpx.BaseTransport):
     """Reserve durably BEFORE touching the underlying transport; never resume."""
 
@@ -90,11 +103,14 @@ class DispatchGuard(httpx.BaseTransport):
             if record is not None:
                 allowed = {"case_id", "outcome", "oracle_equal", "oracle_complete",
                     "same_read_only_snapshot", "semantic_match", "both_optional_arms_preserved",
-                    "left_reverse_selected", "independent_where_restriction", "optional_or_rule_selected"}
+                    "left_reverse_selected", "independent_where_restriction", "optional_or_rule_selected",
+                    "output_contract_match", "result_multiset_match"}
                 if (set(record) - allowed or record.get("case_id") != self.active["case_id"]
                         or record.get("outcome") not in {"plan", "clarification", "unsafe_request"}
-                        or any(type(value) is not bool for key, value in record.items()
-                               if key not in {"case_id", "outcome"})):
+                        or any(type(value) is not bool and not (
+                                   key == "result_multiset_match" and type(value) is str
+                                   and value == "not_evaluated")
+                               for key, value in record.items() if key not in {"case_id", "outcome"})):
                     self.stop("case_evidence_invalid")
                 try:
                     self._write({"event": "case_result", **record})
@@ -128,7 +144,7 @@ class DispatchGuard(httpx.BaseTransport):
                 "physical_dispatch": self.physical_dispatches, "usage_complete": False,
                 "input_tokens": None, "cached_input_tokens": None,
                 "output_tokens": None, "total_tokens": None, "latency_ms": None,
-                "failure": None}
+                "failure": None, "transport_failure_category": None}
             self.records.append(record)
             started = time.perf_counter()
             try:
@@ -137,7 +153,14 @@ class DispatchGuard(httpx.BaseTransport):
                 # Read at this boundary: stream timeouts/interruptions cannot be
                 # hidden by SDK parsing or a redirect/retry above the transport.
                 response.read()
-                data = response.json() if len(response.content) <= 1_000_000 else {}
+                try:
+                    data = response.json() if len(response.content) <= 1_000_000 else {}
+                except (ValueError, UnicodeError):
+                    # A non-JSON HTTP error/redirect still has a known category.
+                    # Successful malformed responses remain a fatal shape error.
+                    if 200 <= response.status_code < 300:
+                        raise DiagnosticStop("response_invalid") from None
+                    data = {}
                 usage = _usage_counts(data.get("usage")) if isinstance(data, dict) else {}
                 record.update(usage)
                 record["usage_complete"] = (len(usage) == 4
@@ -158,6 +181,7 @@ class DispatchGuard(httpx.BaseTransport):
             except BaseException as exc:
                 self.stopped = True
                 record["failure"] = exc.code if isinstance(exc, DiagnosticStop) else "transport_or_interruption"
+                record["transport_failure_category"] = transport_failure_category(exc)
                 raise
             finally:
                 record["latency_ms"] = round((time.perf_counter() - started) * 1000, 3)

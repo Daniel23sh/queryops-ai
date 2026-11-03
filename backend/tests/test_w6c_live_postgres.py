@@ -50,6 +50,8 @@ def test_full_preflight_without_credentials_checks_ten_read_only_oracles(prepare
     assert manifest["logical_calls"] == manifest["physical_dispatches"] == 0
     assert len(manifest["cases"]) == 12
     assert sum(c.get("oracle_equal") is True for c in manifest["cases"]) == 10
+    assert all(c["output_contract_match"] is True and c["result_multiset_match"] is True
+               for c in manifest["cases"] if "oracle_equal" in c)
     assert all(c.get("oracle_complete") is True for c in manifest["cases"] if "oracle_equal" in c)
     encoded = json.dumps(manifest)
     for forbidden in ("Bearer", "api_key", "oracle_sql", "rows", "scope_keys", "demo.analyst@"):
@@ -221,7 +223,51 @@ def test_second_question_failure_preserves_first_semantic_result_in_durable_jour
     events = journals[-1]
     completed = [e for e in events if e["event"] == "case_result"]
     assert completed == [{"event": "case_result", "case_id": "W6C-001", "outcome": "plan",
+                          "output_contract_match": True, "result_multiset_match": True,
                           "oracle_equal": True, "oracle_complete": True, "same_read_only_snapshot": True}]
     assert len([e for e in events if e["event"] == "dispatch_reserved"]) == 2
     assert events[-1]["event"] == "sequence_failed"
+    failed = [e for e in events if e["event"] == "dispatch_result"][-1]
+    assert failed["transport_failure_category"] == "timeout"
+    assert failed["input_tokens"] is None and failed["usage_complete"] is False
     assert "private" not in json.dumps(events)
+
+
+@pytest.mark.parametrize("mutation,contract_match,multiset_match", [
+    ("unchanged", True, True), ("limit", False, True),
+    ("restriction", True, False), ("field_identity", False, "not_evaluated"),
+    ("distinct_fanout", False, False), ("aggregate_target", False, "not_evaluated"),
+])
+def test_independent_contract_and_result_measurements(prepared, mutation, contract_match, multiset_match):
+    from app.query_engine.semantic_plan import SemanticPlan
+    # Synthetic mutations of independently authored witnesses, not recovered
+    # provider outputs or an inferred explanation of the historical failure.
+    case_id = "W6C-009" if mutation == "aggregate_target" else "W6C-008"
+    _, _, cases, pack = live.frozen_inputs()
+    case = next(c for c in cases if c["id"] == case_id)
+    witness = live.witnesses_by_id()[case_id]
+    supplied = json.loads(json.dumps(witness["plan"]))
+    if mutation == "limit":
+        supplied["limit"] = 500
+    elif mutation == "restriction":
+        supplied["literal_filters"] = [{"field": {"entity_id": "devices", "column": "os"},
+                                        "operator": "equals", "value": "no-such-synthetic-os"}]
+    elif mutation == "field_identity":
+        supplied["output_fields"] = [{"entity_id": "devices", "column": "hostname"}]
+    elif mutation == "distinct_fanout":
+        supplied["distinct"] = False
+    elif mutation == "aggregate_target":
+        supplied["aggregations"][0]["field"] = {"entity_id": "software_installs", "column": "id"}
+    engine = create_engine(live.disposable_url())
+    try:
+        with Session(engine) as db:
+            access, schema, _, projection, _ = live.context(db, case, pack)
+        with live.query_runtime_transaction(engine, access, isolation_level="repeatable_read", timezone_name="UTC") as runtime:
+            result = live.oracle_comparison(runtime, access, schema, SemanticPlan.model_validate_json(json.dumps(supplied)),
+                                            witness, pack, projection)
+        assert result["output_contract_match"] is contract_match
+        assert result["result_multiset_match"] == multiset_match
+        assert result["oracle_equal"] is (contract_match and multiset_match is True)
+        assert result["oracle_complete"] is True and result["same_read_only_snapshot"] is True
+    finally:
+        engine.dispose()
