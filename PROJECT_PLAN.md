@@ -127,12 +127,14 @@ W8, production identity/deployment and live-provider work remain unauthorized.
 
 ## Next Approved Work
 
-W7 implementation is complete on its feature branch. Focused PostgreSQL/auth,
-Compose startup, frontend/browser and independent V3 review passed; evidence is
-in [development history](docs/history/development-history.md). Complete final
-CI verification and hand off the focused Draft PR against main. Stop at that handoff; no merge,
-W8, production authentication/deployment or live-provider evaluation. The W6c
-terminal journal and frozen evidence must remain unchanged.
+W7 is merged on main (`c2636a0`). The owner explicitly authorized **W8 only** on
+2026-11-03, superseding the earlier W8 exclusion. Implement the
+[reproducible validation contract](docs/development/reproducible-validation.md)
+using the six existing CI gates, owned disposable clusters, real scoped Evaluation
+and browser evidence, adversarial lifecycle tests and independent fresh-context
+V3 review. Deliver a focused Draft PR; do not merge. W9, live provider execution,
+production deployment/identity and changes to frozen evidence remain unauthorized.
+The W6c terminal journal must remain unchanged.
 
 ## References
 

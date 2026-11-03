@@ -166,8 +166,6 @@ Review findings that expand the affected boundary require reclassification and c
 
 ## 7. Current Tooling Gaps
 
-- No single local command reproduces the complete CI validation graph.
-- No repository script creates, migrates, tests, asserts zero skips, and cleans up a disposable PostgreSQL validation database end to end.
-- No single local command orchestrates the isolated backend/frontend services and guarded `@m8-primary` browser flow; CI is the canonical recipe.
+- The [W8 local entry point](reproducible-validation.md) reproduces the six deterministic CI gates in owned isolated containers, with migration checks, zero-skip PostgreSQL/browser assertions and guarded `@m8-primary` fixtures. CI remains authoritative; platform/setup differences and dependency/time reproducibility limits are documented there.
 - Pyright covers an explicit high-risk include set rather than the entire backend.
 - There is no checked-in Markdown lint or link-validation command.

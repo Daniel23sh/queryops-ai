@@ -115,6 +115,15 @@ IT Operations is implemented as the first domain pack; the core query and action
 - Git
 - Optional for host-based development: Python 3.11+ and Node.js 22
 
+For a clean, isolated validation run (host Python 3.12+ and Docker only):
+
+```bash
+python3.12 scripts/validate_local.py --evidence /tmp/queryops-validation-evidence-001
+```
+
+Run from a clean committed checkout. See [reproducible validation](docs/development/reproducible-validation.md)
+for the six CI gates, evidence, cleanup ownership and remaining limitations.
+
 ### Docker quick start
 
 From a fresh clone:
