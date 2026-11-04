@@ -1337,3 +1337,27 @@ a later fatal call; permanent adversarial PostgreSQL regressions cover all three
 Final re-review of the committed correction is a required handoff gate. No real
 OpenAI request, model availability probe, paid evaluation, W6c Live, W7 or merge
 was performed.
+
+## 2026-11-04 — M10 W6c v3 offline preparation
+
+The owner authorized only a separately versioned six-case preparation, beginning
+from clean latest main `2c0c4459caf9840beff421664eff2922ab8dc604` on
+`feature/m10-w6c-v3-preparation`. The [v3 contract](../audits/w6c/live-experiment-v3.md)
+preserves frozen criteria and v2 history while isolating config, manifest/approval/
+result identities, 6/6/1 budget, exact case order, disposable database and fixed
+OS-account journal. Shared dispatch changes retain v2's default 12/12/1 behavior.
+No product prompt/catalog/renderer/authorization/RLS/Evaluation contract changed.
+Independent boundary review identified missing column/schema ACL identity; the
+v3-only fingerprint and two disposable PostgreSQL drift regressions close it.
+Corrected implementation `f46f58a` passed 187 focused tests with zero skips;
+independent review verified the clean-source CLI manifest/dry-run and recomputed
+fingerprint `db95e0d6f14329f96d04a865f3bbd2ee68d5420e3358a39c815d5f13515b9076`.
+The preparation is attached to [Draft PR #75](https://github.com/Daniel23sh/queryops-ai/pull/75);
+final-head CI must pass before handoff.
+
+Focused synthetic HTTP + PostgreSQL verification, clean-source offline preflight,
+full CI and independent V3 review evidence are consolidated in the
+[preparation report](../audits/w6c/v3-preparation-evidence-he.md). No real provider
+request/probe, operator-approval file, journal reset, W9 work or merge is authorized.
+A post-merge preflight against the exact clean merged main SHA and separate exact
+human operator authorization are required before any live diagnostic.

@@ -41,10 +41,12 @@ def transport_failure_category(exc: BaseException) -> str | None:
 class DispatchGuard(httpx.BaseTransport):
     """Reserve durably BEFORE touching the underlying transport; never resume."""
 
+    max_calls = 12
+
     def __init__(self, transport: httpx.BaseTransport, journal: Path,
                  fingerprint: str, requests: list[dict[str, Any]], api_key: str,
                  before_dispatch=None):
-        if len(requests) != 12 or len({r["case_id"] for r in requests}) != 12 or not api_key.strip():
+        if len(requests) != self.max_calls or len({r["case_id"] for r in requests}) != self.max_calls or not api_key.strip():
             raise DiagnosticStop("invalid_dispatch_contract")
         self.transport = transport
         self.requests = requests
@@ -79,7 +81,7 @@ class DispatchGuard(httpx.BaseTransport):
 
     def begin(self, case_id: str) -> None:
         with self.lock:
-            if (self.stopped or self.active is not None or self.logical_calls >= 12
+            if (self.stopped or self.active is not None or self.logical_calls >= self.max_calls
                     or self.requests[self.logical_calls]["case_id"] != case_id):
                 self.stop("logical_budget_or_order_invalid")
             self.active = self.requests[self.logical_calls]
@@ -122,7 +124,7 @@ class DispatchGuard(httpx.BaseTransport):
     def handle_request(self, request: httpx.Request) -> httpx.Response:
         with self.lock:
             active = self.active
-            if self.stopped or active is None or active.get("dispatched") or self.physical_dispatches >= 12:
+            if self.stopped or active is None or active.get("dispatched") or self.physical_dispatches >= self.max_calls:
                 self.stop("physical_budget_exhausted")
             try:
                 body = json.loads(request.content)

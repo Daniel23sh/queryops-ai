@@ -1,0 +1,56 @@
+{
+  "schema": "queryops-w6c-live-v3",
+  "execution_authorized": false,
+  "provider": "openai",
+  "settings": {
+    "OPENAI_MODEL": "gpt-6.1-terra",
+    "OPENAI_REASONING_EFFORT": "low",
+    "OPENAI_MAX_OUTPUT_TOKENS": "2048",
+    "OPENAI_TIMEOUT_SECONDS": "45",
+    "OPENAI_MAX_RETRIES": "0"
+  },
+  "max_logical_calls": 6,
+  "max_physical_dispatches": 6,
+  "max_dispatches_per_question": 1,
+  "original_proposal_sha256": "fafe25a8d0f093f7324bdfd38ff53e06d33e1baa8b898eaa20094a18d3cdcb86",
+  "freeze_sha256": "750b59364d95eed37ed1652d748abd54760187bf548675092b43a6ceaa009d9a",
+  "seed": {
+    "profile": "small",
+    "seed": 42,
+    "contrasts": "frozen_fixture_with_fresh_reference",
+    "max_reference_age_hours": 24
+  },
+  "cases": [
+    {
+      "id": "W6C-008",
+      "question_sha256": "5b1de9593549dc6ab40865fbdea32a7e1df2757a2ce98fd7716cfb74af7d3295"
+    },
+    {
+      "id": "W6C-011",
+      "question_sha256": "502c7b2caeda3a607a224fad66b2bf5154cb217ed02efcc0c2ec8833cd39942c"
+    },
+    {
+      "id": "W6C-012",
+      "question_sha256": "662a5d7d632d143bf8f1a278d2cb67c83ac0e8d50ef6304f4ff6277c4c2bad47"
+    },
+    {
+      "id": "W6C-013",
+      "question_sha256": "4ebcc73c3ba2bc523ecbbf41413abf40ea71969e0118f4cfd84df4c57d781f1a"
+    },
+    {
+      "id": "W6C-020",
+      "question_sha256": "c953922c63eb80f9e755c51c0aac7adc46c15712a4b3ea5d1008ed86cba71ddd"
+    },
+    {
+      "id": "W6C-007",
+      "question_sha256": "1f62a0f8902db8e25cad7549202d04d034a3bcca5525c353fae96a347c3771b3"
+    }
+  ],
+  "acceptance": {
+    "other_cases": "validated plan, exact independent oracle multiset and output contract, complete read-only RLS execution",
+    "W6C-007": "left_reverse on membership-user and security-event-user, left on membership-group; DISTINCT user grain, both optional OR arms, independent on_leave WHERE restriction; group-only and event-only populations preserved",
+    "security": "zero authorization, disclosure, SQL safety, renderer or conformance defects",
+    "unknown": "usage absent or partial stays null/incomplete; stop before next call",
+    "qualification": "diagnostic only; not V2 canary/full40 or release readiness"
+  }
+}
