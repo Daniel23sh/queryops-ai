@@ -1361,3 +1361,43 @@ full CI and independent V3 review evidence are consolidated in the
 request/probe, operator-approval file, journal reset, W9 work or merge is authorized.
 A post-merge preflight against the exact clean merged main SHA and separate exact
 human operator authorization are required before any live diagnostic.
+
+## 2026-11-04 — W6c v3 live diagnostic and bounded correction decision
+
+PR #75 merged at `b17d55fba53af86637ed82e4676da980f41ec5e7`. A separately
+approved live diagnostic used fresh retained PostgreSQL 16.15 and fingerprint
+`0cc83a1ed746944f60473db807baf481fda564767ae3fe05f988ccd42a6b9e9b`.
+Its single guarded CLI completed exactly six logical/physical attempts, one per
+question, with complete usage and no transport/parser failure. Cases 011, 013,
+020 and 007 passed their independent oracle/output contracts, including all
+reverse-LEFT/OR/independent-WHERE requirements for 007. Case 008 had an incompatible
+output contract and an unestablished multiset comparison; 012 returned
+clarification without a plan. Raw provider choices/reasons were not retained and
+must not be reconstructed. This is diagnostic-only evidence, not V2 qualification.
+
+The terminal v2 journal remains SHA256
+`f750227e1f186fced226ddee4e84e6b4687a0d47daa8e75179c2950b45dcaef8`;
+the terminal v3 journal is
+`67b35e35fe6e937eb1cf1393d27a52afd5ddc677a10503d0a4a91f08ff18aadf`.
+Independent review verified the safe live evidence and cleanup of only owned
+container/volume/network resources. Neither journal may be reset or resumed.
+
+Subsequent read-only review reproduced a misleading count/group/HAVING suggestion
+for existence-qualified ID lists, including another relational domain, and matched
+008's saved input-projection hash. This establishes a deterministic guidance
+defect, not the historical provider's reasoning. No actionable product cause was
+established for 012. The owner separately authorized the
+[bounded existence correction](../development/existence-grounding.md), contrasting
+regressions, disposable PostgreSQL, independent V3 review and a Draft PR only.
+No provider request, model/prompt/catalog change, W9 work or merge belongs to this
+correction.
+
+The correction changes only the numeric-threshold and related-detail suggestion
+fallbacks. Local focused verification passed 184 deterministic tests and 161
+tests in a fresh PostgreSQL 16 cluster with zero failures or skips, including
+the five new API/RLS/fanout cases and existing six-case frozen witness checks.
+The initial external test snapshot omitted the existing W6a corpus file; a fresh
+owned rerun with the complete audit inputs passed. Both owned runs cleaned their
+resources. No provider credentials entered the network-isolated test runtime.
+Final-head CI and fresh-context V3 acceptance are required for Draft PR handoff;
+their immutable commit/check evidence is retained on the PR.
