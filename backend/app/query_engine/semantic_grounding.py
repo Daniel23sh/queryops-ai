@@ -1156,6 +1156,15 @@ def _build_grounded_result_intents(
     )
     threshold = _explicit_numeric_threshold(question_tokens)
     quantity_span = _explicit_quantity_span(question_tokens)
+    # Existence alone requests neither a count output nor the related fact's grain.
+    existence_only_threshold = (
+        threshold is not None
+        and (threshold[0], threshold[1]) in {
+            ("greater_than_or_equal", 1), ("greater_than", 0),
+        }
+        and quantity_span is None
+        and grouping is None
+    )
     aggregations: list[GroundedAggregationIntent] = []
     suggested_aggregations: list[GroundedAggregationIntent] = []
     having: list[GroundedHavingIntent] = []
@@ -1271,7 +1280,7 @@ def _build_grounded_result_intents(
                         identity_fields=suggested_group_by,
                     )
 
-    if not aggregations and threshold is not None:
+    if not aggregations and threshold is not None and not existence_only_threshold:
         counted_entity_id = _threshold_counted_entity_id(
             threshold_end=threshold[3],
             concept_match_spans=concept_match_spans,
@@ -1335,6 +1344,7 @@ def _build_grounded_result_intents(
         row_grain is None
         and suggested_row_grain is None
         and not aggregations
+        and not existence_only_threshold
     ):
         detail_entity_id = _detail_fact_entity_id(
             exact_concept_entity_ids,

@@ -109,14 +109,19 @@ its reviewed implementation and deterministic evidence are in development histor
 remote main before starting this work. Its contract remains in
 [reproducible validation](docs/development/reproducible-validation.md).
 
-**W6c v3 — Offline Preparation Only** is explicitly authorized on 2026-11-04:
-prepare exactly W6C-008 → W6C-011 → W6C-012 → W6C-013 → W6C-020 → W6C-007,
-with separately versioned 6/6/1 guard, OS-account journal and operator approval,
-fresh disposable PostgreSQL preflight, real-SDK/fake-HTTP dry-run, adversarial
-regressions, full CI and fresh-context independent V3 review. Preserve frozen
-artifacts, historical v2 contract/journal, product semantics and V2 qualification.
-See the [v3 contract](docs/audits/w6c/live-experiment-v3.md) and
-[preparation evidence](docs/audits/w6c/v3-preparation-evidence-he.md).
+**W6c v3 is complete as a diagnostic.** PR #75 merged at
+`b17d55fba53af86637ed82e4676da980f41ec5e7`. Its separately authorized one-shot
+live sequence completed six attempts with four semantic acceptances: 008 failed
+its output contract and 012 returned clarification. Both journals are terminal.
+Evidence and limitations are recorded in development history; this is not V2
+qualification or V1 readiness.
+
+**W6c — Existence Grounding Fix** is now explicitly authorized before W9: remove
+misleading aggregate/detail suggestions for positive-existence requests without
+count/group output. Preserve provider ownership, authorization/RLS and all frozen
+evidence. The [bounded correction contract](docs/development/existence-grounding.md)
+does not claim a proven cause or live remedy for 008; no correction to 012 is
+supported. Stop at a reviewed Draft PR with passing final-head CI.
 
 ## Constraints and Remaining Work
 
@@ -126,7 +131,7 @@ See the [v3 contract](docs/audits/w6c/live-experiment-v3.md) and
 - Old environment v1/missing-fingerprint evidence cannot qualify under environment
   v2. Semantic diagnosis, Output Identity and Candidate Availability are merged;
   qualifying live semantic validation and final V1 QA remain open. W7 is merged;
-  W8 is merged; W6c v3 preparation remains diagnostic-only.
+  W8 is merged; W6c v3 remains diagnostic-only.
   The audit's hard-004 case passed its diagnostic canary; blanket historical
   failure claims are not accepted without new evidence.
 - Preserve authorization, RLS, safety caps, historical V1 baselines, semantic
@@ -139,16 +144,14 @@ See the [v3 contract](docs/audits/w6c/live-experiment-v3.md) and
 
 ## Next Approved Work
 
-The W6c v3 offline implementation, 187 focused disposable regressions,
-clean-source preflight/dry-run and independent V3 review are complete on
-[Draft PR #75](https://github.com/Daniel23sh/queryops-ai/pull/75). Final-head CI
-must pass before handoff. Stop at this reviewed preparation PR; no further
-implementation is approved. Do not merge or start W9. No real provider request,
-availability probe, paid Evaluation, live diagnostic or operator-approval file
-is authorized. After a future separately approved merge, regenerate preflight
-against the exact clean merged main SHA before requesting exact live authorization.
-Feature-branch fingerprints are preparation evidence only. Never reset/reuse
-historical journals.
+The existence-grounding implementation and focused deterministic/disposable
+PostgreSQL regressions are complete on
+[Draft PR #76](https://github.com/Daniel23sh/queryops-ai/pull/76), branch
+`feature/m10-w6c-existence-grounding-fix`. Handoff requires fresh-context independent
+V3 acceptance and all six final-head CI gates; their evidence is retained on the PR.
+Stop at the reviewed Draft PR. Do not merge, start W9, change frozen artifacts or execute any provider experiment.
+No new live request, retry/resume, canary, Full40 or operator-approval file is
+authorized. Never reset or reuse the terminal v2/v3 journals.
 
 ## References
 
