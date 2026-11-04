@@ -144,11 +144,12 @@ supported. Stop at a reviewed Draft PR with passing final-head CI.
 
 ## Next Approved Work
 
-Complete the narrowly scoped existence-grounding correction on
-`feature/m10-w6c-existence-grounding-fix`, its contrasting deterministic and
-disposable PostgreSQL regressions, documentation and fresh-context independent V3
-review. Open a focused Draft PR against `main` and require all final-head CI gates.
-Do not merge, start W9, change frozen artifacts or execute any provider experiment.
+The existence-grounding implementation and focused deterministic/disposable
+PostgreSQL regressions are complete on
+[Draft PR #76](https://github.com/Daniel23sh/queryops-ai/pull/76), branch
+`feature/m10-w6c-existence-grounding-fix`. Handoff requires fresh-context independent
+V3 acceptance and all six final-head CI gates; their evidence is retained on the PR.
+Stop at the reviewed Draft PR. Do not merge, start W9, change frozen artifacts or execute any provider experiment.
 No new live request, retry/resume, canary, Full40 or operator-approval file is
 authorized. Never reset or reuse the terminal v2/v3 journals.
 
