@@ -1,14 +1,20 @@
 # QueryOps V1 Readiness Report
 
-## Current M10 evidence status — 2026-10-28
+## M10 evidence checkpoint — 2026-11-09
 
 V1 remains incomplete and unreleased for the local synthetic IT Operations target.
-W0 retained and corrected bounded-result evidence, integrated in PR #61 at
-`f23099c1a7d9ffaad8bc2c445a6551d77ffa5cb1`. This is a verified engineering baseline, not release evidence.
-The [October audit](../audits/2026-10-26-project-audit-he.md) records one diagnostic
-canary (9/10), not qualifying stability/full evidence. The checkpoint sections below
-are historical; their policy IDs, digests and test counts are not current release
-qualification. Use [PROJECT_PLAN](../../PROJECT_PLAN.md) for current status, the
+PR #76 merged at `b2519b2909e5b5615f2211afd6c7e4aa74ae09ad`; all six final-main
+jobs passed in [CI run 41907001375](https://github.com/Daniel23sh/queryops-ai/actions/runs/41907001375).
+W6c v3's four semantic acceptances and two historical failures are diagnostic-only.
+The merged existence-grounding correction does not prove W6C-008 or W6C-012 fixed.
+The [W9 entry decision draft](w9-entry-decisions.md) leaves residual-risk and
+transport-profile choices pending owner approval; no freeze or live execution is
+authorized by it. Fresh qualifying canary/full40 and complete manual QA remain
+unestablished.
+
+The PR11 checkpoint sections below are historical; their policy IDs, digests and
+test counts are not current release qualification. Use
+[PROJECT_PLAN](../../PROJECT_PLAN.md) for current status, the
 [M10 roadmap](../development/m10-completion-roadmap.md) for completion scope, and
 [quality gates](v1-quality-gates.md) for the executable evidence requirements.
 

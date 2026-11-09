@@ -1401,3 +1401,29 @@ owned rerun with the complete audit inputs passed. Both owned runs cleaned their
 resources. No provider credentials entered the network-isolated test runtime.
 Final-head CI and fresh-context V3 acceptance are required for Draft PR handoff;
 their immutable commit/check evidence is retained on the PR.
+
+## 2026-11-09 — W6c merge verification and W9 entry reconciliation
+
+[PR #76](https://github.com/Daniel23sh/queryops-ai/pull/76) merged on 2026-11-04 at
+`b2519b2909e5b5615f2211afd6c7e4aa74ae09ad`, with the same tree as independently
+accepted head `e64c031e513a473fe95d153d87853a0828f94015`. Final-main
+[CI run 41907001375](https://github.com/Daniel23sh/queryops-ai/actions/runs/41907001375)
+passed Backend, PostgreSQL Security, Frontend, E2E, M8 Primary E2E and V1
+Deterministic Release Gates. Clean `HEAD = main = origin/main`, PR merge metadata
+and the run's exact push SHA/six successful jobs were reverified for reconciliation.
+
+W6c v3 completed 6/6 measured responses and 4/6 semantic acceptances. W6C-008's
+output contract failed and its multiset was not evaluated; W6C-012 clarified
+without a plan and its cause remains unknown. The existence-grounding correction
+is independently justified, not a proven historical cause or live cure. No
+historical result has been reclassified as passing. The earlier recorded terminal
+v2/v3 journal hashes were rechecked unchanged; neither journal was resumed.
+
+The owner authorized documentation and release-decision preparation only. The
+[W9 decision draft](../evaluation/w9-entry-decisions.md) compares unchanged
+production transport against a pre-freeze hard bound and recommends retaining
+production behavior with explicit owner acceptance and operator stage gates.
+Residual-risk acceptance and the execution profile remain pending. This work does
+not freeze a candidate, prepare a feature-branch qualification manifest, approve
+paid runs, change release policy or establish V1 readiness. Subsequent integration
+and authorization status belongs in PROJECT_PLAN.md, not this historical record.
