@@ -300,7 +300,7 @@ def test_runner_stops_and_seals_before_a_second_slot(dispatch, monkeypatch, fail
     if failure == "profile":
         manifest["profiles"]["medium"]["fingerprint"] = "0" * 64
     if failure == "source":
-        monkeypatch.setattr(study, "source", lambda: "0" * 40)
+        monkeypatch.setattr(study, "git", lambda *_: "0" * 40)
     if failure == "parser":
         monkeypatch.setattr(study, "checked_snapshot", lambda _, pack, owner, manifest, case:
                             None if case is None else contexts[case.id])
@@ -354,10 +354,10 @@ def test_owner_approval_binds_all_exact_identities(monkeypatch):
 @pytest.mark.parametrize("flag", ["h", "S"])
 def test_live_source_rejects_hidden_index_entries(monkeypatch, flag):
     expected = "a" * 40
-    answers = {"status": "", "rev-parse": expected, "symbolic-ref": "main",
+    answers = {"rev-parse": expected, "symbolic-ref": "main",
                "ls-files": f"H AGENTS.md\n{flag} backend/scripts/planner_study.py"}
     monkeypatch.setattr(study, "git", lambda command, *_: answers[command])
-    with pytest.raises(study.StudyStop, match="live_source_mismatch"):
+    with pytest.raises(launch.ActivationError, match="live_source_mismatch"):
         study.check_source(expected)
 
 
@@ -368,15 +368,16 @@ def test_live_source_checks_raw_bytes_even_when_git_reports_clean(monkeypatch, t
     source.write_bytes(contents)
     expected = "a" * 40
     blob = hashlib.sha1(b"blob 11\0" + contents, usedforsecurity=False).hexdigest()
-    answers = {"status": "", "rev-parse": expected, "symbolic-ref": "main",
-               "ls-files": "H tracked.py", "ls-tree": f"100644 blob {blob}\ttracked.py\0"}
+    answers = {"rev-parse": expected, "symbolic-ref": "main", "diff": "",
+               "ls-tree": f"100644 blob {blob}\ttracked.py\0"}
     monkeypatch.setattr(study, "ROOT", root)
-    monkeypatch.setattr(study, "git", lambda command, *_: answers[command])
+    monkeypatch.setattr(study, "git", lambda command, *args:
+                        ("H tracked.py" if args == ("-v",) else "") if command == "ls-files" else answers[command])
     study.check_source(expected)
     source.chmod(0o755)
-    with pytest.raises(study.StudyStop, match="live_source_mismatch"):
+    with pytest.raises(launch.ActivationError, match="live_source_mismatch"):
         study.check_source(expected)
     source.chmod(0o644)
     source.write_bytes(b"# approved\r\n")
-    with pytest.raises(study.StudyStop, match="live_source_mismatch"):
+    with pytest.raises(launch.ActivationError, match="live_source_mismatch"):
         study.check_source(expected)

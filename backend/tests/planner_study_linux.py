@@ -1,4 +1,5 @@
 """Run explicitly as root on disposable Linux, using a fresh ext4/XFS test mount."""
+import hashlib
 import os
 from pathlib import Path
 import signal
@@ -101,7 +102,8 @@ def test_actual_launcher_and_worker_handoff(monkeypatch, scenario):
         scripts = backend / "scripts"
         scripts.mkdir(parents=True)
         (backend.parent / ".git").mkdir()
-        (scripts / "planner_study.py").write_text(f"""
+        worker = scripts / "planner_study.py"
+        worker.write_text(f"""
 import sys
 from pathlib import Path
 sys.path.extend({[str(study.ROOT / "backend"), *site.getsitepackages()]!r})
@@ -133,6 +135,18 @@ def run_live(engine, owner, manifest, approval, credential, ledger, gate, make_t
         time.sleep(5)
     return {{"synthetic": True}}
 """)
+        contents = worker.read_bytes()
+        blob = hashlib.sha1(f"blob {len(contents)}\0".encode() + contents, usedforsecurity=False).hexdigest()
+        worker_path = "backend/scripts/planner_study.py"
+
+        def synthetic_git(checkout, command, *args, user, group):
+            assert checkout == backend.parent and (user, group) == (uid, gid)
+            if command == "ls-files":
+                return "H " + worker_path if args == ("-v",) else ""
+            return {"rev-parse": approval["source"], "symbolic-ref": "main", "diff": "",
+                    "ls-tree": f"100644 blob {blob}\t{worker_path}\0"}[command]
+
+        monkeypatch.setattr(launch, "git", synthetic_git)
 
         def execute():
             return launch.launch(venv / "bin" / "python", backend, uid, gid)
@@ -151,6 +165,11 @@ def run_live(engine, owner, manifest, approval, credential, ledger, gate, make_t
             execute()
         assert not launch.CLAIM.exists()
         (git_metadata / "commondir").unlink()
+        worker.write_bytes(contents + b"\nraise RuntimeError('wrong checkout reached')\n")
+        with pytest.raises(launch.ActivationError, match="live_source_mismatch"):
+            execute()
+        assert not launch.CLAIM.exists()
+        worker.write_bytes(contents)
         if scenario == "sync_failure":
             def fail(_):
                 raise OSError("synthetic sync failure")
@@ -161,9 +180,11 @@ def run_live(engine, owner, manifest, approval, credential, ledger, gate, make_t
             assert not receipt.exists()
         elif scenario == "expiry":
             previous = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGALRM})
+            previous_child = signal.signal(signal.SIGCHLD, signal.SIG_IGN)
             try:
                 assert execute() == -signal.SIGALRM
             finally:
+                signal.signal(signal.SIGCHLD, previous_child)
                 signal.pthread_sigmask(signal.SIG_SETMASK, previous)
             assert receipt.exists()
         else:

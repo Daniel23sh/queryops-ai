@@ -15,7 +15,6 @@ import re
 import signal
 import sqlite3
 from statistics import median
-import subprocess
 import time
 from typing import Any, cast
 
@@ -89,12 +88,7 @@ def file_digest(path):
 
 
 def git(*args):
-    metadata = ROOT / ".git"
-    git_dir = [f"--git-dir={metadata}"] if metadata.is_dir() else []
-    return subprocess.run(["git", "--no-replace-objects", f"--work-tree={ROOT}",
-                           *git_dir,
-                           "-c", f"safe.directory={ROOT}", "-c", "core.fsmonitor=false", *args],
-                          cwd=ROOT, capture_output=True, check=True, text=True, timeout=10).stdout.strip()
+    return launch.git(ROOT, *args)
 
 
 def source():
@@ -207,7 +201,7 @@ def profile_specs(settings_by_arm):
     return result
 
 
-def prepare(db, pack, owner):
+def prepare(db, pack, owner, *, revision=None):
     database = database_identity(db, owner)
     database["data_sha256"], database["counts"] = evaluation_database_fingerprint(db)
     runtime = installed_runtime_versions()
@@ -230,7 +224,7 @@ def prepare(db, pack, owner):
         }
     identity = {
         "version": launch.STUDY_ID, "mode": "preparation_only",
-        "source": source(), "fixtures_sha256": fixture_hash, "database": database,
+        "source": revision if revision is not None else source(), "fixtures_sha256": fixture_hash, "database": database,
         "reference": REFERENCE.isoformat(), "catalog_sha256": pack.semantic_catalog.digest,
         "profiles": profile_specs(profiles()),
         "dependencies": runtime, "python": platform.python_version(), "dependency_manifest_sha256": file_digest(ROOT / "backend/pyproject.toml"),
@@ -620,22 +614,7 @@ def verify_approval(approval, manifest):
 
 
 def check_source(expected):
-    require(source() == expected == git("rev-parse", "refs/heads/main")
-            == git("rev-parse", "refs/remotes/origin/main")
-            and git("symbolic-ref", "--short", "HEAD") == "main"
-            and all(line.startswith("H ") for line in git("ls-files", "-v").splitlines())
-            and not git("status", "--porcelain", "--ignored", "--untracked-files=all"), "live_source_mismatch")
-    # Git status may normalize bytes through checkout-local filters.
-    for entry in git("ls-tree", "-rz", "--full-tree", expected).rstrip("\0").split("\0"):
-        metadata, name = entry.split("\t", 1)
-        mode, kind, blob = metadata.split()
-        path = ROOT / name
-        require(kind == "blob" and mode in {"100644", "100755"} and path.is_file()
-                and path.resolve() == path and bool(path.stat().st_mode & 0o100) == (mode == "100755"),
-                "live_source_mismatch")
-        data = path.read_bytes()
-        actual = hashlib.sha1(f"blob {len(data)}\0".encode() + data, usedforsecurity=False).hexdigest()
-        require(actual == blob, "live_source_mismatch")
+    launch.verify_source(ROOT, expected, git)
 
 
 def checked_snapshot(engine, pack, owner, manifest, case=None):
@@ -644,7 +623,8 @@ def checked_snapshot(engine, pack, owner, manifest, case=None):
         with connection.begin():
             connection.execute(text("SET TRANSACTION READ ONLY"))
             with Session(bind=connection) as db:
-                require(encode(prepare(db, pack, owner)) == encode(manifest), "study_identity_changed")
+                current = prepare(db, pack, owner, revision=manifest["source"])
+                require(encode(current) == encode(manifest), "study_identity_changed")
                 return context(db, pack, case) if case is not None else None
 
 

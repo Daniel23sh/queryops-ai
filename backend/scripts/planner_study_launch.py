@@ -3,12 +3,14 @@ from __future__ import annotations
 
 import argparse
 from datetime import UTC, datetime
+from functools import partial
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
 import select
+import signal
 import socket
 import stat
 import struct
@@ -21,7 +23,8 @@ CLAIM = STATE / "claimed"
 EVIDENCE = CLAIM / "evidence"
 MAX_DOCUMENT = 64_000
 ENV = {"PATH": "/usr/bin:/bin", "HOME": "/nonexistent", "LANG": "C.UTF-8",
-       "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_NO_LAZY_FETCH": "1"}
+       "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_NO_LAZY_FETCH": "1",
+       "GIT_OPTIONAL_LOCKS": "0"}
 
 
 class ActivationError(RuntimeError):
@@ -83,6 +86,38 @@ def protected_tree(path):
                 protected(target, directory=target.is_dir())
             else:
                 protected(entry, directory=name in dirs)
+
+
+def git(checkout, *args, user=None, group=None):
+    metadata = checkout / ".git"
+    git_dir = [f"--git-dir={metadata}"] if metadata.is_dir() else []
+    runner = {"env": ENV, "user": user, "group": group, "extra_groups": ()} if user is not None else {}
+    return subprocess.run(["git", "--no-replace-objects", f"--work-tree={checkout}",
+                           *git_dir,
+                           "-c", f"safe.directory={checkout}", "-c", "core.fsmonitor=false", *args],
+                          cwd=checkout, capture_output=True, check=True, text=True, timeout=10, **runner).stdout.strip()
+
+
+def verify_source(checkout, expected, read_git):
+    require(isinstance(expected, str) and re.fullmatch(r"[0-9a-f]{40}", expected)
+            and expected == read_git("rev-parse", "HEAD") == read_git("rev-parse", "refs/heads/main")
+            == read_git("rev-parse", "refs/remotes/origin/main")
+            and read_git("symbolic-ref", "--short", "HEAD") == "main"
+            and all(line.startswith("H ") for line in read_git("ls-files", "-v").splitlines())
+            and not read_git("ls-files", "--others", "-z")
+            and not read_git("diff", "--cached", "--name-only", "-z", "--no-ext-diff", "--no-textconv", expected, "--"),
+            "live_source_mismatch")
+    # Git status may normalize bytes through checkout-local filters.
+    for entry in read_git("ls-tree", "-rz", "--full-tree", expected).rstrip("\0").split("\0"):
+        metadata, name = entry.split("\t", 1)
+        mode, kind, blob = metadata.split()
+        path = checkout / name
+        require(kind == "blob" and mode in {"100644", "100755"} and path.is_relative_to(checkout) and path.is_file()
+                and path.resolve() == path and bool(path.stat().st_mode & 0o100) == (mode == "100755"),
+                "live_source_mismatch")
+        data = path.read_bytes()
+        actual = hashlib.sha1(f"blob {len(data)}\0".encode() + data, usedforsecurity=False).hexdigest()
+        require(actual == blob, "live_source_mismatch")
 
 
 def state_identity():
@@ -176,6 +211,7 @@ def operator_present(channel):
 
 def launch(python, backend, uid, gid):
     require(os.getuid() == os.geteuid() == 0 and uid > 0 and gid > 0, "activation_operator_required")
+    signal.signal(signal.SIGCHLD, signal.SIG_DFL)
     identity = state_identity()
     filesystem = subprocess.run(["/usr/bin/findmnt", "-n", "-o", "FSTYPE", "-T", str(STATE)], env=ENV,
                                 capture_output=True, text=True, check=True, timeout=5).stdout.strip()
@@ -205,6 +241,7 @@ def launch(python, backend, uid, gid):
     require(not any(os.path.lexists(metadata / name) for name in
                     ("commondir", "objects/info/alternates", "objects/info/http-alternates")),
             "activation_git_metadata_external")
+    verify_source(backend.parent, approval["source"], partial(git, backend.parent, user=uid, group=gid))
     venv = python.parent.parent
     protected_tree(venv)
     protected(venv / "pyvenv.cfg")

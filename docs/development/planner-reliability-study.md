@@ -155,7 +155,9 @@ live grant:
 Only the trusted owner invokes the
 [launcher](../../backend/scripts/planner_study_launch.py) with isolated Python
 (`python3 -I`), the approved runner interpreter and backend paths, and the
-dedicated UID/GID. The launcher starts one unprivileged worker. The worker
+dedicated UID/GID. The launcher independently verifies the approved checkout
+before importing its code and runs Git under the unprivileged runner identity.
+It then starts one unprivileged worker. The worker
 authenticates its root parent through the inherited Unix socket and checks the
 current identities and offline controls before acknowledging readiness.
 The launcher exclusively creates `claimed`, syncs the parent, writes the
