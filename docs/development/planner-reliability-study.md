@@ -1,7 +1,7 @@
 # Planner reliability study
 
 This exploratory diagnostic compares `gpt-6.1-terra` reasoning `low` and `medium`.
-The preparation harness is offline-only. V1 remains unqualified after the first W9
+Preparation, deterministic tests and CI remain offline. V1 remains unqualified after the first W9
 canary. PR #78 corrected a separate temporal Suggested Intent defect. Both arms
 include that correction, so the study cannot estimate its effect on W9.
 
@@ -94,26 +94,116 @@ median provider duration and uncached-equivalent token cost each at most twice
 low. Retain low if a valid comparison misses the bar. No study outcome qualifies
 either profile for release.
 
-Before enabling live execution, separately review the activation path, pin a
-canonical study-specific ledger location across checkouts, and prove an existing
-or pending claim bars every replay. Confirm the returned model label using
-bounded provider evidence. Regenerate the study manifest against the
-exact clean source that will execute. Reverify the database, dependencies, both
-profile hashes and request hashes. Require explicit owner approval for that
-manifest, official endpoint, access on the intended OpenAI project, secure
-credential source, UTC window, the 32 named slots and the exposure below.
-Stop both arms on context or identity drift, authorization/RLS failure,
-unsafe execution, renderer/conformance or runtime failure, malformed evidence,
-ledger failure, provider authorization/quota failure or expiry. Inspect durable
-evidence before progression. Do not replace a slot or use the W9 environment or
-terminal W6c journals.
+## Activation engineering and live approval
 
-At SDK 2.46.0 and HTTPX 0.28.1, the profile's two retries and 20 redirects allow
-96 SDK tries and a derived 2,016 physical dispatches across 32 logical calls.
-Output allowance is 65,536 tokens for one response per logical call, including
-reasoning. Record actual bounded attempts and tokens separately. Per-prompt
-serialized input byte counts are in the manifest and should be used to refresh
-token and cost estimates before approval. Standard uncached rates and retries
-give planning estimates, with caching and unobserved failure usage adding
-uncertainty. The derived dispatch ceiling and telemetry are not billing caps.
-The study does not satisfy [V1 quality gates](../evaluation/v1-quality-gates.md).
+The activation implementation is study-only. It keeps the preregistered request
+bodies and scoring. Both study profiles now disable SDK and transport retries
+and redirects. The official Responses endpoint, verified TLS, 45-second HTTPX
+phase timeout, `store=false` and 2,048 output tokens per response are fixed. The
+ceiling is 32 logical slots, 32 physical forwards and 65,536 output tokens across
+32 responses.
+A physical forward is entry into the underlying transport. Its presence cannot
+prove receipt or billing, and a timeout can leave both unknown. Input byte counts
+in the new manifest inform updated token and cost estimates. Estimates and
+telemetry do not cap the bill.
+
+After the activation PR merges, the owner must complete these steps before any
+live grant:
+
+1. Choose one dedicated Linux host with a stable OS machine ID, `findmnt`, ext4
+   or XFS local storage with durable sync, and a dedicated non-root runner UID/GID with
+   no login, unrelated processes, shared privileges or existing credentials.
+   Native macOS and unsupported storage fail closed. Protect the host from
+   rollback, snapshots restored in place, and a second eligible launch host.
+   A root operator controls the host, state and OpenAI credential.
+2. Install the reviewed standard-library launcher from the final merge in an
+   administrator-controlled location. Use a full clean checkout of that exact
+   merged `main` with an internal `.git` directory and a verified matching
+   `origin/main`. Use a separate venv
+   created with `--copies`, with the approved dependency versions and no
+   editable packages. Both trees and all ancestors must be root-owned and
+   immutable to the runner. Prepare with an isolated interpreter and bytecode
+   writes disabled. Keep all tracked files checked out with their exact Git blob
+   bytes and visible to Git status.
+   Keep generated files, credentials and evidence out of the
+   live checkout. Verify the installed OS Python, launcher, checkout and venv.
+3. Prepare a fresh dedicated PostgreSQL 16 cluster using the offline procedure.
+   Keep it quiescent and isolated from other writers for the full window. Verify
+   the exact candidate's migrations, synthetic ownership receipt, manifest and
+   dry run. Keep the database and policies unchanged. Use separate synthetic
+   PostgreSQL resources from the W9 environment and terminal W6c journals.
+4. Provision the single root-owned, runner-readable state directory
+   `/var/lib/queryops/queryops-planner-study-v1` on the approved host. Do not
+   create or replace its `claimed` entry. Place the regenerated `manifest.json`,
+   `database-url` and `database-owner` in the root as root-owned mode 0600
+   regular files. Verify the machine ID digest and root device/inode for approval.
+5. Separately authorize the final merged source and manifest digest, both
+   effective profile fingerprints, all request hashes, the full ordered named
+   schedule and its digest, the official endpoint, requested and expected
+   returned model, project ID, credential version and exact credential identity,
+   host, state device/inode and runner IDs. Bind a UTC start and expiry
+   (whole seconds, `Z` suffix), 32-slot and 32-forward caps, token limits,
+   refreshed input and cost estimates, and the preregistered 2× uncached cost
+   and median latency tolerances. Verify project entitlement, spend exposure
+   and data controls through the owner. The credential is a dedicated
+   project-scoped key in root-owned mode 0600 `credential-<version>`. Only the
+   private approval contains its SHA-256. Prepare root-owned mode 0600
+   `approval.json` only after this authorization. The exact fields and types
+   are enforced by `verify_approval` in
+   [the study CLI](../../backend/scripts/planner_study.py).
+
+Only the trusted owner invokes the
+[launcher](../../backend/scripts/planner_study_launch.py) with isolated Python
+(`python3 -I`), the approved runner interpreter and backend paths, and the
+dedicated UID/GID. The launcher independently verifies the approved checkout
+before importing its code and runs Git under the unprivileged runner identity.
+It then starts one unprivileged worker. The worker
+authenticates its root parent through the inherited Unix socket and checks the
+current identities and offline controls before acknowledging readiness.
+The launcher exclusively creates `claimed`, syncs the parent, writes the
+approval digest receipt and syncs the claim and evidence directories before
+sending the credential. The child cannot unlink or replace the claim. The claim
+is independent of checkout, manifest, approval, credential and study database.
+Any existing entry, even an empty directory, permanently consumes the study.
+Never remove it or recreate the root. If the filesystem reports an uncertain
+claim write, stop and preserve the state. An unsynced write can be lost on power
+failure, but the launcher cannot release a credential before successful sync.
+The owner must treat such a host incident as terminal.
+
+Closing the launcher channel stops the next guarded operation. The worker
+also checks approval expiry at dispatch and enforces a hard process deadline.
+An in-flight request can still complete remotely. After verifying the actual
+serialized request and current identities, the guard durably reserves the
+scheduled slot before forwarding. It checks the actual returned model label on
+every response, starting with the first authorized slot. There is no separate
+model probe. Wrong identity, incomplete response, auth/quota/HTTP failures,
+transport uncertainty, malformed evidence, scope/RLS failure, unsafe SQL,
+renderer/conformance/runtime failure and ledger failure stop both arms.
+Valid clarification, refusal and semantic misses retain their preregistered
+scoring. The guarded output passes through the existing production structured
+parser and governed read-only PostgreSQL runtime.
+
+Inspect `claimed/evidence/ledger/slots.sqlite3` read-only, including its
+`study` seal and ordered `slots` rows. A pending row is possible exposure and
+bars replay. The completed seal is written only after 32 durable, read-back
+observations and a final identity check. Evidence contains fixed identifiers,
+digests, stages, the verified model label, bounded usage/latency and safe
+failure codes. It excludes raw provider payloads, prompts, plans, SQL, result
+rows and credentials. Preserve the claim and evidence even if the run fails.
+There is no resume or replacement. Revoke the dedicated credential after the
+attempt and retain the protected claim. Study results are diagnostic and do
+not satisfy [V1 quality gates](../evaluation/v1-quality-gates.md).
+
+## Additional offline verification
+
+The default backend tests exercise the fake transport, claim race, process
+termination and persistence failures. For the real PostgreSQL check, use a
+fresh database from the offline procedure after migration and before
+`initialize`. Run `pytest tests/planner_study_live_postgres.py` from `backend/`
+with `PLANNER_STUDY_TEST_DATABASE_URL` and `PLANNER_STUDY_TEST_OWNER` set to its
+synthetic URL and ownership receipt. This test initializes and mutates its own
+database to exercise drift. The Linux privilege check uses a separate empty
+ext4/XFS test mount under a root-owned parent. Run
+`pytest tests/planner_study_linux.py` as root with the test mount in
+`PLANNER_STUDY_LINUX_TEST_ROOT`. Neither test uses the canonical state root,
+an executable approval or a real credential.

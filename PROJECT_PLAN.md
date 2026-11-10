@@ -27,9 +27,11 @@ Any new freeze, preparation or live qualification requires separate authorizatio
 
 ## Next Approved Work
 
-Prepare the [offline planner reliability study](docs/development/planner-reliability-study.md)
-comparing Terra low and medium reasoning. The approved endpoint is an independently
-reviewed Draft PR with deterministic validation. Live study execution and any new
+The offline Terra low-versus-medium study preparation merged in PR #79. Implement
+the [study-only activation guard](docs/development/planner-reliability-study.md)
+with a protected one-shot claim, no retries or redirects, and at most 32 physical
+dispatches. The approved endpoint is an independently reviewed Draft PR with
+deterministic validation. Live execution, claim consumption, and any new
 qualification require separate authorization.
 
 ## References
