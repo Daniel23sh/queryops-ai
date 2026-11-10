@@ -96,7 +96,8 @@ either profile for release.
 
 Before enabling live execution, separately review the activation path, pin a
 canonical study-specific ledger location across checkouts, and prove an existing
-or pending claim bars every replay. Regenerate the study manifest against the
+or pending claim bars every replay. Confirm the returned model label using
+bounded provider evidence. Regenerate the study manifest against the
 exact clean source that will execute. Reverify the database, dependencies, both
 profile hashes and request hashes. Require explicit owner approval for that
 manifest, official endpoint, access on the intended OpenAI project, secure

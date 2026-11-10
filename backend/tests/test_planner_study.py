@@ -26,7 +26,16 @@ def test_schedule_and_non_v2_fixtures():
         return " ".join(text.casefold().split())
 
     frozen = {normalize(c.question) for c in load_it_operations_evaluation_v2_set().cases}
+    historical = json.loads((study.ROOT / "docs/audits/w6c/heldout-v1.json").read_text())
+    frozen.update(normalize(c["question"]) for c in historical["cases"])
     assert frozen.isdisjoint(normalize(c.question) for c in cases)
+    pack = load_it_operations_domain_pack()
+    grouped = next(case for case in cases if case.id == "grain-type")
+    projection = build_semantic_catalog_projection(
+        pack.semantic_catalog, grouped.question, offline_schema(pack),
+        {"scope_type": "department", "scope_reference_resolved": True},
+    )
+    assert projection.suggested_result_intent is None
     assert [c.id for c in cases if c.hint_sensitive] == ["grain-memberships"]
 
 
@@ -133,3 +142,14 @@ def test_assessment_requires_two_unflagged_families_and_complete_usage():
 def test_study_rejects_unowned_endpoint_shape(url):
     with pytest.raises(study.StudyStop, match="disposable_database_required"):
         study.owned_engine(url)
+
+
+def test_terminal_observation_blocks_next_slot(tmp_path):
+    ledger = study.Ledger(tmp_path.resolve() / "ledger", "c" * 64)
+    try:
+        ledger.reserve(0)
+        ledger.complete(0, study.Observation("security", {}))
+        with pytest.raises(study.StudyStop, match="study_terminal"):
+            ledger.reserve(1)
+    finally:
+        ledger.close()

@@ -56,8 +56,10 @@ MODEL = "gpt-6.1-terra"
 ARMS = ("low", "medium")
 FATAL = frozenset({
     "authorization_denied", "security", "renderer", "sql_validation", "conformance",
-    "execution", "backend", "provider_fatal", "result_mismatch",
+    "execution", "provider_fatal", "result_mismatch",
 })
+STAGES = FATAL | {"pass", "interpretation", "invalid_plan", "provider_invalid",
+                  "provider_refusal", "provider_timeout", "provider_unsafe"}
 
 
 class StudyStop(RuntimeError):
@@ -88,7 +90,9 @@ def git(*args):
 
 def source():
     require(not git("status", "--porcelain"), "source_dirty")
-    return git("rev-parse", "HEAD")
+    revision = git("rev-parse", "HEAD")
+    require(bool(re.fullmatch(r"[0-9a-f]{40}", revision)), "source_invalid")
+    return revision
 
 
 def profiles():
@@ -173,7 +177,9 @@ def context(db, pack, case, actor_email=ACTOR):
     hint = projection.suggested_result_intent
     count_rows_hint = bool(hint and any(a.function == "count" and a.target_field is None and not a.distinct
                                        for a in hint.aggregations))
-    if case.family == "grain" and case.id == "grain-memberships":
+    if case.id == "grain-type":
+        require(hint is None, "device_grain_hint_drift")
+    if case.id == "grain-memberships":
         require(count_rows_hint == case.hint_sensitive, "joined_count_hint_drift")
     return access, schema, user, projection, prompt
 
@@ -246,8 +252,12 @@ def checked(plan, pack, value):
 def score(engine, pack, case, value, result):
     """Arm-blind. Returned stages are safe, finite labels, never content."""
     metadata = result.generation_metadata
-    if metadata.get("provider_failure_code"):
-        return "provider_fatal" if metadata.get("provider_failure_fatal") else "provider_invalid"
+    code = metadata.get("provider_failure_code")
+    if code:
+        if metadata.get("provider_failure_fatal") or code == "provider_unavailable":
+            return "provider_fatal"
+        return {"provider_refusal": "provider_refusal", "provider_timeout": "provider_timeout"}.get(
+            code, "provider_invalid")
     if result.outcome == PlanGenerationOutcome.UNSAFE_REQUEST:
         return "provider_unsafe"
     if result.outcome == PlanGenerationOutcome.CLARIFICATION:
@@ -303,7 +313,7 @@ def measurement(result):
     data = result.generation_metadata.get("provider_measurement", {})
     require(isinstance(data, dict), "measurement_invalid")
     safe = {}
-    for name, upper in (("call_count", 1), ("attempt_count", 64), ("input_tokens", 10**9),
+    for name, upper in (("call_count", 1), ("attempt_count", 63), ("input_tokens", 10**9),
                         ("output_tokens", 10**9), ("cached_input_tokens", 10**9), ("total_tokens", 10**9)):
         value = data.get(name)
         require(value is None or type(value) is int and 0 <= value <= upper, "measurement_invalid")
@@ -311,6 +321,7 @@ def measurement(result):
     duration = data.get("duration_ms")
     require(duration is None or type(duration) in (int, float) and math.isfinite(duration)
             and 0 <= duration <= 86_400_000, "measurement_invalid")
+    require(safe["call_count"] in (None, 1) and safe["attempt_count"] != 0, "measurement_invalid")
     safe["duration_ms"] = duration
     complete = data.get("usage_complete")
     require(complete is None or type(complete) is bool, "measurement_invalid")
@@ -333,7 +344,7 @@ def assess(observations):
     """Pure decision calculation after all 32 slots are persisted and verified."""
     require(len(observations) == len(slots()), "study_incomplete")
     indexed = dict(zip(slots(), observations, strict=True))
-    require(not any(o.stage in FATAL for o in observations), "study_invalid")
+    require(all(o.stage in STAGES - FATAL for o in observations), "study_invalid")
     passed = {slot: o.stage == "pass" for slot, o in indexed.items()}
     differences = {
         (block, i): int(passed[block, i, "medium"]) - int(passed[block, i, "low"])
@@ -343,9 +354,10 @@ def assess(observations):
              and all(passed[b, i, "medium"] for b in (1, 2))
              and any(differences[b, i] > 0 for b in (1, 2))]
     medium_score = sum(passed[key] for key in passed if key[2] == "medium")
-    net = sum(differences.values())
+    block_gains = [sum(differences[b, i] for i in range(len(CASES))) for b in (1, 2)]
+    net = sum(block_gains)
     quality = (medium_score >= 14 and net >= 3 and len(set(gains)) >= 2
-               and all(sum(differences[b, i] for i in range(len(CASES))) > 0 for b in (1, 2))
+               and all(gain > 0 for gain in block_gains)
                and all(passed[b, i, "medium"] for b in (1, 2) for i, case in enumerate(CASES)
                        if case.family == "clarification"))
     complete = all(o.usage["usage_complete"] and o.usage["duration_ms"] is not None
@@ -357,7 +369,11 @@ def assess(observations):
         cost = {arm: sum(u["input_tokens"] + 5 * u["output_tokens"] for u in usage[arm]) for arm in ARMS}
         latency = {arm: median(u["duration_ms"] for u in usage[arm]) for arm in ARMS}
         cost_latency = cost["medium"] <= 2 * cost["low"] and latency["medium"] <= 2 * latency["low"]
-    return {"medium_passes": medium_score, "net_paired_gains": net,
+    return {"medium_passes": medium_score, "net_paired_gains": net, "block_net_gains": block_gains,
+            "passes": {arm: sum(value for key, value in passed.items() if key[2] == arm) for arm in ARMS},
+            "stages": {arm: dict(Counter(o.stage for key, o in indexed.items() if key[2] == arm)) for arm in ARMS},
+            "repeat_flips": {arm: sum(passed[1, i, arm] != passed[2, i, arm]
+                                      for i in range(len(CASES))) for arm in ARMS},
             "hint_sensitive": {arm: sum(passed[b, i, arm] for b in (1, 2) for i, case in enumerate(CASES)
                                         if case.hint_sensitive) for arm in ARMS},
             "advancement": ("inconclusive" if not complete else
@@ -382,20 +398,24 @@ class Ledger:
             self.db.execute("PRAGMA fullfsync=ON")
             self.db.execute("CREATE TABLE study (fingerprint TEXT PRIMARY KEY)")
             self.db.execute("INSERT INTO study VALUES (?)", (fingerprint,))
-            self.db.execute("CREATE TABLE slots (ordinal INTEGER PRIMARY KEY, result TEXT)")
+            self.db.execute("CREATE TABLE slots (ordinal INTEGER PRIMARY KEY, stage TEXT, result TEXT)")
 
     def reserve(self, ordinal):
         with self.db:
             self.db.execute("BEGIN IMMEDIATE")
             done, pending = self.db.execute(
                 "SELECT count(*), count(*)-count(result) FROM slots").fetchone()
-            require(ordinal == done and not pending and ordinal < len(slots()), "slot_replay_or_out_of_order")
-            self.db.execute("INSERT INTO slots VALUES (?, NULL)", (ordinal,))
+            require(type(ordinal) is int and ordinal == done and not pending
+                    and ordinal < len(slots()), "slot_replay_or_out_of_order")
+            previous = self.db.execute("SELECT stage FROM slots WHERE ordinal=?", (ordinal - 1,)).fetchone()
+            require(previous is None or previous[0] in STAGES - FATAL, "study_terminal")
+            self.db.execute("INSERT INTO slots VALUES (?, NULL, NULL)", (ordinal,))
 
     def complete(self, ordinal, observation):
+        require(observation.stage in STAGES, "observation_invalid")
         with self.db:
-            cursor = self.db.execute("UPDATE slots SET result=? WHERE ordinal=? AND result IS NULL",
-                                     (encode(asdict(observation)), ordinal))
+            cursor = self.db.execute("UPDATE slots SET stage=?, result=? WHERE ordinal=? AND result IS NULL",
+                                     (observation.stage, encode(asdict(observation)), ordinal))
             require(cursor.rowcount == 1, "slot_not_reserved")
 
     def close(self):
@@ -422,6 +442,7 @@ def offline_generate(case, value, arm, payload, expected_hash, on_dispatch):
     settings = profiles()[arm].openai
     require(settings is not None, "profile_settings_invalid")
     with OpenAI(api_key=settings.api_key, base_url=OFFICIAL_OPENAI_BASE_URL,
+                organization="", project="", admin_api_key="", webhook_secret="",
                 max_retries=settings.max_retries, timeout=settings.timeout_seconds,
                 http_client=httpx.Client(transport=httpx.MockTransport(reply), trust_env=False,
                                          follow_redirects=True)) as client:
@@ -443,8 +464,6 @@ def offline_observe(engine, db, pack, case, arm, payload, manifest, on_dispatch,
     before_dispatch()
     result = offline_generate(case, value, arm, payload,
                               manifest["cases"][case.id]["request_sha256"][arm], on_dispatch)
-    if result.model_name != MODEL:
-        return Observation("provider_fatal", measurement(result))
     return Observation(score(engine, pack, case, value, result), measurement(result))
 
 
