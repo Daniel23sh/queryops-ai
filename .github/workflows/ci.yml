@@ -88,6 +88,19 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      planner-study-postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: planner_study_test_0123456789abcdef
+          POSTGRES_USER: queryops
+          POSTGRES_PASSWORD: queryops
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd "pg_isready -U queryops -d planner_study_test_0123456789abcdef"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       DATABASE_URL: postgresql+psycopg://queryops:queryops@localhost:5432/queryops
       POSTGRES_TEST_DATABASE_URL: postgresql+psycopg://queryops:queryops@localhost:5432/queryops_security_test
@@ -152,6 +165,22 @@ jobs:
               assert len(cases) >= minimum, f"W6c preparation regressions not selected: {module}"
               assert not any(case.find("skipped") is not None for case in cases), module
           PY
+
+      - name: Verify local planner study with fake provider and isolated PostgreSQL
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+psycopg://queryops:queryops@127.0.0.1:5433/planner_study_test_0123456789abcdef
+          PLANNER_STUDY_TEST_DATABASE_URL: postgresql+psycopg://queryops:queryops@127.0.0.1:5433/planner_study_test_0123456789abcdef
+          PLANNER_STUDY_TEST_OWNER: "0123456789abcdef0123456789abcdef"
+          QUERYOPS_APP_DATABASE_ROLE: queryops
+          PGPASSWORD: queryops
+        run: |
+          psql --host=127.0.0.1 --port=5433 --username=queryops --dbname=planner_study_test_0123456789abcdef \
+            -v ON_ERROR_STOP=1 -c "COMMENT ON DATABASE planner_study_test_0123456789abcdef IS 'queryops-planner-study:0123456789abcdef0123456789abcdef';"
+          alembic upgrade head
+          alembic current
+          alembic check
+          pytest tests/planner_study_live_postgres.py -q -rs
 
   frontend:
     name: Frontend
