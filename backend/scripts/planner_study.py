@@ -89,7 +89,8 @@ def file_digest(path):
 
 
 def git(*args):
-    return subprocess.run(["git", "-c", f"safe.directory={ROOT}", "-c", "core.fsmonitor=false", *args],
+    return subprocess.run(["git", "--no-replace-objects", f"--work-tree={ROOT}",
+                           "-c", f"safe.directory={ROOT}", "-c", "core.fsmonitor=false", *args],
                           cwd=ROOT, capture_output=True, check=True, text=True, timeout=10).stdout.strip()
 
 
@@ -619,6 +620,7 @@ def check_source(expected):
     require(source() == expected == git("rev-parse", "refs/heads/main")
             == git("rev-parse", "refs/remotes/origin/main")
             and git("symbolic-ref", "--short", "HEAD") == "main"
+            and all(line.startswith("H ") for line in git("ls-files", "-v").splitlines())
             and not git("status", "--porcelain", "--ignored", "--untracked-files=all"), "live_source_mismatch")
 
 
@@ -834,6 +836,7 @@ def live(fd):
 
             # HTTPX bounds individual I/O phases. This hard stop also bounds their sum.
             signal.signal(signal.SIGALRM, signal.SIG_DFL)
+            signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGALRM})
             signal.setitimer(signal.ITIMER_REAL, gate())
             try:
                 gate()

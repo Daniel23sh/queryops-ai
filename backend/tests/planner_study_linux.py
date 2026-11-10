@@ -1,12 +1,18 @@
 """Run explicitly as root on disposable Linux, using a fresh ext4/XFS test mount."""
 import os
 from pathlib import Path
+import signal
+import site
 import socket
 import subprocess
 import sys
 import tempfile
 
+import pytest
+
+from scripts import planner_study as study
 from scripts import planner_study_launch as launch
+from tests.test_planner_study_activation import KEY, fake_manifest, synthetic_approval
 
 
 def test_linux_peer_and_claim_permissions(monkeypatch):
@@ -64,3 +70,91 @@ with launch.operator_channel(int(sys.argv[1])) as channel:
                 if child.poll() is None:
                     child.kill()
                     child.wait()
+
+
+@pytest.mark.parametrize("scenario", ["grant", "sync_failure", "expiry"])
+def test_actual_launcher_and_worker_handoff(monkeypatch, scenario):
+    assert sys.platform == "linux" and os.getuid() == 0
+    parent = Path(os.environ["PLANNER_STUDY_LINUX_TEST_ROOT"])
+    with tempfile.TemporaryDirectory(dir=parent) as temporary:
+        root = Path(temporary)
+        root.chmod(0o755)
+        state = root / "state"
+        state.mkdir(mode=0o755)
+        identity = {"host_sha256": "b" * 64, "state_root": str(state),
+                    "state_device": state.stat().st_dev, "state_inode": state.stat().st_ino}
+        monkeypatch.setattr(launch, "STATE", state)
+        monkeypatch.setattr(launch, "CLAIM", state / "test-claim")
+        monkeypatch.setattr(launch, "EVIDENCE", launch.CLAIM / "evidence")
+        monkeypatch.setattr(launch, "state_identity", lambda: identity)
+        uid = gid = 65534
+        manifest, _ = fake_manifest(study.load_it_operations_domain_pack())
+        approval = synthetic_approval(manifest, identity, uid, gid)
+        documents = {"approval.json": launch.encode(approval), "manifest.json": launch.encode(manifest),
+                     "database-url": "synthetic-not-a-url", "database-owner": "b" * 32,
+                     "credential-synthetic": KEY}
+        monkeypatch.setattr(launch, "read_private", lambda path: documents[path.name].encode())
+
+        venv = root / "venv"
+        subprocess.run([sys.executable, "-m", "venv", "--copies", "--without-pip", str(venv)], check=True)
+        backend = root / "checkout" / "backend"
+        scripts = backend / "scripts"
+        scripts.mkdir(parents=True)
+        (scripts / "planner_study.py").write_text(f"""
+import sys
+from pathlib import Path
+sys.path.extend({[str(study.ROOT / "backend"), *site.getsitepackages()]!r})
+__file__ = {study.__file__!r}
+exec(compile(Path(__file__).read_bytes(), __file__, "exec"))
+from contextlib import nullcontext
+launch.STATE = Path({str(state)!r})
+launch.CLAIM = launch.STATE / "test-claim"
+launch.EVIDENCE = launch.CLAIM / "evidence"
+launch.state_identity = lambda: {identity!r}
+class SyntheticEngine:
+    def dispose(self):
+        pass
+owned_engine = lambda *args, **kwargs: SyntheticEngine()
+checked_snapshot = lambda *args: None
+Session = lambda *args: nullcontext()
+offline_controls = lambda *args: None
+def never_network(**kwargs):
+    raise AssertionError("real transport constructed")
+httpx.HTTPTransport = never_network
+if {scenario!r} == "expiry":
+    arm_timer = signal.setitimer
+    signal.setitimer = lambda timer, seconds: arm_timer(timer, 0.25 if seconds else 0)
+def run_live(engine, owner, manifest, approval, credential, ledger, gate, make_transport):
+    assert gate() > 0
+    assert hashlib.sha256(credential.encode()).hexdigest() == approval["credential_sha256"]
+    (launch.EVIDENCE / "synthetic-grant-received").touch()
+    if {scenario!r} == "expiry":
+        time.sleep(5)
+    return {{"synthetic": True}}
+""")
+
+        def execute():
+            return launch.launch(venv / "bin" / "python", backend, uid, gid)
+
+        receipt = launch.EVIDENCE / "synthetic-grant-received"
+        if scenario == "sync_failure":
+            def fail(_):
+                raise OSError("synthetic sync failure")
+
+            monkeypatch.setattr(launch, "sync_directory", fail)
+            with pytest.raises(OSError, match="synthetic sync failure"):
+                execute()
+            assert not receipt.exists()
+        elif scenario == "expiry":
+            previous = signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGALRM})
+            try:
+                assert execute() == -signal.SIGALRM
+            finally:
+                signal.pthread_sigmask(signal.SIG_SETMASK, previous)
+            assert receipt.exists()
+        else:
+            assert execute() == 0
+            assert receipt.exists()
+        assert launch.CLAIM.is_dir()
+        with pytest.raises(launch.ActivationError, match="activation_already_claimed"):
+            execute()

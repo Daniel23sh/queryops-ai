@@ -321,13 +321,9 @@ def test_runner_stops_and_seals_before_a_second_slot(dispatch, monkeypatch, fail
         "state": "stopped", "reason": reason}
 
 
-def test_owner_approval_binds_all_exact_identities(monkeypatch):
-    identity = {"host_sha256": "b" * 64, "state_root": str(launch.STATE), "state_device": 1, "state_inode": 2}
-    monkeypatch.setattr(launch, "state_identity", lambda: identity)
-    pack = study.load_it_operations_domain_pack()
-    manifest, _ = fake_manifest(pack)
-    approval = {"schema": "queryops-planner-study-approval-v1", "approved": True, "study_id": launch.STUDY_ID,
-                **identity, "runner_uid": os.getuid(), "runner_gid": os.getgid(),
+def synthetic_approval(manifest, identity, uid, gid):
+    return {"schema": "queryops-planner-study-approval-v1", "approved": True, "study_id": launch.STUDY_ID,
+                **identity, "runner_uid": uid, "runner_gid": gid,
                 "source": manifest["source"], "manifest_sha256": manifest["fingerprint"],
                 "profiles": {arm: manifest["profiles"][arm]["fingerprint"] for arm in study.ARMS},
                 "requests": {case: spec["request_sha256"] for case, spec in manifest["cases"].items()},
@@ -338,6 +334,14 @@ def test_owner_approval_binds_all_exact_identities(monkeypatch):
                 "project": PROJECT, "credential_version": "synthetic", "starts_utc": "2000-01-01T00:00:00Z",
                 "expires_utc": "2099-01-01T00:00:00Z", "estimated_input_tokens": 4000,
                 "estimated_cost_usd": "0.40", "credential_sha256": hashlib.sha256(KEY.encode()).hexdigest()}
+
+
+def test_owner_approval_binds_all_exact_identities(monkeypatch):
+    identity = {"host_sha256": "b" * 64, "state_root": str(launch.STATE), "state_device": 1, "state_inode": 2}
+    monkeypatch.setattr(launch, "state_identity", lambda: identity)
+    pack = study.load_it_operations_domain_pack()
+    manifest, _ = fake_manifest(pack)
+    approval = synthetic_approval(manifest, identity, os.getuid(), os.getgid())
     assert study.verify_approval(approval, manifest) > 0
     for key in ("source", "host_sha256", "state_root", "state_device", "state_inode", "manifest_sha256",
                 "profiles", "requests", "schedule", "physical_dispatches", "median_latency_ratio"):
@@ -345,3 +349,13 @@ def test_owner_approval_binds_all_exact_identities(monkeypatch):
             study.verify_approval({**approval, key: None}, manifest)
     with pytest.raises(launch.ActivationError, match="activation_outside_window"):
         study.verify_approval({**approval, "expires_utc": "2001-01-01T00:00:00Z"}, manifest)
+
+
+@pytest.mark.parametrize("flag", ["h", "S"])
+def test_live_source_rejects_hidden_index_entries(monkeypatch, flag):
+    expected = "a" * 40
+    answers = {"status": "", "rev-parse": expected, "symbolic-ref": "main",
+               "ls-files": f"H AGENTS.md\n{flag} backend/scripts/planner_study.py"}
+    monkeypatch.setattr(study, "git", lambda command, *_: answers[command])
+    with pytest.raises(study.StudyStop, match="live_source_mismatch"):
+        study.check_source(expected)

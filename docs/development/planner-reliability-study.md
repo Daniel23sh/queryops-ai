@@ -98,9 +98,10 @@ either profile for release.
 
 The activation implementation is study-only. It keeps the preregistered request
 bodies and scoring. Both study profiles now disable SDK and transport retries
-and redirects. The official Responses endpoint, verified TLS, 45-second timeout,
-`store=false` and 2,048 output tokens per response are fixed. The ceiling is 32
-logical slots, 32 physical forwards and 65,536 output tokens across 32 responses.
+and redirects. The official Responses endpoint, verified TLS, 45-second HTTPX
+phase timeout, `store=false` and 2,048 output tokens per response are fixed. The
+ceiling is 32 logical slots, 32 physical forwards and 65,536 output tokens across
+32 responses.
 A physical forward is entry into the underlying transport. Its presence cannot
 prove receipt or billing, and a timeout can leave both unknown. Input byte counts
 in the new manifest inform updated token and cost estimates. Estimates and
@@ -109,8 +110,8 @@ telemetry do not cap the bill.
 After the activation PR merges, the owner must complete these steps before any
 live grant:
 
-1. Choose one dedicated Linux host with a stable OS machine ID, ext4 or XFS
-   local storage with durable sync, and a dedicated non-root runner UID/GID with
+1. Choose one dedicated Linux host with a stable OS machine ID, `findmnt`, ext4
+   or XFS local storage with durable sync, and a dedicated non-root runner UID/GID with
    no login, unrelated processes, shared privileges or existing credentials.
    Native macOS and unsupported storage fail closed. Protect the host from
    rollback, snapshots restored in place, and a second eligible launch host.
@@ -121,7 +122,8 @@ live grant:
    created with `--copies`, with the approved dependency versions and no
    editable packages. Both trees and all ancestors must be root-owned and
    immutable to the runner. Prepare with an isolated interpreter and bytecode
-   writes disabled. Keep generated files, credentials and evidence out of the
+   writes disabled. Keep all tracked files checked out and visible to Git status.
+   Keep generated files, credentials and evidence out of the
    live checkout. Verify the installed OS Python, launcher, checkout and venv.
 3. Prepare a fresh dedicated PostgreSQL 16 cluster using the offline procedure.
    Keep it quiescent and isolated from other writers for the full window. Verify
