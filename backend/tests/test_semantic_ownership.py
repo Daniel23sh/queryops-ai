@@ -130,7 +130,7 @@ def test_independent_families_and_no_v2_or_domain_imports_in_generic_logic():
 
 
 @pytest.mark.parametrize("name", ["license_count_value", "distinct_os", "two_dimensions",
-                                 "subject_directory_users", "subject_groups", "temporal_only"])
+                                 "subject_directory_users", "subject_groups"])
 def test_false_constraints_require_independent_structural_agreement(report, name):
     item = case(report, name)
     assert item["difference"] == "FALSE_CONSTRAINT"
@@ -186,12 +186,11 @@ def test_ambiguity_and_predicates_are_not_fabricated_structural_proofs(report):
     assert not any(c["difference"] == "REAL_DETERMINISTIC_INVARIANT" for c in report["cases"])
 
 
-def test_second_domain_exposes_temporal_attachment_without_engine_vocabulary(report):
-    before, after = case(report, "temporal_only"), case(report, "temporal_only", 1)
-    assert before["domain_id"] == after["domain_id"] == "laboratory"
-    assert before["legacy"]["first_rejection"] == "grounded_having_mismatch"
-    assert after["legacy"]["accepted"]
-    assert before["proposed"]["accepted"] and after["proposed"]["accepted"]
+@pytest.mark.parametrize("paraphrase", [0, 1])
+def test_current_shadow_accepts_both_temporal_phrasings(report, paraphrase):
+    item = case(report, "temporal_only", paraphrase)
+    assert item["domain_id"] == "laboratory"
+    assert item["legacy"]["accepted"] and item["proposed"]["accepted"]
 
 
 def test_v2_and_pr52_remain_reproducible():

@@ -98,6 +98,19 @@ _DISPLAY_ATTRIBUTE_TOKENS = frozenset(
     }
 )
 _COLUMN_SUFFIX_TOKENS = frozenset({"at", "id", "usd"})
+_TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
+_DURATION_HYPHENS = str.maketrans({"\u2010": "-", "\u2011": "-"})
+_DURATION_QUANTITY = re.compile(
+    r"(?:[0-9]+(?:[.,][0-9]+)*|twenty(?:-|\s+(?=[a-z]+\s))"
+    r"(?:one|two|three|four|five|six|seven|eight|nine)|[a-z]+)"
+    r"(?:(?P<hyphen>-)|\s+)(?:(?:business|calendar)[\s-]+)?"
+    r"(?:second|minute|hour|day|week|month|year)s?\b"
+)
+_DURATION_BOUNDARY = re.compile(
+    r"(?:\s*(?:$|[.,;:!?)\]\u2013\u2014])|\s+(?:old|ago|long|overdue|late|elapsed|earlier|later|past|"
+    r"by|per|for|with|without|before|after|since|in|from|to)\b"
+    r"|\s+(?:and|or)\s+(?=[0-9]|(?:more|at|fewer|less|exactly)\b))"
+)
 _NUMBER_TOKENS = {
     "zero": 0,
     "one": 1,
@@ -397,6 +410,7 @@ def _build_candidate_context(
     )
     grounded_result_intent, suggested_result_intent = _build_grounded_result_intents(
         catalog=catalog,
+        question=question,
         question_tokens=question_tokens,
         entity_match_spans=entity_match_spans,
         resolved_scope_entity_ids=resolved_scope_entity_ids,
@@ -1118,6 +1132,7 @@ def _remove_superseded_candidates(
 def _build_grounded_result_intents(
     *,
     catalog: SemanticCatalog,
+    question: str,
     question_tokens: tuple[str, ...],
     entity_match_spans: Mapping[str, set[tuple[int, int]]],
     resolved_scope_entity_ids: set[str],
@@ -1154,7 +1169,7 @@ def _build_grounded_result_intents(
         entities=entities,
         allowed_columns=allowed_columns,
     )
-    threshold = _explicit_numeric_threshold(question_tokens)
+    threshold = _explicit_numeric_threshold(question, question_tokens)
     quantity_span = _explicit_quantity_span(question_tokens)
     # Existence alone requests neither a count output nor the related fact's grain.
     existence_only_threshold = (
@@ -1497,6 +1512,7 @@ def _explicit_quantity_span(
 
 
 def _explicit_numeric_threshold(
+    question: str,
     question_tokens: tuple[str, ...],
 ) -> tuple[_HavingOperator, int | float, int, int] | None:
     operators: tuple[tuple[tuple[str, ...], _HavingOperator], ...] = (
@@ -1507,13 +1523,21 @@ def _explicit_numeric_threshold(
         (("at", "most"), "less_than_or_equal"),
         (("exactly",), "equals"),
     )
+    source = _normalize_token_source(question).translate(_DURATION_HYPHENS)
+    tokens = list(_TOKEN_PATTERN.finditer(source))
     for reference, operator in operators:
         for index in range(len(question_tokens) - len(reference)):
             if question_tokens[index : index + len(reference)] != reference:
                 continue
-            value = _number_token_value(question_tokens[index + len(reference)])
-            if value is not None:
-                return operator, value, index, index + len(reference) + 1
+            number_index = index + len(reference)
+            value = _number_token_value(question_tokens[number_index])
+            if value is None:
+                continue
+            duration = _DURATION_QUANTITY.match(source, tokens[number_index].start())
+            # A spaced count can qualify a noun phrase such as "five day shift tickets".
+            if duration and (duration["hyphen"] or _DURATION_BOUNDARY.match(source, duration.end())):
+                continue
+            return operator, value, index, number_index + 1
     return None
 
 
@@ -1902,11 +1926,15 @@ def _contains_token_sequence(
     )
 
 
-def _normalize_tokens(value: str) -> tuple[str, ...]:
+def _normalize_token_source(value: str) -> str:
     normalized = value
     for pattern, replacement in _CONTRACTIONS:
         normalized = pattern.sub(replacement, normalized)
-    tokens = re.findall(r"[a-z0-9]+", normalized.lower())
+    return normalized.lower()
+
+
+def _normalize_tokens(value: str) -> tuple[str, ...]:
+    tokens = _TOKEN_PATTERN.findall(_normalize_token_source(value))
     return tuple(_SINGULAR_SUFFIXES.get(token) or token for token in tokens)
 
 

@@ -22,6 +22,27 @@ V2 assets and readiness policy are unchanged. Legal-plan acceptance is not proof
 of correct English interpretation. Live evidence and manual QA remain separately
 required; no provider run is authorized. PR58 is not included.
 
+### Duration thresholds in Suggested Intent
+
+The population-threshold recognizer skips a quantity followed by a recognized
+duration unit and continues scanning. A request to count open tickets more
+than 30 days old by category with more than five tickets can suggest a
+five-ticket group threshold. The 30 days describe the age filter, whose
+interpretation remains with the planner. The recognizer handles normalized
+second, minute, hour, day, week, month and year units, including plurals and
+an optional `business` or `calendar` qualifier. Source punctuation distinguishes
+decimal or comma-separated quantities and hyphenated durations from counts of
+duration-qualified records. A spaced unit needs an explicit boundary, such as
+punctuation, a temporal word like `ago`, or a clause connector like `by`.
+Number words follow the existing threshold vocabulary.
+
+Both independent laboratory age phrasings and the ticket contrast exercise
+the serialized suggestion. The PR53 shadow rerun shares the current recognizer,
+so both age phrasings now pass its structural checks. Its historical results
+below describe the original revision. The W9 failure diagnosis found Suggested
+Intent unset on all three failed cases, so the duration defect is independently
+established and its live qualification impact is unmeasured.
+
 ## Deterministic output identity — M10 W6b contract
 
 The backend owns result labels; SemanticPlan still contains field identities and
