@@ -29,7 +29,10 @@ duration unit and continues scanning. A request to count open tickets more
 than 30 days old by category with more than five tickets can suggest a
 five-ticket group threshold. The 30 days describe the age filter, whose
 interpretation remains with the planner. The recognizer handles normalized
-second, minute, hour, day, week, month and year units, including plurals.
+second, minute, hour, day, week, month and year units, including plurals and
+an optional `business` or `calendar` qualifier. Source punctuation distinguishes
+decimal or comma-separated quantities and hyphenated durations from counts of
+duration-qualified records. Number words follow the existing threshold vocabulary.
 
 Both independent laboratory age phrasings and the ticket contrast exercise
 the serialized suggestion. The PR53 shadow rerun shares the current recognizer,

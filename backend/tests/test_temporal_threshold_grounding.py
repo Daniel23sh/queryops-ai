@@ -24,6 +24,8 @@ def test_laboratory_age_does_not_suggest_having(question: str) -> None:
         ("more than 30 days", " with at least 5 tickets", [("greater_than_or_equal", 5)]),
         ("at least one day", "", []),
         ("more than 1.5 hours", " with more than 5 tickets", [("greater_than", 5)]),
+        ("more than twenty-one days", " with more than 5 tickets", [("greater_than", 5)]),
+        ("more than 24 business hours", " with more than 5 tickets", [("greater_than", 5)]),
     ],
 )
 def test_ticket_age_and_group_size_are_independent(
@@ -36,6 +38,16 @@ def test_ticket_age_and_group_size_are_independent(
     )
     assert intent["group_by"] == [{"table": "support_tickets", "column": "category"}]
     assert [(item["operator"], item["value"]) for item in intent["having"]] == expected
+
+
+@pytest.mark.parametrize("counted", ["5 30-day-old", "five day-old", "5 second-level"])
+def test_count_of_duration_qualified_tickets_survives(counted: str) -> None:
+    intent = _project_intent(
+        "it_operations",
+        f"Count open support tickets by category with more than {counted} tickets.",
+        "open_support_ticket",
+    )
+    assert [(item["operator"], item["value"]) for item in intent["having"]] == [("greater_than", 5)]
 
 
 def _project_intent(domain: str, question: str, expected_concept: str) -> dict:
