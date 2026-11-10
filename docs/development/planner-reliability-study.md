@@ -118,11 +118,13 @@ live grant:
    A root operator controls the host, state and OpenAI credential.
 2. Install the reviewed standard-library launcher from the final merge in an
    administrator-controlled location. Use a full clean checkout of that exact
-   merged `main` with a verified matching `origin/main`. Use a separate venv
+   merged `main` with an internal `.git` directory and a verified matching
+   `origin/main`. Use a separate venv
    created with `--copies`, with the approved dependency versions and no
    editable packages. Both trees and all ancestors must be root-owned and
    immutable to the runner. Prepare with an isolated interpreter and bytecode
-   writes disabled. Keep all tracked files checked out and visible to Git status.
+   writes disabled. Keep all tracked files checked out with their exact Git blob
+   bytes and visible to Git status.
    Keep generated files, credentials and evidence out of the
    live checkout. Verify the installed OS Python, launcher, checkout and venv.
 3. Prepare a fresh dedicated PostgreSQL 16 cluster using the offline procedure.

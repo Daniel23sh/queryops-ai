@@ -359,3 +359,24 @@ def test_live_source_rejects_hidden_index_entries(monkeypatch, flag):
     monkeypatch.setattr(study, "git", lambda command, *_: answers[command])
     with pytest.raises(study.StudyStop, match="live_source_mismatch"):
         study.check_source(expected)
+
+
+def test_live_source_checks_raw_bytes_even_when_git_reports_clean(monkeypatch, tmp_path):
+    root = tmp_path.resolve()
+    source = root / "tracked.py"
+    contents = b"# approved\n"
+    source.write_bytes(contents)
+    expected = "a" * 40
+    blob = hashlib.sha1(b"blob 11\0" + contents, usedforsecurity=False).hexdigest()
+    answers = {"status": "", "rev-parse": expected, "symbolic-ref": "main",
+               "ls-files": "H tracked.py", "ls-tree": f"100644 blob {blob}\ttracked.py\0"}
+    monkeypatch.setattr(study, "ROOT", root)
+    monkeypatch.setattr(study, "git", lambda command, *_: answers[command])
+    study.check_source(expected)
+    source.chmod(0o755)
+    with pytest.raises(study.StudyStop, match="live_source_mismatch"):
+        study.check_source(expected)
+    source.chmod(0o644)
+    source.write_bytes(b"# approved\r\n")
+    with pytest.raises(study.StudyStop, match="live_source_mismatch"):
+        study.check_source(expected)

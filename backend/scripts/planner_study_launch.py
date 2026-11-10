@@ -21,7 +21,7 @@ CLAIM = STATE / "claimed"
 EVIDENCE = CLAIM / "evidence"
 MAX_DOCUMENT = 64_000
 ENV = {"PATH": "/usr/bin:/bin", "HOME": "/nonexistent", "LANG": "C.UTF-8",
-       "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null"}
+       "GIT_CONFIG_NOSYSTEM": "1", "GIT_CONFIG_GLOBAL": "/dev/null", "GIT_NO_LAZY_FETCH": "1"}
 
 
 class ActivationError(RuntimeError):
@@ -200,6 +200,11 @@ def launch(python, backend, uid, gid):
     require(backend.name == "backend" and python.name == "python" and python.parent.name == "bin",
             "activation_installation_invalid")
     protected_tree(backend.parent)
+    metadata = backend.parent / ".git"
+    protected(metadata, directory=True)
+    require(not any(os.path.lexists(metadata / name) for name in
+                    ("commondir", "objects/info/alternates", "objects/info/http-alternates")),
+            "activation_git_metadata_external")
     venv = python.parent.parent
     protected_tree(venv)
     protected(venv / "pyvenv.cfg")

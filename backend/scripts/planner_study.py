@@ -89,7 +89,10 @@ def file_digest(path):
 
 
 def git(*args):
+    metadata = ROOT / ".git"
+    git_dir = [f"--git-dir={metadata}"] if metadata.is_dir() else []
     return subprocess.run(["git", "--no-replace-objects", f"--work-tree={ROOT}",
+                           *git_dir,
                            "-c", f"safe.directory={ROOT}", "-c", "core.fsmonitor=false", *args],
                           cwd=ROOT, capture_output=True, check=True, text=True, timeout=10).stdout.strip()
 
@@ -622,6 +625,17 @@ def check_source(expected):
             and git("symbolic-ref", "--short", "HEAD") == "main"
             and all(line.startswith("H ") for line in git("ls-files", "-v").splitlines())
             and not git("status", "--porcelain", "--ignored", "--untracked-files=all"), "live_source_mismatch")
+    # Git status may normalize bytes through checkout-local filters.
+    for entry in git("ls-tree", "-rz", "--full-tree", expected).rstrip("\0").split("\0"):
+        metadata, name = entry.split("\t", 1)
+        mode, kind, blob = metadata.split()
+        path = ROOT / name
+        require(kind == "blob" and mode in {"100644", "100755"} and path.is_file()
+                and path.resolve() == path and bool(path.stat().st_mode & 0o100) == (mode == "100755"),
+                "live_source_mismatch")
+        data = path.read_bytes()
+        actual = hashlib.sha1(f"blob {len(data)}\0".encode() + data, usedforsecurity=False).hexdigest()
+        require(actual == blob, "live_source_mismatch")
 
 
 def checked_snapshot(engine, pack, owner, manifest, case=None):

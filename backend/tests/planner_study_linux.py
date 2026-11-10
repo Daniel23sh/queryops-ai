@@ -100,6 +100,7 @@ def test_actual_launcher_and_worker_handoff(monkeypatch, scenario):
         backend = root / "checkout" / "backend"
         scripts = backend / "scripts"
         scripts.mkdir(parents=True)
+        (backend.parent / ".git").mkdir()
         (scripts / "planner_study.py").write_text(f"""
 import sys
 from pathlib import Path
@@ -137,6 +138,19 @@ def run_live(engine, owner, manifest, approval, credential, ledger, gate, make_t
             return launch.launch(venv / "bin" / "python", backend, uid, gid)
 
         receipt = launch.EVIDENCE / "synthetic-grant-received"
+        git_metadata = backend.parent / ".git"
+        git_metadata.rmdir()
+        git_metadata.write_text("gitdir: /untrusted-metadata\n")
+        with pytest.raises(launch.ActivationError, match="activation_path_unprotected"):
+            execute()
+        assert not launch.CLAIM.exists()
+        git_metadata.unlink()
+        git_metadata.mkdir()
+        (git_metadata / "commondir").write_text("/untrusted-metadata\n")
+        with pytest.raises(launch.ActivationError, match="activation_git_metadata_external"):
+            execute()
+        assert not launch.CLAIM.exists()
+        (git_metadata / "commondir").unlink()
         if scenario == "sync_failure":
             def fail(_):
                 raise OSError("synthetic sync failure")
