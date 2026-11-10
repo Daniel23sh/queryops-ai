@@ -32,7 +32,9 @@ interpretation remains with the planner. The recognizer handles normalized
 second, minute, hour, day, week, month and year units, including plurals and
 an optional `business` or `calendar` qualifier. Source punctuation distinguishes
 decimal or comma-separated quantities and hyphenated durations from counts of
-duration-qualified records. Number words follow the existing threshold vocabulary.
+duration-qualified records. A spaced unit needs an explicit boundary, such as
+punctuation, a temporal word like `ago`, or a clause connector like `by`.
+Number words follow the existing threshold vocabulary.
 
 Both independent laboratory age phrasings and the ticket contrast exercise
 the serialized suggestion. The PR53 shadow rerun shares the current recognizer,

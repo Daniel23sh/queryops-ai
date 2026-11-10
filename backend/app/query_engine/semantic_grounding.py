@@ -99,10 +99,16 @@ _DISPLAY_ATTRIBUTE_TOKENS = frozenset(
 )
 _COLUMN_SUFFIX_TOKENS = frozenset({"at", "id", "usd"})
 _TOKEN_PATTERN = re.compile(r"[a-z0-9]+")
+_DURATION_HYPHENS = str.maketrans({"\u2010": "-", "\u2011": "-"})
 _DURATION_QUANTITY = re.compile(
-    r"(?:[0-9]+(?:[.,][0-9]+)*|twenty[ -](?:one|two|three|four|five|six|seven|eight|nine)|[a-z]+)"
+    r"(?:[0-9]+(?:[.,][0-9]+)*|twenty(?:-|\s+(?=[a-z]+\s))"
+    r"(?:one|two|three|four|five|six|seven|eight|nine)|[a-z]+)"
     r"(?:(?P<hyphen>-)|\s+)(?:(?:business|calendar)[\s-]+)?"
     r"(?:second|minute|hour|day|week|month|year)s?\b"
+)
+_DURATION_BOUNDARY = re.compile(
+    r"(?:\s*(?:$|[.,;:!?)]|\])|\s+(?:old|ago|long|overdue|late|elapsed|earlier|later|past|"
+    r"by|per|for|with|without|before|after|since|and|or|in|from|to)\b)"
 )
 _NUMBER_TOKENS = {
     "zero": 0,
@@ -1516,7 +1522,7 @@ def _explicit_numeric_threshold(
         (("at", "most"), "less_than_or_equal"),
         (("exactly",), "equals"),
     )
-    source = _normalize_token_source(question)
+    source = _normalize_token_source(question).translate(_DURATION_HYPHENS)
     tokens = list(_TOKEN_PATTERN.finditer(source))
     for reference, operator in operators:
         for index in range(len(question_tokens) - len(reference)):
@@ -1527,8 +1533,8 @@ def _explicit_numeric_threshold(
             if value is None:
                 continue
             duration = _DURATION_QUANTITY.match(source, tokens[number_index].start())
-            # A spaced count can qualify a hyphenated noun phrase such as "five day-old tickets".
-            if duration and (duration["hyphen"] or source[duration.end() : duration.end() + 1] != "-"):
+            # A spaced count can qualify a noun phrase such as "five day shift tickets".
+            if duration and (duration["hyphen"] or _DURATION_BOUNDARY.match(source, duration.end())):
                 continue
             return operator, value, index, number_index + 1
     return None

@@ -25,6 +25,7 @@ def test_laboratory_age_does_not_suggest_having(question: str) -> None:
         ("at least one day", "", []),
         ("more than 1.5 hours", " with more than 5 tickets", [("greater_than", 5)]),
         ("more than twenty-one days", " with more than 5 tickets", [("greater_than", 5)]),
+        ("more than twenty  one days", " with more than 5 tickets", [("greater_than", 5)]),
         ("more than 24 business hours", " with more than 5 tickets", [("greater_than", 5)]),
     ],
 )
@@ -40,14 +41,33 @@ def test_ticket_age_and_group_size_are_independent(
     assert [(item["operator"], item["value"]) for item in intent["having"]] == expected
 
 
-@pytest.mark.parametrize("counted", ["5 30-day-old", "five day-old", "5 second-level"])
-def test_count_of_duration_qualified_tickets_survives(counted: str) -> None:
+def test_nonbreaking_hyphen_attaches_age_quantity_to_unit() -> None:
+    intent = _project_intent(
+        "it_operations",
+        "Count open support tickets more than 30\u2011day\u2011old by category with more than 5 tickets.",
+        "open_support_ticket",
+    )
+    assert [(item["operator"], item["value"]) for item in intent["having"]] == [("greater_than", 5)]
+
+
+@pytest.mark.parametrize(
+    "counted,value",
+    [
+        ("5 30-day-old", 5),
+        ("five day-old", 5),
+        ("five day\u2011old", 5),
+        ("five day shift", 5),
+        ("5 second-level", 5),
+        ("twenty one-day-old", 20),
+    ],
+)
+def test_count_of_duration_qualified_tickets_survives(counted: str, value: int) -> None:
     intent = _project_intent(
         "it_operations",
         f"Count open support tickets by category with more than {counted} tickets.",
         "open_support_ticket",
     )
-    assert [(item["operator"], item["value"]) for item in intent["having"]] == [("greater_than", 5)]
+    assert [(item["operator"], item["value"]) for item in intent["having"]] == [("greater_than", value)]
 
 
 def _project_intent(domain: str, question: str, expected_concept: str) -> dict:
