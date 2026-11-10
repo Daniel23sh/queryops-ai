@@ -107,8 +107,9 @@ _DURATION_QUANTITY = re.compile(
     r"(?:second|minute|hour|day|week|month|year)s?\b"
 )
 _DURATION_BOUNDARY = re.compile(
-    r"(?:\s*(?:$|[.,;:!?)]|\])|\s+(?:old|ago|long|overdue|late|elapsed|earlier|later|past|"
-    r"by|per|for|with|without|before|after|since|and|or|in|from|to)\b)"
+    r"(?:\s*(?:$|[.,;:!?)\]\u2013\u2014])|\s+(?:old|ago|long|overdue|late|elapsed|earlier|later|past|"
+    r"by|per|for|with|without|before|after|since|in|from|to)\b"
+    r"|\s+(?:and|or)\s+(?=[0-9]|(?:more|at|fewer|less|exactly)\b))"
 )
 _NUMBER_TOKENS = {
     "zero": 0,

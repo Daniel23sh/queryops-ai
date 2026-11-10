@@ -51,13 +51,27 @@ def test_nonbreaking_hyphen_attaches_age_quantity_to_unit() -> None:
 
 
 @pytest.mark.parametrize(
+    "question",
+    [
+        "Count open support tickets outstanding for more than 30 days — by category with more than 5 tickets.",
+        "Count open support tickets by category with an age of more than 30 days and more than 5 tickets.",
+    ],
+)
+def test_duration_boundary_preserves_later_count(question: str) -> None:
+    intent = _project_intent("it_operations", question, "open_support_ticket")
+    assert [(item["operator"], item["value"]) for item in intent["having"]] == [("greater_than", 5)]
+
+
+@pytest.mark.parametrize(
     "counted,value",
     [
         ("5 30-day-old", 5),
         ("five day-old", 5),
         ("five day\u2011old", 5),
         ("five day shift", 5),
+        ("five day or night shift", 5),
         ("5 second-level", 5),
+        ("five second or third shift", 5),
         ("twenty one-day-old", 20),
     ],
 )
