@@ -98,6 +98,7 @@ _DISPLAY_ATTRIBUTE_TOKENS = frozenset(
     }
 )
 _COLUMN_SUFFIX_TOKENS = frozenset({"at", "id", "usd"})
+_DURATION_UNITS = frozenset({"second", "minute", "hour", "day", "week", "month", "year"})
 _NUMBER_TOKENS = {
     "zero": 0,
     "one": 1,
@@ -1511,9 +1512,22 @@ def _explicit_numeric_threshold(
         for index in range(len(question_tokens) - len(reference)):
             if question_tokens[index : index + len(reference)] != reference:
                 continue
-            value = _number_token_value(question_tokens[index + len(reference)])
-            if value is not None:
-                return operator, value, index, index + len(reference) + 1
+            number_index = index + len(reference)
+            value = _number_token_value(question_tokens[number_index])
+            if value is None:
+                continue
+            end = number_index + 1
+            unit_index = end
+            if question_tokens[number_index].isdigit():
+                # Tokenization splits decimal and comma-separated numerals.
+                while unit_index < len(question_tokens) and question_tokens[unit_index].isdigit():
+                    unit_index += 1
+            if (
+                unit_index < len(question_tokens)
+                and question_tokens[unit_index].removesuffix("s") in _DURATION_UNITS
+            ):
+                continue
+            return operator, value, index, end
     return None
 
 
