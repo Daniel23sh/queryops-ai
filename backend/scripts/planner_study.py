@@ -1,4 +1,4 @@
-"""Offline-only planner study preparation. No network transport or live mode."""
+"""Prepare the planner study offline or run it with a one-shot operator grant."""
 from __future__ import annotations
 
 import argparse
@@ -12,18 +12,22 @@ import os
 import platform
 from pathlib import Path
 import re
+import signal
 import sqlite3
 from statistics import median
 import subprocess
+import time
+from typing import Any, cast
 
 from alembic.config import Config
 from alembic.script import ScriptDirectory
 import httpx
-from openai import OpenAI
+from openai import OpenAI, omit
 from openai.lib._parsing._responses import type_to_text_format_param
 from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
+from sqlalchemy.pool import NullPool
 
 from app.auth.access_context import build_user_access_context
 from app.evaluation.environment import evaluation_database_fingerprint
@@ -31,7 +35,7 @@ from app.models.product import AppUser
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.llm_provider import PlanGenerationOutcome
 from app.query_engine.openai_provider import (
-    SYSTEM_INSTRUCTIONS, OpenAIProvider, _StructuredProviderOutput, build_safe_prompt_projection,
+    SYSTEM_INSTRUCTIONS, OpenAIProvider, _StructuredProviderOutput, _usage_counts, build_safe_prompt_projection,
 )
 from app.query_engine.plan_generator import PlanGenerator
 from app.query_engine.provider_config import (
@@ -48,12 +52,17 @@ from app.query_engine.sql_renderer import SemanticSQLRenderError, render_validat
 from app.query_engine.sql_validator import validate_sql
 from scripts.semantic_ownership_fixtures import count, field
 from scripts.planner_study_fixtures import ACTOR, CASES, DENIED_ACTOR, add_witnesses
+from scripts import planner_study_launch as launch
 from scripts.w6c_live import runtime_policy_identity
 
 ROOT = Path(__file__).resolve().parents[2]
 REFERENCE = datetime(2026, 1, 1, tzinfo=UTC)
 MODEL = "gpt-6.1-terra"
 ARMS = ("low", "medium")
+TIMEOUT = 45
+OUTPUT_TOKENS = 2048
+RESPONSES = OFFICIAL_OPENAI_BASE_URL + "/responses"
+MAX_RESPONSE = 1_000_000
 FATAL = frozenset({
     "authorization_denied", "security", "renderer", "sql_validation", "conformance",
     "execution", "provider_fatal", "result_mismatch",
@@ -71,12 +80,8 @@ def require(ok, code):
         raise StudyStop(code)
 
 
-def encode(value):
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
-
-
-def digest(value):
-    return hashlib.sha256(encode(value).encode()).hexdigest()
+encode = launch.encode
+digest = launch.digest
 
 
 def file_digest(path):
@@ -84,8 +89,8 @@ def file_digest(path):
 
 
 def git(*args):
-    return subprocess.run(["git", *args], cwd=ROOT, capture_output=True, check=True,
-                          text=True, timeout=10).stdout.strip()
+    return subprocess.run(["git", "-c", f"safe.directory={ROOT}", "-c", "core.fsmonitor=false", *args],
+                          cwd=ROOT, capture_output=True, check=True, text=True, timeout=10).stdout.strip()
 
 
 def source():
@@ -95,11 +100,11 @@ def source():
     return revision
 
 
-def profiles():
+def profiles(api_key="offline-placeholder"):
     return {effort: load_provider_settings({
-        "LLM_PROVIDER": "openai", "OPENAI_API_KEY": "offline-placeholder", "OPENAI_MODEL": MODEL,
-        "OPENAI_REASONING_EFFORT": effort, "OPENAI_TIMEOUT_SECONDS": "45",
-        "OPENAI_MAX_OUTPUT_TOKENS": "2048", "OPENAI_MAX_RETRIES": "2",
+        "LLM_PROVIDER": "openai", "OPENAI_API_KEY": api_key, "OPENAI_MODEL": MODEL,
+        "OPENAI_REASONING_EFFORT": effort, "OPENAI_TIMEOUT_SECONDS": str(TIMEOUT),
+        "OPENAI_MAX_OUTPUT_TOKENS": str(OUTPUT_TOKENS), "OPENAI_MAX_RETRIES": "0",
     }) for effort in ARMS}
 
 
@@ -107,7 +112,7 @@ def body(prompt, effort):
     return {
         "model": MODEL, "instructions": SYSTEM_INSTRUCTIONS, "input": encode(prompt),
         "text": {"format": type_to_text_format_param(_StructuredProviderOutput)},
-        "reasoning": {"effort": effort}, "max_output_tokens": 2048, "store": False,
+        "reasoning": {"effort": effort}, "max_output_tokens": OUTPUT_TOKENS, "store": False,
     }
 
 
@@ -116,20 +121,20 @@ def slots():
                  for arm in (ARMS if (block + i) % 2 == 0 else ARMS[::-1]))
 
 
-def owned_engine(url):
+def owned_engine(url, *, live=False):
     parsed = make_url(url)
     require(parsed.drivername == "postgresql+psycopg" and parsed.host == "127.0.0.1"
             and parsed.port is not None and not parsed.query
             and bool(re.fullmatch(r"planner_study_test_[0-9a-f]{16}", parsed.database or "")),
             "disposable_database_required")
-    return create_engine(parsed)
+    return create_engine(parsed, poolclass=NullPool) if live else create_engine(parsed)
 
 
 def database_identity(db, owner):
     row = db.execute(text("""
         SELECT current_database(), current_setting('server_version'),
                current_setting('server_version_num')::int, (pg_control_system()).system_identifier::text,
-               shobj_description(d.oid, 'pg_database'), d.datdba = r.oid
+               shobj_description(d.oid, 'pg_database'), d.datdba = r.oid, d.oid, current_user
         FROM pg_database d JOIN pg_roles r ON r.rolname = current_user
         WHERE d.datname = current_database()
     """)).one()
@@ -139,7 +144,7 @@ def database_identity(db, owner):
     config = Config()
     config.set_main_option("script_location", str(ROOT / "backend/alembic"))
     require(migration == ScriptDirectory.from_config(config).get_current_head(), "migration_mismatch")
-    return {"cluster_sha256": digest(row[3]), "database_sha256": digest(row[0]),
+    return {"cluster_sha256": digest(row[3]), "database_sha256": digest([row[0], row[6], row[7]]),
             "postgres": row[1], "alembic": migration, "policy_sha256": runtime_policy_identity(db)}
 
 
@@ -184,24 +189,35 @@ def context(db, pack, case, actor_email=ACTOR):
     return access, schema, user, projection, prompt
 
 
+def profile_specs(settings_by_arm):
+    result = {}
+    for arm, settings in settings_by_arm.items():
+        config = settings.openai
+        require(config is not None, "profile_settings_invalid")
+        spec = {"provider": "openai", "endpoint": RESPONSES, "model": config.model,
+                "reasoning": config.reasoning_effort, "max_output_tokens": config.max_output_tokens,
+                "timeout_seconds": config.timeout_seconds, "sdk_retries": config.max_retries,
+                "transport_retries": 0, "redirects": False, "trust_env": False, "tls_verify": True,
+                "store": False, "sdk_runtime": provider_runtime_identity(settings)}
+        result[arm] = {**spec, "fingerprint": digest(spec)}
+    return result
+
+
 def prepare(db, pack, owner):
     database = database_identity(db, owner)
     database["data_sha256"], database["counts"] = evaluation_database_fingerprint(db)
     runtime = installed_runtime_versions()
-    profile_specs = {arm: {"provider": "openai", "endpoint": OFFICIAL_OPENAI_BASE_URL, "model": MODEL,
-                           "reasoning": arm, "max_output_tokens": 2048, "timeout_seconds": 45,
-                           "sdk_retries": 2, "redirects": True, "store": False,
-                           "sdk_runtime": provider_runtime_identity(settings)}
-                     for arm, settings in profiles().items()}
     fixture_hash = file_digest(Path(__file__).with_name("planner_study_fixtures.py"))
     cases = {}
     for case in CASES:
         value = context(db, pack, case)
-        require(value is not None, "authorization_denied")
-        _, schema, _, projection, prompt = value
+        if value is None:
+            raise StudyStop("authorization_denied")
+        access, schema, _, projection, prompt = value
         requests = {arm: body(prompt, arm) for arm in ARMS}
         cases[case.id] = {
             "context_sha256": digest(prompt), "schema_sha256": digest(schema),
+            "actor_sha256": digest([str(access.user_id), sorted(str(s.department_id) for s in access.scopes)]),
             "projection_sha256": digest(projection.as_prompt_dict()),
             "request_sha256": {arm: digest(request) for arm, request in requests.items()},
             "input_utf8_bytes": sum(len(requests["low"][k].encode()) for k in ("instructions", "input"))
@@ -209,15 +225,16 @@ def prepare(db, pack, owner):
             "hint_sensitive": case.hint_sensitive,
         }
     identity = {
-        "version": "queryops-planner-study-v1", "mode": "offline_only",
+        "version": launch.STUDY_ID, "mode": "preparation_only",
         "source": source(), "fixtures_sha256": fixture_hash, "database": database,
         "reference": REFERENCE.isoformat(), "catalog_sha256": pack.semantic_catalog.digest,
-        "profiles": {arm: {**spec, "fingerprint": digest(spec)} for arm, spec in profile_specs.items()},
+        "profiles": profile_specs(profiles()),
         "dependencies": runtime, "python": platform.python_version(), "dependency_manifest_sha256": file_digest(ROOT / "backend/pyproject.toml"),
         "instructions_sha256": digest(SYSTEM_INSTRUCTIONS),
         "response_schema_sha256": digest(type_to_text_format_param(_StructuredProviderOutput)),
-        "cases": cases, "schedule_sha256": digest(slots()),
+        "cases": cases, "schedule": [[block, CASES[index].id, arm] for block, index, arm in slots()],
     }
+    identity["schedule_sha256"] = digest(identity["schedule"])
     return {**identity, "fingerprint": digest(identity)}
 
 
@@ -310,11 +327,14 @@ def score(engine, pack, case, value, result):
 
 
 def measurement(result):
-    data = result.generation_metadata.get("provider_measurement", {})
+    return bounded_measurement(result.generation_metadata.get("provider_measurement", {}))
+
+
+def bounded_measurement(data):
     require(isinstance(data, dict), "measurement_invalid")
     safe = {}
-    for name, upper in (("call_count", 1), ("attempt_count", 63), ("input_tokens", 10**9),
-                        ("output_tokens", 10**9), ("cached_input_tokens", 10**9), ("total_tokens", 10**9)):
+    for name, upper in (("call_count", 1), ("attempt_count", 1), ("input_tokens", 10**9),
+                        ("output_tokens", OUTPUT_TOKENS), ("cached_input_tokens", 10**9), ("total_tokens", 10**9)):
         value = data.get(name)
         require(value is None or type(value) is int and 0 <= value <= upper, "measurement_invalid")
         safe[name] = value
@@ -393,14 +413,21 @@ class Ledger:
         finally:
             os.close(fd)
         self.db = sqlite3.connect(path / "slots.sqlite3")
-        with self.db:
-            self.db.execute("PRAGMA synchronous=FULL")
-            self.db.execute("PRAGMA fullfsync=ON")
-            self.db.execute("CREATE TABLE study (fingerprint TEXT PRIMARY KEY)")
-            self.db.execute("INSERT INTO study VALUES (?)", (fingerprint,))
-            self.db.execute("CREATE TABLE slots (ordinal INTEGER PRIMARY KEY, stage TEXT, result TEXT)")
+        try:
+            with self.db:
+                self.db.execute("PRAGMA synchronous=EXTRA")
+                self.db.execute("PRAGMA fullfsync=ON")
+                self.db.execute("CREATE TABLE study (fingerprint TEXT PRIMARY KEY, seal TEXT)")
+                self.db.execute("INSERT INTO study (fingerprint) VALUES (?)", (fingerprint,))
+                self.db.execute("CREATE TABLE slots (ordinal INTEGER PRIMARY KEY, identity TEXT, "
+                                "transport TEXT, stage TEXT, result TEXT)")
+            launch.sync_directory(path)
+        except BaseException:
+            self.db.close()
+            raise
 
-    def reserve(self, ordinal):
+    def reserve(self, ordinal, identity=None):
+        serialized = encode(identity)
         with self.db:
             self.db.execute("BEGIN IMMEDIATE")
             done, pending = self.db.execute(
@@ -409,14 +436,40 @@ class Ledger:
                     and ordinal < len(slots()), "slot_replay_or_out_of_order")
             previous = self.db.execute("SELECT stage FROM slots WHERE ordinal=?", (ordinal - 1,)).fetchone()
             require(previous is None or previous[0] in STAGES - FATAL, "study_terminal")
-            self.db.execute("INSERT INTO slots VALUES (?, NULL, NULL)", (ordinal,))
+            require(self.db.execute("SELECT seal FROM study").fetchone() == (None,), "study_terminal")
+            self.db.execute("INSERT INTO slots (ordinal, identity) VALUES (?, ?)", (ordinal, serialized))
+        require(self.db.execute("SELECT identity, transport, result FROM slots WHERE ordinal=?",
+                                (ordinal,)).fetchone() == (serialized, None, None), "reservation_readback_failed")
+
+    def record_transport(self, ordinal, record):
+        serialized = encode(record)
+        with self.db:
+            cursor = self.db.execute("UPDATE slots SET transport=? WHERE ordinal=? AND transport IS NULL AND result IS NULL",
+                                     (serialized, ordinal))
+            require(cursor.rowcount == 1, "transport_not_reserved")
+        require(self.db.execute("SELECT transport FROM slots WHERE ordinal=?", (ordinal,)).fetchone()
+                == (serialized,), "transport_readback_failed")
 
     def complete(self, ordinal, observation):
         require(observation.stage in STAGES, "observation_invalid")
+        serialized = encode(asdict(observation))
         with self.db:
             cursor = self.db.execute("UPDATE slots SET stage=?, result=? WHERE ordinal=? AND result IS NULL",
-                                     (observation.stage, encode(asdict(observation)), ordinal))
+                                     (observation.stage, serialized, ordinal))
             require(cursor.rowcount == 1, "slot_not_reserved")
+        require(self.db.execute("SELECT stage, result FROM slots WHERE ordinal=?", (ordinal,)).fetchone()
+                == (observation.stage, serialized), "observation_readback_failed")
+
+    def seal(self, outcome, records=()):
+        serialized = encode(outcome)
+        with self.db:
+            self.db.execute("BEGIN IMMEDIATE")
+            if records:
+                require(self.db.execute("SELECT ordinal, identity, transport, stage, result FROM slots ORDER BY ordinal"
+                                        ).fetchall() == records, "evidence_readback_failed")
+            cursor = self.db.execute("UPDATE study SET seal=? WHERE seal IS NULL", (serialized,))
+            require(cursor.rowcount == 1, "study_terminal")
+        require(self.db.execute("SELECT seal FROM study").fetchone() == (serialized,), "seal_readback_failed")
 
     def close(self):
         self.db.close()
@@ -434,19 +487,20 @@ def offline_generate(case, value, arm, payload, expected_hash, on_dispatch):
     _, schema, user, projection, _ = value
 
     def reply(request):
-        require(request.method == "POST" and str(request.url) == OFFICIAL_OPENAI_BASE_URL + "/responses"
+        require(request.method == "POST" and str(request.url) == RESPONSES
                 and digest(json.loads(request.content)) == expected_hash, "request_identity_changed")
         on_dispatch()
         return httpx.Response(200, json=responses_payload(payload))
 
     settings = profiles()[arm].openai
-    require(settings is not None, "profile_settings_invalid")
+    if settings is None:
+        raise StudyStop("profile_settings_invalid")
     with OpenAI(api_key=settings.api_key, base_url=OFFICIAL_OPENAI_BASE_URL,
                 organization="", project="", admin_api_key="", webhook_secret="",
                 max_retries=settings.max_retries, timeout=settings.timeout_seconds,
                 http_client=httpx.Client(transport=httpx.MockTransport(reply), trust_env=False,
-                                         follow_redirects=True)) as client:
-        return PlanGenerator(OpenAIProvider(settings, client=client)).generate_plan(
+                                         follow_redirects=False)) as client:
+        return PlanGenerator(OpenAIProvider(settings, client=cast(Any, client))).generate_plan(
             case.question, schema, user, {"semantic_catalog": projection})
 
 
@@ -529,14 +583,288 @@ def dry_run(engine, owner, manifest, evidence):
             "provider_dispatches": 0, "denied_control_dispatches": 0, "passes": len(slots())}
 
 
+def verify_approval(approval, manifest):
+    expected = {
+        "schema": "queryops-planner-study-approval-v1", "approved": True,
+        "study_id": launch.STUDY_ID, **launch.state_identity(),
+        "runner_uid": os.getuid(), "runner_gid": os.getgid(),
+        "source": manifest["source"], "manifest_sha256": manifest["fingerprint"],
+        "profiles": {arm: manifest["profiles"][arm]["fingerprint"] for arm in ARMS},
+        "requests": {case.id: manifest["cases"][case.id]["request_sha256"] for case in CASES},
+        "schedule": manifest["schedule"], "schedule_sha256": manifest["schedule_sha256"],
+        "endpoint": RESPONSES, "model": MODEL, "returned_model": MODEL,
+        "logical_slots": len(slots()), "physical_dispatches": len(slots()),
+        "output_tokens_per_slot": OUTPUT_TOKENS, "total_output_tokens": len(slots()) * OUTPUT_TOKENS,
+        "median_latency_ratio": 2, "uncached_cost_ratio": 2,
+    }
+    varying = {
+        "project", "credential_version", "credential_sha256", "starts_utc", "expires_utc",
+        "estimated_input_tokens", "estimated_cost_usd",
+    }
+    require(set(approval) == set(expected) | varying
+            and encode({key: approval[key] for key in expected}) == encode(expected), "approval_mismatch")
+    for key, pattern in (("project", r"proj_[A-Za-z0-9_-]{1,128}"),
+                         ("credential_version", r"[A-Za-z0-9_-]{1,64}"),
+                         ("credential_sha256", r"[a-f0-9]{64}"),
+                         ("estimated_cost_usd", r"(?:0|[1-9][0-9]{0,4})\.[0-9]{2,6}")):
+        value = approval[key]
+        require(isinstance(value, str) and re.fullmatch(pattern, value), "approval_field_invalid")
+    estimate = approval["estimated_input_tokens"]
+    require(type(estimate) is int and 0 < estimate <= 10**8 and float(approval["estimated_cost_usd"]) > 0,
+            "approval_exposure_invalid")
+    return launch.remaining(approval)
+
+
+def check_source(expected):
+    require(source() == expected == git("rev-parse", "refs/heads/main")
+            == git("rev-parse", "refs/remotes/origin/main")
+            and git("symbolic-ref", "--short", "HEAD") == "main"
+            and not git("status", "--porcelain", "--ignored", "--untracked-files=all"), "live_source_mismatch")
+
+
+def checked_snapshot(engine, pack, owner, manifest, case=None):
+    check_source(manifest["source"])
+    with engine.connect().execution_options(isolation_level="REPEATABLE READ") as connection:
+        with connection.begin():
+            connection.execute(text("SET TRANSACTION READ ONLY"))
+            with Session(bind=connection) as db:
+                require(encode(prepare(db, pack, owner)) == encode(manifest), "study_identity_changed")
+                return context(db, pack, case) if case is not None else None
+
+
+def response_evidence(response):
+    try:
+        status = response.status_code
+        require(not 300 <= status < 400, "unexpected_redirect")
+        require(status not in {401, 403, 429}, "provider_authorization_or_quota")
+        require(200 <= status < 300, "provider_http_failure")
+        require(response.headers.get("content-encoding", "identity").lower() == "identity",
+                "response_encoding_invalid")
+        content = bytearray()
+        for chunk in response.iter_bytes():
+            require(len(content) + len(chunk) <= MAX_RESPONSE, "response_too_large")
+            content.extend(chunk)
+        try:
+            data = launch.decode(content, MAX_RESPONSE)
+        except (ValueError, launch.ActivationError):
+            raise StudyStop("response_envelope_invalid") from None
+        require(data.get("model") == MODEL, "returned_model_mismatch")
+        require(data.get("status") == "completed" and data.get("error") is None
+                and data.get("incomplete_details") is None, "response_incomplete")
+        usage = _usage_counts(data.get("usage"))
+        require(len(usage) == 4 and 0 < usage["input_tokens"]
+                and usage["cached_input_tokens"] <= usage["input_tokens"]
+                and usage["output_tokens"] <= OUTPUT_TOKENS
+                and usage["total_tokens"] == usage["input_tokens"] + usage["output_tokens"],
+                "provider_usage_invalid")
+        return httpx.Response(status, headers=response.headers, content=bytes(content)), usage
+    finally:
+        response.close()
+
+
+class SlotTransport(httpx.BaseTransport):
+    """The only path to the underlying transport for one scheduled slot."""
+
+    def __init__(self, inner, ledger, ordinal, identity, credential, project, verify, gate):
+        self.inner = inner
+        self.ledger = ledger
+        self.ordinal = ordinal
+        self.identity = identity
+        self.credential = credential
+        self.project = project
+        self.verify = verify
+        self.gate = gate
+        self.entered = False
+        self.failure = None
+        self.record = None
+
+    def handle_request(self, request):
+        reserved = False
+        forwarded = False
+        started = None
+        try:
+            require(not self.entered, "duplicate_transport_attempt")
+            self.entered = True
+            require(type(self.ordinal) is int and 0 <= self.ordinal < len(slots()), "slot_identity_invalid")
+            block, index, arm = slots()[self.ordinal]
+            require((self.identity["block"], self.identity["case"], self.identity["arm"])
+                    == (block, CASES[index].id, arm), "slot_identity_invalid")
+            require(request.method == "POST" and str(request.url) == RESPONSES
+                    and request.headers.get_list("host") == ["api.openai.com"]
+                    and request.headers.get_list("authorization") == ["Bearer " + self.credential]
+                    and request.headers.get_list("openai-project") == [self.project]
+                    and "openai-organization" not in request.headers
+                    and request.headers.get("accept-encoding") == "identity"
+                    and digest(launch.decode(request.content)) == self.identity["request_sha256"],
+                    "request_identity_changed")
+            self.verify()
+            self.gate()
+            self.ledger.reserve(self.ordinal, self.identity)
+            reserved = True
+            seconds = min(TIMEOUT, self.gate())
+            request.extensions["timeout"] = dict.fromkeys(("connect", "read", "write", "pool"), seconds)
+            started = time.perf_counter()
+            forwarded = True
+            response, usage = response_evidence(self.inner.handle_request(request))
+            self.record = {"state": "received", "model": MODEL, "call_count": 1, "attempt_count": 1,
+                           "duration_ms": round((time.perf_counter() - started) * 1000, 3),
+                           "usage_complete": True, **usage}
+            bounded_measurement(self.record)
+        except Exception as exc:
+            if isinstance(exc, (StudyStop, launch.ActivationError)):
+                self.failure = str(exc)
+            elif isinstance(exc, httpx.TimeoutException):
+                self.failure = "transport_timeout"
+            else:
+                self.failure = "dispatch_or_persistence_failure"
+            if reserved:
+                self.record = {"state": "uncertain" if forwarded else "stopped_before_forward",
+                               "failure": self.failure, "attempt_count": int(forwarded),
+                               "duration_ms": min(86_400_000, round((time.perf_counter() - started) * 1000, 3))
+                               if started is not None else None, "usage_complete": False}
+                self.ledger.record_transport(self.ordinal, self.record)
+            raise StudyStop(self.failure) from None
+        try:
+            self.ledger.record_transport(self.ordinal, self.record)
+        except Exception:
+            self.failure = "transport_evidence_write_failed"
+            response.close()
+            raise StudyStop(self.failure) from None
+        return response
+
+    def close(self):
+        self.inner.close()
+
+
+def run_live(engine, owner, manifest, approval, credential, ledger, gate, make_transport):
+    pack = load_it_operations_domain_pack()
+    settings = profiles(credential)
+    observations, records = [], []
+
+    def verify(case=None):
+        gate()
+        require(encode(profile_specs(settings)) == encode(manifest["profiles"]), "profile_identity_changed")
+        return checked_snapshot(engine, pack, owner, manifest, case)
+
+    try:
+        for ordinal, (block, index, arm) in enumerate(slots()):
+            case = CASES[index]
+            value = verify(case)
+            if value is None:
+                raise StudyStop("authorization_denied")
+            _, schema, user, projection, _ = value
+            identity = {"block": block, "case": case.id, "arm": arm,
+                        "profile_sha256": manifest["profiles"][arm]["fingerprint"],
+                        "request_sha256": manifest["cases"][case.id]["request_sha256"][arm]}
+            config = settings[arm].openai
+            if config is None:
+                raise StudyStop("profile_settings_invalid")
+            guarded = SlotTransport(make_transport(), ledger, ordinal, identity, credential,
+                                    approval["project"], verify, gate)
+            with OpenAI(
+                api_key=credential, base_url=OFFICIAL_OPENAI_BASE_URL, project=approval["project"],
+                organization="", admin_api_key="", webhook_secret="",
+                default_headers=cast(Any, {"OpenAI-Organization": omit}),
+                max_retries=config.max_retries, timeout=config.timeout_seconds,
+                http_client=httpx.Client(transport=guarded, trust_env=False, follow_redirects=False,
+                                         headers={"accept-encoding": "identity"}),
+            ) as client:
+                result = PlanGenerator(OpenAIProvider(config, client=cast(Any, client))).generate_plan(
+                    case.question, schema, user, {"semantic_catalog": projection})
+                require(guarded.failure is None and guarded.record is not None,
+                        guarded.failure or "transport_evidence_missing")
+            verify()
+            usage = bounded_measurement(guarded.record)
+            require(usage["usage_complete"] and usage["attempt_count"] == 1, "transport_evidence_invalid")
+            observation = Observation(score(engine, pack, case, value, result), usage)
+            ledger.complete(ordinal, observation)
+            require(observation.stage not in FATAL | {"provider_invalid", "provider_timeout"}, observation.stage)
+            observations.append(observation)
+            records.append((ordinal, encode(identity), encode(guarded.record), observation.stage,
+                            encode(asdict(observation))))
+        verify()
+        verdict = assess(observations)
+        gate()
+        ledger.seal({"state": "complete", "verdict": verdict}, records)
+        return verdict
+    except Exception as exc:
+        code = str(exc) if isinstance(exc, (StudyStop, launch.ActivationError)) else "study_runtime_failure"
+        ledger.seal({"state": "stopped", "reason": code})
+        raise StudyStop(code) from None
+
+
+def live(fd):
+    with launch.operator_channel(fd) as channel:
+        inputs = launch.receive(channel)
+        require(set(inputs) == {"approval", "manifest", "owner", "database_url"}, "activation_inputs_invalid")
+        approval, manifest, owner = inputs["approval"], inputs["manifest"], inputs["owner"]
+        deadline = time.monotonic() + verify_approval(approval, manifest)
+        require(isinstance(owner, str) and re.fullmatch(r"[0-9a-f]{32}", owner), "ownership_receipt_invalid")
+        pack = load_it_operations_domain_pack()
+        engine = owned_engine(inputs["database_url"], live=True)
+        try:
+            checked_snapshot(engine, pack, owner, manifest)
+            with Session(engine) as db:
+                offline_controls(engine, db, pack, manifest)
+            verify_approval(approval, manifest)
+            approval_sha = digest(approval)
+            launch.send(channel, {"ready": approval_sha})
+            grant = launch.receive(channel)
+            require(set(grant) == {"credential"} and isinstance(grant["credential"], str),
+                    "activation_grant_invalid")
+            credential = grant["credential"]
+            require(hashlib.sha256(credential.encode()).hexdigest() == approval["credential_sha256"],
+                    "activation_credential_changed")
+            claim_info = launch.protected_directory(launch.CLAIM)
+            receipt = launch.CLAIM / "approval.sha256"
+            launch.protected(receipt)
+            require(receipt.read_text() == approval_sha + "\n", "activation_claim_mismatch")
+            verify_approval(approval, manifest)
+
+            def gate():
+                launch.operator_present(channel)
+                identity = launch.state_identity()
+                current_claim = launch.protected(launch.CLAIM, directory=True)
+                require(all(approval[key] == value for key, value in identity.items())
+                        and (current_claim.st_dev, current_claim.st_ino) == (claim_info.st_dev, claim_info.st_ino),
+                        "activation_claim_changed")
+                seconds = min(launch.remaining(approval), deadline - time.monotonic())
+                require(seconds > 0, "activation_outside_window")
+                return seconds
+
+            # HTTPX bounds individual I/O phases. This hard stop also bounds their sum.
+            signal.signal(signal.SIGALRM, signal.SIG_DFL)
+            signal.setitimer(signal.ITIMER_REAL, gate())
+            try:
+                gate()
+                ledger = Ledger(launch.EVIDENCE / "ledger", manifest["fingerprint"])
+                try:
+                    return run_live(engine, owner, manifest, approval, credential, ledger, gate,
+                                    lambda: httpx.HTTPTransport(verify=True, trust_env=False, retries=0))
+                finally:
+                    ledger.close()
+            finally:
+                signal.setitimer(signal.ITIMER_REAL, 0)
+        finally:
+            engine.dispose()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("initialize", "manifest", "dry-run"))
-    parser.add_argument("--owner-receipt", required=True, type=Path)
+    parser.add_argument("action", choices=("initialize", "manifest", "dry-run", "live"))
+    parser.add_argument("--owner-receipt", type=Path)
+    parser.add_argument("--activation-fd", type=int, help=argparse.SUPPRESS)
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--evidence", type=Path)
     args = parser.parse_args()
     try:
+        if args.action == "live":
+            require(args.activation_fd is not None and args.activation_fd >= 3
+                    and args.owner_receipt is args.manifest is args.evidence is None, "activation_grant_required")
+            print(encode(live(args.activation_fd)))
+            return 0
+        if args.owner_receipt is None or args.activation_fd is not None:
+            raise StudyStop("offline_arguments_invalid")
         owner = args.owner_receipt.read_text().strip()
         require(bool(re.fullmatch(r"[0-9a-f]{32}", owner)), "ownership_receipt_invalid")
         engine = owned_engine(os.environ.get("PLANNER_STUDY_DATABASE_URL", ""))
@@ -556,7 +884,7 @@ def main():
             return 0
         finally:
             engine.dispose()
-    except StudyStop as exc:
+    except (StudyStop, launch.ActivationError) as exc:
         parser.exit(1, f"{exc}\n")
     except Exception:
         parser.exit(1, "study_preparation_failed\n")
