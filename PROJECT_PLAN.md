@@ -16,6 +16,8 @@ W9 froze `46ea556798230d95901045cbe73a5d76981e8c9e` after all six
 final-main jobs passed in [CI run 42601895955](https://github.com/Daniel23sh/queryops-ai/actions/runs/42601895955).
 The first W9 canary failed qualification and the sequence stopped. Preserve its
 environment, manifest and evidence along with both terminal W6c journals.
+PR #78 merged the independent temporal Suggested Intent correction. Its effect
+on W9 is unmeasured, and the joined-row count hint remains a separate finding.
 
 ## Remaining Decisions and Release Gates
 
@@ -25,11 +27,10 @@ Any new freeze, preparation or live qualification requires separate authorizatio
 
 ## Next Approved Work
 
-Correct [temporal threshold recognition in Suggested Intent](docs/development/semantic-ownership-migration.md#duration-thresholds-in-suggested-intent)
-on `feature/m10-temporal-threshold-grounding-fix`. Cover the independent
-laboratory and ticket regressions, run the six deterministic CI gates and obtain
-fresh-context review. The authorized endpoint is a reviewed **Draft PR against main**.
-The joined-row counting fallback is outside this correction's scope.
+Prepare the [offline planner reliability study](docs/development/planner-reliability-study.md)
+comparing Terra low and medium reasoning. The approved endpoint is an independently
+reviewed Draft PR with deterministic validation. Live study execution and any new
+qualification require separate authorization.
 
 ## References
 
