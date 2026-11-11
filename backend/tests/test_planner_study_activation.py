@@ -20,6 +20,12 @@ from scripts.semantic_ownership_fixtures import offline_schema
 KEY = "synthetic-study-key-not-a-credential"
 
 
+def fake_score(*args, diagnostics):
+    diagnostics.update(version=1, outcome=args[-1].outcome.value, clarification_reason=None,
+                       plan_comparison="not_evaluated", mismatch_axes=[], result_multiset_match="not_evaluated")
+    return "pass"
+
+
 @pytest.fixture
 def state(tmp_path, monkeypatch):
     root = tmp_path.resolve()
@@ -267,7 +273,7 @@ def test_all_32_sdk_requests_remain_paired_and_complete(dispatch, monkeypatch):
     manifest, contexts = fake_manifest(pack)
     monkeypatch.setattr(study, "checked_snapshot", lambda _, pack, owner, manifest, case:
                         None if case is None else contexts[case.id])
-    monkeypatch.setattr(study, "score", lambda *args: "pass")
+    monkeypatch.setattr(study, "score", fake_score)
     monkeypatch.setattr(httpx, "HTTPTransport", lambda **_: pytest.fail("real transport constructed"))
     requests = []
     monkeypatch.setenv("OPENAI_PROJECT_ID", "proj_must_not_be_inherited")
@@ -366,7 +372,7 @@ def local_activation(state, monkeypatch):
     monkeypatch.setattr(study, "checked_snapshot", lambda _, pack, owner, manifest, case=None:
                         contexts[case.id] if case is not None else None)
     monkeypatch.setattr(study, "offline_controls", lambda *args: None)
-    monkeypatch.setattr(study, "score", lambda *args: "pass")
+    monkeypatch.setattr(study, "score", fake_score)
     forwards = []
 
     def reply(req):
@@ -487,7 +493,8 @@ study.owned_engine = lambda *args, **kwargs: Engine()
 study.Session = lambda _: nullcontext(None)
 study.checked_snapshot = lambda _, pack, owner, manifest, case=None: contexts[case.id] if case else None
 study.offline_controls = lambda *args: None
-study.score = lambda *args: "pass"
+from tests.test_planner_study_activation import fake_score
+study.score = fake_score
 requests = []
 def reply(request):
     if {stop!r} == "kill": os.kill(os.getpid(), signal.SIGKILL)

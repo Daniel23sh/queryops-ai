@@ -1,6 +1,8 @@
 from dataclasses import replace
+from contextlib import nullcontext
 import json
 import sqlite3
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -96,7 +98,7 @@ def test_one_shot_ledger_retains_pending_and_blocks_duplicates(tmp_path):
         study.Ledger(path, "a" * 64)
     with sqlite3.connect(path / "slots.sqlite3") as db:
         rows = db.execute("SELECT ordinal, result FROM slots ORDER BY ordinal").fetchall()
-    assert json.loads(rows[0][1]) == {"stage": "pass", "usage": {"attempt_count": None}}
+    assert json.loads(rows[0][1]) == {"stage": "pass", "usage": {"attempt_count": None}, "diagnostics": None}
     assert rows[1] == (1, None)
 
 
@@ -151,5 +153,145 @@ def test_terminal_observation_blocks_next_slot(tmp_path):
         ledger.complete(0, study.Observation("security", {}))
         with pytest.raises(study.StudyStop, match="study_terminal"):
             ledger.reserve(1)
+    finally:
+        ledger.close()
+
+
+@pytest.fixture
+def scoring(monkeypatch):
+    """Controlled execution; no database or provider transport is constructed."""
+    pack = load_it_operations_domain_pack()
+    schema = offline_schema(pack)
+    for table in schema["tables"]:
+        table["resource"] = {"is_queryable": True}
+    user = {"scope_type": "department", "scope_reference_resolved": True, "has_global_scope": False}
+    runtime = SimpleNamespace(execute=lambda _: SimpleNamespace(one=lambda: (
+        "queryops_query_runtime", "on", "repeatable read", "UTC")))
+    monkeypatch.setattr(study, "query_runtime_transaction", lambda *args, **kwargs: nullcontext(runtime))
+    calls = []
+
+    def run(case, plan=None, *, rows=None, outcome=PlanGenerationOutcome.PLAN, reason=None, code=None, truncated=False):
+        projection = build_semantic_catalog_projection(pack.semantic_catalog, case.question, schema, user)
+        value = None, schema, user, projection, None
+        if plan is None and outcome == PlanGenerationOutcome.PLAN:
+            plan = case.plans[0]
+        result = PlanGeneratorResult("openai", study.MODEL, outcome,
+                                    generation_metadata={"provider_failure_code": code} if code else {},
+                                    semantic_plan=plan, unsupported_reason=reason)
+        output = SimpleNamespace(status="succeeded", truncated=truncated,
+                                 execution_metadata={"delivery_completeness": "complete"},
+                                 columns=["value"], rows=[{"value": r[0]} for r in (case.rows if rows is None else rows)])
+
+        def execute(*_):
+            calls.append(1)
+            return output
+
+        monkeypatch.setattr(study, "execute_validated_sql", execute)
+        diagnostics = {}
+        stage = study.score(None, pack, case, value, result, diagnostics=diagnostics)
+        return stage, diagnostics, output
+
+    return run, calls
+
+
+@pytest.mark.parametrize("reason", ["ambiguous_question", "missing_information", "unresolved_scope",
+                                   "unsupported_request", "secret-untrusted-provider-text"])
+def test_clarification_reason_is_bounded_and_not_a_plan_mismatch(scoring, reason):
+    run, calls = scoring
+    stage, diagnostic, _ = run(study.CASES[0], outcome=PlanGenerationOutcome.CLARIFICATION, reason=reason)
+    assert stage == "interpretation"
+    assert diagnostic == {"version": 1, "outcome": "clarification",
+                          "clarification_reason": reason if reason != "secret-untrusted-provider-text" else "unestablished",
+                          "plan_comparison": "not_evaluated", "mismatch_axes": [],
+                          "result_multiset_match": "not_evaluated"}
+    assert calls == []
+
+
+@pytest.mark.parametrize("kind,stage", [("provider_failure", "provider_invalid"),
+                                      ("unsafe_request", "provider_unsafe"), ("invalid", "invalid_plan"),
+                                      ("security", "security"), ("renderer", "renderer"),
+                                      ("sql_validation", "sql_validation"), ("conformance", "conformance"),
+                                      ("execution", "execution")])
+def test_existing_failure_stages_remain_distinct(scoring, monkeypatch, kind, stage):
+    run, calls = scoring
+    case = study.CASES[0]
+    plan = case.plans[0]
+    kwargs = {}
+    if kind == "provider_failure":
+        kwargs.update(outcome=PlanGenerationOutcome.CLARIFICATION, code="provider_response_invalid")
+    elif kind == "unsafe_request":
+        kwargs["outcome"] = PlanGenerationOutcome.UNSAFE_REQUEST
+    elif kind in {"invalid", "security"}:
+        if kind == "invalid":
+            plan = plan.model_copy(update={"literal_filters": (plan.literal_filters[0].model_copy(update={"value": 42}),)})
+        else:
+            plan = plan.model_copy(update={"output_fields": (study.field("devices", "secret"),)})
+    elif kind == "renderer":
+        def fail(*_):
+            raise study.SemanticSQLRenderError("synthetic")
+        monkeypatch.setattr(study, "render_validated_semantic_plan", fail)
+    elif kind == "sql_validation":
+        monkeypatch.setattr(study, "validate_sql", lambda *_: SimpleNamespace(valid=False, sanitized_sql=None))
+    elif kind == "conformance":
+        monkeypatch.setattr(study, "check_semantic_conformance", lambda **_: SimpleNamespace(valid=False))
+    else:
+        kwargs["truncated"] = True
+    observed, diagnostic, _ = run(case, plan, **kwargs)
+    assert observed == stage
+    assert diagnostic["plan_comparison"] == "not_evaluated"
+    assert diagnostic["result_multiset_match"] == "not_evaluated"
+    assert len(calls) == (kind == "execution")
+
+
+def test_representation_only_and_unresolved_sample_match_do_not_inflate_scores(scoring):
+    run, calls = scoring
+    case = study.CASES[1]
+    redundant = case.plans[0].model_copy(update={"literal_filters": case.plans[1].literal_filters})
+    stage, diagnostic, _ = run(case, redundant)
+    assert stage == "interpretation" and diagnostic["plan_comparison"] == "equivalent"
+    assert diagnostic["result_multiset_match"] is True
+    stage, diagnostic, _ = run(study.CASES[0], case.plans[0])
+    assert stage == "interpretation" and diagnostic["plan_comparison"] == "unestablished"
+    assert diagnostic["result_multiset_match"] is True  # Deliberately nondistinguishing supplied rows.
+    assert "rules" in diagnostic["mismatch_axes"]
+    assert len(calls) == 2
+
+
+def test_incompatible_aggregates_cannot_compare_coincidentally_equal_rows(scoring):
+    run, _ = scoring
+    case = study.CASES[3]
+    plan = case.plans[0].model_copy(update={"aggregations": (count(),)})
+    stage, diagnostic, _ = run(case, plan)
+    assert stage == "interpretation"
+    assert diagnostic["plan_comparison"] == "unestablished"
+    assert diagnostic["result_multiset_match"] == "not_evaluated"
+
+
+def test_strict_match_and_result_mismatch_remain_separate(scoring):
+    run, calls = scoring
+    for rows, expected in ((None, "pass"), ((), "result_mismatch")):
+        stage, diagnostic, _ = run(study.CASES[0], rows=rows)
+        assert stage == expected and diagnostic["plan_comparison"] == "strict_match"
+        assert diagnostic["result_multiset_match"] is (expected == "pass")
+    assert len(calls) == 2
+
+
+def test_assessment_ignores_additive_diagnostics_and_old_records_remain_unknown():
+    usage = {"input_tokens": 1, "output_tokens": 1, "duration_ms": 1,
+             "attempt_count": 1, "usage_complete": True}
+    old = study.Observation(**{"stage": "interpretation", "usage": usage})
+    assert old.diagnostics is None
+    observations = [old] * 32
+    annotated = [replace(old, diagnostics={"plan_comparison": "equivalent"})] * 32
+    assert study.assess(observations) == study.assess(annotated)
+
+
+def test_ledger_rejects_unbounded_diagnostics_before_persisting(tmp_path):
+    ledger = study.Ledger(tmp_path.resolve() / "ledger", "d" * 64)
+    try:
+        ledger.reserve(0)
+        with pytest.raises(study.StudyStop, match="diagnostic_invalid"):
+            ledger.complete(0, study.Observation("interpretation", {}, {"secret": "untrusted-content"}))
+        assert ledger.db.execute("SELECT result FROM slots").fetchone() == (None,)
     finally:
         ledger.close()
