@@ -25,17 +25,24 @@ The [release policy](docs/evaluation/v1-quality-gates.md) still requires matchin
 V2 canary stability, full40, automated `ready` and same-candidate manual QA.
 Any new freeze, preparation or live qualification requires separate authorization.
 
+## Current Planner Study Status
+
+PRs #79–#81 are merged through `1293e9282edd3d1536e2834d4d5a48dc7c52bb4d`.
+Offline preparation passed all 32 supplied-plan slots with zero real provider
+requests. The bounded paid low-versus-medium study is owner-authorized but has
+not executed; its canonical one-shot claim is absent. It is diagnostic only and
+cannot qualify V1. Existing W9/W6c evidence remains unchanged.
+
 ## Next Approved Work
 
-PRs #79 and #80 merged planner-study preparation and guarded activation. Replace
-the Linux privileged launcher with the approved local macOS activation in the
-[study runbook](docs/development/planner-reliability-study.md): fixed private
-local state, atomic one-shot claim, durable slot reservations, no retries or
-redirects, and at most 32 physical forwards. Deliberate owner deletion/rollback
-is outside this local diagnostic's replay guarantee. Preserve fixtures, scoring,
-production behavior and historical evidence. The endpoint is an independently
-reviewed Draft PR with all six deterministic CI gates. Live authorization,
-canonical claim consumption and new qualification remain separately unauthorized.
+Simplify the [local planner study](docs/development/planner-reliability-study.md):
+reuse the existing key, remove manual Project ID/approval/credential metadata,
+and retain the fixed claim, durable reservations, 32-forward cap, frozen scoring
+and production safety boundaries. Review PRs #75–#81 for demonstrated redundancy
+and stale status documentation. Stop at one independently reviewed Draft PR with
+all six CI gates; this cleanup performs no paid execution. After merge, regenerate
+the study manifest and offline evidence before using the explicit execution flag.
+No new qualification run is authorized by this work.
 
 ## References
 

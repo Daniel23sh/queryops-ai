@@ -65,6 +65,7 @@ PGPASSWORD="$password" createdb -h 127.0.0.1 -p "$port" -U queryops "$db"
 PGPASSWORD="$password" psql -h 127.0.0.1 -p "$port" -U queryops -d postgres \
   -v ON_ERROR_STOP=1 -c "COMMENT ON DATABASE $db IS 'queryops-planner-study:$(cat "$study/owner")';"
 export PLANNER_STUDY_DATABASE_URL="postgresql+psycopg://queryops:$password@127.0.0.1:$port/$db"
+printf '%s\n' "$PLANNER_STUDY_DATABASE_URL" > "$study/database-url"
 DATABASE_URL="$PLANNER_STUDY_DATABASE_URL" QUERYOPS_APP_DATABASE_ROLE=queryops .venv/bin/alembic upgrade head
 DATABASE_URL="$PLANNER_STUDY_DATABASE_URL" .venv/bin/alembic current
 DATABASE_URL="$PLANNER_STUDY_DATABASE_URL" .venv/bin/alembic check
@@ -102,133 +103,146 @@ median provider duration and uncached-equivalent token cost each at most twice
 low. Retain low if a valid comparison misses the bar. No study outcome qualifies
 either profile for release.
 
-## Activation engineering and live approval
+## Local execution
 
-The activation implementation is study-only. It keeps the preregistered request
-bodies and scoring. Both study profiles now disable SDK and transport retries
-and redirects. The official Responses endpoint, verified TLS, 45-second HTTPX
-phase timeout, `store=false` and 2,048 output tokens per response are fixed. The
-ceiling is 32 logical slots, 32 physical forwards and 65,536 output tokens across
-32 responses.
-A physical forward is entry into the underlying transport. Its presence cannot
-prove receipt or billing, and a timeout can leave both unknown. Input byte counts
-in the new manifest inform updated token and cost estimates. Estimates and
-telemetry do not cap the bill.
+The owner has authorized one bounded comparison of `gpt-6.1-terra` at `low`
+and `medium`. This cleanup and its tests make zero real provider requests.
+The study is diagnostic and cannot satisfy [V1 quality gates](../evaluation/v1-quality-gates.md).
 
-The local activation uses one CLI process under the developer's existing macOS
-account. The fixed state directory is the account's actual home (resolved from
-the OS user database, independent of `HOME`), followed by
-`Library/Application Support/QueryOps/queryops-planner-study-v1`. There is no
-state-path override. The directory must be outside the checkout, owned by the
-current account and mode 0700. Its files are regular, non-symlink, current-user
-owned mode 0600 files. Linux privilege separation, a dedicated system user,
-`findmnt`, filesystem-type checks, immutable installations, root-owned files
-and the launcher/socket handoff are removed. The same portable local code runs
-in offline Linux CI; there is no second activation architecture.
+Use the existing backend environment, native PostgreSQL and API key. The live
+command reads `OPENAI_API_KEY` from the process environment, or from the repository
+root `.env` when it is not exported. Only that key is read from `.env`; ordinary
+application model/reasoning settings do not alter the frozen study profiles.
+The local file must be regular, account-owned and not writable by other accounts.
+Quoted values, an `export` prefix and inline comments are supported; interpolation
+is not performed. Duplicate or invalid key entries fail closed. The key is never
+copied to study state, logged or included in evidence. No new key, credential
+version/hash, project ID or `OpenAI-Project` header is required. Project and
+organization headers are omitted, including values inherited from the environment.
 
-After this PR merges, the operator must complete these steps before live use:
+There is no private approval file, repeated identity form, host identifier,
+account-ID entry, UTC window or mandatory cost estimate. The single explicit
+execution gate is `--allow-paid-study`, which acknowledges this bounded paid
+attempt. A missing flag rejects live execution before credential access or a
+network transport. The flag is rejected for offline preparation commands.
 
-1. Verify all six final-main CI gates on the exact merged SHA. Use a clean `main`
-   checkout with matching `origin/main`, normal visible index entries, and exact
-   tracked Git blob bytes/modes. Ignored local files such as `.venv` are allowed;
-   untracked non-ignored files are rejected. Do not edit source or install/change
-   dependencies during the attempt. No root ownership or separate venv location
-   is required. The manifest binds actual Python/dependency versions, the
-   resolved interpreter and its SHA-256, and the environment path. Use the same
-   interpreter/environment for preparation and execution.
-2. Prepare a separate owned PostgreSQL 16 cluster using the offline procedure.
-   Run the offline integration checks below on their own disposable database.
-   Then initialize the candidate database, regenerate the manifest from the
-   exact merged source and runtime, and complete a fresh dry-run. Keep the
-   candidate database and policies quiescent and unchanged throughout the
-   window. Preserve stopped W9 and both terminal W6c journals.
-3. Prepare the fixed private state directory without creating `claimed`.
-   Never overwrite an existing study's state or copy it to obtain another
-   attempt. Place regenerated `manifest.json`, `database-url` and `database-owner`
-   there as private files. Inspect `state_identity()` in
-   [the activation helpers](../../backend/scripts/planner_study_activation.py)
-   to obtain the host digest (OS, hostname and architecture), state path,
-   device/inode and current account UID/GID for authorization. Hostname identity
-   is an accidental-mismatch check, not hardware attestation.
-4. Obtain separate explicit authorization binding the final source and manifest
-   digest, both effective profile fingerprints, all request hashes, all 32
-   ordered named slots and schedule digest, official endpoint, requested and
-   expected returned model, project ID, exact credential identity/version,
-   host/state identity and `operator_uid`/`operator_gid`. Bind a whole-second
-   UTC start and expiry (`Z` suffix), 32 logical slots/physical forwards,
-   per-slot/total output limits, refreshed input-token/dollar estimates, and
-   the preregistered 2× uncached cost and median-latency tolerances. Verify
-   project entitlement, spend exposure and data controls through the owner.
-5. Only after authorization, store the dedicated project-scoped key in private
-   `credential-<version>` and the exact private `approval.json` using schema
-   `queryops-planner-study-local-approval-v1`. Only the private approval contains
-   the credential SHA-256. Do not put the key in the repository, command line,
-   environment or evidence. Old Linux approvals cannot authorize this path.
-   Exact fields/types are enforced by `verify_approval` in
-   [the study CLI](../../backend/scripts/planner_study.py).
-6. From `backend/`, the separately authorized operator runs
-   `.venv/bin/python -B -m scripts.planner_study live`. The command has no
-   credential or state-path argument. It fails closed without the private
-   approval and matching source, runtime, database, scopes and credential.
+After the cleanup merges and all six final-main CI gates pass:
 
-The process completes offline controls, atomically creates `claimed`, syncs its
-parent, writes/syncs an approval-digest receipt and syncs its evidence directory
-before constructing any network transport. An existing entry, including an
-empty directory or symlink, rejects concurrent activation and every repeat.
-A failure after claim creation consumes the attempt even if zero requests were
-forwarded. There is no resume, replacement or automatic cleanup. Preserve the
-claim after interruption, errors or uncertain writes.
+1. Use the clean merged checkout and the existing backend environment. Keep source
+   and dependencies unchanged for the attempt. Exact HEAD, tracked blob bytes and
+   modes, visible index entries, actual Python/interpreter and dependency versions
+   remain verified; a branch name is not an identity. No root-owned checkout or
+   separate environment is needed.
+2. Reuse the unchanged, owned synthetic PostgreSQL 16 environment from preparation,
+   or prepare a fresh one with the offline procedure. Do not initialize an already
+   populated candidate again. Regenerate a new manifest for the merged source and
+   run a fresh supplied-plan dry-run. Keep old manifests/evidence; never overwrite
+   them to hide a mismatch. Do not use W9, W6c or the application database.
+3. Run the command below once using the same database URL, owner receipt and
+   manifest already used offline. Existing prepared bundles contain `database-url`
+   and `owner`; there is no extra copy into canonical state. `.env` supplies the
+   existing key automatically.
 
-The SQLite ledger uses `synchronous=EXTRA` and `fullfsync=ON`. The guard durably
-commits and reads back the named slot reservation before entering the underlying
-transport. It rechecks source/runtime/database/authorization identities and the
-approval/claim and expiry before dispatch. A monotonic deadline plus a process
-alarm bounds the approved window; Ctrl-C/process death leaves the claim intact.
-An in-flight request can still complete remotely. The actual returned model is
-checked starting with the first authorized slot, without a separate model probe.
-Wrong identity, incomplete response or telemetry, auth/quota/HTTP failures,
-transport uncertainty, malformed evidence, scope/RLS failure, unsafe SQL,
-renderer/conformance/runtime failure and ledger failure stop both arms. Valid
-clarification, refusal and semantic misses retain preregistered scoring. Output
-passes through the production structured parser and governed read-only
-PostgreSQL runtime.
+From `backend/`, with `study` pointing to the private prepared directory:
+
+```bash
+export PLANNER_STUDY_DATABASE_URL="$(cat "$study/database-url")"
+.venv/bin/python -B -m scripts.planner_study manifest \
+  --owner-receipt "$study/owner" --manifest "$study/manifest-after-merge.json"
+.venv/bin/python -B -m scripts.planner_study dry-run \
+  --owner-receipt "$study/owner" --manifest "$study/manifest-after-merge.json" \
+  --evidence "$study/dry-run-after-merge"
+# Separately from offline validation, execute the already authorized attempt once:
+.venv/bin/python -B -m scripts.planner_study live --allow-paid-study \
+  --owner-receipt "$study/owner" --manifest "$study/manifest-after-merge.json"
+```
+
+The CLI displays derived input-token estimates and the output ceiling without
+requiring estimate fields. The 2026-11-11 preparation estimated approximately
+295,871 input tokens from recorded UTF-8 bytes / 4 and about $0.62 at Standard
+uncached rates, including the full output ceiling. See [published pricing](https://developers.openai.com/api/docs/models/gpt-6.1-terra).
+These are planning estimates, not measured token counts or dollar caps. The
+manifest retains per-case input-byte counts; refresh estimates when regenerating
+it. The advancement scorer still applies its preregistered 2× uncached-equivalent
+cost and median-latency tolerances after complete telemetry is available.
+
+## Safeguards and evidence
+
+The command creates private local state automatically at the OS account's actual
+home (independent of `HOME`), followed by
+`Library/Application Support/QueryOps/queryops-planner-study-v1`. There is no state
+path override, Docker, Linux host, VM, root privilege or dedicated system user.
+Old configuration files can remain as historical preparation artifacts; they are
+not execution inputs. Never delete or reset an existing `claimed` entry.
+
+Preflight revalidates the manifest and runs offline authorization/RLS controls.
+Only then does the process atomically create `claimed`, sync its parent, write
+and sync `manifest.sha256`, and prepare the private evidence directory. Any existing
+entry, including a symlink or empty directory from an interrupted start, consumes
+the study and rejects another activation. Failure after claiming is terminal even
+if zero requests were forwarded. There is no resume, replacement or cleanup path.
+
+Both SDK and transport retries and redirects are disabled. The official Responses
+endpoint, verified TLS, `store=false`, 45-second HTTP phase timeouts and 2,048 output
+tokens per response remain fixed. The ceiling is 32 logical slots, 32 physical
+forwards and 65,536 output tokens. A derived process deadline of 32 × 45 seconds
+(24 minutes after preflight) also bounds accumulated I/O phases. An in-flight
+request can complete remotely after interruption, and its billing can be unknown.
+
+The SQLite ledger retains `synchronous=EXTRA` and `fullfsync=ON`. Every scheduled
+reservation is committed and read back before the underlying transport is entered.
+The guard checks the actual serialized request hash, endpoint, model profile and
+API-key authorization header. It rejects project/organization headers. Source,
+runtime, actor/exact scopes and database/policy/data fingerprints are checked when
+building context, immediately before forwarding and after the provider response.
+These checks protect different points in the request/execution sequence. The
+claim's device/inode and receipt are checked throughout; redundant host and
+approval-file checks are removed. The actual returned model and complete bounded
+usage are verified on every response, beginning with the first scheduled slot;
+there is no separate model probe.
+
+Wrong identity, unsafe SQL, scope/RLS failure, renderer/conformance/runtime failure,
+malformed/incomplete responses or telemetry, auth/quota/HTTP failure, timeout,
+transport uncertainty or persistence failure stops both arms. Valid clarification,
+refusal and semantic misses keep the unchanged preregistered scoring. Output uses
+the production structured parser, deterministic renderer, SQL validation,
+conformance and governed read-only PostgreSQL execution.
 
 Inspect `claimed/evidence/ledger/slots.sqlite3` read-only, including the `study`
 seal and ordered `slots` rows. A pending row is possible exposure and bars replay.
-A completed seal requires 32 durable, read-back observations and a final identity
-check. Evidence contains fixed identifiers, digests, stages, verified model
-labels, bounded usage/latency and safe failure codes. It excludes raw provider
-payloads, prompts, plans, SQL, result rows and credentials. Revoke the dedicated
-credential after the attempt; keep the claim and evidence. Study results remain
-diagnostic and do not satisfy [V1 quality gates](../evaluation/v1-quality-gates.md).
+A completed seal requires 32 durable read-back observations and final identity
+verification. Evidence contains fixed identifiers/digests, stages, model labels,
+bounded usage/latency and safe failure codes. It excludes keys, provider payloads,
+prompts, plans, SQL and result rows. Preserve the claim and ledger on every outcome.
+Do not rotate or revoke the reused application key as automatic study cleanup.
 
 ### Reduced replay guarantee
 
-The claim and ledger prevent accidental duplicate execution while the local
-state remains intact, including after normal crashes, interrupted requests,
-pending reservations and SQLite failures. The machine owner can deliberately
-delete or alter state, change the OS account/home, copy a credential to another
-machine, or restore an earlier filesystem snapshot. This design does not resist
-those actions or privileged replay. Never treat missing/restored evidence as
-permission to rerun. Power-loss/storage durability is limited by the local OS,
-filesystem and hardware; an uncertain write or host incident is terminal for
-the operator. Sync failures never permit a forward.
+The fixed claim and durable ledger prevent accidental duplicate execution while
+local state remains intact, including after normal crashes, interrupted requests,
+pending reservations and SQLite failures. They do not resist the machine owner
+altering/deleting state, changing accounts/homes, copying credentials or restoring
+an earlier filesystem snapshot. The CLI intent flag replaces a separately signed
+or manually prepared authorization record; it is not a multi-user permission
+boundary. Source/runtime/data consistency, backend authorization and RLS remain
+independent checks. Power-loss/storage durability depends on the local filesystem
+and hardware; an uncertain write or host incident is terminal. Sync failures never
+permit a forward. No diagnostic result qualifies V1 for release.
 
-## Additional offline verification
+## Offline verification
 
-Run the default backend tests, including `tests/test_planner_study.py` and
-`tests/test_planner_study_activation.py`, on macOS. They exercise fake Responses
-transport, all 32 slots, atomic claim races, replay, SIGKILL, deadline expiry,
-private-file checks, identity drift, timeout and persistence failures. Every
-activation test redirects state to a fresh temporary directory and uses a
-synthetic key and test-only approval; none touches canonical state.
+Run `tests/test_planner_study.py` and `tests/test_planner_study_activation.py` on
+macOS with fake transport. Tests use synthetic keys and temporary state, exercise
+all 32 requests, existing `.env` parsing without a Project ID, the explicit CLI
+gate, claim races, replay, SIGKILL, deadline expiry, identity drift and transport/
+persistence failures. They never use the operator's key or canonical claim.
 
-For PostgreSQL, prepare a fresh owned cluster/database with the offline procedure
-through migrations/comment, **before** `initialize`. Run
-`pytest tests/planner_study_live_postgres.py` from `backend/` with
-`PLANNER_STUDY_TEST_DATABASE_URL` and `PLANNER_STUDY_TEST_OWNER` set to its URL
-and ownership receipt. It initializes and deliberately mutates its database,
-verifies denied/RLS controls, runs the complete local activation with a fake
-transport and rejects post-dispatch database drift. Do not reuse that mutated
-database as the study candidate. The PostgreSQL Security CI gate runs this
-explicit test on its own PostgreSQL service; all CI calls remain synthetic.
+For PostgreSQL, prepare a separate fresh owned cluster/database with the offline
+procedure through migrations/comment, **before** `initialize`. From `backend/`,
+run `pytest tests/planner_study_live_postgres.py` with
+`PLANNER_STUDY_TEST_DATABASE_URL` and `PLANNER_STUDY_TEST_OWNER`. It initializes and
+deliberately mutates its own database, verifies denied/RLS controls, completes
+fake 32-slot activation without manual approval or credential files and rejects
+runtime/database drift. Do not reuse that mutated database as the candidate.
+The PostgreSQL Security CI gate runs this explicit check on a separate synthetic
+PostgreSQL service. All six CI gates remain unchanged; every CI request is fake.

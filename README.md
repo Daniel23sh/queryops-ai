@@ -210,8 +210,10 @@ The diagnostic-only zero-retry policy does not change normal product retries.
 W6c preparation and its disabled-by-default live guard are documented in the
 [v2 diagnostic proposal](docs/audits/w6c/live-experiment-v2.md). The separate
 [six-case v3 preparation contract](docs/audits/w6c/live-experiment-v3.md) adds an
-offline entry point and distinct approval/journal identity; live remains separately
-unauthorized.
+offline entry point and distinct approval/journal identity. Its completed live
+diagnostic remains historical evidence; any new W6c execution requires separate
+authorization. The [local planner study](docs/development/planner-reliability-study.md)
+is a distinct bounded diagnostic and does not qualify V1.
 
 The OpenAI provider returns only a structured `SemanticPlan` in one request. QueryOps validates the plan, renders SQL deterministically in the backend, and makes no repair or fallback provider call.
 

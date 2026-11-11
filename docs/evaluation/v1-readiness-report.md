@@ -1,6 +1,15 @@
 # QueryOps V1 Readiness Report
 
-## M10 evidence checkpoint — 2026-11-09
+## Current M10 status
+
+V1 remains incomplete and unreleased. W9 froze
+`46ea556798230d95901045cbe73a5d76981e8c9e`; its first canary failed and the
+sequence stopped. PR #78's separate temporal correction and the merged planner
+study preparation do not supply qualifying V2 evidence. The study remains
+unexecuted. See [PROJECT_PLAN](../../PROJECT_PLAN.md) for current approved work;
+new qualification still requires matching canary/full40 evidence and manual QA.
+
+## Historical M10 evidence checkpoint — 2026-11-09
 
 V1 remains incomplete and unreleased for the local synthetic IT Operations target.
 PR #76 merged at `b2519b2909e5b5615f2211afd6c7e4aa74ae09ad`; all six final-main

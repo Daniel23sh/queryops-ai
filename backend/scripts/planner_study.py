@@ -1,4 +1,4 @@
-"""Prepare the planner study offline or run it with a one-shot operator grant."""
+"""Prepare the planner study offline or explicitly authorize one bounded live attempt."""
 from __future__ import annotations
 
 import argparse
@@ -584,38 +584,6 @@ def dry_run(engine, owner, manifest, evidence):
             "provider_dispatches": 0, "denied_control_dispatches": 0, "passes": len(slots())}
 
 
-def verify_approval(approval, manifest):
-    expected = {
-        "schema": "queryops-planner-study-local-approval-v1", "approved": True,
-        "study_id": activation.STUDY_ID, **activation.state_identity(),
-        "operator_uid": os.getuid(), "operator_gid": os.getgid(),
-        "source": manifest["source"], "manifest_sha256": manifest["fingerprint"],
-        "profiles": {arm: manifest["profiles"][arm]["fingerprint"] for arm in ARMS},
-        "requests": {case.id: manifest["cases"][case.id]["request_sha256"] for case in CASES},
-        "schedule": manifest["schedule"], "schedule_sha256": manifest["schedule_sha256"],
-        "endpoint": RESPONSES, "model": MODEL, "returned_model": MODEL,
-        "logical_slots": len(slots()), "physical_dispatches": len(slots()),
-        "output_tokens_per_slot": OUTPUT_TOKENS, "total_output_tokens": len(slots()) * OUTPUT_TOKENS,
-        "median_latency_ratio": 2, "uncached_cost_ratio": 2,
-    }
-    varying = {
-        "project", "credential_version", "credential_sha256", "starts_utc", "expires_utc",
-        "estimated_input_tokens", "estimated_cost_usd",
-    }
-    require(set(approval) == set(expected) | varying
-            and encode({key: approval[key] for key in expected}) == encode(expected), "approval_mismatch")
-    for key, pattern in (("project", r"proj_[A-Za-z0-9_-]{1,128}"),
-                         ("credential_version", r"[A-Za-z0-9_-]{1,64}"),
-                         ("credential_sha256", r"[a-f0-9]{64}"),
-                         ("estimated_cost_usd", r"(?:0|[1-9][0-9]{0,4})\.[0-9]{2,6}")):
-        value = approval[key]
-        require(isinstance(value, str) and re.fullmatch(pattern, value), "approval_field_invalid")
-    estimate = approval["estimated_input_tokens"]
-    require(type(estimate) is int and 0 < estimate <= 10**8 and float(approval["estimated_cost_usd"]) > 0,
-            "approval_exposure_invalid")
-    return activation.remaining(approval)
-
-
 def check_source(expected):
     activation.verify_source(ROOT, expected, git)
 
@@ -664,13 +632,12 @@ def response_evidence(response):
 class SlotTransport(httpx.BaseTransport):
     """The only path to the underlying transport for one scheduled slot."""
 
-    def __init__(self, inner, ledger, ordinal, identity, credential, project, verify, gate):
+    def __init__(self, inner, ledger, ordinal, identity, credential, verify, gate):
         self.inner = inner
         self.ledger = ledger
         self.ordinal = ordinal
         self.identity = identity
         self.credential = credential
-        self.project = project
         self.verify = verify
         self.gate = gate
         self.entered = False
@@ -691,7 +658,7 @@ class SlotTransport(httpx.BaseTransport):
             require(request.method == "POST" and str(request.url) == RESPONSES
                     and request.headers.get_list("host") == ["api.openai.com"]
                     and request.headers.get_list("authorization") == ["Bearer " + self.credential]
-                    and request.headers.get_list("openai-project") == [self.project]
+                    and "openai-project" not in request.headers
                     and "openai-organization" not in request.headers
                     and request.headers.get("accept-encoding") == "identity"
                     and digest(activation.decode(request.content)) == self.identity["request_sha256"],
@@ -735,7 +702,7 @@ class SlotTransport(httpx.BaseTransport):
         self.inner.close()
 
 
-def run_live(engine, owner, manifest, approval, credential, ledger, gate, make_transport):
+def run_live(engine, owner, manifest, credential, ledger, gate, make_transport):
     pack = load_it_operations_domain_pack()
     settings = profiles(credential)
     observations, records = [], []
@@ -758,12 +725,11 @@ def run_live(engine, owner, manifest, approval, credential, ledger, gate, make_t
             config = settings[arm].openai
             if config is None:
                 raise StudyStop("profile_settings_invalid")
-            guarded = SlotTransport(make_transport(), ledger, ordinal, identity, credential,
-                                    approval["project"], verify, gate)
+            guarded = SlotTransport(make_transport(), ledger, ordinal, identity, credential, verify, gate)
             with OpenAI(
-                api_key=credential, base_url=OFFICIAL_OPENAI_BASE_URL, project=approval["project"],
+                api_key=credential, base_url=OFFICIAL_OPENAI_BASE_URL, project="",
                 organization="", admin_api_key="", webhook_secret="",
-                default_headers=cast(Any, {"OpenAI-Organization": omit}),
+                default_headers=cast(Any, {"OpenAI-Organization": omit, "OpenAI-Project": omit}),
                 max_retries=config.max_retries, timeout=config.timeout_seconds,
                 http_client=httpx.Client(transport=guarded, trust_env=False, follow_redirects=False,
                                          headers={"accept-encoding": "identity"}),
@@ -792,59 +758,49 @@ def run_live(engine, owner, manifest, approval, credential, ledger, gate, make_t
         raise StudyStop(code) from None
 
 
-def live():
+def live(engine, owner, manifest):
     require(not activation.STATE.is_relative_to(ROOT), "activation_state_path_invalid")
-    activation.state_identity()
     require(not os.path.lexists(activation.CLAIM), "activation_already_claimed")
-    approval = activation.decode(activation.read_private(activation.STATE / "approval.json"))
-    manifest = activation.decode(activation.read_private(activation.STATE / "manifest.json"))
-    deadline = time.monotonic() + verify_approval(approval, manifest)
-    owner = activation.read_private(activation.STATE / "database-owner").decode().strip()
-    require(bool(re.fullmatch(r"[0-9a-f]{32}", owner)), "ownership_receipt_invalid")
-    database_url = activation.read_private(activation.STATE / "database-url").decode().strip()
-    engine = owned_engine(database_url, live=True)
+    pack = load_it_operations_domain_pack()
+    checked_snapshot(engine, pack, owner, manifest)
+    with Session(engine) as db:
+        offline_controls(engine, db, pack, manifest)
+    credential = activation.local_api_key(ROOT / ".env")
+    missing = []
+    directory = activation.STATE
+    while not os.path.lexists(directory):
+        missing.append(directory)
+        directory = directory.parent
+    activation.STATE.mkdir(parents=True, exist_ok=True, mode=0o700)
+    activation.private(activation.STATE, directory=True)
+    for directory in reversed(missing):
+        activation.sync_directory(directory.parent)
+    activation.claim(manifest["fingerprint"])
+    claim_info = activation.private(activation.CLAIM, directory=True)
+    deadline = time.monotonic() + len(slots()) * TIMEOUT
+
+    def gate():
+        current = activation.private(activation.CLAIM, directory=True)
+        require((current.st_dev, current.st_ino) == (claim_info.st_dev, claim_info.st_ino)
+                and activation.read_private(activation.CLAIM / "manifest.sha256").decode()
+                == manifest["fingerprint"] + "\n", "activation_claim_changed")
+        seconds = deadline - time.monotonic()
+        require(seconds > 0, "activation_deadline_exceeded")
+        return seconds
+
+    # A derived wall-clock ceiling also bounds the sum of HTTP I/O phases.
+    signal.signal(signal.SIGALRM, signal.SIG_DFL)
+    signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGALRM})
+    signal.setitimer(signal.ITIMER_REAL, gate())
     try:
-        pack = load_it_operations_domain_pack()
-        checked_snapshot(engine, pack, owner, manifest)
-        with Session(engine) as db:
-            offline_controls(engine, db, pack, manifest)
-        verify_approval(approval, manifest)
-        credential = activation.read_private(
-            activation.STATE / ("credential-" + approval["credential_version"])).decode().strip()
-        require(bool(re.fullmatch(r"[A-Za-z0-9_-]{20,512}", credential))
-                and hashlib.sha256(credential.encode()).hexdigest() == approval["credential_sha256"],
-                "activation_credential_changed")
-        approval_sha = digest(approval)
-        activation.claim(approval_sha)
-        claim_info = activation.private(activation.CLAIM, directory=True)
-
-        def gate():
-            identity = activation.state_identity()
-            current_claim = activation.private(activation.CLAIM, directory=True)
-            require(all(approval[key] == value for key, value in identity.items())
-                    and (current_claim.st_dev, current_claim.st_ino) == (claim_info.st_dev, claim_info.st_ino)
-                    and activation.read_private(activation.CLAIM / "approval.sha256").decode() == approval_sha + "\n"
-                    and digest(activation.decode(activation.read_private(activation.STATE / "approval.json"))) == approval_sha,
-                    "activation_claim_changed")
-            seconds = min(activation.remaining(approval), deadline - time.monotonic())
-            require(seconds > 0, "activation_outside_window")
-            return seconds
-
-        # HTTPX bounds I/O phases; this deadline also bounds their sum.
-        signal.signal(signal.SIGALRM, signal.SIG_DFL)
-        signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGALRM})
-        signal.setitimer(signal.ITIMER_REAL, gate())
+        ledger = Ledger(activation.EVIDENCE / "ledger", manifest["fingerprint"])
         try:
-            ledger = Ledger(activation.EVIDENCE / "ledger", manifest["fingerprint"])
-            try:
-                return run_live(engine, owner, manifest, approval, credential, ledger, gate,
-                                lambda: httpx.HTTPTransport(verify=True, trust_env=False, retries=0))
-            finally:
-                ledger.close()
+            return run_live(engine, owner, manifest, credential, ledger, gate,
+                            lambda: httpx.HTTPTransport(verify=True, trust_env=False, retries=0))
         finally:
-            signal.setitimer(signal.ITIMER_REAL, 0)
+            ledger.close()
     finally:
-        engine.dispose()
+        signal.setitimer(signal.ITIMER_REAL, 0)
 
 
 def main():
@@ -853,22 +809,32 @@ def main():
     parser.add_argument("--owner-receipt", type=Path)
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--evidence", type=Path)
+    parser.add_argument("--allow-paid-study", action="store_true",
+                        help="Authorize this single bounded 32-slot paid study attempt")
     args = parser.parse_args()
     try:
-        if args.action == "live":
-            require(args.owner_receipt is args.manifest is args.evidence is None, "offline_arguments_invalid")
-            print(encode(live()))
-            return 0
+        require(args.allow_paid_study == (args.action == "live"), "activation_authorization_required")
         if args.owner_receipt is None:
             raise StudyStop("offline_arguments_invalid")
         owner = args.owner_receipt.read_text().strip()
         require(bool(re.fullmatch(r"[0-9a-f]{32}", owner)), "ownership_receipt_invalid")
-        engine = owned_engine(os.environ.get("PLANNER_STUDY_DATABASE_URL", ""))
+        engine = owned_engine(os.environ.get("PLANNER_STUDY_DATABASE_URL", ""), live=args.action == "live")
         try:
             if args.action == "initialize":
                 initialize(engine, owner)
                 return 0
             require(args.manifest is not None, "manifest_path_required")
+            if args.action == "live":
+                require(args.evidence is None, "offline_arguments_invalid")
+                manifest = activation.decode(args.manifest.read_bytes())
+                input_bytes = sum(manifest["cases"][case]["input_utf8_bytes"]
+                                  for _, case, _ in manifest["schedule"])
+                print(encode({"logical_slots": len(slots()), "physical_forward_limit": len(slots()),
+                              "estimated_input_tokens": math.ceil(input_bytes / 4),
+                              "token_estimate_basis": "recorded_utf8_bytes_div_4",
+                              "max_output_tokens": len(slots()) * OUTPUT_TOKENS}), flush=True)
+                print(encode(live(engine, owner, manifest)))
+                return 0
             if args.action == "manifest":
                 with Session(engine) as db:
                     identity = prepare(db, load_it_operations_domain_pack(), owner)
