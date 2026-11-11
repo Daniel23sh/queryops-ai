@@ -1,6 +1,5 @@
 """Deterministic activation tests. Every provider response is synthetic."""
 from contextlib import nullcontext
-from datetime import UTC, datetime, timedelta
 import hashlib
 import json
 import os
@@ -19,7 +18,6 @@ from scripts.semantic_ownership_fixtures import offline_schema
 
 
 KEY = "synthetic-study-key-not-a-credential"
-PROJECT = "proj_synthetic_study"
 
 
 @pytest.fixture
@@ -52,7 +50,7 @@ except FileExistsError:
     env = {"PATH": os.environ["PATH"]}
     commands = [subprocess.Popen([sys.executable, "-B", "-c", program], cwd=path, env=env) for path in callers]
     assert sorted(p.wait(timeout=15) for p in commands) == [0, 2]
-    assert (launch.CLAIM / "approval.sha256").read_text() == "a" * 64 + "\n"
+    assert (launch.CLAIM / "manifest.sha256").read_text() == "a" * 64 + "\n"
     with pytest.raises(FileExistsError):
         launch.claim("b" * 64)
 
@@ -105,7 +103,7 @@ os.kill(os.getpid(), signal.SIGKILL)
         launch.claim("b" * 64)
 
 
-def test_live_rejects_missing_approval_despite_environment_key(state, monkeypatch):
+def test_live_rejects_missing_paid_flag_despite_environment_key(state, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", KEY)
     monkeypatch.setattr(httpx, "HTTPTransport", lambda **_: pytest.fail("real transport constructed"))
     monkeypatch.setattr(sys, "argv", ["planner_study", "live"])
@@ -130,7 +128,7 @@ def dispatch(tmp_path):
 
 def request(payload=None, **changes):
     return httpx.Request("POST", study.RESPONSES, json={"synthetic": True} if payload is None else payload,
-                         headers={"authorization": "Bearer " + KEY, "openai-project": PROJECT,
+                         headers={"authorization": "Bearer " + KEY,
                                   "accept-encoding": "identity", **changes})
 
 
@@ -138,7 +136,7 @@ def transport(dispatch, handler, *, ordinal=0, verify=lambda: None, gate=lambda:
     block, index, arm = study.slots()[ordinal]
     identity = {"block": block, "case": study.CASES[index].id, "arm": arm,
                 "request_sha256": study.digest({"synthetic": True})}
-    return study.SlotTransport(httpx.MockTransport(handler), dispatch, ordinal, identity, KEY, PROJECT, verify, gate)
+    return study.SlotTransport(httpx.MockTransport(handler), dispatch, ordinal, identity, KEY, verify, gate)
 
 
 def test_dispatch_commits_before_forward_and_never_forwards_twice(dispatch):
@@ -223,7 +221,7 @@ def test_dispatch_rejection_never_forwards(dispatch, kind):
     assert dispatch.db.execute("SELECT count(*) FROM slots").fetchone() == (0,)
 
 
-@pytest.mark.parametrize("reason", ["activation_outside_window", "activation_operator_stopped"])
+@pytest.mark.parametrize("reason", ["activation_deadline_exceeded", "activation_claim_changed"])
 def test_stop_between_reservation_and_forward(dispatch, reason):
     def gate():
         if dispatch.db.execute("SELECT count(*) FROM slots").fetchone()[0]:
@@ -255,7 +253,7 @@ def fake_manifest(pack):
         prompt = study.build_safe_prompt_projection(case.question, schema, user, projection)
         contexts[case.id] = None, schema, user, projection, prompt
     manifest = {"source": "a" * 40, "profiles": study.profile_specs(study.profiles()),
-                "cases": {case.id: {"request_sha256": {
+                "cases": {case.id: {"input_utf8_bytes": len(study.encode(contexts[case.id][-1]).encode()), "request_sha256": {
                     arm: study.digest(study.body(contexts[case.id][-1], arm)) for arm in study.ARMS
                 }} for case in study.CASES},
                 "schedule": [[block, study.CASES[index].id, arm] for block, index, arm in study.slots()]}
@@ -272,15 +270,17 @@ def test_all_32_sdk_requests_remain_paired_and_complete(dispatch, monkeypatch):
     monkeypatch.setattr(study, "score", lambda *args: "pass")
     monkeypatch.setattr(httpx, "HTTPTransport", lambda **_: pytest.fail("real transport constructed"))
     requests = []
+    monkeypatch.setenv("OPENAI_PROJECT_ID", "proj_must_not_be_inherited")
 
     def factory():
         def handler(req):
+            assert "openai-project" not in req.headers
             _, i, _ = study.slots()[len(requests)]
             requests.append(json.loads(req.content))
             return httpx.Response(200, json=fake_response(study.supplied(next(iter(study.CASES[i].plans), None))))
         return httpx.MockTransport(handler)
 
-    verdict = study.run_live(None, "synthetic", manifest, {"project": PROJECT}, KEY, dispatch, lambda: 10, factory)
+    verdict = study.run_live(None, "synthetic", manifest, KEY, dispatch, lambda: 10, factory)
     assert verdict["passes"] == {"low": 16, "medium": 16}
     assert len(requests) == 32
     for i in range(0, len(requests), 2):
@@ -308,41 +308,11 @@ def test_runner_stops_and_seals_before_a_second_slot(dispatch, monkeypatch, fail
     reason = {"profile": "profile_identity_changed", "source": "live_source_mismatch",
               "parser": "provider_invalid"}[failure]
     with pytest.raises(study.StudyStop, match=reason):
-        study.run_live(None, "synthetic", manifest, {"project": PROJECT}, KEY, dispatch,
+        study.run_live(None, "synthetic", manifest, KEY, dispatch,
                        lambda: 10, lambda: httpx.MockTransport(reply))
     assert len(forwards) == (failure == "parser")
     assert json.loads(dispatch.db.execute("SELECT seal FROM study").fetchone()[0]) == {
         "state": "stopped", "reason": reason}
-
-
-def synthetic_approval(manifest, identity, uid, gid):
-    return {"schema": "queryops-planner-study-local-approval-v1", "approved": True, "study_id": launch.STUDY_ID,
-                **identity, "operator_uid": uid, "operator_gid": gid,
-                "source": manifest["source"], "manifest_sha256": manifest["fingerprint"],
-                "profiles": {arm: manifest["profiles"][arm]["fingerprint"] for arm in study.ARMS},
-                "requests": {case: spec["request_sha256"] for case, spec in manifest["cases"].items()},
-                "schedule": manifest["schedule"], "schedule_sha256": manifest["schedule_sha256"],
-                "endpoint": study.RESPONSES, "model": study.MODEL, "returned_model": study.MODEL,
-                "logical_slots": 32, "physical_dispatches": 32, "output_tokens_per_slot": 2048,
-                "total_output_tokens": 65536, "median_latency_ratio": 2, "uncached_cost_ratio": 2,
-                "project": PROJECT, "credential_version": "synthetic", "starts_utc": "2000-01-01T00:00:00Z",
-                "expires_utc": (datetime.now(UTC) + timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"), "estimated_input_tokens": 4000,
-                "estimated_cost_usd": "0.40", "credential_sha256": hashlib.sha256(KEY.encode()).hexdigest()}
-
-
-def test_owner_approval_binds_all_exact_identities(monkeypatch):
-    identity = {"host_sha256": "b" * 64, "state_root": str(launch.STATE), "state_device": 1, "state_inode": 2}
-    monkeypatch.setattr(launch, "state_identity", lambda: identity)
-    pack = study.load_it_operations_domain_pack()
-    manifest, _ = fake_manifest(pack)
-    approval = synthetic_approval(manifest, identity, os.getuid(), os.getgid())
-    assert study.verify_approval(approval, manifest) > 0
-    for key in ("source", "host_sha256", "state_root", "state_device", "state_inode", "manifest_sha256",
-                "profiles", "requests", "schedule", "physical_dispatches", "median_latency_ratio"):
-        with pytest.raises(study.StudyStop, match="approval_mismatch"):
-            study.verify_approval({**approval, key: None}, manifest)
-    with pytest.raises(launch.ActivationError, match="activation_outside_window"):
-        study.verify_approval({**approval, "expires_utc": "2001-01-01T00:00:00Z"}, manifest)
 
 
 @pytest.mark.parametrize("flag", ["h", "S"])
@@ -380,20 +350,18 @@ def test_live_source_checks_raw_bytes_even_when_git_reports_clean(monkeypatch, t
 @pytest.fixture
 def local_activation(state, monkeypatch):
     manifest, contexts = fake_manifest(study.load_it_operations_domain_pack())
-    approval = synthetic_approval(manifest, launch.state_identity(), os.getuid(), os.getgid())
-    documents = {"approval.json": study.encode(approval), "manifest.json": study.encode(manifest),
-                 "database-url": "synthetic-not-a-database", "database-owner": "b" * 32,
-                 "credential-synthetic": KEY}
-    for name, content in documents.items():
-        path = state / name
-        path.write_text(content)
-        path.chmod(0o600)
+    monkeypatch.setenv("OPENAI_API_KEY", KEY)
+    monkeypatch.setenv("OPENAI_PROJECT_ID", "proj_must_not_be_inherited")
+    owner = "b" * 32
+    (state / "owner").write_text(owner)
+    (state / "manifest.json").write_text(study.encode(manifest))
 
     class Engine:
         def dispose(self):
             pass
 
-    monkeypatch.setattr(study, "owned_engine", lambda *args, **kwargs: Engine())
+    engine = Engine()
+    monkeypatch.setattr(study, "owned_engine", lambda *args, **kwargs: engine)
     monkeypatch.setattr(study, "Session", lambda _: nullcontext(None))
     monkeypatch.setattr(study, "checked_snapshot", lambda _, pack, owner, manifest, case=None:
                         contexts[case.id] if case is not None else None)
@@ -402,10 +370,11 @@ def local_activation(state, monkeypatch):
     forwards = []
 
     def reply(req):
+        assert "openai-project" not in req.headers
         with sqlite3.connect(launch.EVIDENCE / "ledger" / "slots.sqlite3") as db:
             assert db.execute("SELECT count(*) FROM slots WHERE result IS NULL").fetchone() == (1,)
             assert db.execute("PRAGMA integrity_check").fetchone() == ("ok",)
-        assert (launch.CLAIM / "approval.sha256").read_text() == study.digest(approval) + "\n"
+        assert (launch.CLAIM / "manifest.sha256").read_text() == manifest["fingerprint"] + "\n"
         _, index, _ = study.slots()[len(forwards)]
         forwards.append(req)
         return httpx.Response(200, json=fake_response(study.supplied(next(iter(study.CASES[index].plans), None))))
@@ -415,17 +384,21 @@ def local_activation(state, monkeypatch):
         return httpx.MockTransport(reply)
 
     monkeypatch.setattr(httpx, "HTTPTransport", factory)
-    return approval, forwards
+    return engine, owner, manifest, forwards
 
 
 def test_local_cli_completes_32_slots_and_cannot_repeat(local_activation, monkeypatch, capsys):
-    _, forwards = local_activation
-    monkeypatch.setattr(sys, "argv", ["planner_study", "live"])
+    _, _, _, forwards = local_activation
+    monkeypatch.setattr(sys, "argv", ["planner_study", "live", "--allow-paid-study",
+                                      "--owner-receipt", str(launch.STATE / "owner"),
+                                      "--manifest", str(launch.STATE / "manifest.json")])
     assert study.main() == 0
-    assert json.loads(capsys.readouterr().out)["passes"] == {"low": 16, "medium": 16}
+    assert json.loads(capsys.readouterr().out.splitlines()[-1])["passes"] == {"low": 16, "medium": 16}
     assert len(forwards) == 32
+    assert not (launch.STATE / "approval.json").exists()
+    assert not list(launch.STATE.glob("credential-*"))
     with pytest.raises(study.StudyStop, match="activation_already_claimed"):
-        study.live()
+        study.live(*local_activation[:3])
     with sqlite3.connect(launch.EVIDENCE / "ledger" / "slots.sqlite3") as db:
         assert db.execute("SELECT count(*) FROM slots WHERE result IS NOT NULL").fetchone() == (32,)
         evidence = study.encode(db.execute("SELECT * FROM slots").fetchall())
@@ -433,29 +406,25 @@ def test_local_cli_completes_32_slots_and_cannot_repeat(local_activation, monkey
         assert json.loads(db.execute("SELECT seal FROM study").fetchone()[0])["state"] == "complete"
 
 
-@pytest.mark.parametrize("failure", ["source", "unauthorized", "credential", "permissions", "symlink"])
+@pytest.mark.parametrize("failure", ["source", "unauthorized", "credential", "state_permissions"])
 def test_local_preflight_failures_make_no_claim_or_forward(local_activation, monkeypatch, failure):
-    _, forwards = local_activation
+    _, _, _, forwards = local_activation
     if failure in {"source", "unauthorized"}:
         def fail(*args, **kwargs):
             raise study.StudyStop("synthetic_preflight_failure")
         monkeypatch.setattr(study, "checked_snapshot" if failure == "source" else "offline_controls", fail)
     elif failure == "credential":
-        (launch.STATE / "credential-synthetic").write_text("wrong-synthetic-key-identity")
-    elif failure == "permissions":
-        (launch.STATE / "approval.json").chmod(0o644)
+        monkeypatch.setenv("OPENAI_API_KEY", "")
     else:
-        path = launch.STATE / "credential-synthetic"
-        path.rename(launch.STATE / "other-key")
-        path.symlink_to(launch.STATE / "other-key")
+        launch.STATE.chmod(0o755)
     with pytest.raises((study.StudyStop, launch.ActivationError)):
-        study.live()
+        study.live(*local_activation[:3])
     assert not launch.CLAIM.exists() and forwards == []
 
 
 @pytest.mark.parametrize("failure", ["claim_sync", "ledger_open", "reservation"])
 def test_local_persistence_failure_never_forwards_and_cannot_resume(local_activation, monkeypatch, failure):
-    _, forwards = local_activation
+    _, _, _, forwards = local_activation
     def fail(*args, **kwargs):
         raise sqlite3.OperationalError("synthetic persistence failure")
     if failure == "claim_sync":
@@ -465,15 +434,15 @@ def test_local_persistence_failure_never_forwards_and_cannot_resume(local_activa
     else:
         monkeypatch.setattr(study.Ledger, "reserve", fail)
     with pytest.raises((sqlite3.OperationalError, study.StudyStop)):
-        study.live()
+        study.live(*local_activation[:3])
     assert launch.CLAIM.is_dir() and forwards == []
     with pytest.raises(study.StudyStop, match="activation_already_claimed"):
-        study.live()
+        study.live(*local_activation[:3])
 
 
-@pytest.mark.parametrize("failure", ["source", "approval", "timeout", "model", "telemetry", "invalid_json"])
+@pytest.mark.parametrize("failure", ["source", "claim", "timeout", "model", "telemetry", "invalid_json"])
 def test_local_post_dispatch_failure_is_terminal(local_activation, monkeypatch, failure):
-    _, forwards = local_activation
+    _, _, _, forwards = local_activation
     def reply(req):
         forwards.append(req)
         if failure == "timeout":
@@ -482,8 +451,8 @@ def test_local_post_dispatch_failure_is_terminal(local_activation, monkeypatch, 
             def drift(*args, **kwargs):
                 raise study.StudyStop("live_source_mismatch")
             monkeypatch.setattr(study, "checked_snapshot", drift)
-        if failure == "approval":
-            (launch.STATE / "approval.json").write_text("{}")
+        if failure == "claim":
+            (launch.CLAIM / "manifest.sha256").write_text("changed")
         data = fake_response()
         if failure == "model":
             data["model"] = "wrong"
@@ -492,20 +461,14 @@ def test_local_post_dispatch_failure_is_terminal(local_activation, monkeypatch, 
         return httpx.Response(200, content=b"invalid" if failure == "invalid_json" else study.encode(data).encode())
     monkeypatch.setattr(httpx, "HTTPTransport", lambda **_: httpx.MockTransport(reply))
     with pytest.raises((study.StudyStop, launch.ActivationError)):
-        study.live()
+        study.live(*local_activation[:3])
     assert len(forwards) == 1
     with pytest.raises(study.StudyStop, match="activation_already_claimed"):
-        study.live()
+        study.live(*local_activation[:3])
 
 
 @pytest.mark.parametrize("stop", ["kill", "deadline", "race"])
 def test_local_process_interruption_preserves_pending_and_blocks_restart(local_activation, stop):
-    if stop == "deadline":
-        approval, _ = local_activation
-        now = datetime.now(UTC).replace(microsecond=0)
-        approval.update(starts_utc=(now - timedelta(seconds=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
-                        expires_utc=(now + timedelta(seconds=3)).strftime("%Y-%m-%dT%H:%M:%SZ"))
-        (launch.STATE / "approval.json").write_text(study.encode(approval))
     program = f"""
 import os, signal, time
 from pathlib import Path
@@ -536,8 +499,11 @@ def reply(request):
     time.sleep(10)
     raise AssertionError("deadline did not stop the request")
 httpx.HTTPTransport = lambda **kwargs: httpx.MockTransport(reply)
+if {stop!r} == "deadline":
+    set_timer = signal.setitimer
+    signal.setitimer = lambda which, seconds: set_timer(which, min(seconds, 3))
 try:
-    study.live()
+    study.live(Engine(), "b" * 32, manifest)
 except FileExistsError:
     raise SystemExit(2)
 except study.StudyStop as exc:
@@ -551,14 +517,14 @@ except study.StudyStop as exc:
         with sqlite3.connect(launch.EVIDENCE / "ledger" / "slots.sqlite3") as db:
             assert db.execute("SELECT count(*), count(result) FROM slots").fetchone() == (32, 32)
         with pytest.raises(study.StudyStop, match="activation_already_claimed"):
-            study.live()
+            study.live(*local_activation[:3])
         return
     result = subprocess.run([sys.executable, "-B", "-c", program], cwd=study.ROOT / "backend", timeout=15)
     assert result.returncode == (-9 if stop == "kill" else -14)
     with sqlite3.connect(launch.EVIDENCE / "ledger" / "slots.sqlite3") as db:
         assert db.execute("SELECT ordinal, transport, result FROM slots").fetchall() == [(0, None, None)]
     with pytest.raises(study.StudyStop, match="activation_already_claimed"):
-        study.live()
+        study.live(*local_activation[:3])
 
 
 def test_fixed_state_uses_account_home_not_environment(monkeypatch):
@@ -602,3 +568,91 @@ def test_live_source_with_real_git_allows_ignored_environment_and_rejects_change
     tracked.write_bytes(b"# reviewed\r\n")
     with pytest.raises(launch.ActivationError, match="live_source_mismatch"):
         launch.verify_source(root, expected, lambda *args: launch.git(root, *args))
+
+
+@pytest.mark.parametrize("value", [KEY, '"' + KEY + '" # comment', "'" + KEY + "'"])
+def test_existing_dotenv_key_without_project(tmp_path, monkeypatch, value):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    config = tmp_path / ".env"
+    config.write_text("OPENAI_MODEL=ignored-application-default\nexport OPENAI_API_KEY = " + value + "\n")
+    assert launch.local_api_key(config) == KEY
+
+
+@pytest.mark.parametrize("content", ["", "OPENAI_API_KEY=\n", "OPENAI_API_KEY=bad value\n",
+                                     "OPENAI_API_KEY=" + KEY + "\nOPENAI_API_KEY=" + KEY + "\n"])
+def test_invalid_local_key_configuration_fails_closed(tmp_path, monkeypatch, content):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    config = tmp_path / ".env"
+    config.write_text(content)
+    with pytest.raises(launch.ActivationError, match="activation_credential_invalid"):
+        launch.local_api_key(config)
+
+
+def test_environment_key_precedence_does_not_need_a_file(tmp_path, monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", KEY)
+    assert launch.local_api_key(tmp_path / "missing") == KEY
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+    with pytest.raises(launch.ActivationError, match="activation_credential_invalid"):
+        launch.local_api_key(tmp_path / "missing")
+
+
+def test_local_cli_reads_existing_dotenv_with_no_manual_activation_files(local_activation, monkeypatch):
+    repository = launch.STATE / "checkout"
+    repository.mkdir()
+    (repository / ".env").write_text("OPENAI_API_KEY=" + KEY + "\nOPENAI_MODEL=ignored-default\n")
+    monkeypatch.setattr(study, "ROOT", repository)
+    monkeypatch.delenv("OPENAI_API_KEY")
+    assert study.live(*local_activation[:3])["passes"] == {"low": 16, "medium": 16}
+    assert not (launch.STATE / "approval.json").exists()
+    assert not list(launch.STATE.glob("credential-*"))
+
+
+@pytest.mark.parametrize("action", ["initialize", "manifest", "dry-run"])
+def test_paid_flag_is_exclusive_to_live(action, state, monkeypatch):
+    monkeypatch.setattr(httpx, "HTTPTransport", lambda **_: pytest.fail("real transport constructed"))
+    monkeypatch.setattr(sys, "argv", ["planner_study", action, "--allow-paid-study"])
+    with pytest.raises(SystemExit, match="1"):
+        study.main()
+    assert not launch.CLAIM.exists()
+
+
+@pytest.mark.parametrize("failure", ["writable", "symlink", "oversized"])
+def test_unsafe_dotenv_is_rejected(tmp_path, monkeypatch, failure):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    config = tmp_path / ".env"
+    config.write_text("OPENAI_API_KEY=" + KEY + "\n")
+    if failure == "writable":
+        config.chmod(0o666)
+    elif failure == "symlink":
+        target = tmp_path / "target"
+        config.rename(target)
+        config.symlink_to(target)
+    else:
+        config.write_text("#" * (launch.MAX_DOCUMENT + 1))
+    with pytest.raises((launch.ActivationError, OSError)):
+        launch.local_api_key(config)
+
+
+
+def test_local_state_is_created_automatically_and_synced(local_activation, monkeypatch):
+    parent = launch.STATE
+    monkeypatch.setattr(launch, "STATE", parent / "new-parent" / "state")
+    monkeypatch.setattr(launch, "CLAIM", launch.STATE / "claimed")
+    monkeypatch.setattr(launch, "EVIDENCE", launch.CLAIM / "evidence")
+    synced = []
+    sync = launch.sync_directory
+    factory = httpx.HTTPTransport
+
+    def sync_directory(path):
+        sync(path)
+        synced.append(path)
+
+    def transport(**kwargs):
+        assert parent in synced and parent / "new-parent" in synced
+        return factory(**kwargs)
+
+    monkeypatch.setattr(launch, "sync_directory", sync_directory)
+    monkeypatch.setattr(httpx, "HTTPTransport", transport)
+    assert study.live(*local_activation[:3])["passes"] == {"low": 16, "medium": 16}
+    launch.private(launch.STATE, directory=True)
+    assert (launch.CLAIM / "manifest.sha256").read_text() == local_activation[2]["fingerprint"] + "\n"

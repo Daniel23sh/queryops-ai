@@ -1,5 +1,9 @@
 # W9 entry decisions and qualification handoff
 
+Historical reference: W9 subsequently froze a candidate and stopped after its first
+canary failed. The dated proposals below are preserved as written, not current
+pending work.
+
 Decision draft — 2026-11-09. **Not approved.** Current scope and authorization live
 in [PROJECT_PLAN](../../PROJECT_PLAN.md). This document proposes decisions and an
 operator sequence; it changes neither executable gates nor authorization.

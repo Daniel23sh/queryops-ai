@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from scripts import planner_study as study
 from scripts import planner_study_activation as activation
-from tests.test_planner_study_activation import KEY, PROJECT, fake_response, synthetic_approval
+from tests.test_planner_study_activation import KEY, fake_response
 
 
 def test_full_guarded_study_and_post_dispatch_database_drift(tmp_path, monkeypatch):
@@ -32,31 +32,25 @@ def test_full_guarded_study_and_post_dispatch_database_drift(tmp_path, monkeypat
                 study.checked_snapshot(engine, pack, owner, manifest)
 
         state = tmp_path.resolve() / "local-state"
-        state.mkdir(mode=0o700)
         monkeypatch.setattr(activation, "STATE", state)
         monkeypatch.setattr(activation, "CLAIM", state / "test-claim")
         monkeypatch.setattr(activation, "EVIDENCE", activation.CLAIM / "evidence")
-        approval = synthetic_approval(manifest, activation.state_identity(), os.getuid(), os.getgid())
-        documents = {"approval.json": study.encode(approval), "manifest.json": study.encode(manifest),
-                     "database-url": os.environ["PLANNER_STUDY_TEST_DATABASE_URL"], "database-owner": owner,
-                     "credential-synthetic": KEY}
-        for name, content in documents.items():
-            path = state / name
-            path.write_text(content)
-            path.chmod(0o600)
+        monkeypatch.setenv("OPENAI_API_KEY", KEY)
+        monkeypatch.setenv("OPENAI_PROJECT_ID", "proj_must_not_be_inherited")
         requests = []
 
         def reply(request):
+            assert "openai-project" not in request.headers
             _, index, _ = study.slots()[len(requests)]
             requests.append(request)
             return httpx.Response(200, json=fake_response(study.supplied(next(iter(study.CASES[index].plans), None))))
 
         with monkeypatch.context() as patch:
             patch.setattr(httpx, "HTTPTransport", lambda **kwargs: httpx.MockTransport(reply))
-            assert study.live()["passes"] == {"low": 16, "medium": 16}
+            assert study.live(engine, owner, manifest)["passes"] == {"low": 16, "medium": 16}
             assert len(requests) == 32
             with pytest.raises(study.StudyStop, match="activation_already_claimed"):
-                study.live()
+                study.live(engine, owner, manifest)
         ledger = study.Ledger(tmp_path / "drift", manifest["fingerprint"])
         drift_requests = []
 
@@ -68,7 +62,7 @@ def test_full_guarded_study_and_post_dispatch_database_drift(tmp_path, monkeypat
 
         try:
             with pytest.raises(study.StudyStop, match="study_identity_changed"):
-                study.run_live(engine, owner, manifest, {"project": PROJECT}, KEY, ledger,
+                study.run_live(engine, owner, manifest, KEY, ledger,
                                lambda: 45, lambda: httpx.MockTransport(drift))
             assert len(drift_requests) == 1
             assert ledger.db.execute("SELECT ordinal, result FROM slots").fetchall() == [(0, None)]

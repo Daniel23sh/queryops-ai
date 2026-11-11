@@ -1,14 +1,13 @@
 """Local operator state and one-shot claim for the planner study."""
 from __future__ import annotations
 
-from datetime import UTC, datetime
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
+import shlex
 import stat
-import platform
 import pwd
 import subprocess
 
@@ -68,9 +67,7 @@ def git(checkout, *args):
 
 def verify_source(checkout, expected, read_git):
     require(isinstance(expected, str) and re.fullmatch(r"[0-9a-f]{40}", expected)
-            and expected == read_git("rev-parse", "HEAD") == read_git("rev-parse", "refs/heads/main")
-            == read_git("rev-parse", "refs/remotes/origin/main")
-            and read_git("symbolic-ref", "--short", "HEAD") == "main"
+            and expected == read_git("rev-parse", "HEAD")
             and all(line.startswith("H ") for line in read_git("ls-files", "-v").splitlines())
             and not read_git("ls-files", "--others", "--exclude-standard", "-z")
             and not read_git("diff", "--cached", "--name-only", "-z", "--no-ext-diff", "--no-textconv", expected, "--"),
@@ -88,12 +85,6 @@ def verify_source(checkout, expected, read_git):
         require(actual == blob, "live_source_mismatch")
 
 
-def state_identity():
-    info = private(STATE, directory=True)
-    return {"host_sha256": digest([platform.system(), platform.node(), platform.machine()]),
-            "state_root": str(STATE), "state_device": info.st_dev, "state_inode": info.st_ino}
-
-
 def read_private(path):
     private(path)
     fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
@@ -106,17 +97,23 @@ def read_private(path):
     return data
 
 
-def utc(value):
-    require(isinstance(value, str) and re.fullmatch(r"\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ", value),
-            "activation_window_invalid")
-    return datetime.fromisoformat(value).astimezone(UTC)
-
-
-def remaining(approval, *, now=None):
-    now = datetime.now(UTC) if now is None else now
-    start, end = utc(approval["starts_utc"]), utc(approval["expires_utc"])
-    require(start <= now < end, "activation_outside_window")
-    return (end - now).total_seconds()
+def local_api_key(env_file):
+    key = os.environ.get("OPENAI_API_KEY")
+    if key is None:
+        fd = os.open(env_file, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, "r") as file:
+            info = os.fstat(file.fileno())
+            require(stat.S_ISREG(info.st_mode) and info.st_uid == os.getuid() and not info.st_mode & 0o022,
+                    "activation_config_unprotected")
+            content = file.read(MAX_DOCUMENT + 1)
+        require(len(content) <= MAX_DOCUMENT, "activation_config_too_large")
+        matches = [re.fullmatch(r"(?:export\s+)?OPENAI_API_KEY\s*=\s*(.*)", line.strip())
+                   for line in content.splitlines()]
+        values = [shlex.split(match[1], comments=True) for match in matches if match]
+        require(len(values) == 1 and len(values[0]) == 1, "activation_credential_invalid")
+        key = values[0][0]
+    require(bool(re.fullmatch(r"[A-Za-z0-9_-]{20,512}", key.strip())), "activation_credential_invalid")
+    return key.strip()
 
 
 def sync_directory(path):
@@ -127,13 +124,13 @@ def sync_directory(path):
         os.close(fd)
 
 
-def claim(approval_sha256):
+def claim(manifest_sha256):
     # An empty directory already consumes the study. Never clean it up.
     CLAIM.mkdir(mode=0o700)
     sync_directory(STATE)
-    with (CLAIM / "approval.sha256").open("x") as receipt:
+    with (CLAIM / "manifest.sha256").open("x") as receipt:
         os.fchmod(receipt.fileno(), 0o600)
-        receipt.write(approval_sha256 + "\n")
+        receipt.write(manifest_sha256 + "\n")
         receipt.flush()
         os.fsync(receipt.fileno())
     EVIDENCE.mkdir(mode=0o700)

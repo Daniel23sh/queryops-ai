@@ -61,8 +61,8 @@ cd backend
 ```
 
 The second command requires a new explicitly disposable PostgreSQL environment;
-relevant skips are missing evidence. Final-head CI, independent V3 review and
-owned-resource cleanup are required before merge handoff. This correction
+relevant skips are missing evidence. PR #76 merged this correction; future changes
+follow the [validation model](validation-model.md). This correction
 invalidates earlier candidate identities; diagnostic successes never replace the
 separately authorized matching V2 canary/full40 and manual QA required by
 [the release policy](../evaluation/v1-quality-gates.md).
