@@ -27,12 +27,15 @@ Any new freeze, preparation or live qualification requires separate authorizatio
 
 ## Next Approved Work
 
-The offline Terra low-versus-medium study preparation merged in PR #79. Implement
-the [study-only activation guard](docs/development/planner-reliability-study.md)
-with a protected one-shot claim, no retries or redirects, and at most 32 physical
-dispatches. The approved endpoint is an independently reviewed Draft PR with
-deterministic validation. Live execution, claim consumption, and any new
-qualification require separate authorization.
+PRs #79 and #80 merged planner-study preparation and guarded activation. Replace
+the Linux privileged launcher with the approved local macOS activation in the
+[study runbook](docs/development/planner-reliability-study.md): fixed private
+local state, atomic one-shot claim, durable slot reservations, no retries or
+redirects, and at most 32 physical forwards. Deliberate owner deletion/rollback
+is outside this local diagnostic's replay guarantee. Preserve fixtures, scoring,
+production behavior and historical evidence. The endpoint is an independently
+reviewed Draft PR with all six deterministic CI gates. Live authorization,
+canonical claim consumption and new qualification remain separately unauthorized.
 
 ## References
 
