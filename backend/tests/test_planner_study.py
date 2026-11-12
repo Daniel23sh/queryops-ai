@@ -276,6 +276,24 @@ def test_strict_match_and_result_mismatch_remain_separate(scoring):
     assert len(calls) == 2
 
 
+@pytest.mark.parametrize("comparison", ["compare_plans", "result_indices"])
+def test_unsupported_diagnostics_do_not_interrupt_valid_scoring(scoring, monkeypatch, comparison):
+    run, calls = scoring
+    baseline, _, _ = run(study.CASES[0])
+
+    def unsupported(*_):
+        raise NotImplementedError("unsupported diagnostic comparison")
+
+    monkeypatch.setattr(study, comparison, unsupported)
+    stage, diagnostic, _ = run(study.CASES[0])
+    assert stage == baseline == "pass"
+    assert diagnostic["plan_comparison"] == "unestablished"
+    assert diagnostic["mismatch_axes"] == []
+    assert diagnostic["result_multiset_match"] == "not_evaluated"
+    assert study.bounded_diagnostics(diagnostic)
+    assert len(calls) == 2
+
+
 def test_assessment_ignores_additive_diagnostics_and_old_records_remain_unknown():
     usage = {"input_tokens": 1, "output_tokens": 1, "duration_ms": 1,
              "attempt_count": 1, "usage_complete": True}

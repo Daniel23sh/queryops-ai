@@ -49,6 +49,9 @@ ambiguous outputs and missing identities cannot be compared. The bounded INNER
 equality can align the demonstrated distinct FK/PK count. LEFT joins provide no
 such proof. Matching samples do not establish semantic equivalence; an unresolved
 plan can independently have matching or different comparable rows.
+An exception in optional comparison discards partial diagnostic claims and leaves
+them unresolved. Validation, security, execution, strict scoring and persistence
+failures are outside this exception boundary and retain their existing behavior.
 
 The ledger rejects unknown diagnostic keys, categories and unbounded content
 before persistence. No raw plan, SQL, rows, question, provider payload, literal,

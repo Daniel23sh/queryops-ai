@@ -324,18 +324,22 @@ def score(engine, pack, case, value, result, *, diagnostics=None):
     expected = [checked(plan, pack, value) for plan in case.plans]
     match = next((candidate for candidate in expected if matching_plan(actual, candidate)), None)
     if diagnostics is not None and expected:
-        comparisons = [compare_plans(actual, candidate, pack) for candidate in expected]
-        comparison = next((item for item in comparisons if item["plan_comparison"] == "equivalent"), comparisons[0])
-        diagnostics.update(comparison)
-        if match is not None:
-            diagnostics["plan_comparison"] = "strict_match"
-        indices = result_indices(actual.plan, case.plans[0], pack)
-        if indices is not None and len(output.columns) == len(indices):
-            try:
-                diagnostics["result_multiset_match"] = Counter(
-                    tuple(row[output.columns[i]] for i in indices) for row in output.rows) == Counter(case.rows)
-            except (ValueError, IndexError, KeyError, TypeError):
-                pass  # The existing scorer owns malformed-output handling.
+        try:
+            comparisons = [compare_plans(actual, candidate, pack) for candidate in expected]
+            comparison = next((item for item in comparisons if item["plan_comparison"] == "equivalent"), comparisons[0])
+            diagnostics.update(comparison)
+            if match is not None:
+                diagnostics["plan_comparison"] = "strict_match"
+            indices = result_indices(actual.plan, case.plans[0], pack)
+            if indices is not None and len(output.columns) == len(indices):
+                try:
+                    diagnostics["result_multiset_match"] = Counter(
+                        tuple(row[output.columns[i]] for i in indices) for row in output.rows) == Counter(case.rows)
+                except (ValueError, IndexError, KeyError, TypeError):
+                    pass  # The existing scorer owns malformed-output handling.
+        except Exception:
+            # Optional inference must not interrupt authoritative scoring or retain partial claims.
+            diagnostics.update(plan_comparison="unestablished", mismatch_axes=[], result_multiset_match="not_evaluated")
     if match is None:
         return "interpretation"
     try:
