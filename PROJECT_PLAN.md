@@ -27,22 +27,21 @@ Any new freeze, preparation or live qualification requires separate authorizatio
 
 ## Current Planner Study Status
 
-PRs #79–#81 are merged through `1293e9282edd3d1536e2834d4d5a48dc7c52bb4d`.
-Offline preparation passed all 32 supplied-plan slots with zero real provider
-requests. The bounded paid low-versus-medium study is owner-authorized but has
-not executed; its canonical one-shot claim is absent. It is diagnostic only and
-cannot qualify V1. Existing W9/W6c evidence remains unchanged.
+PR #82 merged at `a7779b8fa5d7c9aaee0c3170b54be46dbfcbc13e`. The authorized
+32-call study completed with both profiles scoring 10/16 and verdict `retain_low`.
+Its canonical claim is consumed and permanent. The retained observations cannot
+recover actual plans or distinguish clarification from accepted-plan mismatch.
+This diagnostic does not qualify V1. Existing study and W9/W6c evidence remain
+unchanged.
 
 ## Next Approved Work
 
-Simplify the [local planner study](docs/development/planner-reliability-study.md):
-reuse the existing key, remove manual Project ID/approval/credential metadata,
-and retain the fixed claim, durable reservations, 32-forward cap, frozen scoring
-and production safety boundaries. Review PRs #75–#81 for demonstrated redundancy
-and stale status documentation. Stop at one independently reviewed Draft PR with
-all six CI gates; this cleanup performs no paid execution. After merge, regenerate
-the study manifest and offline evidence before using the explicit execution flag.
-No new qualification run is authorized by this work.
+Add the smallest justified [diagnostic observation and comparison controls](docs/development/planner-diagnostic-observability.md),
+reusing the existing scorer/ledger without changing production interpretation,
+strict scores or historical evidence. Require independent correctness and
+necessity reviews, offline/fake-provider and disposable PostgreSQL evidence, and
+all six CI gates. Stop at one focused Draft PR; do not merge. No real provider
+request, study replay, guidance change or qualification run is authorized.
 
 ## References
 

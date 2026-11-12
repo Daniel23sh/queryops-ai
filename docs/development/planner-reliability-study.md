@@ -168,6 +168,12 @@ cost and median-latency tolerances after complete telemetry is available.
 
 ## Safeguards and evidence
 
+Future observations include [bounded diagnostic classifications](planner-diagnostic-observability.md)
+alongside the unchanged scoring stage. They distinguish outcome, bounded plan
+comparison and applicable row comparison without retaining plans or literals.
+Missing historical classifications remain unknown; the consumed ledger is not
+rewritten or replayed.
+
 The command creates private local state automatically at the OS account's actual
 home (independent of `HOME`), followed by
 `Library/Application Support/QueryOps/queryops-planner-study-v1`. There is no state

@@ -35,7 +35,8 @@ from app.models.product import AppUser
 from app.query_engine.domain_pack_loader import load_it_operations_domain_pack
 from app.query_engine.llm_provider import PlanGenerationOutcome
 from app.query_engine.openai_provider import (
-    SYSTEM_INSTRUCTIONS, OpenAIProvider, _StructuredProviderOutput, _usage_counts, build_safe_prompt_projection,
+    CLARIFICATION_REASONS, SYSTEM_INSTRUCTIONS, OpenAIProvider, _StructuredProviderOutput, _usage_counts,
+    build_safe_prompt_projection,
 )
 from app.query_engine.plan_generator import PlanGenerator
 from app.query_engine.provider_config import (
@@ -53,6 +54,7 @@ from app.query_engine.sql_validator import validate_sql
 from scripts.semantic_ownership_fixtures import count, field
 from scripts.planner_study_fixtures import ACTOR, CASES, DENIED_ACTOR, add_witnesses
 from scripts import planner_study_activation as activation
+from scripts.planner_study_diagnostics import bounded_diagnostics, compare_plans, result_indices
 from scripts.w6c_live import runtime_policy_identity
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -267,10 +269,17 @@ def checked(plan, pack, value):
                                   scope_reference_resolved=user["scope_reference_resolved"])
 
 
-def score(engine, pack, case, value, result):
+def score(engine, pack, case, value, result, *, diagnostics=None):
     """Arm-blind. Returned stages are safe, finite labels, never content."""
     metadata = result.generation_metadata
     code = metadata.get("provider_failure_code")
+    if diagnostics is not None:
+        diagnostics.clear()
+        diagnostics.update(version=1, outcome="provider_failure" if code else result.outcome.value,
+                           clarification_reason=(result.unsupported_reason
+                               if result.unsupported_reason in CLARIFICATION_REASONS else "unestablished")
+                               if not code and result.outcome == PlanGenerationOutcome.CLARIFICATION else None,
+                           plan_comparison="not_evaluated", mismatch_axes=[], result_multiset_match="not_evaluated")
     if code:
         if metadata.get("provider_failure_fatal") or code == "provider_unavailable":
             return "provider_fatal"
@@ -314,6 +323,23 @@ def score(engine, pack, case, value, result):
     aggregates = list(actual.plan.aggregations)
     expected = [checked(plan, pack, value) for plan in case.plans]
     match = next((candidate for candidate in expected if matching_plan(actual, candidate)), None)
+    if diagnostics is not None and expected:
+        try:
+            comparisons = [compare_plans(actual, candidate, pack) for candidate in expected]
+            comparison = next((item for item in comparisons if item["plan_comparison"] == "equivalent"), comparisons[0])
+            diagnostics.update(comparison)
+            if match is not None:
+                diagnostics["plan_comparison"] = "strict_match"
+            indices = result_indices(actual.plan, case.plans[0], pack)
+            if indices is not None and len(output.columns) == len(indices):
+                try:
+                    diagnostics["result_multiset_match"] = Counter(
+                        tuple(row[output.columns[i]] for i in indices) for row in output.rows) == Counter(case.rows)
+                except (ValueError, IndexError, KeyError, TypeError):
+                    pass  # The existing scorer owns malformed-output handling.
+        except Exception:
+            # Optional inference must not interrupt authoritative scoring or retain partial claims.
+            diagnostics.update(plan_comparison="unestablished", mismatch_axes=[], result_multiset_match="not_evaluated")
     if match is None:
         return "interpretation"
     try:
@@ -359,6 +385,7 @@ def bounded_measurement(data):
 class Observation:
     stage: str
     usage: dict
+    diagnostics: dict | None = None
 
 
 def assess(observations):
@@ -453,6 +480,7 @@ class Ledger:
 
     def complete(self, ordinal, observation):
         require(observation.stage in STAGES, "observation_invalid")
+        require(bounded_diagnostics(observation.diagnostics), "diagnostic_invalid")
         serialized = encode(asdict(observation))
         with self.db:
             cursor = self.db.execute("UPDATE slots SET stage=?, result=? WHERE ordinal=? AND result IS NULL",
@@ -519,7 +547,8 @@ def offline_observe(engine, db, pack, case, arm, payload, manifest, on_dispatch,
     before_dispatch()
     result = offline_generate(case, value, arm, payload,
                               manifest["cases"][case.id]["request_sha256"][arm], on_dispatch)
-    return Observation(score(engine, pack, case, value, result), measurement(result))
+    diagnostics = {}
+    return Observation(score(engine, pack, case, value, result, diagnostics=diagnostics), measurement(result), diagnostics)
 
 
 def offline_controls(engine, db, pack, manifest):
@@ -741,7 +770,8 @@ def run_live(engine, owner, manifest, credential, ledger, gate, make_transport):
             verify()
             usage = bounded_measurement(guarded.record)
             require(usage["usage_complete"] and usage["attempt_count"] == 1, "transport_evidence_invalid")
-            observation = Observation(score(engine, pack, case, value, result), usage)
+            diagnostics = {}
+            observation = Observation(score(engine, pack, case, value, result, diagnostics=diagnostics), usage, diagnostics)
             ledger.complete(ordinal, observation)
             require(observation.stage not in FATAL | {"provider_invalid", "provider_timeout"}, observation.stage)
             observations.append(observation)

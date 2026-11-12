@@ -7,8 +7,11 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.domains.it_operations.models import DirectoryUser, Group, UserGroupMembership
 from scripts import planner_study as study
 from scripts import planner_study_activation as activation
+from scripts.planner_study_fixtures import key
+from scripts.semantic_ownership_fixtures import count, field
 from tests.test_planner_study_activation import KEY, fake_response
 
 
@@ -23,8 +26,53 @@ def test_full_guarded_study_and_post_dispatch_database_drift(tmp_path, monkeypat
     pack = study.load_it_operations_domain_pack()
     study.initialize(engine, owner)
     try:
+        # A qualifying group in an unassigned scope must not enter the scalar count.
+        with Session(engine) as db, db.begin():
+            db.add(DirectoryUser(id=key("control-hidden-member"), employee_number="control-hidden-member",
+                                 email="control-hidden-member@queryops.invalid", full_name="Hidden control",
+                                 department_id=key("Sales")))
+            db.add(Group(id=key("control-hidden-group"), name="Hidden control", group_type="distribution",
+                         department_id=key("Sales")))
+            db.flush()
+            db.add(UserGroupMembership(user_id=key("control-hidden-member"), group_id=key("control-hidden-group"),
+                                       department_id=key("Sales"), added_at=study.REFERENCE))
         with Session(engine) as db:
             manifest = study.prepare(db, pack, owner)
+            posture, status, _, membership, *_ = study.CASES
+            controls = (
+                (posture, posture.plans[0], "pass", "strict_match", True),
+                (posture, posture.plans[0].model_copy(update={"literal_filters": (
+                    posture.plans[0].literal_filters[0].model_copy(update={"operator": "in", "value": ("laptop",)}),)}),
+                 "interpretation", "equivalent", True),
+                (posture, status.plans[0], "interpretation", "unestablished", False),
+                (posture, posture.plans[0].model_copy(update={"concept_ids": ("non_compliant_device",)}),
+                 "interpretation", "unestablished", False),
+                (status, status.plans[0], "pass", "strict_match", True),
+                (status, status.plans[0].model_copy(update={"literal_filters": status.plans[1].literal_filters}),
+                 "interpretation", "equivalent", True),
+                (status, posture.plans[0], "interpretation", "unestablished", False),
+                (membership, membership.plans[0], "pass", "strict_match", True),
+                (membership, membership.plans[0].model_copy(update={"aggregations": (
+                    count(field("user_group_memberships", "group_id"), distinct=True),)}),
+                 "interpretation", "equivalent", True),
+                (membership, membership.plans[0].model_copy(update={"aggregations": (count(),)}),
+                 "interpretation", "unestablished", "not_evaluated"),
+            )
+            controls_ledger = study.Ledger(tmp_path / "controls", manifest["fingerprint"])
+            try:
+                for ordinal, (case, plan, stage, comparison, rows_match) in enumerate(controls):
+                    observation = study.offline_observe(engine, db, pack, case, "low", study.supplied(plan),
+                                                        manifest, lambda: None,
+                                                        before_dispatch=lambda: controls_ledger.reserve(ordinal))
+                    assert observation.stage == stage
+                    assert observation.diagnostics["plan_comparison"] == comparison
+                    assert observation.diagnostics["result_multiset_match"] == rows_match
+                    controls_ledger.complete(ordinal, observation)
+                stored = controls_ledger.db.execute("SELECT result FROM slots ORDER BY ordinal").fetchall()
+                assert len(stored) == 10
+                assert all(json.loads(row[0])["diagnostics"]["version"] == 1 for row in stored)
+            finally:
+                controls_ledger.close()
         assert study.dry_run(engine, owner, manifest, tmp_path / "dry")["provider_dispatches"] == 0
         with monkeypatch.context() as patch:
             patch.setattr(study, "installed_runtime_versions", lambda: {"synthetic": "changed"})
